@@ -340,7 +340,7 @@ export default function InventoryPage() {
                              </div>
                           </TableHead>
                     ))}
-                   <TableHead className="text-right">Actions</TableHead> {/* Action column */}
+                   <TableHead className="text-right">Actions</TableHead>{/* Action column */}
                  </TableRow>
                </TableHeader>
                <TableBody>
