@@ -1,4 +1,7 @@
+
 'use client';
+
+import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
 
 /**
  * Represents a product extracted from a document.
@@ -42,10 +45,12 @@ export interface InvoiceHistoryItem {
   errorMessage?: string;
 }
 
+// --- Storage Keys ---
 const INVENTORY_STORAGE_KEY = 'mockInventoryData';
 const INVOICES_STORAGE_KEY = 'mockInvoicesData';
+const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings'; // New key for POS settings
 
-// Initial mock inventory data store (only used if localStorage is empty)
+// --- Initial Mock Data ---
 const initialMockInventory: Product[] = [
    { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
    { id: 'prod2', catalogNumber: '67890', description: 'Sample Product 2 (Mock)', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
@@ -54,36 +59,58 @@ const initialMockInventory: Product[] = [
    { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
 ];
 
-// Initial mock invoice history data store (only used if localStorage is empty)
 const initialMockInvoices: InvoiceHistoryItem[] = [
   { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1).toISOString(), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
   { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3).toISOString(), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
   { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5).toISOString(), status: 'error', errorMessage: 'Failed to extract totals' },
 ];
 
-// Helper to safely get data from localStorage
-const getStoredData = <T>(key: string, initialData: T[]): T[] => {
+// Interface for stored POS settings
+interface StoredPosSettings {
+    systemId: string;
+    config: PosConnectionConfig;
+}
+
+// --- LocalStorage Helper Functions ---
+const getStoredData = <T>(key: string, initialData?: T[]): T[] => {
   if (typeof window === 'undefined') {
-    // Return initial data during SSR or if window is not available
-    return initialData;
+    return initialData || [];
   }
   try {
     const stored = localStorage.getItem(key);
     if (stored) {
       return JSON.parse(stored);
-    } else {
-      // Initialize localStorage if key doesn't exist
+    } else if (initialData) {
       localStorage.setItem(key, JSON.stringify(initialData));
       return initialData;
     }
+    return []; // Return empty array if no initial data and nothing stored
   } catch (error) {
     console.error(`Error reading ${key} from localStorage:`, error);
-    return initialData; // Return initial data on error
+    return initialData || [];
   }
 };
 
-// Helper to safely save data to localStorage
-const saveStoredData = <T>(key: string, data: T[]): void => {
+const getStoredObject = <T>(key: string, initialData?: T): T | null => {
+    if (typeof window === 'undefined') {
+        return initialData ?? null;
+    }
+    try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+            return JSON.parse(stored);
+        } else if (initialData) {
+            localStorage.setItem(key, JSON.stringify(initialData));
+            return initialData;
+        }
+        return null;
+    } catch (error) {
+        console.error(`Error reading object ${key} from localStorage:`, error);
+        return initialData ?? null;
+    }
+};
+
+const saveStoredData = <T>(key: string, data: T): void => {
   if (typeof window === 'undefined') {
     console.warn('localStorage is not available. Data not saved.');
     return;
@@ -147,10 +174,15 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
  *
  * @param products The list of products to save.
  * @param fileName The name of the original file processed.
+ * @param source - Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
  * @returns A promise that resolves when the data is successfully saved.
  */
-export async function saveProducts(products: Product[], fileName: string): Promise<void> {
-  console.log('Saving products for file:', fileName, products);
+export async function saveProducts(
+    products: Product[],
+    fileName: string,
+    source: string = 'upload' // Add source parameter
+): Promise<void> {
+  console.log(`Saving products for file: ${fileName} (source: ${source})`, products);
   await new Promise(resolve => setTimeout(resolve, 100)); // Short delay
 
   let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
@@ -164,29 +196,32 @@ export async function saveProducts(products: Product[], fileName: string): Promi
     const quantity = parseFloat(String(newProduct.quantity)) || 0;
     const lineTotal = parseFloat(String(newProduct.lineTotal)) || 0;
     // Recalculate unit price here to ensure consistency before saving
-    const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : 0;
+    const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : (parseFloat(String(newProduct.unitPrice)) || 0); // Fallback to original unitPrice if quantity is 0
 
     invoiceTotalAmount += lineTotal;
 
     let existingIndex = -1;
+    // Prioritize matching by ID if available (especially from POS syncs)
     if (newProduct.id) {
         existingIndex = updatedInventory.findIndex(p => p.id === newProduct.id);
     }
+     // If no ID match or no ID provided, try matching by catalog number
     if (existingIndex === -1 && newProduct.catalogNumber && newProduct.catalogNumber !== 'N/A') {
         existingIndex = updatedInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
     }
 
     if (existingIndex !== -1) {
       console.log(`Updating product ${updatedInventory[existingIndex].catalogNumber} (ID: ${updatedInventory[existingIndex].id})`);
-      // Merge existing data with new data, ensuring essential fields are updated
+       // Merge existing data with new data, ensuring essential fields are updated
+       // Important: Decide merge strategy. Overwrite quantity or add? For now, overwrite.
       updatedInventory[existingIndex] = {
           ...updatedInventory[existingIndex], // Keep existing fields like ID
-          ...newProduct, // Overwrite with new data
-          quantity: quantity,
-          unitPrice: unitPrice, // Use recalculated unit price
+          ...newProduct, // Overwrite with new data (includes description, potentially others)
+          quantity: quantity, // Overwrite quantity (adjust if needed)
+          unitPrice: unitPrice, // Use recalculated/provided unit price
           lineTotal: lineTotal,
-          catalogNumber: newProduct.catalogNumber || updatedInventory[existingIndex].catalogNumber,
-          description: newProduct.description || updatedInventory[existingIndex].description,
+          catalogNumber: newProduct.catalogNumber || updatedInventory[existingIndex].catalogNumber, // Keep existing if new is 'N/A'
+          description: newProduct.description || updatedInventory[existingIndex].description, // Keep existing if new is empty
       };
        console.log(`Product updated:`, updatedInventory[existingIndex]);
 
@@ -198,7 +233,7 @@ export async function saveProducts(products: Product[], fileName: string): Promi
       console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description}`);
       const productToAdd: Product = {
         ...newProduct,
-        id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Use provided ID or generate new
         quantity: quantity,
         unitPrice: unitPrice,
         lineTotal: lineTotal,
@@ -210,23 +245,27 @@ export async function saveProducts(products: Product[], fileName: string): Promi
     }
   });
 
-   // Add a record to the invoice history
-   const newInvoiceRecord: InvoiceHistoryItem = {
-       id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-       fileName: fileName,
-       uploadTime: new Date().toISOString(), // Store as ISO string
-       status: 'completed',
-       totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-       // TODO: Add supplier/invoiceNumber if available
-   };
-   const updatedInvoices = [newInvoiceRecord, ...currentInvoices];
+   // Add a record to the invoice history ONLY if the source is an upload/manual edit
+   if (source === 'upload') {
+       const newInvoiceRecord: InvoiceHistoryItem = {
+           id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+           fileName: fileName,
+           uploadTime: new Date().toISOString(), // Store as ISO string
+           status: 'completed',
+           totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
+           // TODO: Add supplier/invoiceNumber if available from extraction/edit
+       };
+       const updatedInvoices = [newInvoiceRecord, ...currentInvoices];
+       saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
+       console.log('Updated localStorage invoices:', updatedInvoices);
+   } else {
+        console.log(`Skipping invoice history update for source: ${source}`);
+   }
 
-   // Save updated data back to localStorage
+
+   // Save updated inventory data back to localStorage
    saveStoredData(INVENTORY_STORAGE_KEY, updatedInventory);
-   saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
-
    console.log('Updated localStorage inventory:', updatedInventory);
-   console.log('Updated localStorage invoices:', updatedInvoices);
 
   return;
 }
@@ -276,6 +315,35 @@ export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
   }));
   console.log("Returning invoices from localStorage:", invoices);
   return invoices;
+}
+
+
+// --- POS Integration Settings ---
+
+/**
+ * Asynchronously saves the POS system connection settings.
+ * @param systemId - The ID of the POS system (e.g., 'caspit').
+ * @param config - The connection configuration.
+ * @returns A promise that resolves when settings are saved.
+ */
+export async function savePosSettings(systemId: string, config: PosConnectionConfig): Promise<void> {
+    console.log(`[Backend] Saving POS settings for ${systemId}`, config);
+    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
+    const settings: StoredPosSettings = { systemId, config };
+    saveStoredData(POS_SETTINGS_STORAGE_KEY, settings);
+    console.log("[Backend] POS settings saved to localStorage.");
+}
+
+/**
+ * Asynchronously retrieves the saved POS system connection settings.
+ * @returns A promise that resolves to the stored settings object or null if none exist.
+ */
+export async function getPosSettings(): Promise<StoredPosSettings | null> {
+    console.log("[Backend] Retrieving POS settings.");
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate delay
+    const settings = getStoredObject<StoredPosSettings>(POS_SETTINGS_STORAGE_KEY);
+    console.log("[Backend] Retrieved POS settings:", settings);
+    return settings;
 }
 
 

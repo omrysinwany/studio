@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Use App Router's navigation
-import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon } from 'lucide-react'; // Added Menu, Palette, Sun, Moon
+import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon, Plug } from 'lucide-react'; // Added Plug
 import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; // Import Sheet components
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'; // Import Sheet components and SheetTitle
 import React, { useState } from 'react';
 import { useTheme } from 'next-themes'; // Import useTheme
 
@@ -31,8 +31,9 @@ const navItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/upload', label: 'Upload', icon: ScanLine },
   { href: '/inventory', label: 'Inventory', icon: Package },
-  { href: '/reports', label: 'Reports', icon: BarChart2 },
   { href: '/invoices', label: 'Invoices', icon: FileText }, // Use imported FileText
+  { href: '/reports', label: 'Reports', icon: BarChart2 },
+  { href: '/settings', label: 'Settings', icon: Settings }, // Add Settings link here
 ];
 
 export default function Navigation() {
@@ -40,7 +41,7 @@ export default function Navigation() {
   const { user, logout, loading } = useAuth();
   const router = useRouter();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false); // State for mobile sheet
-  const { theme, setTheme, themes } = useTheme(); // Theme hook
+  const { theme, setTheme } = useTheme(); // Theme hook
 
 
   const handleLogout = () => {
@@ -76,10 +77,11 @@ export default function Navigation() {
               href={item.href}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-in-out", // Adjusted gap and duration
-                pathname === item.href
+                pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) // Highlight settings and sub-routes
                   ? "bg-accent text-accent-foreground" // Use accent for active state
                   : "text-muted-foreground hover:bg-muted hover:text-foreground" // Use muted for inactive hover
               )}
+               aria-current={pathname === item.href ? 'page' : undefined}
             >
               <item.icon className="h-4 w-4" />
               {item.label}
@@ -139,11 +141,17 @@ export default function Navigation() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => router.push('/settings')}> {/* Navigate to settings */}
+                    {/* Remove Settings from dropdown if it's in the main nav now */}
+                    {/* <DropdownMenuItem onClick={() => router.push('/settings')}>
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator /> */}
+                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')}> {/* Direct link to POS settings */}
+                       <Plug className="mr-2 h-4 w-4" />
+                       <span>POS Integration</span>
+                     </DropdownMenuItem>
+                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                       <LogOut className="mr-2 h-4 w-4" />
                       <span>Log out</span>
@@ -153,22 +161,22 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Link
-                     href="/login"
-                     className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
-                   >
-                     <span className="flex items-center">
-                       <LogIn className="mr-1 h-4 w-4" /> Login
-                     </span>
-                   </Link>
-                   <Link
-                     href="/register"
-                     className={cn(buttonVariants({ size: 'sm' }))}
-                   >
-                     <span className="flex items-center">
-                       <UserPlus className="mr-1 h-4 w-4" /> Register
-                     </span>
-                   </Link>
+                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
+                    <Link href="/login">
+                       {/* Wrap icon and text in a single span */}
+                       <span className="flex items-center">
+                         <LogIn className="mr-1 h-4 w-4" /> Login
+                       </span>
+                    </Link>
+                  </Button>
+                   <Button size="sm" asChild> {/* Default button for register */}
+                     <Link href="/register">
+                       {/* Wrap icon and text in a single span */}
+                       <span className="flex items-center">
+                         <UserPlus className="mr-1 h-4 w-4" /> Register
+                       </span>
+                     </Link>
+                   </Button>
                 </>
               )}
           </div>
@@ -182,19 +190,22 @@ export default function Navigation() {
                      <span className="sr-only">Toggle Navigation</span>
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-full max-w-xs p-4 flex flex-col"> {/* Full width, flex col */}
+                <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col"> {/* Full width, flex col, remove padding */}
+                   {/* Add hidden title for accessibility */}
+                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                    {/* Top section: Mobile Logo/Brand & Nav */}
-                   <div>
-                      <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-6" onClick={() => setIsMobileSheetOpen(false)}>
+                   <div className="p-4 border-b"> {/* Add padding and border */}
+                      <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
                           <span className="text-primary">InvoTrack</span>
                       </Link>
-                      <nav className="flex flex-col gap-2 mb-6">
+                    </div>
+                    <nav className="flex-grow overflow-y-auto p-4"> {/* Allow nav to scroll, add padding */}
                         {navItems.map((item) => (
                           <Button
                              key={item.href}
-                             variant={pathname === item.href ? 'secondary' : 'ghost'} // Use secondary for active
-                             className="justify-start gap-2 text-base py-3" // Larger text, padding
+                             variant={pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) ? 'secondary' : 'ghost'} // Use secondary for active
+                             className="w-full justify-start gap-2 text-base py-3 mb-1" // Larger text, padding, margin bottom
                              onClick={() => handleMobileNavClick(item.href)}
                           >
                              <item.icon className="h-5 w-5" /> {/* Slightly larger icons */}
@@ -202,10 +213,10 @@ export default function Navigation() {
                           </Button>
                         ))}
                       </nav>
-                   </div>
+
 
                     {/* Bottom section: Auth/User & Theme */}
-                    <div className="mt-auto border-t pt-4 space-y-4">
+                    <div className="mt-auto border-t p-4 space-y-4"> {/* Add padding */}
                         {/* Mobile Auth/User Section */}
                          <div>
                            {loading ? (
@@ -221,10 +232,15 @@ export default function Navigation() {
                                             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                                         </div>
                                     </div>
-                                   <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings')}>
+                                   {/* Settings is in main nav now */}
+                                   {/* <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings')}>
                                       <Settings className="h-5 w-5" />
                                       Settings
-                                   </Button>
+                                   </Button> */}
+                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
+                                       <Plug className="h-5 w-5" />
+                                       POS Integration
+                                    </Button>
                                    <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
                                       Log out

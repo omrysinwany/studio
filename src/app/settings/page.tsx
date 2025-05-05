@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react'; // Removed useEffect
@@ -5,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 // Removed useToast
-import { Loader2, Settings as SettingsIcon, User, LogIn } from 'lucide-react'; // Added LogIn icon
+import { Loader2, Settings as SettingsIcon, User, LogIn, Plug } from 'lucide-react'; // Added LogIn icon, Plug icon
 import Link from 'next/link'; // Import Link
 import { Button } from '@/components/ui/button'; // Import Button
 
@@ -40,17 +41,38 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-6">
            {user ? (
-              <Card>
-                   <CardHeader>
-                      <CardTitle className="text-lg flex items-center"><User className="mr-2 h-5 w-5" /> User Profile</CardTitle>
-                   </CardHeader>
-                   <CardContent className="space-y-2">
-                       <p><strong>Username:</strong> {user.username}</p>
-                       <p><strong>Email:</strong> {user.email}</p>
-                       {/* Add options like 'Change Password' here */}
-                       {/* <Button variant="outline" size="sm" className="mt-2">Change Password</Button> */}
-                   </CardContent>
-              </Card>
+              <>
+                <Card>
+                     <CardHeader>
+                        <CardTitle className="text-lg flex items-center"><User className="mr-2 h-5 w-5" /> User Profile</CardTitle>
+                     </CardHeader>
+                     <CardContent className="space-y-2">
+                         <p><strong>Username:</strong> {user.username}</p>
+                         <p><strong>Email:</strong> {user.email}</p>
+                         {/* Add options like 'Change Password' here */}
+                         {/* <Button variant="outline" size="sm" className="mt-2">Change Password</Button> */}
+                     </CardContent>
+                </Card>
+
+                 {/* POS Integration Link Card */}
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center">
+                            <Plug className="mr-2 h-5 w-5" /> POS Integration
+                        </CardTitle>
+                        <CardDescription>
+                            Connect and manage your Point of Sale system integration.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         <Button asChild variant="outline">
+                            <Link href="/settings/pos-integration">
+                                Configure POS Integration
+                            </Link>
+                         </Button>
+                    </CardContent>
+                 </Card>
+              </>
            ) : (
                <div className="text-center p-6 border rounded-md bg-muted/50">
                   <p className="text-muted-foreground mb-4">You need to be logged in to view your settings.</p>
