@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye } from 'lucide-react'; // Added Eye
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download } from 'lucide-react'; // Added Eye, Download
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -44,14 +45,14 @@ export default function InvoicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
-    id: false,
+    id: false, // Keep ID internal if not needed for display but useful for export/keys
     fileName: true,
     uploadTime: true,
     status: true,
     invoiceNumber: true,
     supplier: true,
     totalAmount: true,
-    errorMessage: false,
+    errorMessage: false, // Keep hidden by default
     actions: true,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -82,11 +83,14 @@ export default function InvoicesPage() {
            filteredData = filteredData.filter(inv => inv.status === filterStatus);
         }
          if (dateRange?.from) {
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime) >= dateRange.from!);
+             // Ensure date comparison includes the start date
+            const startDate = new Date(dateRange.from);
+            startDate.setHours(0, 0, 0, 0); // Set to start of the day
+            filteredData = filteredData.filter(inv => new Date(inv.uploadTime) >= startDate);
          }
          if (dateRange?.to) {
             const endDate = new Date(dateRange.to);
-            endDate.setHours(23, 59, 59, 999);
+            endDate.setHours(23, 59, 59, 999); // Set to end of the day
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime) <= endDate);
          }
 
@@ -143,7 +147,9 @@ export default function InvoicesPage() {
 
         let comparison = 0;
         if (sortKey === 'uploadTime') {
-            comparison = new Date(valA as Date).getTime() - new Date(valB as Date).getTime();
+            const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
+            const dateB = valB instanceof Date ? valB.getTime() : new Date(valB as string).getTime();
+            comparison = dateA - dateB;
         } else if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
         } else if (typeof valA === 'string' && typeof valB === 'string') {
@@ -161,24 +167,34 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm, sortKey, sortDirection]);
 
 
-   const columnHeaders: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string }[] = [
+   // Column definition including internal 'id'
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string }[] = [
+      { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
       { key: 'fileName', label: 'File Name', sortable: true, className: 'min-w-[200px]' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[150px]' },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Invoice #', sortable: true, className: 'min-w-[120px]' },
       { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[150px]' },
       { key: 'totalAmount', label: 'Total Amount (₪)', sortable: true, className: 'text-right min-w-[120px]' },
+      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate' }, // Add definition for error message
       { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
    ];
 
+    // Filter columns for header display based on visibility state
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
 
    // Format date for display
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        return dateObj.toLocaleString();
+        // Check if date is valid before formatting
+        if (isNaN(dateObj.getTime())) {
+          return 'Invalid Date';
+        }
+        return dateObj.toLocaleString(); // Date and time
      } catch (e) {
+       console.error("Error formatting date:", e, "Input:", date);
        return 'Invalid Date';
      }
    };
@@ -235,6 +251,66 @@ export default function InvoicesPage() {
         </Badge>
      );
   };
+
+    // --- CSV Export ---
+    const escapeCsvValue = (value: any): string => {
+        if (value === null || value === undefined) {
+          return '';
+        }
+         // Format date values specifically
+         if (value instanceof Date) {
+            try {
+                return value.toISOString(); // Use ISO format for consistency
+            } catch {
+                return 'Invalid Date';
+            }
+         }
+        let stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          stringValue = stringValue.replace(/"/g, '""');
+          return `"${stringValue}"`;
+        }
+        return stringValue;
+      };
+
+    const handleExportInvoices = () => {
+        if (filteredAndSortedInvoices.length === 0) {
+            toast({ title: "No Data", description: "There is no invoice data to export." });
+            return;
+        }
+
+        // Define columns to export
+        const exportColumns: (keyof InvoiceHistoryItem)[] = [
+            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+        ];
+
+        const headers = exportColumns
+            .map(key => columnDefinitions.find(col => col.key === key)?.label || key) // Get labels
+            .map(escapeCsvValue)
+            .join(',');
+
+        const rows = filteredAndSortedInvoices.map(item => {
+            return exportColumns
+                .map(key => escapeCsvValue(item[key]))
+                .join(',');
+        });
+
+        const csvContent = [headers, ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'invoices_export.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        toast({ title: "Export Started", description: "Your invoice data is being downloaded as CSV." });
+    };
+    // --- End CSV Export ---
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
@@ -370,12 +446,13 @@ export default function InvoicesPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnHeaders.map((header) => (
+                   {/* Map over definitions that should be toggleable */}
+                  {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id' && h.key !== 'errorMessage').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
                       checked={visibleColumns[header.key]}
-                      onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions')}
+                      onCheckedChange={() => toggleColumnVisibility(header.key)}
                     >
                       {header.label}
                     </DropdownMenuCheckboxItem>
@@ -383,13 +460,19 @@ export default function InvoicesPage() {
                   {/* Option to toggle error message column separately */}
                   <DropdownMenuCheckboxItem
                       key="errorMessage"
+                      className="capitalize"
                       checked={visibleColumns.errorMessage}
                       onCheckedChange={() => toggleColumnVisibility('errorMessage')}
                     >
-                      Error Message
+                      {columnDefinitions.find(h => h.key === 'errorMessage')?.label || 'Error Message'}
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+               {/* Export Button */}
+               <Button variant="outline" onClick={handleExportInvoices}>
+                 <Download className="mr-2 h-4 w-4" /> Export CSV
+               </Button>
             </div>
           </div>
 
@@ -398,7 +481,8 @@ export default function InvoicesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {columnHeaders.filter(h => visibleColumns[h.key]).map((header) => (
+                   {/* Use filtered visibleColumnHeaders for rendering */}
+                  {visibleColumnHeaders.map((header) => (
                     <TableHead
                       key={header.key}
                       className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
@@ -420,7 +504,7 @@ export default function InvoicesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
+                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
                       <div className="flex justify-center items-center">
                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
                          <span className="ml-2">Loading invoices...</span>
@@ -429,13 +513,14 @@ export default function InvoicesPage() {
                   </TableRow>
                 ) : filteredAndSortedInvoices.length === 0 ? (
                   <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
+                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
                        No invoices found matching your criteria.
                      </TableCell>
                   </TableRow>
                 ) : (
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                       {/* Render cells based on visibility state */}
                        {visibleColumns.fileName && <TableCell className="font-medium truncate max-w-xs">{item.fileName}</TableCell>}
                        {visibleColumns.uploadTime && <TableCell>{formatDate(item.uploadTime)}</TableCell>}
                        {visibleColumns.status && (
@@ -451,7 +536,7 @@ export default function InvoicesPage() {
                          </TableCell>
                        )}
                        {visibleColumns.errorMessage && (
-                         <TableCell className="text-xs text-destructive max-w-xs truncate">
+                         <TableCell className={cn(columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
                              {item.status === 'error' ? item.errorMessage : '-'}
                          </TableCell>
                        )}

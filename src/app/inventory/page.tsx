@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download } from 'lucide-react'; // Added Download
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -40,7 +40,7 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
-    id: false,
+    id: false, // Keep ID internal if not needed for display but useful for export/keys
     description: true,
     catalogNumber: true,
     quantity: true,
@@ -166,15 +166,75 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
+    // Column definition including internal 'id'
+    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
+        { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
+        { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
+        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
+        { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' },
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' },
+        { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' },
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
+    ];
 
-  const columnHeaders: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
-     { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
-     { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
-     { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' },
-     { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' },
-     { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' },
-     { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
-  ];
+    // Filter columns for header display based on visibility state
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
+
+
+    // --- CSV Export ---
+    const escapeCsvValue = (value: any): string => {
+        if (value === null || value === undefined) {
+          return '';
+        }
+        let stringValue = String(value);
+        // If the value contains a comma, double quote, or newline, enclose it in double quotes
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          // Escape existing double quotes by doubling them
+          stringValue = stringValue.replace(/"/g, '""');
+          return `"${stringValue}"`;
+        }
+        return stringValue;
+      };
+
+    const handleExportInventory = () => {
+        if (filteredAndSortedInventory.length === 0) {
+            toast({ title: "No Data", description: "There is no inventory data to export." });
+            return;
+        }
+
+        // Define columns to export (can be different from visible columns if needed)
+        const exportColumns: (keyof Product | 'id')[] = [
+            'id', 'catalogNumber', 'description', 'quantity', 'unitPrice', 'lineTotal'
+        ];
+
+        const headers = exportColumns
+            .map(key => columnDefinitions.find(col => col.key === key)?.label || key) // Get labels
+            .map(escapeCsvValue)
+            .join(',');
+
+        const rows = filteredAndSortedInventory.map(item => {
+            return exportColumns
+                .map(key => escapeCsvValue(item[key as keyof Product]))
+                .join(',');
+        });
+
+        const csvContent = [headers, ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'inventory_export.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        toast({ title: "Export Started", description: "Your inventory data is being downloaded as CSV." });
+    };
+    // --- End CSV Export ---
+
 
     if (isLoading) {
      return (
@@ -263,18 +323,25 @@ export default function InventoryPage() {
                    <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                     {columnHeaders.map((header) => (
+                     {/* Map over definitions that should be toggleable (exclude 'actions' or 'id' if needed) */}
+                     {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
                        <DropdownMenuCheckboxItem
                          key={header.key}
                          className="capitalize"
                          checked={visibleColumns[header.key]}
-                         onCheckedChange={() => toggleColumnVisibility(header.key as keyof Product | 'actions' | 'id')}
+                         onCheckedChange={() => toggleColumnVisibility(header.key)}
                        >
                          {header.label}
                        </DropdownMenuCheckboxItem>
                      ))}
                    </DropdownMenuContent>
                  </DropdownMenu>
+
+                  {/* Export Button */}
+                  <Button variant="outline" onClick={handleExportInventory}>
+                    <Download className="mr-2 h-4 w-4" /> Export CSV
+                  </Button>
+
                </div>
            </div>
 
@@ -283,7 +350,8 @@ export default function InventoryPage() {
              <Table>
                <TableHeader>
                  <TableRow>
-                    {columnHeaders.filter(h => visibleColumns[h.key]).map((header) => (
+                    {/* Use filtered visibleColumnHeaders for rendering */}
+                    {visibleColumnHeaders.map((header) => (
                          <TableHead
                             key={header.key}
                             className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
@@ -305,14 +373,15 @@ export default function InventoryPage() {
                <TableBody>
                  {filteredAndSortedInventory.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
+                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
                        No inventory items found matching your criteria.
                      </TableCell>
                    </TableRow>
                  ) : (
                    filteredAndSortedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
-                       {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
+                       {/* Render cells based on visibility state */}
+                        {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-right">
