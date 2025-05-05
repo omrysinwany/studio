@@ -44,7 +44,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
         responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action] Raw response status: ${response.status}`);
-        console.log(`[Caspit Action] Raw response headers:`, JSON.stringify(Object.fromEntries(response.headers.entries())));
+        console.log(`[Caspit Action] Raw response headers:`, response.headers);
         // *** Enhanced Logging for Raw Response Text ***
         console.log(`[Caspit Action] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
@@ -90,12 +90,12 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         console.log('[Caspit Action] Keys in parsed data:', Object.keys(data || {}));
 
         // *** Check if AccessToken exists in the parsed data ***
-        // Try both 'AccessToken' (documented example) and 'accessToken' (common practice)
-        const accessToken = data?.AccessToken || data?.accessToken;
+        // Use optional chaining and check for non-empty string - Sticking to 'AccessToken' based on docs
+        const accessToken = data?.AccessToken;
 
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
             // Updated error message
-            console.error('[Caspit Action] Invalid token response structure or empty token. Expected "AccessToken" or "accessToken". Parsed Data:', data);
+            console.error('[Caspit Action] Invalid token response structure or empty token. Expected "AccessToken". Parsed Data:', data);
             throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
         }
 
