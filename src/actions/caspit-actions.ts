@@ -82,8 +82,10 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                      accessToken = null; // Reset to null to allow raw text check
                  } else {
                       console.log('[Caspit Action - getCaspitToken] Successfully obtained token from JSON.');
-                      console.log(`[Caspit Action - getCaspitToken] Extracted Token (JSON): "${accessToken}"`); // Log extracted token
-                      return accessToken; // Return the found token
+                      // *** Trim whitespace and potential quotes ***
+                      const trimmedToken = accessToken.trim().replace(/^"|"$/g, ''); // Remove surrounding quotes if present
+                      console.log(`[Caspit Action - getCaspitToken] Extracted & Trimmed Token (JSON): "${trimmedToken}"`); // Log trimmed token
+                      return trimmedToken; // Return the trimmed token
                  }
 
              } catch (jsonError: any) {
@@ -98,15 +100,16 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         // Basic check: not empty and doesn't look like HTML
         if (!accessToken && responseText.trim() && !responseText.trim().startsWith('<')) {
              console.log('[Caspit Action - getCaspitToken] Assuming raw response text is the token.');
-             accessToken = responseText.trim();
+             // *** Trim whitespace and potential quotes ***
+             const trimmedToken = responseText.trim().replace(/^"|"$/g, ''); // Remove surrounding quotes if present
              // Add validation if needed (e.g., check length or format)
-             if (accessToken.length < 10) { // Example validation
-                 console.error('[Caspit Action - getCaspitToken] Raw response text is too short to be a valid token:', accessToken);
+             if (trimmedToken.length < 10) { // Example validation
+                 console.error('[Caspit Action - getCaspitToken] Raw response text is too short to be a valid token:', trimmedToken);
                  throw new Error('Received an unexpected short response from Caspit API. Expected a token.');
              }
              console.log('[Caspit Action - getCaspitToken] Successfully obtained token from raw text.');
-             console.log(`[Caspit Action - getCaspitToken] Extracted Token (Raw): "${accessToken}"`); // Log extracted token
-             return accessToken;
+             console.log(`[Caspit Action - getCaspitToken] Extracted & Trimmed Token (Raw): "${trimmedToken}"`); // Log trimmed token
+             return trimmedToken; // Return the trimmed token
         }
 
         // If we reach here, neither JSON parsing nor raw text check yielded a valid token
