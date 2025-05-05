@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning> {/* Remove whitespace here */}
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
          <ThemeProvider
             attribute="class"
@@ -48,3 +48,4 @@ export default function RootLayout({
     </html>
   );
 }
+
