@@ -27,15 +27,15 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
     console.log(`[Caspit Action] Attempting to get token from URL: ${url}`); // Log the final URL
 
-    let response: Response | null = null; // Define response variable outside try block
-    let responseText: string = ''; // Define responseText variable outside try block
+    let response: Response | null = null;
+    let responseText: string = '';
 
     try {
         response = await fetch(url, {
             method: 'GET', // Specify GET method
             headers: {
-                'Accept': 'application/json', // Ensure we ask for JSON
-                'Cache-Control': 'no-cache, no-store, must-revalidate', // Try stricter cache control
+                'Accept': 'application/json, text/plain, */*', // Accept JSON or plain text
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0'
             },
@@ -45,7 +45,6 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action] Raw response status: ${response.status}`);
         console.log(`[Caspit Action] Raw response headers:`, response.headers);
-        // *** Enhanced Logging for Raw Response Text ***
         console.log(`[Caspit Action] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
         if (!response.ok) {
@@ -58,51 +57,62 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
             } else if (response.status === 404) {
                  detailedErrorMessage += ' API endpoint not found. Please check the URL.';
             } else {
+                 // Include raw response text in error for debugging
                  detailedErrorMessage += ` Raw response: ${responseText}`;
             }
             throw new Error(detailedErrorMessage);
         }
 
-         // Check content type before parsing
+         // Check content type and attempt to parse JSON IF it looks like JSON
          const contentType = response.headers.get("content-type");
-         if (!contentType || !contentType.includes("application/json")) {
-             console.warn(`[Caspit Action] Unexpected content type received for token: ${contentType}. Expected JSON. Raw response: ${responseText}. Trying to parse anyway if content looks like JSON.`);
-             // Attempt to parse only if it looks like JSON, otherwise throw
-             if (!responseText.trim().startsWith('{') && !responseText.trim().startsWith('[')) {
-                throw new Error(`Expected JSON response for token but received ${contentType}. Raw response: ${responseText}`);
+         let accessToken: string | undefined | null = null;
+
+         if (contentType && contentType.includes("application/json")) {
+             try {
+                 const data = JSON.parse(responseText);
+                 console.log('[Caspit Action] Parsed JSON data structure:', JSON.stringify(data, null, 2));
+                 console.log('[Caspit Action] Keys in parsed data:', Object.keys(data || {}));
+
+                 // Look for AccessToken (primary) or potentially other common keys
+                 accessToken = data?.AccessToken || data?.accessToken || data?.token;
+
+                 if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
+                     console.warn('[Caspit Action] JSON response received, but expected token key (AccessToken, accessToken, token) was missing or empty. Parsed Data:', data);
+                     // Fall through to check if the raw text might be the token
+                     accessToken = null; // Reset to null to allow raw text check
+                 } else {
+                      console.log('[Caspit Action] Successfully obtained token from JSON.');
+                      return accessToken; // Return the found token
+                 }
+
+             } catch (jsonError: any) {
+                 console.warn('[Caspit Action] Failed to parse JSON response even though content-type was JSON:', jsonError);
+                 console.warn('[Caspit Action] Response text that failed parsing:', responseText);
+                 // Fall through to check if the raw text might be the token
+                 accessToken = null;
              }
          }
 
-
-        let data;
-        try {
-            data = JSON.parse(responseText); // Try parsing the logged text
-        } catch (jsonError: any) {
-            console.error('[Caspit Action] Failed to parse JSON response:', jsonError);
-            console.error('[Caspit Action] Response text that failed parsing:', responseText);
-            throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}. Raw response: ${responseText}`);
+        // If JSON parsing failed or didn't yield a token, check if the raw responseText itself might be the token
+        // Basic check: not empty and doesn't look like HTML
+        if (!accessToken && responseText.trim() && !responseText.trim().startsWith('<')) {
+             console.log('[Caspit Action] Assuming raw response text is the token.');
+             accessToken = responseText.trim();
+             // Add validation if needed (e.g., check length or format)
+             if (accessToken.length < 10) { // Example validation
+                 console.error('[Caspit Action] Raw response text is too short to be a valid token:', accessToken);
+                 throw new Error('Received an unexpected short response from Caspit API. Expected a token.');
+             }
+             console.log('[Caspit Action] Successfully obtained token from raw text.');
+             return accessToken;
         }
 
-        // *** Log the parsed data structure BEFORE checking the AccessToken ***
-        console.log('[Caspit Action] Parsed JSON data structure:', JSON.stringify(data, null, 2));
+        // If we reach here, neither JSON parsing nor raw text check yielded a valid token
+        console.error('[Caspit Action] Failed to extract a valid token from the response. Response text:', responseText);
+        throw new Error('Invalid or empty token response received from Caspit API.');
 
-        // *** Log the keys of the parsed data object ***
-        console.log('[Caspit Action] Keys in parsed data:', Object.keys(data || {}));
-
-        // *** Check if AccessToken exists in the parsed data ***
-        // Use optional chaining and check for non-empty string - Sticking to 'AccessToken' based on docs
-        const accessToken = data?.AccessToken;
-
-        if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            // Updated error message
-            console.error('[Caspit Action] Invalid token response structure or empty token. Expected "AccessToken". Parsed Data:', data);
-            throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
-        }
-
-        console.log('[Caspit Action] Successfully obtained token.');
-        return accessToken; // Return the validated token
     } catch (error) {
-        // This catch block now handles fetch errors AND errors thrown above (like !response.ok or JSON parse errors)
+        // This catch block now handles fetch errors AND errors thrown above
         console.error('[Caspit Action] Error fetching or processing token:', error);
         // Re-throw a potentially more user-friendly error message
         if (error instanceof Error) {
@@ -277,5 +287,3 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error during sales sync'}` };
     }
 }
-
-
