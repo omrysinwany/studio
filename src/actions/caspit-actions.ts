@@ -86,11 +86,16 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         // *** Log the parsed data structure BEFORE checking the AccessToken ***
         console.log('[Caspit Action] Parsed JSON data structure:', JSON.stringify(data, null, 2));
 
+        // *** Log the keys of the parsed data object ***
+        console.log('[Caspit Action] Keys in parsed data:', Object.keys(data || {}));
+
         // *** Check if AccessToken exists in the parsed data ***
-        // Use optional chaining and check for non-empty string
-        const accessToken = data?.AccessToken;
+        // Try both 'AccessToken' (documented example) and 'accessToken' (common practice)
+        const accessToken = data?.AccessToken || data?.accessToken;
+
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            console.error('[Caspit Action] Invalid token response structure or empty AccessToken. AccessToken missing or invalid. Parsed Data:', data);
+            // Updated error message
+            console.error('[Caspit Action] Invalid token response structure or empty token. Expected "AccessToken" or "accessToken". Parsed Data:', data);
             throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
         }
 
@@ -272,4 +277,5 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error during sales sync'}` };
     }
 }
+
 
