@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -21,10 +22,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Product, getProductsService } from '@/services/backend';
+import { Product, getProductsService } from '@/services/backend'; // Corrected import
 import { Badge } from '@/components/ui/badge';
 
 
@@ -53,6 +54,7 @@ export default function InventoryPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname(); // Get pathname
   const { toast } = useToast();
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
@@ -63,7 +65,7 @@ export default function InventoryPage() {
       setIsLoading(true);
       try {
         console.log("Fetching inventory data...");
-        const data = await getProductsService();
+        const data = await getProductsService(); // Use corrected function name
         console.log("Fetched inventory data:", data);
         // Add a temporary ID for React keys if backend doesn't provide one - ID is now generated in backend.ts
         // const inventoryWithIds = data.map((item, index) => ({
@@ -101,7 +103,7 @@ export default function InventoryPage() {
         const query = search ? `?${search}` : "";
         router.replace(`${pathname}${query}`, { scroll: false }); // Update URL without refresh param
      }
-   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams]); // Added dependencies
+   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]); // Added pathname to dependencies
 
 
   const handleSort = (key: SortKey) => {
