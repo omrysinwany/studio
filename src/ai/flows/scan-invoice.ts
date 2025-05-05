@@ -10,41 +10,12 @@
 
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
-
-const ScanInvoiceInputSchema = z.object({
-  invoiceDataUri: z
-    .string()
-    .describe(
-      "A photo of an invoice, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
-    ),
-});
-export type ScanInvoiceInput = z.infer<typeof ScanInvoiceInputSchema>;
-
-// Updated Schema to reflect the prompt's output keys
-const ExtractedProductSchema = z.object({
-    product_name: z.string().optional().describe("The name/description of the product."), // Use product_name or description
-    catalog_number: z.string().optional().describe('The catalog number of the product.'),
-    quantity: z.number().describe('The quantity of the product (individual units).'), // Ensure this specifies units
-    purchase_price: z.number().optional().describe('The extracted purchase price (may not be the final unit price).'), // Keep purchase_price if needed
-    total: z.number().describe('The line total for the product.'),
-    description: z.string().optional().describe('Optional description if clearly present.'), // Optional description
-});
-
-// Final output schema with calculated unitPrice
-const FinalProductSchema = z.object({
-      catalogNumber: z.string().describe('The catalog number of the product.'),
-      description: z.string().describe('The description of the product.'),
-      quantity: z.number().describe('The quantity of the product (individual units).'), // Specify units
-      unitPrice: z.number().describe('The calculated unit price (total / quantity).'), // Calculated field
-      lineTotal: z.number().describe('The line total for the product.'),
-});
+import type { FinalProductSchema, ExtractedProductSchema } from './invoice-schemas'; // Import schemas
+import { ScanInvoiceInputSchema, ScanInvoiceOutputSchema } from './invoice-schemas'; // Import Zod schemas
 
 
-const ScanInvoiceOutputSchema = z.object({
-  products: z.array(FinalProductSchema) // Use the final schema here
-          .describe('The list of products extracted and processed from the invoice.'),
-});
-export type ScanInvoiceOutput = z.infer<typeof ScanInvoiceOutputSchema>;
+// Re-export types for external use if needed by components
+export type { ScanInvoiceInput, ScanInvoiceOutput, FinalProductSchema };
 
 
 export async function scanInvoice(input: ScanInvoiceInput): Promise<ScanInvoiceOutput> {
@@ -67,7 +38,7 @@ const prompt = ai.definePrompt({
   output: {
     // Output schema from AI matches the extraction request
     schema: z.object({
-        products: z.array(ExtractedProductSchema)
+        products: z.array(ExtractedProductSchema) // Use the Zod schema defined in invoice-schemas.ts
                  .describe('Raw extracted product list from the invoice.'),
     })
   },
@@ -105,37 +76,69 @@ const scanInvoiceFlow = ai.defineFlow<
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema, // Ensure flow output matches final schema
 }, async input => {
-    // Call the prompt to get raw extracted data
-    const { output: rawOutput } = await prompt(input);
+    let rawOutput: { products: any[] } | null = null; // Initialize rawOutput
+    try {
+        // Call the prompt to get raw extracted data
+        const { output } = await prompt(input);
 
-    if (!rawOutput || !rawOutput.products) {
-      // Handle cases where AI returns nothing or an invalid structure
-      console.error('AI did not return valid product data.');
-      return { products: [] };
+        // Basic validation of the output structure
+        // Use Zod schema to parse and validate the structure more reliably
+        const validationResult = z.object({ products: z.array(ExtractedProductSchema) }).safeParse(output);
+
+        if (validationResult.success) {
+            rawOutput = validationResult.data; // Use validated data
+        } else {
+            console.error('AI did not return the expected { products: [...] } structure or validation failed. Received:', output, 'Errors:', validationResult.error);
+            // Fallback to empty products if structure is wrong or validation fails
+            return { products: [] };
+        }
+
+    } catch (promptError) {
+        console.error('Error calling AI prompt:', promptError);
+        // Return empty products on prompt error
+        return { products: [] };
     }
 
     // Process the raw data: calculate unitPrice and map to final schema
-    const processedProducts = rawOutput.products
-        .map((rawProduct) => {
-            const quantity = rawProduct.quantity ?? 0; // Default to 0 if missing
-            const lineTotal = rawProduct.total ?? 0; // Default to 0 if missing
-            // Calculate unit price based on extracted total and quantity
-            const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : (rawProduct.purchase_price ?? 0); // Calculate or use purchase_price as fallback
+    try {
+        const processedProducts = rawOutput.products // Use the validated rawOutput
+            .map((rawProduct) => {
+                // The Zod schema already validated the structure and types,
+                // but we still need to handle potential variations and calculate unitPrice.
+
+                // Defensive parsing just in case Zod validation missed edge cases or types are loose
+                const quantity = rawProduct.quantity ?? 0; // quantity is now guaranteed to be a number by Zod
+                const lineTotal = rawProduct.total ?? 0; // total is now guaranteed to be a number by Zod
+                const purchasePrice = rawProduct.purchase_price ?? 0; // purchase_price is optional number
+
+                // Calculate unit price based on extracted total and quantity
+                // Prefer calculation, fallback to purchase_price, then 0
+                const unitPrice = quantity !== 0 && lineTotal !== 0
+                               ? parseFloat((lineTotal / quantity).toFixed(2))
+                               : purchasePrice;
 
 
-            // Use product_name if available, otherwise fallback to description or catalog number
-            const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
+                // Use product_name if available, otherwise fallback to description or catalog number
+                const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
 
-            return {
-                catalogNumber: rawProduct.catalog_number || 'N/A',
-                description: description,
-                quantity: quantity, // This should now be the unit quantity based on the updated prompt
-                unitPrice: unitPrice, // Use the calculated or fallback unit price
-                lineTotal: lineTotal,
-            };
-        })
-        .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product'); // Filter out potentially empty rows if needed
+                // Construct the final product object conforming to FinalProductSchema
+                const finalProduct: z.infer<typeof FinalProductSchema> = {
+                    catalogNumber: rawProduct.catalog_number || 'N/A',
+                    description: description,
+                    quantity: quantity, // Use parsed quantity
+                    unitPrice: unitPrice, // Use calculated or fallback unit price
+                    lineTotal: lineTotal, // Use parsed lineTotal
+                };
+                return finalProduct;
+            })
+             // No need to filter nulls as Zod ensures array elements match the schema
+            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product'); // Keep existing filter logic if desired
 
+        return { products: processedProducts };
 
-    return { products: processedProducts };
+    } catch (processingError) {
+         console.error('Error processing AI output:', processingError, 'Raw Output:', rawOutput);
+         // Return empty products if processing fails
+         return { products: [] };
+    }
 });
