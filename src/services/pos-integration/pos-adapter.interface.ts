@@ -9,11 +9,19 @@
  * The exact fields will vary depending on the POS system.
  */
 export interface PosConnectionConfig {
+  // Common fields (examples)
   apiKey?: string;
   apiSecret?: string;
   storeId?: string;
   endpointUrl?: string;
-  [key: string]: any; // Allow for additional, POS-specific fields
+
+  // Caspit specific fields (added for clarity)
+  user?: string; // Caspit username
+  pwd?: string; // Caspit password
+  osekMorshe?: string; // Caspit business ID
+
+  // Allow for additional, POS-specific fields
+  [key: string]: any;
 }
 
 /**
@@ -25,6 +33,20 @@ export interface SyncResult {
   itemsSynced?: number;
   errors?: any[];
 }
+
+/**
+ * Represents a product structure compatible with InvoTrack.
+ * Adapters should map their native product format to this structure.
+ */
+export interface Product {
+  id?: string;
+  catalogNumber: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
 
 /**
  * Interface defining the common methods that any POS system adapter must implement.
