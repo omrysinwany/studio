@@ -45,7 +45,8 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action] Raw response status: ${response.status}`);
         console.log(`[Caspit Action] Raw response headers:`, JSON.stringify(Object.fromEntries(response.headers.entries())));
-        console.log(`[Caspit Action] Raw response text: ${responseText}`); // Log the raw response text
+        // *** Enhanced Logging for Raw Response Text ***
+        console.log(`[Caspit Action] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
         if (!response.ok) {
             // Log specific error details
@@ -65,8 +66,11 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
          // Check content type before parsing
          const contentType = response.headers.get("content-type");
          if (!contentType || !contentType.includes("application/json")) {
-             console.warn(`[Caspit Action] Unexpected content type received for token: ${contentType}. Expected JSON. Trying to parse anyway.`);
-             // You might still want to attempt parsing if the content looks like JSON despite the header
+             console.warn(`[Caspit Action] Unexpected content type received for token: ${contentType}. Expected JSON. Raw response: ${responseText}. Trying to parse anyway if content looks like JSON.`);
+             // Attempt to parse only if it looks like JSON, otherwise throw
+             if (!responseText.trim().startsWith('{') && !responseText.trim().startsWith('[')) {
+                throw new Error(`Expected JSON response for token but received ${contentType}. Raw response: ${responseText}`);
+             }
          }
 
 
@@ -79,17 +83,19 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
             throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}. Raw response: ${responseText}`);
         }
 
-        // *** Log the parsed data structure before checking the AccessToken ***
-        console.log('[Caspit Action] Parsed JSON data:', JSON.stringify(data, null, 2));
+        // *** Log the parsed data structure BEFORE checking the AccessToken ***
+        console.log('[Caspit Action] Parsed JSON data structure:', JSON.stringify(data, null, 2));
 
-        // Check if AccessToken exists in the parsed data
-        if (!data || !data.AccessToken) {
-            console.error('[Caspit Action] Invalid token response structure. AccessToken missing. Parsed Data:', data);
-            throw new Error('Invalid token response structure from Caspit API. AccessToken missing.');
+        // *** Check if AccessToken exists in the parsed data ***
+        // Use optional chaining and check for non-empty string
+        const accessToken = data?.AccessToken;
+        if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
+            console.error('[Caspit Action] Invalid token response structure or empty AccessToken. AccessToken missing or invalid. Parsed Data:', data);
+            throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
         }
 
         console.log('[Caspit Action] Successfully obtained token.');
-        return data.AccessToken;
+        return accessToken; // Return the validated token
     } catch (error) {
         // This catch block now handles fetch errors AND errors thrown above (like !response.ok or JSON parse errors)
         console.error('[Caspit Action] Error fetching or processing token:', error);
@@ -169,7 +175,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
             const responseText = await response.text(); // Read text first
              console.log(`[Caspit Action] Product fetch (Page ${page}) status: ${response.status}`);
-             console.log(`[Caspit Action] Product fetch (Page ${page}) response text: ${responseText}`);
+             console.log(`[Caspit Action] Product fetch (Page ${page}) response text START:\n---\n${responseText}\n---\nProduct fetch response text END`);
 
             if (!response.ok) {
                 console.error(`[Caspit Action] Failed to fetch products (Page ${page}): ${response.status} ${response.statusText}`, responseText);
@@ -183,7 +189,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
                  console.error("[Caspit Action] Response Text:", responseText);
                  // Allow continuing if content looks like JSON, but log a warning
                  if (!responseText.trim().startsWith('[')) {
-                    throw new Error(`Expected JSON response for products but received ${contentType}`);
+                    throw new Error(`Expected JSON response for products but received ${contentType}. Raw response: ${responseText}`);
                  }
                  console.warn(`[Caspit Action] Content type is not JSON, but attempting to parse anyway.`);
              }
@@ -196,6 +202,10 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
                  console.error("[Caspit Action] Response text that failed parsing:", responseText);
                  throw new Error(`Failed to parse JSON product response from Caspit API: ${jsonError.message}`);
             }
+
+            // Log parsed product page data structure
+             console.log(`[Caspit Action] Parsed product data (Page ${page}):`, JSON.stringify(caspitProductsPage, null, 2));
+
 
             if (!Array.isArray(caspitProductsPage)) {
                 console.error('[Caspit Action] Invalid product data structure received (not an array):', caspitProductsPage);
@@ -262,3 +272,4 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error during sales sync'}` };
     }
 }
+
