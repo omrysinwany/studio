@@ -23,7 +23,7 @@ export default function PosIntegrationSettingsPage() {
   const [selectedSystemId, setSelectedSystemId] = useState<string>('');
   const [configValues, setConfigValues] = useState<PosConnectionConfig>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(isSaving);
+  const [isSaving, setIsSaving] = useState(false); // Initialize with false
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false); // State for sync process
