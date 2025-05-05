@@ -22,7 +22,6 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-// Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -30,31 +29,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import backend service
 
-// Define the structure for invoice history items (similar to upload history but potentially richer)
-interface InvoiceHistoryItem {
-  id: string; // Could be the same ID as upload history or a separate one
-  fileName: string;
-  uploadTime: Date;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  invoiceNumber?: string; // Extracted invoice number
-  supplier?: string; // Extracted supplier
-  totalAmount?: number; // Extracted total amount
-  errorMessage?: string;
-}
 
-// Mock Invoice Data - Replace with actual API call fetching processed invoice records
-const MOCK_INVOICES: InvoiceHistoryItem[] = [
-  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
-  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
-  { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5), status: 'error', errorMessage: 'Failed to extract totals' },
-  { id: 'inv4', fileName: 'invoice_delta_co.pdf', uploadTime: new Date(Date.now() - 86400000 * 7), status: 'completed', invoiceNumber: 'INV-D-567', supplier: 'Delta Co', totalAmount: 2100.50 },
-  { id: 'inv5', fileName: 'scan_epsilon_supply.jpeg', uploadTime: new Date(Date.now() - 86400000 * 10), status: 'processing' },
-  // Add more mock data
-];
+// Mock Data Removed - Using backend service now
 
-// Assume backend provides suppliers for filtering
-const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
+// Assume backend provides suppliers for filtering (or derive from fetched data)
+const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply']; // Keep for filtering UI for now
 
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
@@ -79,30 +60,26 @@ export default function InvoicesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('uploadTime');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
-  // Removed user, authLoading
   const { toast } = useToast();
 
 
-   // Fetch invoice data (replace with actual API call)
+   // Fetch invoice data from backend service
    useEffect(() => {
      const fetchInvoices = async () => {
-       // Removed user check
        setIsLoading(true);
        try {
-         // Simulate API call delay
-         await new Promise(resolve => setTimeout(resolve, 1000));
-         // TODO: Replace MOCK_INVOICES with actual API call using filters:
-         // const params = new URLSearchParams();
-         // if (filterSupplier) params.append('supplier', filterSupplier);
-         // if (filterStatus) params.append('status', filterStatus);
-         // if (dateRange?.from) params.append('from', dateRange.from.toISOString());
-         // if (dateRange?.to) params.append('to', dateRange.to.toISOString());
-         // const response = await fetch(`/api/invoices?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` }});
-         // const data = await response.json();
-         // setInvoices(data.map((item: any) => ({ ...item, uploadTime: new Date(item.uploadTime) })));
+         console.log("Fetching invoices from backend...");
+         let fetchedData = await getInvoices(); // Use backend service
+          console.log("Fetched invoices:", fetchedData);
 
-         // Apply filters locally for mock data
-         let filteredData = MOCK_INVOICES;
+          // Ensure uploadTime is a Date object
+          fetchedData = fetchedData.map(inv => ({
+              ...inv,
+              uploadTime: new Date(inv.uploadTime)
+          }));
+
+         // Apply client-side filtering (if backend doesn't support it yet)
+         let filteredData = fetchedData;
          if (filterSupplier) {
             filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
          }
@@ -134,12 +111,8 @@ export default function InvoicesPage() {
        }
      };
 
-     fetchInvoices(); // Fetch data directly
-     // Removed authLoading and user dependencies
-   }, [filterSupplier, filterStatus, dateRange, toast]);
-
-
-   // Removed useEffect for auth redirection
+     fetchInvoices();
+   }, [filterSupplier, filterStatus, dateRange, toast]); // Re-fetch when filters change
 
 
   const handleSort = (key: SortKey) => {
@@ -155,7 +128,7 @@ export default function InvoicesPage() {
   const filteredAndSortedInvoices = useMemo(() => {
     let result = [...invoices];
 
-    // Search filtering
+    // Search filtering (already applied in fetch effect if using client-side filtering)
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
@@ -197,21 +170,23 @@ export default function InvoicesPage() {
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px]' },
       { key: 'invoiceNumber', label: 'Invoice #', sortable: true, className: 'min-w-[120px]' },
       { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[150px]' },
-      { key: 'totalAmount', label: 'Total Amount', sortable: true, className: 'text-right min-w-[120px]' },
+      { key: 'totalAmount', label: 'Total Amount (₪)', sortable: true, className: 'text-right min-w-[120px]' }, // Updated label
    ];
 
 
    // Format date for display
-   const formatDate = (date: Date) => {
+   const formatDate = (date: Date | string | undefined) => {
+     if (!date) return 'N/A';
      try {
-       return date.toLocaleDateString();
+        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        return dateObj.toLocaleDateString();
      } catch (e) {
        return 'Invalid Date';
      }
    };
 
 
-  if (isLoading) { // Removed authLoading check
+  if (isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -219,7 +194,6 @@ export default function InvoicesPage() {
     );
   }
 
-    // Removed !user check
 
   const renderStatusIcon = (status: InvoiceHistoryItem['status']) => {
     switch (status) {
@@ -324,6 +298,7 @@ export default function InvoicesPage() {
                   >
                     All Suppliers
                   </DropdownMenuCheckboxItem>
+                  {/* Dynamically populate suppliers from data if needed */}
                   {MOCK_SUPPLIERS.map((supplier) => (
                     <DropdownMenuCheckboxItem
                       key={supplier}
@@ -424,7 +399,7 @@ export default function InvoicesPage() {
                        {visibleColumns.supplier && <TableCell>{item.supplier || '-'}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right">
-                            {item.totalAmount !== undefined ? `$${item.totalAmount.toFixed(2)}` : '-'}
+                            {item.totalAmount !== undefined ? `₪${item.totalAmount.toFixed(2)}` : '-'}
                          </TableCell>
                        )}
                         {/* Optional Actions Cell */}
@@ -443,3 +418,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

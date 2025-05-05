@@ -57,6 +57,7 @@ export default function InventoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams(); // Get search params
   const { toast } = useToast();
+  const shouldRefresh = searchParams.get('refresh'); // Check for refresh param
 
 
    // Fetch inventory data (replace with actual API call)
@@ -86,14 +87,14 @@ export default function InventoryPage() {
        }
      };
 
-     fetchInventory(); // Fetch data directly
+     fetchInventory();
 
-     // Check for a 'refresh' parameter to potentially force a refetch (though useEffect dependency array is usually sufficient)
-     // if (searchParams.get('refresh')) {
-     //   fetchInventory();
+     // Optionally remove the refresh param after fetching to prevent infinite loops if state changes cause re-renders
+     // if (shouldRefresh) {
+     //    router.replace('/inventory', { scroll: false }); // Remove query param without scroll jump
      // }
 
-   }, [toast]); // Removed searchParams dependency to avoid potential loops, useEffect runs on mount
+   }, [toast, shouldRefresh]); // Add shouldRefresh to dependency array
 
 
   const handleSort = (key: SortKey) => {
@@ -165,8 +166,8 @@ export default function InventoryPage() {
      { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
      { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
      { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[80px]' },
-     { key: 'unitPrice', label: 'Unit Price', sortable: true, className: 'text-right min-w-[100px]' },
-     { key: 'lineTotal', label: 'Line Total', sortable: true, className: 'text-right min-w-[100px]' },
+     { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
+     { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
      // { key: 'category', label: 'Category', sortable: true, className: 'min-w-[100px]' },
      // { key: 'lastUpdated', label: 'Last Updated', sortable: true, className: 'min-w-[150px]' },
      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }

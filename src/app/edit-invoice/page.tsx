@@ -35,6 +35,8 @@ function EditInvoiceContent() {
 
     if (nameParam) {
       setFileName(decodeURIComponent(nameParam));
+    } else {
+        setFileName('Unknown Document'); // Default filename if not provided
     }
 
     if (dataParam) {
@@ -47,8 +49,11 @@ function EditInvoiceContent() {
             id: `${Date.now()}-${index}`, // Simple unique ID generation
             // Ensure numeric fields are numbers, default to 0 if not
             quantity: typeof p.quantity === 'number' ? p.quantity : 0,
-            unitPrice: typeof p.unitPrice === 'number' ? p.unitPrice : 0,
             lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : 0,
+             // Calculate unitPrice here if not provided or needs recalculation
+             unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
+                        ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
+                        : (typeof p.unitPrice === 'number' ? p.unitPrice : 0), // Fallback to provided unitPrice or 0
           }));
           setProducts(productsWithIds);
         } else {
@@ -84,9 +89,19 @@ function EditInvoiceContent() {
         if (product.id === id) {
           const updatedProduct = { ...product, [field]: value };
 
-          // Auto-calculate lineTotal if quantity or unitPrice changes
-          if ((field === 'quantity' || field === 'unitPrice') && typeof updatedProduct.quantity === 'number' && typeof updatedProduct.unitPrice === 'number') {
-            updatedProduct.lineTotal = parseFloat((updatedProduct.quantity * updatedProduct.unitPrice).toFixed(2));
+          // Auto-calculate lineTotal OR unitPrice based on which was changed
+          const quantity = typeof updatedProduct.quantity === 'number' ? updatedProduct.quantity : 0;
+          const unitPrice = typeof updatedProduct.unitPrice === 'number' ? updatedProduct.unitPrice : 0;
+          const lineTotal = typeof updatedProduct.lineTotal === 'number' ? updatedProduct.lineTotal : 0;
+
+          if (field === 'quantity' || field === 'unitPrice') {
+              if (quantity !== 0 && unitPrice !== 0) {
+                 updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
+              }
+          } else if (field === 'lineTotal') {
+              if (quantity !== 0 && lineTotal !== 0) {
+                  updatedProduct.unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
+              }
           }
 
           return updatedProduct;
@@ -123,24 +138,30 @@ function EditInvoiceContent() {
      try {
        // Remove the temporary 'id' field and ensure numbers are numeric before sending
        const productsToSave: Product[] = products
-         .map(({ id, ...rest }) => ({
-             ...rest,
-             quantity: parseFloat(String(rest.quantity)) || 0,
-             unitPrice: parseFloat(String(rest.unitPrice)) || 0,
-             lineTotal: parseFloat(String(rest.lineTotal)) || 0,
-         }))
+         .map(({ id, ...rest }) => {
+             const quantity = parseFloat(String(rest.quantity)) || 0;
+             const lineTotal = parseFloat(String(rest.lineTotal)) || 0;
+             // Recalculate unit price before saving for consistency
+             const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : 0;
+
+             return {
+                 ...rest,
+                 quantity: quantity,
+                 unitPrice: unitPrice, // Send recalculated unit price
+                 lineTotal: lineTotal,
+             };
+         })
          // Optional: Filter out rows that are essentially empty
          .filter(p => p.catalogNumber || p.description);
 
-       console.log("Attempting to save products:", productsToSave); // Log data being sent
-       await saveProducts(productsToSave); // Use the backend service function
+       console.log("Attempting to save products:", productsToSave, "for file:", fileName); // Log data being sent
+       await saveProducts(productsToSave, fileName); // Use the backend service function, passing fileName
 
        toast({
          title: "Products Saved",
          description: "Your changes have been saved successfully.",
        });
-        router.push('/inventory'); // Navigate to inventory
-        router.refresh(); // Force refresh to fetch updated data on inventory page
+        router.push('/inventory?refresh=true'); // Navigate to inventory and add refresh param
 
      } catch (error) {
        console.error("Failed to save products:", error);

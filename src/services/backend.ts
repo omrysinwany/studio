@@ -19,7 +19,7 @@ export interface Product {
    */
   quantity: number;
   /**
-   * The unit price of the product.
+   * The unit price of the product. Calculated as lineTotal / quantity if possible.
    */
   unitPrice: number;
   /**
@@ -28,6 +28,19 @@ export interface Product {
   lineTotal: number;
 }
 
+// Define the structure for invoice history items
+export interface InvoiceHistoryItem {
+  id: string; // Could be the same ID as upload history or a separate one
+  fileName: string;
+  uploadTime: Date;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  invoiceNumber?: string; // Extracted invoice number
+  supplier?: string; // Extracted supplier
+  totalAmount?: number; // Extracted total amount
+  errorMessage?: string;
+}
+
+
 // Mock inventory data store
 let mockInventory: Product[] = [
    { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
@@ -35,6 +48,14 @@ let mockInventory: Product[] = [
    { id: 'prod3', catalogNumber: 'ABCDE', description: 'Another Mock Item', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
    { id: 'prod4', catalogNumber: 'LOW01', description: 'Low Stock Mock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00 },
    { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
+];
+
+// Mock invoice history data store
+let mockInvoices: InvoiceHistoryItem[] = [
+   // Keep initial mock data for display until real saves happen
+  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
+  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
+  { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5), status: 'error', errorMessage: 'Failed to extract totals' },
 ];
 
 
@@ -67,7 +88,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
         catalogNumber: 'EXTRACT-001',
         description: 'Extracted Item A',
         quantity: 2,
-        unitPrice: 15.00,
+        unitPrice: 15.00, // Assuming AI might provide this or it's calculated later
         lineTotal: 30.00,
       },
       {
@@ -75,7 +96,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
         catalogNumber: 'EXTRACT-002',
         description: 'Extracted Item B',
         quantity: 1,
-        unitPrice: 50.50,
+        unitPrice: 50.50, // Assuming AI might provide this or it's calculated later
         lineTotal: 50.50,
       },
     ],
@@ -83,21 +104,27 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
 }
 
 /**
- * Asynchronously saves the edited product data to the backend.
- * In this mock implementation, it adds/updates products in the mockInventory.
+ * Asynchronously saves the edited product data to the backend and creates an invoice history record.
+ * In this mock implementation, it adds/updates products in mockInventory and adds to mockInvoices.
  *
  * @param products The list of products to save.
+ * @param fileName The name of the original file processed.
  * @returns A promise that resolves when the data is successfully saved.
  */
-export async function saveProducts(products: Product[]): Promise<void> {
-  console.log('Saving products:', products);
+export async function saveProducts(products: Product[], fileName: string): Promise<void> {
+  console.log('Saving products for file:', fileName, products);
   await new Promise(resolve => setTimeout(resolve, 300));
+
+  let invoiceTotalAmount = 0; // Calculate total amount for the invoice record
 
   products.forEach(newProduct => {
     // Ensure values are numbers, default to 0 if not
     const quantity = typeof newProduct.quantity === 'number' ? newProduct.quantity : 0;
-    const unitPrice = typeof newProduct.unitPrice === 'number' ? newProduct.unitPrice : 0;
     const lineTotal = typeof newProduct.lineTotal === 'number' ? newProduct.lineTotal : 0;
+    // Recalculate unitPrice here to ensure consistency before saving
+    const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : 0;
+
+    invoiceTotalAmount += lineTotal; // Add to invoice total
 
     // Attempt to find by ID first, then catalog number
     let existingIndex = -1;
@@ -109,19 +136,17 @@ export async function saveProducts(products: Product[]): Promise<void> {
         existingIndex = mockInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
     }
 
-
     if (existingIndex !== -1) {
       // Update existing product
       console.log(`Updating product ${mockInventory[existingIndex].catalogNumber} (ID: ${mockInventory[existingIndex].id})`);
-      // Replace existing data with new data, keeping the original ID
       mockInventory[existingIndex] = {
           ...newProduct, // Copy new data first
           id: mockInventory[existingIndex].id, // Ensure original ID is kept
-          quantity: quantity, // Ensure quantity is updated numeric value
-          unitPrice: unitPrice, // Ensure unitPrice is updated numeric value
-          lineTotal: lineTotal, // Ensure lineTotal is updated numeric value
-          catalogNumber: newProduct.catalogNumber || mockInventory[existingIndex].catalogNumber, // Keep original catalog if new one is empty/N/A
-          description: newProduct.description || mockInventory[existingIndex].description, // Keep original description if new one is empty
+          quantity: quantity,
+          unitPrice: unitPrice, // Use recalculated unit price
+          lineTotal: lineTotal,
+          catalogNumber: newProduct.catalogNumber || mockInventory[existingIndex].catalogNumber,
+          description: newProduct.description || mockInventory[existingIndex].description,
       };
        console.log(`Product updated:`, mockInventory[existingIndex]);
 
@@ -136,16 +161,30 @@ export async function saveProducts(products: Product[]): Promise<void> {
         ...newProduct,
         id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Generate a unique ID
         quantity: quantity,
-        unitPrice: unitPrice,
+        unitPrice: unitPrice, // Use recalculated unit price
         lineTotal: lineTotal,
-        catalogNumber: newProduct.catalogNumber || 'N/A', // Ensure catalogNumber exists
-        description: newProduct.description || 'No Description', // Ensure description exists
+        catalogNumber: newProduct.catalogNumber || 'N/A',
+        description: newProduct.description || 'No Description',
       };
       mockInventory.push(productToAdd);
       console.log(`Product added:`, productToAdd);
     }
   });
-  console.log('Updated mockInventory:', mockInventory);
+
+   // Add a record to the invoice history
+   const newInvoiceRecord: InvoiceHistoryItem = {
+       id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+       fileName: fileName,
+       uploadTime: new Date(),
+       status: 'completed', // Assume saving means completion
+       totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)), // Store calculated total
+       // TODO: Add supplier/invoiceNumber if they are extracted by AI or entered by user
+   };
+   mockInvoices.push(newInvoiceRecord);
+   console.log('Added invoice record:', newInvoiceRecord);
+   console.log('Updated mockInventory:', mockInventory);
+   console.log('Updated mockInvoices:', mockInvoices);
+
   return;
 }
 
@@ -179,6 +218,21 @@ export async function getProductById(productId: string): Promise<Product | null>
    await new Promise(resolve => setTimeout(resolve, 300));
    const product = mockInventory.find(p => p.id === productId);
    return product ? { ...product } : null; // Return a copy or null
+}
+
+/**
+ * Asynchronously retrieves the list of all processed invoices from the backend.
+ *
+ * @returns A promise that resolves to an array of InvoiceHistoryItem objects.
+ */
+export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
+  // TODO: Implement this by calling your backend API.
+  console.log("getInvoices called");
+  // Simulate API delay
+  await new Promise(resolve => setTimeout(resolve, 400));
+  // Return a deep copy
+  console.log("Returning invoices:", JSON.parse(JSON.stringify(mockInvoices)));
+  return JSON.parse(JSON.stringify(mockInvoices));
 }
 
 
