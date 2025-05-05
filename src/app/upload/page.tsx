@@ -9,22 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-// Removed useAuth import
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import getInvoices for history
 
-
-// Define the structure for upload history items - Using InvoiceHistoryItem from backend now
-// interface UploadHistoryItem {
-//   id: string;
-//   fileName: string;
-//   uploadTime: Date;
-//   status: 'pending' | 'processing' | 'completed' | 'error';
-//   extractedData?: any; // Store extracted data for potential reprocessing or viewing
-//   errorMessage?: string;
-// }
-
-// const UPLOAD_HISTORY_KEY = 'uploadHistory_global'; // Generic key - No longer needed here
+const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -36,7 +24,6 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
-  // Removed user and authLoading from useAuth
 
   // Function to fetch upload history
   const fetchHistory = useCallback(async () => {
@@ -64,7 +51,6 @@ export default function UploadPage() {
      fetchHistory();
    }, [fetchHistory]);
 
-  // Removed useEffect for saving history to localStorage (now handled in backend.ts)
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -152,10 +138,24 @@ export default function UploadPage() {
                description: `${selectedFile.name} processed. Please review and save.`,
              });
 
-             // Navigate to edit page with the extracted data
-             router.push(`/edit-invoice?data=${encodeURIComponent(JSON.stringify(result))}&fileName=${encodeURIComponent(selectedFile.name)}`);
-
-             // No need to explicitly call fetchHistory here, edit page navigation handles next steps
+             // Store result in localStorage and navigate with a key
+             const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}`;
+             try {
+                localStorage.setItem(dataKey, JSON.stringify(result));
+                 // Navigate to edit page with the key and filename
+                 router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
+             } catch (storageError) {
+                 console.error("Failed to save scan results to localStorage:", storageError);
+                 updateVisualStatus(tempId, 'error', 'Failed to prepare data for editing.');
+                 toast({
+                     title: 'Error Preparing Data',
+                     description: 'Could not store scan results for editing. Please try again.',
+                     variant: 'destructive',
+                 });
+                 // Fallback: Attempt to navigate with data in URL, though it might fail again
+                 // router.push(`/edit-invoice?data=${encodeURIComponent(JSON.stringify(result))}&fileName=${encodeURIComponent(selectedFile.name)}`);
+                 await fetchHistory(); // Refresh history
+             }
 
          } catch (aiError) {
              console.error('AI processing failed:', aiError);
@@ -173,7 +173,6 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              // Don't fetchHistory here, wait for save action or error handling
           }
       };
 

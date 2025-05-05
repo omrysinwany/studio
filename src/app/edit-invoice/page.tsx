@@ -17,6 +17,9 @@ interface EditableProduct extends Product {
   id: string; // Add a unique ID for React key prop and editing logic
 }
 
+// Define prefix for temporary data keys in localStorage
+const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
+
 function EditInvoiceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -31,7 +34,7 @@ function EditInvoiceContent() {
 
 
   useEffect(() => {
-    const dataParam = searchParams.get('data');
+    const dataKey = searchParams.get('key'); // Get the key from URL params
     const nameParam = searchParams.get('fileName');
     let hasAttemptedLoad = false; // Track if we tried to load data
 
@@ -41,69 +44,89 @@ function EditInvoiceContent() {
         setFileName('Unknown Document'); // Default filename if not provided
     }
 
-    if (dataParam) {
+    if (dataKey) {
         hasAttemptedLoad = true;
-      try {
-        const decodedData = decodeURIComponent(dataParam);
-        // Attempt to parse the JSON data
-        let parsedData;
+        let storedData = null;
         try {
-            parsedData = JSON.parse(decodedData);
-        } catch (jsonParseError) {
-             console.error("Failed to parse JSON data:", jsonParseError, "Raw data:", decodedData);
-             throw new Error("Invalid JSON structure received from scan.");
-        }
+            // Attempt to retrieve data from localStorage
+            storedData = localStorage.getItem(dataKey);
+            if (!storedData) {
+                 throw new Error("Scan results not found. They might have expired or been cleared.");
+            }
 
-        // Validate the structure AFTER parsing
-        if (parsedData && Array.isArray(parsedData.products)) {
-          // Add a unique ID to each product for stable editing
-          const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
-            ...p,
-            id: `${Date.now()}-${index}`, // Simple unique ID generation
-            // Ensure numeric fields are numbers, default to 0 if not
-            quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
-            lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-             // Calculate unitPrice here if not provided or needs recalculation
-             unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
-                        ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
-                        : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0), // Fallback
-          }));
-          setProducts(productsWithIds);
-           setErrorLoading(null); // Clear any previous error
-        } else {
-          console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-          throw new Error("Invalid data structure received after parsing.");
+            // Attempt to parse the JSON data
+            let parsedData;
+            try {
+                parsedData = JSON.parse(storedData);
+            } catch (jsonParseError) {
+                 console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
+                 throw new Error("Invalid JSON structure received from storage.");
+            }
+
+            // Validate the structure AFTER parsing
+            if (parsedData && Array.isArray(parsedData.products)) {
+              // Add a unique ID to each product for stable editing
+              const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
+                ...p,
+                id: `${Date.now()}-${index}`, // Simple unique ID generation
+                // Ensure numeric fields are numbers, default to 0 if not
+                quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
+                lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
+                 // Calculate unitPrice here if not provided or needs recalculation
+                 unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
+                            ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
+                            : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0), // Fallback
+              }));
+              setProducts(productsWithIds);
+               setErrorLoading(null); // Clear any previous error
+
+                // Clean up localStorage item after successful load
+                localStorage.removeItem(dataKey);
+
+            } else {
+              console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
+              throw new Error("Invalid data structure received after parsing.");
+            }
+        } catch (error: any) {
+            console.error("Failed to process product data:", error);
+            setErrorLoading(`Could not load the invoice data for editing. Error: ${error.message || 'Unknown error'}`);
+            setProducts([]); // Clear products on error
+            toast({
+              title: "Error Loading Data",
+              description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
+              variant: "destructive",
+            });
+             // Clean up potentially invalid localStorage item
+             if (dataKey) localStorage.removeItem(dataKey);
         }
-      } catch (error: any) {
-        console.error("Failed to process product data:", error);
-        setErrorLoading(`Could not load the invoice data for editing. Error: ${error.message || 'Unknown error'}`);
-        setProducts([]); // Clear products on error
-        toast({
-          title: "Error Loading Data",
-          description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
-          variant: "destructive",
-        });
-        // Don't redirect immediately, show the error message
-        // router.push('/upload');
-      }
     } else if (!initialDataLoaded) {
-       // Only show error/redirect if it's the initial load attempt and NO data param found
+       // Only show error/redirect if it's the initial load attempt and NO key param found
        hasAttemptedLoad = true;
-       setErrorLoading("No invoice data provided in the URL.");
+       setErrorLoading("No invoice data key provided in the URL.");
        setProducts([]);
        toast({
           title: "No Data Found",
-          description: "No invoice data provided for editing.",
+          description: "No invoice data key provided for editing.",
           variant: "destructive",
         });
-       // Don't redirect immediately
-       // router.push('/upload');
     }
 
     setIsLoading(false); // Loading finished (even if it failed)
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true); // Mark initial data load attempt complete only if we tried
     }
+
+     // Cleanup function: remove any leftover temp data on unmount or navigation
+     return () => {
+         if (typeof window !== 'undefined') {
+             for (let i = 0; i < localStorage.length; i++) {
+                 const key = localStorage.key(i);
+                 if (key && key.startsWith(TEMP_DATA_KEY_PREFIX)) {
+                     localStorage.removeItem(key);
+                 }
+             }
+         }
+     };
 
   // Add initialDataLoaded to dependencies to prevent re-running on subsequent renders unless specifically needed
   }, [searchParams, router, toast, initialDataLoaded]);
