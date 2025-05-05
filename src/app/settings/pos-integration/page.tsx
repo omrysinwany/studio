@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -72,32 +71,38 @@ export default function PosIntegrationSettingsPage() {
   };
 
   const handleTestConnection = async () => {
-    if (!selectedSystemId) return;
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      const success = await testPosConnection(selectedSystemId, configValues);
-      setTestResult({
-        success: success,
-        message: success ? 'Connection successful!' : 'Connection failed. Please check your settings.',
-      });
-      toast({
-        title: success ? 'Connection Test Succeeded' : 'Connection Test Failed',
-        description: success ? 'Successfully connected to the POS system.' : 'Could not connect. Verify credentials.',
-        variant: success ? 'default' : 'destructive',
-      });
-    } catch (error: any) {
-        console.error("Error testing connection:", error);
-        setTestResult({ success: false, message: `Error: ${error.message || 'Unknown error'}` });
-        toast({
-            title: 'Connection Test Error',
-            description: `An error occurred: ${error.message || 'Unknown error'}`,
-            variant: 'destructive',
+     if (!selectedSystemId) return;
+     setIsTesting(true);
+     setTestResult(null);
+     console.log("[POS Page] Testing connection with config:", configValues); // Log config being sent
+     try {
+       // Directly call the manager function which calls the adapter/action
+       const success = await testPosConnection(selectedSystemId, configValues);
+        // Use the result directly from testPosConnection which should reflect the action result
+        setTestResult({
+            success: success,
+            message: success ? 'Connection successful!' : 'Connection failed. Check console for details.', // Generic message for UI
         });
-    } finally {
-      setIsTesting(false);
-    }
-  };
+       toast({
+         title: success ? 'Connection Test Succeeded' : 'Connection Test Failed',
+         description: success ? 'Successfully connected to the POS system.' : 'Could not connect. Check credentials and server logs.',
+         variant: success ? 'default' : 'destructive',
+       });
+     } catch (error: any) {
+        // This catch block might not be reached if testPosConnection handles errors internally,
+        // but it's good practice to keep it. testPosConnection should return false on error.
+       console.error("[POS Page] Error during test connection call:", error);
+       setTestResult({ success: false, message: `Error: ${error.message || 'Unknown error'}` });
+       toast({
+         title: 'Connection Test Error',
+         description: `An error occurred: ${error.message || 'Check server logs for more details.'}`,
+         variant: 'destructive',
+       });
+     } finally {
+       setIsTesting(false);
+     }
+   };
+
 
   const handleSaveChanges = async () => {
     if (!selectedSystemId) return;
@@ -340,3 +345,4 @@ export default function PosIntegrationSettingsPage() {
     </div>
   );
 }
+

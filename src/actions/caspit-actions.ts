@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -17,8 +16,15 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
     const pwd = config.pwd || 'demodemo';
     const osekMorshe = config.osekMorshe || '123456789'; // Caspit's demo osekMorshe
 
-    const url = `${CASPIT_API_BASE_URL}/Token?user=${encodeURIComponent(user)}&pwd=${encodeURIComponent(pwd)}&osekMorshe=${encodeURIComponent(osekMorshe)}`;
-    console.log(`[Caspit Action] Getting token from: ${url}`);
+    // Construct the URL carefully, ensuring proper encoding
+    const params = new URLSearchParams({
+        user: user,
+        pwd: pwd,
+        osekMorshe: osekMorshe,
+    });
+    const url = `${CASPIT_API_BASE_URL}/Token?${params.toString()}`;
+
+    console.log(`[Caspit Action] Attempting to get token from: ${url}`); // Log the final URL
 
     try {
         const response = await fetch(url, {
@@ -30,27 +36,40 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
             cache: 'no-store',
         });
 
+        const responseText = await response.text(); // Read the response body as text first
+        console.log(`[Caspit Action] Raw response status: ${response.status}`);
+        console.log(`[Caspit Action] Raw response text: ${responseText}`); // Log the raw response text
+
         if (!response.ok) {
-            let errorText = '';
-            try {
-                errorText = await response.text();
-            } catch (textError) {
-                console.error('[Caspit Action] Failed to read error response text:', textError);
-            }
-            console.error(`[Caspit Action] Failed to get token: ${response.status} ${response.statusText}`, errorText);
-            throw new Error(`Failed to get token: ${response.status} ${response.statusText}. ${errorText}`);
+            // Log specific error details
+            console.error(`[Caspit Action] Failed to get token. Status: ${response.status} ${response.statusText}. Response: ${responseText}`);
+            throw new Error(`Failed to get token: ${response.status} ${response.statusText}. Response: ${responseText}`);
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = JSON.parse(responseText); // Try parsing the logged text
+        } catch (jsonError: any) {
+            console.error('[Caspit Action] Failed to parse JSON response:', jsonError);
+            console.error('[Caspit Action] Response text that failed parsing:', responseText);
+            throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}`);
+        }
+
+
         if (!data || !data.AccessToken) {
-            console.error('[Caspit Action] Invalid token response:', data);
-            throw new Error('Invalid token response from Caspit API');
+            console.error('[Caspit Action] Invalid token response structure. Parsed Data:', data);
+            throw new Error('Invalid token response structure from Caspit API. AccessToken missing.');
         }
         console.log('[Caspit Action] Successfully obtained token.');
         return data.AccessToken;
     } catch (error) {
-        console.error('[Caspit Action] Error fetching token:', error);
-        throw error; // Re-throw the error for handling in calling functions
+        console.error('[Caspit Action] Error fetching or processing token:', error);
+        // Re-throw the original or a new error for the calling function to catch
+        if (error instanceof Error) {
+             throw new Error(`Caspit token request failed: ${error.message}`);
+        } else {
+            throw new Error(`Caspit token request failed with an unknown error.`);
+        }
     }
 }
 
@@ -59,14 +78,15 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
     console.log(`[Caspit Action] Testing connection with config:`, config);
     try {
         const token = await getCaspitToken(config);
-        const success = !!token;
+        // If getToken completes without throwing, connection is considered successful
         return {
-            success: success,
-            message: success ? 'Connection successful!' : 'Failed to obtain token.', // Message reflects token success
+            success: true,
+            message: 'Connection successful! Token obtained.',
         };
     } catch (error: any) {
         console.error("[Caspit Action] Connection test failed:", error);
-        return { success: false, message: `Connection failed: ${error.message || 'Unknown error'}` };
+        // Provide a more specific error message back to the UI
+        return { success: false, message: `Connection failed: ${error.message || 'Unknown error during token retrieval'}` };
     }
 }
 
@@ -111,27 +131,30 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
                 cache: 'no-store',
             });
 
+            const responseText = await response.text(); // Read text first
+             console.log(`[Caspit Action] Product fetch (Page ${page}) status: ${response.status}`);
+             console.log(`[Caspit Action] Product fetch (Page ${page}) response text: ${responseText}`);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Caspit Action] Failed to fetch products (Page ${page}): ${response.status} ${response.statusText}`, errorText);
-                throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
+                console.error(`[Caspit Action] Failed to fetch products (Page ${page}): ${response.status} ${response.statusText}`, responseText);
+                throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}. Response: ${responseText}`);
             }
 
              // Check content type before parsing
              const contentType = response.headers.get("content-type");
              if (!contentType || !contentType.includes("application/json")) {
-                 console.error(`[Caspit Action] Unexpected content type received: ${contentType}. Expected JSON.`);
-                 const textResponse = await response.text();
-                 console.error("[Caspit Action] Response Text:", textResponse);
-                 throw new Error(`Expected JSON response but received ${contentType}`);
+                 console.error(`[Caspit Action] Unexpected content type received for products: ${contentType}. Expected JSON.`);
+                 console.error("[Caspit Action] Response Text:", responseText);
+                 throw new Error(`Expected JSON response for products but received ${contentType}`);
              }
 
             let caspitProductsPage: any[] = [];
             try {
-                caspitProductsPage = await response.json();
-            } catch (jsonError) {
-                 console.error(`[Caspit Action] Failed to parse JSON response (Page ${page}):`, jsonError);
-                 throw new Error(`Failed to parse JSON response from Caspit API: ${jsonError}`);
+                 caspitProductsPage = JSON.parse(responseText); // Parse the logged text
+            } catch (jsonError: any) {
+                 console.error(`[Caspit Action] Failed to parse JSON response for products (Page ${page}):`, jsonError);
+                 console.error("[Caspit Action] Response text that failed parsing:", responseText);
+                 throw new Error(`Failed to parse JSON product response from Caspit API: ${jsonError.message}`);
             }
 
             if (!Array.isArray(caspitProductsPage)) {
@@ -167,7 +190,8 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
     } catch (error: any) {
         console.error("[Caspit Action] Product sync failed:", error);
-        return { success: false, message: `Product sync failed: ${error.message || 'Unknown error'}` };
+         // Provide a more specific error message
+        return { success: false, message: `Product sync failed: ${error.message || 'Unknown error during product sync'}` };
     }
 }
 
@@ -194,6 +218,8 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
 
     } catch (error: any) {
         console.error("[Caspit Action] Sales sync failed:", error);
-        return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error'}` };
+         // Provide a more specific error message
+        return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error during sales sync'}` };
     }
 }
+

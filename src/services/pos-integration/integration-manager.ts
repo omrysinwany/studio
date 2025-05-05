@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Manages different POS system adapters.
  * This allows selecting and using the correct adapter based on configuration.
@@ -36,8 +35,7 @@ export function getPosAdapter(systemId: string): IPosSystemAdapter | null {
 }
 
 /**
- * Placeholder function to test connection for the currently configured POS system.
- * In a real app, this would fetch the user's configured system and credentials.
+ * Tests the connection for the specified POS system using its adapter or action.
  * @param systemId - The ID of the POS system to test.
  * @param config - The connection configuration.
  * @returns A promise resolving to true if the connection is successful, false otherwise.
@@ -46,13 +44,19 @@ export async function testPosConnection(systemId: string, config: PosConnectionC
   const adapter = getPosAdapter(systemId);
   if (!adapter) {
     console.error(`[IntegrationManager] Adapter not found for systemId: ${systemId}`);
-    return false;
+    // Optionally throw an error or return false depending on desired behavior
+    throw new Error(`Adapter not found for system: ${systemId}`);
+    // return false;
   }
   try {
-    return await adapter.testConnection(config);
+     // The adapter's testConnection method now calls the server action and returns its boolean result
+    const isSuccess = await adapter.testConnection(config);
+    console.log(`[IntegrationManager] Connection test result for ${systemId}: ${isSuccess}`);
+    return isSuccess;
   } catch (error) {
+    // This catch block might still be useful if the adapter itself throws an error before calling the action
     console.error(`[IntegrationManager] Error testing connection for ${systemId}:`, error);
-    return false;
+    return false; // Return false on any error during the test process
   }
 }
 
@@ -88,3 +92,4 @@ export async function syncWithPos(systemId: string, config: PosConnectionConfig,
 
   return results;
 }
+
