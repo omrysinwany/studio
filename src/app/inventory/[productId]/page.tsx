@@ -200,7 +200,7 @@ export default function ProductDetailPage() {
           <CardDescription>Detailed information for catalog #{product.catalogNumber}</CardDescription>
            {product.quantity <= 10 && (
                 <span className={`mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                    product.quantity === 0 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                    product.quantity === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                 }`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
                     {product.quantity === 0 ? 'Out of Stock' : 'Low Stock'}

@@ -24,6 +24,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package } from 'lucide-react
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 // Mock Product Data - Replace with actual API call
 interface InventoryProduct {

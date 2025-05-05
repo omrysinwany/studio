@@ -249,10 +249,10 @@ export default function InvoicesPage() {
 
   const getStatusColorClass = (status: InvoiceHistoryItem['status']) => {
      switch (status) {
-        case 'completed': return 'bg-green-100 text-green-800';
-        case 'processing': return 'bg-blue-100 text-blue-800 animate-pulse';
-        case 'pending': return 'bg-yellow-100 text-yellow-800';
-        case 'error': return 'bg-red-100 text-red-800';
+        case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+        case 'processing': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse';
+        case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        case 'error': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
         default: return '';
      }
   };
@@ -432,7 +432,7 @@ export default function InvoicesPage() {
                                 {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                             </span>
                              {item.status === 'error' && item.errorMessage && (
-                                <p className="text-xs text-red-600 mt-1">{item.errorMessage}</p>
+                                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{item.errorMessage}</p>
                              )}
                          </TableCell>
                        )}

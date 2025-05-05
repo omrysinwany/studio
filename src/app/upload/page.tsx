@@ -210,13 +210,18 @@ export default function UploadPage() {
 
 
   // Render loading state or placeholder if auth is loading or no user
-  if (authLoading || !user) {
+  if (authLoading) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
        </div>
      );
   }
+
+   if (!user) {
+     // Should be redirected by the effect, but this is a fallback
+     return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
+   }
 
 
   return (
@@ -301,10 +306,10 @@ export default function UploadPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        item.status === 'processing' ? 'bg-blue-100 text-blue-800 animate-pulse' :
-                        item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        item.status === 'error' ? 'bg-red-100 text-red-800' : ''
+                        item.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                        item.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse' :
+                        item.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                        item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : ''
                       }`}>
                         {item.status === 'completed' && <CheckCircle className="mr-1 h-3 w-3" />}
                         {item.status === 'processing' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
@@ -313,7 +318,7 @@ export default function UploadPage() {
                         {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
                       </span>
                        {item.status === 'error' && item.errorMessage && (
-                          <p className="text-xs text-red-600 mt-1 text-right">{item.errorMessage}</p>
+                          <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-right">{item.errorMessage}</p>
                        )}
                     </TableCell>
                   </TableRow>

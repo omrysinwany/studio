@@ -220,7 +220,7 @@ export default function ReportsPage() {
                </CardHeader>
                <CardContent>
                  <div className="text-2xl font-bold">${kpis.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                 <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600" : "text-destructive")}>
+                 <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
                    {Math.abs(kpis.valueChangePercent)}% from last period
                  </p>
@@ -239,7 +239,7 @@ export default function ReportsPage() {
              <Card>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-                 <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                 <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                </CardHeader>
                <CardContent>
                  <div className="text-2xl font-bold">{kpis.lowStockItems}</div>
