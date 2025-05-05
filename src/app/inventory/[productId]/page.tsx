@@ -4,68 +4,52 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, DollarSign, Calendar, Layers, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle } from 'lucide-react'; // Removed DollarSign
 // Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { getProductById, Product } from '@/services/backend'; // Import specific product fetch
 
-// Mock Product Data Interface (should match inventory page)
-interface InventoryProduct {
-  id: string;
-  name: string;
-  catalogNumber: string;
-  quantity: number;
-  unitPrice: number; // Effective unit price
-  category?: string;
-  lastUpdated: string;
-  // Add more potential fields if needed
-  description?: string;
-  supplier?: string;
-  location?: string;
-}
 
-// Mock fetching function - Replace with actual API call
-const fetchProductDetails = async (productId: string, token: string | null): Promise<InventoryProduct | null> => {
-   // TODO: Replace with actual API call
-   // const response = await fetch(`/api/inventory/${productId}`, { headers: { 'Authorization': `Bearer ${token}` }});
-   // if (!response.ok) return null;
-   // return await response.json();
+// Mock Product Data Interface (should match inventory page) - Using Product from backend now
+// interface InventoryProduct {
+//   id: string;
+//   name: string;
+//   catalogNumber: string;
+//   quantity: number;
+//   unitPrice: number; // Effective unit price
+//   category?: string;
+//   lastUpdated: string;
+//   // Add more potential fields if needed
+//   description?: string;
+//   supplier?: string;
+//   location?: string;
+//   lineTotal?: number;
+// }
 
-   console.log(`Fetching product with ID: ${productId}`);
-   await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
+// Mock fetching function - Replace with actual API call - Now using getProductById
+// const fetchProductDetails = async (productId: string, token: string | null): Promise<Product | null> => {
+//    // TODO: Replace with actual API call
+//    // const response = await fetch(`/api/inventory/${productId}`, { headers: { 'Authorization': `Bearer ${token}` }});
+//    // if (!response.ok) return null;
+//    // return await response.json();
+//
+//    console.log(`Fetching product with ID: ${productId}`);
+//    await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
+//
+//    // Find product in mock data (for demonstration) - Removed
+//
+//    return null; // Return null if not found
+// };
 
-   // Find product in mock data (for demonstration)
-    const product = MOCK_INVENTORY.find(p => p.id === productId);
-
-    // Simulate adding more details fetched from backend
-    if (product) {
-        return {
-            ...product,
-            description: product.description ?? `This is a detailed description for ${product.name}. It highlights key features and specifications.`,
-            supplier: product.supplier ?? `Supplier ${String.fromCharCode(65 + Math.floor(Math.random() * 5))}`, // Random Supplier A-E
-            location: product.location ?? `Warehouse Section ${Math.ceil(Math.random() * 10)}`, // Random Location
-        };
-    }
-
-   return null; // Return null if not found
-};
-
-// Mock data used by the mock fetch function (should match inventory page)
-const MOCK_INVENTORY: InventoryProduct[] = [
-   { id: 'prod1', name: 'Standard Widget', catalogNumber: 'WDG-001', quantity: 150, unitPrice: 10.50, category: 'Widgets', lastUpdated: new Date(Date.now() - 86400000 * 2).toISOString() },
-   { id: 'prod2', name: 'Premium Gadget', catalogNumber: 'GDG-PREM', quantity: 75, unitPrice: 49.99, category: 'Gadgets', lastUpdated: new Date().toISOString() },
-   { id: 'prod3', name: 'Basic Component', catalogNumber: 'CMP-BSE', quantity: 500, unitPrice: 1.25, category: 'Components', lastUpdated: new Date(Date.now() - 86400000 * 5).toISOString() },
-   { id: 'prod4', name: 'Advanced Widget', catalogNumber: 'WDG-ADV', quantity: 0, unitPrice: 25.00, category: 'Widgets', lastUpdated: new Date(Date.now() - 86400000 * 1).toISOString() },
-   { id: 'prod5', name: 'Ultra Component', catalogNumber: 'CMP-ULT', quantity: 10, unitPrice: 5.75, category: 'Components', lastUpdated: new Date(Date.now() - 86400000 * 10).toISOString() },
-];
-
+// Mock data used by the mock fetch function (should match inventory page) - Removed
 
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   // Removed user, token, authLoading from useAuth
   const { toast } = useToast();
-  const [product, setProduct] = useState<InventoryProduct | null>(null);
+  const [product, setProduct] = useState<Product | null>(null); // Use backend Product type
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +64,7 @@ export default function ProductDetailPage() {
       setError(null);
       try {
         // Passing null for token as it's not needed without auth
-        const data = await fetchProductDetails(productId, null);
+        const data = await getProductById(productId); // Use backend service
         if (data) {
           setProduct(data);
         } else {
@@ -111,15 +95,18 @@ export default function ProductDetailPage() {
 
     // Removed useEffect for auth redirection
 
-  const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined) => {
+  const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false) => {
     if (value === undefined || value === null || value === '') return null;
     const IconComponent = icon;
+    const displayValue = isCurrency && typeof value === 'number'
+      ? `₪${value.toFixed(2)}`
+      : value;
     return (
       <div className="flex items-start space-x-3">
         <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="text-base">{value}</p>
+          <p className="text-base">{displayValue}</p>
         </div>
       </div>
     );
@@ -180,7 +167,7 @@ export default function ProductDetailPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-primary flex items-center">
-             <Package className="mr-3 h-8 w-8" /> {product.name}
+             <Package className="mr-3 h-8 w-8" /> {product.description} {/* Use description */}
           </CardTitle>
           <CardDescription>Detailed information for catalog #{product.catalogNumber}</CardDescription>
            {product.quantity <= 10 && (
@@ -193,26 +180,20 @@ export default function ProductDetailPage() {
             )}
         </CardHeader>
         <CardContent className="space-y-6">
-           {product.description && (
-                <>
-                    <Separator />
-                    <div>
-                        <h3 className="text-lg font-semibold mb-2">Description</h3>
-                        <p className="text-muted-foreground">{product.description}</p>
-                    </div>
-                </>
-            )}
+           {/* Removed extra description section as it's the title now */}
+           {/* {product.description && ( ... )} */}
 
            <Separator />
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              {renderDetailItem(Hash, "Catalog Number", product.catalogNumber)}
              {renderDetailItem(Layers, "Quantity", product.quantity)}
-             {renderDetailItem(DollarSign, "Unit Price", `$${product.unitPrice.toFixed(2)}`)}
-             {renderDetailItem(Tag, "Category", product.category)}
-             {renderDetailItem(Tag, "Supplier", product.supplier)}
-             {renderDetailItem(Tag, "Location", product.location)}
-             {renderDetailItem(Calendar, "Last Updated", formatDate(product.lastUpdated))}
+             {renderDetailItem(Tag, "Unit Price", product.unitPrice, true)} {/* Use Tag and set isCurrency */}
+             {renderDetailItem(Tag, "Line Total", product.lineTotal, true)} {/* Use Tag and set isCurrency */}
+             {/* {renderDetailItem(Tag, "Category", product.category)} */}
+             {/* {renderDetailItem(Tag, "Supplier", product.supplier)} */}
+             {/* {renderDetailItem(Tag, "Location", product.location)} */}
+             {/* {renderDetailItem(Calendar, "Last Updated", formatDate(product.lastUpdated))} */}
           </div>
 
            {/* Optional Actions */}

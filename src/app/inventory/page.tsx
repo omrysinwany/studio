@@ -25,50 +25,51 @@ import { useRouter } from 'next/navigation';
 // Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { Product, getProducts } from '@/services/backend'; // Import Product type and getProducts function
 
-// Mock Product Data - Replace with actual API call
-interface InventoryProduct {
-  id: string;
-  name: string;
-  catalogNumber: string;
-  quantity: number;
-  unitPrice: number; // Effective unit price
-  category?: string; // Optional category for filtering
-  lastUpdated: string; // ISO date string
-}
 
-const MOCK_INVENTORY: InventoryProduct[] = [
-  { id: 'prod1', name: 'Standard Widget', catalogNumber: 'WDG-001', quantity: 150, unitPrice: 10.50, category: 'Widgets', lastUpdated: new Date(Date.now() - 86400000 * 2).toISOString() }, // 2 days ago
-  { id: 'prod2', name: 'Premium Gadget', catalogNumber: 'GDG-PREM', quantity: 75, unitPrice: 49.99, category: 'Gadgets', lastUpdated: new Date().toISOString() }, // Today
-  { id: 'prod3', name: 'Basic Component', catalogNumber: 'CMP-BSE', quantity: 500, unitPrice: 1.25, category: 'Components', lastUpdated: new Date(Date.now() - 86400000 * 5).toISOString() }, // 5 days ago
-  { id: 'prod4', name: 'Advanced Widget', catalogNumber: 'WDG-ADV', quantity: 0, unitPrice: 25.00, category: 'Widgets', lastUpdated: new Date(Date.now() - 86400000 * 1).toISOString() }, // 1 day ago (Low Stock)
-  { id: 'prod5', name: 'Ultra Component', catalogNumber: 'CMP-ULT', quantity: 10, unitPrice: 5.75, category: 'Components', lastUpdated: new Date(Date.now() - 86400000 * 10).toISOString() }, // 10 days ago (Low Stock)
-   // Add more mock data as needed
-];
+// Mock Product Data Interface (should match inventory page)
+// Using Product interface from backend service now
+// interface InventoryProduct {
+//   id: string; // Changed to optional as it might not be present initially, depends on backend
+//   name: string;
+//   catalogNumber: string;
+//   quantity: number;
+//   unitPrice: number; // Effective unit price
+//   category?: string; // Optional category for filtering
+//   lastUpdated: string; // ISO date string
+//   description?: string;
+//   supplier?: string;
+//   location?: string;
+// }
+
+// Mock data removed, using backend service
 
 // Assume backend provides categories
 const MOCK_CATEGORIES = ['Widgets', 'Gadgets', 'Components', 'Other'];
 
-type SortKey = keyof InventoryProduct | '';
+type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
 export default function InventoryPage() {
-  const [inventory, setInventory] = useState<InventoryProduct[]>([]);
+  const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InventoryProduct, boolean>>({
-    id: false, // Hide ID by default
-    name: true,
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
+    id: false, // Keep ID hidden by default, but trackable
+    description: true, // Use 'description' instead of 'name' from Product interface
     catalogNumber: true,
     quantity: true,
     unitPrice: true,
-    category: true,
-    lastUpdated: true,
+    // category: true, // Category not in Product interface
+    // lastUpdated: true, // lastUpdated not in Product interface
+    lineTotal: true, // Add lineTotal if needed/available
+    actions: true, // Column for actions like 'View Details'
   });
-  const [filterCategory, setFilterCategory] = useState<string>('');
+  // const [filterCategory, setFilterCategory] = useState<string>(''); // Category filter depends on data
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock'>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('lastUpdated');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>('description'); // Default sort by description
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const router = useRouter();
   // Removed user and authLoading from useAuth
   const { toast } = useToast();
@@ -80,13 +81,14 @@ export default function InventoryPage() {
        // Removed user check
        setIsLoading(true);
        try {
-         // Simulate API call delay
-         await new Promise(resolve => setTimeout(resolve, 1000));
-         // TODO: Replace MOCK_INVENTORY with actual API call:
-         // const response = await fetch('/api/inventory', { headers: { 'Authorization': `Bearer ${token}` }});
-         // const data = await response.json();
-         // setInventory(data);
-         setInventory(MOCK_INVENTORY);
+         // Replace MOCK_INVENTORY with actual API call:
+         const data = await getProducts(); // Fetch products from backend service
+          // Add a temporary ID for React keys if backend doesn't provide one
+          const inventoryWithIds = data.map((item, index) => ({
+            ...item,
+            id: item.id || `temp-${index}-${Date.now()}`, // Use backend ID or generate temp one
+          }));
+         setInventory(inventoryWithIds);
        } catch (error) {
          console.error("Failed to fetch inventory:", error);
          toast({
@@ -126,13 +128,13 @@ export default function InventoryPage() {
      if (searchTerm) {
        const lowerSearchTerm = searchTerm.toLowerCase();
        result = result.filter(item =>
-         item.name.toLowerCase().includes(lowerSearchTerm) ||
+         item.description.toLowerCase().includes(lowerSearchTerm) || // Search in description
          item.catalogNumber.toLowerCase().includes(lowerSearchTerm)
        );
      }
-     if (filterCategory) {
-       result = result.filter(item => item.category === filterCategory);
-     }
+    //  if (filterCategory) { // Re-enable if category is added back
+    //    result = result.filter(item => item.category === filterCategory);
+    //  }
       if (filterStockLevel === 'low') {
         result = result.filter(item => item.quantity <= 10); // Example threshold for low stock
       } else if (filterStockLevel === 'inStock') {
@@ -151,12 +153,12 @@ export default function InventoryPage() {
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
-             // Consider date sorting for 'lastUpdated'
-             if (sortKey === 'lastUpdated') {
-                comparison = new Date(valA).getTime() - new Date(valB).getTime();
-             } else {
+             // Consider date sorting if 'lastUpdated' is added
+             // if (sortKey === 'lastUpdated') {
+             //    comparison = new Date(valA).getTime() - new Date(valB).getTime();
+             // } else {
                 comparison = valA.localeCompare(valB);
-             }
+             // }
            } else {
               // Fallback for mixed types or other types - place undefined/null last
               if (valA == null && valB != null) comparison = 1;
@@ -171,30 +173,33 @@ export default function InventoryPage() {
 
 
      return result;
-   }, [inventory, searchTerm, filterCategory, filterStockLevel, sortKey, sortDirection]);
+     // }, [inventory, searchTerm, filterCategory, filterStockLevel, sortKey, sortDirection]);
+      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]); // Removed filterCategory dependency
 
-    const toggleColumnVisibility = (key: keyof InventoryProduct) => {
+    const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id') => {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
 
-  const columnHeaders: { key: keyof InventoryProduct; label: string; sortable: boolean, className?: string }[] = [
-     { key: 'name', label: 'Product Name', sortable: true, className: 'min-w-[200px]' },
+  const columnHeaders: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
+     { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
      { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
      { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[80px]' },
      { key: 'unitPrice', label: 'Unit Price', sortable: true, className: 'text-right min-w-[100px]' },
-     { key: 'category', label: 'Category', sortable: true, className: 'min-w-[100px]' },
-     { key: 'lastUpdated', label: 'Last Updated', sortable: true, className: 'min-w-[150px]' },
+     { key: 'lineTotal', label: 'Line Total', sortable: true, className: 'text-right min-w-[100px]' },
+     // { key: 'category', label: 'Category', sortable: true, className: 'min-w-[100px]' },
+     // { key: 'lastUpdated', label: 'Last Updated', sortable: true, className: 'min-w-[150px]' },
+     { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
   ];
 
-   // Format date for display
-   const formatDate = (dateString: string) => {
-     try {
-       return new Date(dateString).toLocaleDateString();
-     } catch (e) {
-       return 'Invalid Date';
-     }
-   };
+   // Format date for display - Keep if lastUpdated might be added later
+   // const formatDate = (dateString: string) => {
+   //   try {
+   //     return new Date(dateString).toLocaleDateString();
+   //   } catch (e) {
+   //     return 'Invalid Date';
+   //   }
+   // };
 
 
     if (isLoading) { // Removed authLoading check
@@ -222,42 +227,15 @@ export default function InventoryPage() {
               <div className="relative w-full md:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name or catalog..."
+                  placeholder="Search by description or catalog..." // Updated placeholder
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
               </div>
                <div className="flex gap-2 flex-wrap justify-center md:justify-end">
-                 {/* Category Filter */}
-                 <DropdownMenu>
-                   <DropdownMenuTrigger asChild>
-                     <Button variant="outline">
-                       <Filter className="mr-2 h-4 w-4" />
-                       {filterCategory || 'Category'}
-                       <ChevronDown className="ml-2 h-4 w-4" />
-                     </Button>
-                   </DropdownMenuTrigger>
-                   <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Filter by Category</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuCheckboxItem
-                          checked={!filterCategory}
-                          onCheckedChange={() => setFilterCategory('')}
-                        >
-                          All Categories
-                      </DropdownMenuCheckboxItem>
-                     {MOCK_CATEGORIES.map((category) => (
-                       <DropdownMenuCheckboxItem
-                         key={category}
-                         checked={filterCategory === category}
-                         onCheckedChange={() => setFilterCategory(category)}
-                       >
-                         {category}
-                       </DropdownMenuCheckboxItem>
-                     ))}
-                   </DropdownMenuContent>
-                 </DropdownMenu>
+                 {/* Category Filter - Removed, re-add if category is available */}
+                 {/* <DropdownMenu> ... </DropdownMenu> */}
 
                    {/* Stock Level Filter */}
                    <DropdownMenu>
@@ -328,7 +306,7 @@ export default function InventoryPage() {
                          <TableHead
                             key={header.key}
                             className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
-                            onClick={() => header.sortable && handleSort(header.key)}
+                            onClick={() => header.sortable && handleSort(header.key as SortKey)} // Cast key to SortKey
                          >
                              <div className="flex items-center gap-1">
                                {header.label}
@@ -340,13 +318,12 @@ export default function InventoryPage() {
                              </div>
                           </TableHead>
                     ))}
-                   <TableHead className="text-right">Actions</TableHead>{/* Action column */}
                  </TableRow>
                </TableHeader>
                <TableBody>
                  {isLoading ? (
                    <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length + 1} className="h-24 text-center">
+                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
                         <div className="flex justify-center items-center">
                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
                            <span className="ml-2">Loading inventory...</span>
@@ -355,14 +332,14 @@ export default function InventoryPage() {
                    </TableRow>
                  ) : filteredAndSortedInventory.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length + 1} className="h-24 text-center">
+                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
                        No inventory items found matching your criteria.
                      </TableCell>
                    </TableRow>
                  ) : (
                    filteredAndSortedInventory.map((item) => (
-                     <TableRow key={item.id} className="hover:bg-muted/50">
-                       {visibleColumns.name && <TableCell className="font-medium">{item.name}</TableCell>}
+                     <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50">
+                       {visibleColumns.description && <TableCell className="font-medium">{item.description}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className={cn("text-right", item.quantity <= 10 && "text-destructive font-semibold")}>
@@ -371,19 +348,24 @@ export default function InventoryPage() {
                              {item.quantity === 0 && <span className="ml-1 text-xs">(Out)</span>}
                           </TableCell>
                         )}
-                        {visibleColumns.unitPrice && <TableCell className="text-right">${item.unitPrice.toFixed(2)}</TableCell>}
-                        {visibleColumns.category && <TableCell>{item.category || '-'}</TableCell>}
-                       {visibleColumns.lastUpdated && <TableCell>{formatDate(item.lastUpdated)}</TableCell>}
-                       <TableCell className="text-right">
-                         <Button
-                           variant="ghost"
-                           size="sm"
-                           onClick={() => router.push(`/inventory/${item.id}`)} // Navigate to detail view
-                           aria-label={`View details for ${item.name}`}
-                         >
-                           <Eye className="mr-1 h-4 w-4" /> Details
-                         </Button>
-                       </TableCell>
+                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice.toFixed(2)}</TableCell>}
+                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{item.lineTotal.toFixed(2)}</TableCell>}
+                        {/* {visibleColumns.category && <TableCell>{item.category || '-'}</TableCell>} */}
+                       {/* {visibleColumns.lastUpdated && <TableCell>{formatDate(item.lastUpdated)}</TableCell>} */}
+                       {visibleColumns.actions && (
+                         <TableCell className="text-right">
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             // Ensure item.id is defined before navigating
+                             onClick={() => item.id && router.push(`/inventory/${item.id}`)}
+                             disabled={!item.id} // Disable if no ID
+                             aria-label={`View details for ${item.description}`}
+                           >
+                             <Eye className="mr-1 h-4 w-4" /> Details
+                           </Button>
+                         </TableCell>
+                        )}
                      </TableRow>
                    ))
                  )}
