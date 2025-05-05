@@ -74,28 +74,29 @@ export default function PosIntegrationSettingsPage() {
      if (!selectedSystemId) return;
      setIsTesting(true);
      setTestResult(null);
+     let result: { success: boolean; message: string } | null = null; // To store the result from action
      console.log("[POS Page] Testing connection with config:", configValues); // Log config being sent
      try {
        // Directly call the manager function which calls the adapter/action
-       const success = await testPosConnection(selectedSystemId, configValues);
-        // Use the result directly from testPosConnection which should reflect the action result
-        setTestResult({
-            success: success,
-            message: success ? 'Connection successful!' : 'Connection failed. Check console for details.', // Generic message for UI
-        });
+        // We now expect the action to return the success status and a message
+       result = await testPosConnection(selectedSystemId, configValues);
+       setTestResult(result); // Store the result directly
+
+       // Use the message from the result for the toast
        toast({
-         title: success ? 'Connection Test Succeeded' : 'Connection Test Failed',
-         description: success ? 'Successfully connected to the POS system.' : 'Could not connect. Check credentials and server logs.',
-         variant: success ? 'default' : 'destructive',
+         title: result.success ? 'Connection Test Succeeded' : 'Connection Test Failed',
+         description: result.message, // Use the message returned from the action
+         variant: result.success ? 'default' : 'destructive',
        });
      } catch (error: any) {
-        // This catch block might not be reached if testPosConnection handles errors internally,
-        // but it's good practice to keep it. testPosConnection should return false on error.
+        // This catch block handles errors if testPosConnection itself throws (e.g., adapter not found)
        console.error("[POS Page] Error during test connection call:", error);
-       setTestResult({ success: false, message: `Error: ${error.message || 'Unknown error'}` });
+        const errorMessage = `Error: ${error.message || 'Unknown error during test'}`;
+        result = { success: false, message: errorMessage }; // Create a result object for the error
+        setTestResult(result);
        toast({
          title: 'Connection Test Error',
-         description: `An error occurred: ${error.message || 'Check server logs for more details.'}`,
+         description: errorMessage, // Show the specific error message
          variant: 'destructive',
        });
      } finally {
@@ -258,7 +259,7 @@ export default function PosIntegrationSettingsPage() {
                     <Button
                         variant="outline"
                         onClick={handleTestConnection}
-                        disabled={isTesting || Object.keys(configValues).length === 0}
+                        disabled={isTesting || !selectedSystemId || Object.keys(configValues).length === 0}
                     >
                         {isTesting ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testing...</>
@@ -345,4 +346,3 @@ export default function PosIntegrationSettingsPage() {
     </div>
   );
 }
-

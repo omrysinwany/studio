@@ -24,27 +24,50 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
     });
     const url = `${CASPIT_API_BASE_URL}/Token?${params.toString()}`;
 
-    console.log(`[Caspit Action] Attempting to get token from: ${url}`); // Log the final URL
+    console.log(`[Caspit Action] Attempting to get token from URL: ${url}`); // Log the final URL
+
+    let response: Response | null = null; // Define response variable outside try block
+    let responseText: string = ''; // Define responseText variable outside try block
 
     try {
-        const response = await fetch(url, {
+        response = await fetch(url, {
             method: 'GET', // Specify GET method
             headers: {
-                'Accept': 'application/json' // Ensure we ask for JSON
+                'Accept': 'application/json', // Ensure we ask for JSON
+                'Cache-Control': 'no-cache, no-store, must-revalidate', // Try stricter cache control
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
-            // Add cache control if needed, e.g., no-cache
-            cache: 'no-store',
+            cache: 'no-store', // Ensure no caching
         });
 
-        const responseText = await response.text(); // Read the response body as text first
+        responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action] Raw response status: ${response.status}`);
+        console.log(`[Caspit Action] Raw response headers:`, JSON.stringify(Object.fromEntries(response.headers.entries())));
         console.log(`[Caspit Action] Raw response text: ${responseText}`); // Log the raw response text
 
         if (!response.ok) {
             // Log specific error details
             console.error(`[Caspit Action] Failed to get token. Status: ${response.status} ${response.statusText}. Response: ${responseText}`);
-            throw new Error(`Failed to get token: ${response.status} ${response.statusText}. Response: ${responseText}`);
+            // Provide a more informative error based on common issues
+            let detailedErrorMessage = `Failed to get token: ${response.status} ${response.statusText}.`;
+            if (response.status === 401 || response.status === 403) {
+                detailedErrorMessage += ' Please check your credentials (Username, Password, Business ID).';
+            } else if (response.status === 404) {
+                 detailedErrorMessage += ' API endpoint not found. Please check the URL.';
+            } else {
+                 detailedErrorMessage += ` Raw response: ${responseText}`;
+            }
+            throw new Error(detailedErrorMessage);
         }
+
+         // Check content type before parsing
+         const contentType = response.headers.get("content-type");
+         if (!contentType || !contentType.includes("application/json")) {
+             console.warn(`[Caspit Action] Unexpected content type received for token: ${contentType}. Expected JSON. Trying to parse anyway.`);
+             // You might still want to attempt parsing if the content looks like JSON despite the header
+         }
+
 
         let data;
         try {
@@ -52,23 +75,26 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         } catch (jsonError: any) {
             console.error('[Caspit Action] Failed to parse JSON response:', jsonError);
             console.error('[Caspit Action] Response text that failed parsing:', responseText);
-            throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}`);
+            throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}. Raw response: ${responseText}`);
         }
 
 
         if (!data || !data.AccessToken) {
-            console.error('[Caspit Action] Invalid token response structure. Parsed Data:', data);
+            console.error('[Caspit Action] Invalid token response structure. AccessToken missing. Parsed Data:', data);
             throw new Error('Invalid token response structure from Caspit API. AccessToken missing.');
         }
         console.log('[Caspit Action] Successfully obtained token.');
         return data.AccessToken;
     } catch (error) {
+        // This catch block now handles fetch errors AND errors thrown above (like !response.ok or JSON parse errors)
         console.error('[Caspit Action] Error fetching or processing token:', error);
-        // Re-throw the original or a new error for the calling function to catch
+        // Re-throw a potentially more user-friendly error message
         if (error instanceof Error) {
+             // Use the error message generated above if available
              throw new Error(`Caspit token request failed: ${error.message}`);
         } else {
-            throw new Error(`Caspit token request failed with an unknown error.`);
+            // Fallback for unknown errors
+            throw new Error(`Caspit token request failed with an unknown error. Check server logs.`);
         }
     }
 }
@@ -84,9 +110,9 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
             message: 'Connection successful! Token obtained.',
         };
     } catch (error: any) {
-        console.error("[Caspit Action] Connection test failed:", error);
-        // Provide a more specific error message back to the UI
-        return { success: false, message: `Connection failed: ${error.message || 'Unknown error during token retrieval'}` };
+        console.error("[Caspit Action] Connection test failed in action:", error);
+        // Provide a more specific error message back to the UI, using the message from getCaspitToken
+        return { success: false, message: error.message || 'Connection failed: Unknown error during token retrieval' };
     }
 }
 
@@ -127,7 +153,12 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
         while (hasMore) {
             const url = `${CASPIT_API_BASE_URL}/Products?token=${token}&page=${page}`;
             const response = await fetch(url, {
-                headers: { 'Accept': 'application/json' },
+                headers: {
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                },
                 cache: 'no-store',
             });
 
@@ -145,7 +176,11 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
              if (!contentType || !contentType.includes("application/json")) {
                  console.error(`[Caspit Action] Unexpected content type received for products: ${contentType}. Expected JSON.`);
                  console.error("[Caspit Action] Response Text:", responseText);
-                 throw new Error(`Expected JSON response for products but received ${contentType}`);
+                 // Allow continuing if content looks like JSON, but log a warning
+                 if (!responseText.trim().startsWith('[')) {
+                    throw new Error(`Expected JSON response for products but received ${contentType}`);
+                 }
+                 console.warn(`[Caspit Action] Content type is not JSON, but attempting to parse anyway.`);
              }
 
             let caspitProductsPage: any[] = [];
@@ -222,4 +257,3 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error during sales sync'}` };
     }
 }
-

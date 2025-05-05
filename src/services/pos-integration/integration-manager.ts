@@ -38,25 +38,27 @@ export function getPosAdapter(systemId: string): IPosSystemAdapter | null {
  * Tests the connection for the specified POS system using its adapter or action.
  * @param systemId - The ID of the POS system to test.
  * @param config - The connection configuration.
- * @returns A promise resolving to true if the connection is successful, false otherwise.
+ * @returns A promise resolving to an object { success: boolean, message: string }.
  */
-export async function testPosConnection(systemId: string, config: PosConnectionConfig): Promise<boolean> {
+export async function testPosConnection(systemId: string, config: PosConnectionConfig): Promise<{ success: boolean; message: string }> {
   const adapter = getPosAdapter(systemId);
   if (!adapter) {
-    console.error(`[IntegrationManager] Adapter not found for systemId: ${systemId}`);
-    // Optionally throw an error or return false depending on desired behavior
-    throw new Error(`Adapter not found for system: ${systemId}`);
-    // return false;
+    const errorMsg = `Adapter not found for system: ${systemId}`;
+    console.error(`[IntegrationManager] ${errorMsg}`);
+    // Return a failure object
+    return { success: false, message: errorMsg };
+    // Or throw if preferred: throw new Error(errorMsg);
   }
   try {
-     // The adapter's testConnection method now calls the server action and returns its boolean result
-    const isSuccess = await adapter.testConnection(config);
-    console.log(`[IntegrationManager] Connection test result for ${systemId}: ${isSuccess}`);
-    return isSuccess;
-  } catch (error) {
+     // The adapter's testConnection method now calls the server action and should return { success, message }
+    const result = await adapter.testConnection(config);
+    console.log(`[IntegrationManager] Connection test result for ${systemId}:`, result);
+    return result; // Return the full result object
+  } catch (error: any) {
     // This catch block might still be useful if the adapter itself throws an error before calling the action
-    console.error(`[IntegrationManager] Error testing connection for ${systemId}:`, error);
-    return false; // Return false on any error during the test process
+    const errorMsg = `Error testing connection for ${systemId}: ${error.message || 'Unknown error'}`;
+    console.error(`[IntegrationManager] ${errorMsg}`);
+    return { success: false, message: errorMsg }; // Return a failure object on error
   }
 }
 
@@ -92,4 +94,3 @@ export async function syncWithPos(systemId: string, config: PosConnectionConfig,
 
   return results;
 }
-

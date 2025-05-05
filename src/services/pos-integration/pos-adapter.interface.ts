@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Defines the interface for Point of Sale (POS) system adapters.
  * This ensures a consistent structure for integrating different POS systems.
@@ -65,9 +64,9 @@ export interface IPosSystemAdapter {
   /**
    * Tests the connection to the POS system using the provided configuration.
    * @param config - The connection configuration.
-   * @returns A promise resolving to true if the connection is successful, false otherwise.
+   * @returns A promise resolving to an object { success: boolean, message: string }.
    */
-  testConnection(config: PosConnectionConfig): Promise<boolean>;
+  testConnection(config: PosConnectionConfig): Promise<{ success: boolean; message: string }>;
 
   /**
    * Synchronizes product data from the POS system to InvoTrack.
