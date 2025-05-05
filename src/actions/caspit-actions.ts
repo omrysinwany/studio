@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -78,11 +79,15 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
             throw new Error(`Invalid JSON response received from Caspit API: ${jsonError.message}. Raw response: ${responseText}`);
         }
 
+        // *** Log the parsed data structure before checking the AccessToken ***
+        console.log('[Caspit Action] Parsed JSON data:', JSON.stringify(data, null, 2));
 
+        // Check if AccessToken exists in the parsed data
         if (!data || !data.AccessToken) {
             console.error('[Caspit Action] Invalid token response structure. AccessToken missing. Parsed Data:', data);
             throw new Error('Invalid token response structure from Caspit API. AccessToken missing.');
         }
+
         console.log('[Caspit Action] Successfully obtained token.');
         return data.AccessToken;
     } catch (error) {
