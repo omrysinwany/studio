@@ -208,7 +208,8 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
             const responseText = await response.text(); // Read text first
              console.log(`[Caspit Action - syncCaspitProductsAction] Product fetch (Page ${page}) status: ${response.status}`);
-             // console.log(`[Caspit Action - syncCaspitProductsAction] Product fetch (Page ${page}) response text START:\n---\n${responseText}\n---\nProduct fetch response text END`); // Optional: Log full response text if needed
+             // *** Log FULL response text for debugging structure issues ***
+             console.log(`[Caspit Action - syncCaspitProductsAction] Product fetch (Page ${page}) response text START:\n---\n${responseText}\n---\nProduct fetch response text END`);
 
             if (!response.ok) {
                 console.error(`[Caspit Action - syncCaspitProductsAction] Failed to fetch products (Page ${page}): ${response.status} ${response.statusText}`, responseText);
@@ -229,8 +230,10 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
              }
 
             let caspitProductsPage: any[] = [];
+            let parsedData: any = null; // Variable to hold the parsed result
+
             try {
-                 caspitProductsPage = JSON.parse(responseText); // Parse the logged text
+                 parsedData = JSON.parse(responseText); // Parse the logged text
             } catch (jsonError: any) {
                  console.error(`[Caspit Action - syncCaspitProductsAction] Failed to parse JSON response for products (Page ${page}):`, jsonError);
                  console.error("[Caspit Action - syncCaspitProductsAction] Response text that failed parsing:", responseText);
@@ -238,13 +241,18 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             }
 
             // Log parsed product page data structure (optional, can be verbose)
-             // console.log(`[Caspit Action - syncCaspitProductsAction] Parsed product data (Page ${page}):`, JSON.stringify(caspitProductsPage, null, 2));
+             // console.log(`[Caspit Action - syncCaspitProductsAction] Parsed product data (Page ${page}):`, JSON.stringify(parsedData, null, 2));
 
 
-            if (!Array.isArray(caspitProductsPage)) {
-                console.error('[Caspit Action - syncCaspitProductsAction] Invalid product data structure received (not an array):', caspitProductsPage);
-                throw new Error('Invalid product data structure received from Caspit API.');
+            // *** Check if parsedData is an array. If not, throw the specific error. ***
+            if (!Array.isArray(parsedData)) {
+                console.error('[Caspit Action - syncCaspitProductsAction] Invalid product data structure received (expected array, got object/other):', parsedData);
+                // Include raw response in error message for better debugging
+                throw new Error(`Invalid product data structure received from Caspit API. Expected array. Raw response: ${responseText}`);
             }
+
+            // If it IS an array, assign it
+            caspitProductsPage = parsedData;
 
             if (caspitProductsPage.length === 0) {
                 hasMore = false;
