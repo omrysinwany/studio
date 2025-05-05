@@ -161,7 +161,7 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
+                   <Button variant="ghost" size="sm" asChild>{/* Ghost button for login */}
                     <Link href="/login">
                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
@@ -169,7 +169,7 @@ export default function Navigation() {
                        </span>
                     </Link>
                   </Button>
-                   <Button size="sm" asChild> {/* Default button for register */}
+                   <Button size="sm" asChild>{/* Default button for register */}
                      <Link href="/register">
                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
