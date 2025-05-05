@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Package, Tag, Hash, DollarSign, Calendar, Layers, Loader2, AlertTriangle } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+// Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
@@ -63,7 +63,7 @@ const MOCK_INVENTORY: InventoryProduct[] = [
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, token, loading: authLoading } = useAuth();
+  // Removed user, token, authLoading from useAuth
   const { toast } = useToast();
   const [product, setProduct] = useState<InventoryProduct | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,12 +74,13 @@ export default function ProductDetailPage() {
    // Fetch product details
   useEffect(() => {
     const loadProduct = async () => {
-       if (!productId || !user) return; // Don't fetch if no ID or not logged in
+       if (!productId) return; // Removed user check
 
       setIsLoading(true);
       setError(null);
       try {
-        const data = await fetchProductDetails(productId, token);
+        // Passing null for token as it's not needed without auth
+        const data = await fetchProductDetails(productId, null);
         if (data) {
           setProduct(data);
         } else {
@@ -103,25 +104,12 @@ export default function ProductDetailPage() {
       }
     };
 
-     if (!authLoading && user) {
-        loadProduct();
-     } else if (!authLoading && !user) {
-        setIsLoading(false); // Stop loading if not logged in
-     }
-  }, [productId, user, token, authLoading, toast]);
+     loadProduct(); // Load product directly
+     // Removed authLoading and user dependencies
+  }, [productId, toast]);
 
 
-    // Redirect if not logged in
-   useEffect(() => {
-     if (!authLoading && !user) {
-       router.push('/login');
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view product details.",
-          variant: "destructive",
-        });
-     }
-   }, [authLoading, user, router, toast]);
+    // Removed useEffect for auth redirection
 
   const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined) => {
     if (value === undefined || value === null || value === '') return null;
@@ -148,7 +136,7 @@ export default function ProductDetailPage() {
    };
 
 
-  if (authLoading || isLoading) {
+  if (isLoading) { // Removed authLoading check
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -156,10 +144,7 @@ export default function ProductDetailPage() {
     );
   }
 
-   if (!user) {
-       // Should be redirected by the effect, but this is a fallback
-       return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-   }
+   // Removed !user check
 
   if (error) {
     return (

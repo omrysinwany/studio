@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, Eye, Package } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+// Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -70,14 +70,14 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('lastUpdated');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  // Removed user and authLoading from useAuth
   const { toast } = useToast();
 
 
    // Fetch inventory data (replace with actual API call)
    useEffect(() => {
      const fetchInventory = async () => {
-       if (!user) return; // Don't fetch if not logged in
+       // Removed user check
        setIsLoading(true);
        try {
          // Simulate API call delay
@@ -100,26 +100,12 @@ export default function InventoryPage() {
        }
      };
 
-     if (!authLoading && user) {
-        fetchInventory();
-     } else if (!authLoading && !user) {
-        setIsLoading(false); // Stop loading if not logged in
-        setInventory([]); // Clear inventory if logged out
-     }
-   }, [authLoading, user, toast]); // Depend on auth state
+     fetchInventory(); // Fetch data directly
+     // Removed authLoading and user dependencies
+   }, [toast]);
 
 
-   // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-       toast({
-         title: "Authentication Required",
-         description: "Please log in to view inventory.",
-         variant: "destructive",
-       });
-    }
-  }, [authLoading, user, router, toast]);
+   // Removed useEffect for auth redirection
 
 
   const handleSort = (key: SortKey) => {
@@ -211,7 +197,7 @@ export default function InventoryPage() {
    };
 
 
-    if (authLoading) {
+    if (isLoading) { // Removed authLoading check
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -219,11 +205,7 @@ export default function InventoryPage() {
      );
    }
 
-    if (!user) {
-        // Should be redirected by the effect, but this is a fallback
-        return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-    }
-
+    // Removed !user check
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">

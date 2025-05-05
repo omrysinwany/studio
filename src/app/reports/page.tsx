@@ -12,8 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+// Removed useAuth, useRouter imports
 import { useToast } from '@/hooks/use-toast';
 
 
@@ -78,14 +77,13 @@ export default function ReportsPage() {
     from: new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1), // Default to last 6 months
     to: new Date(),
   });
-    const { user, loading: authLoading } = useAuth();
-    const router = useRouter();
+    // Removed user, authLoading, router
     const { toast } = useToast();
 
    // Fetch report data (replace with actual API calls)
    useEffect(() => {
      const fetchReports = async () => {
-       if (!user) return;
+       // Removed user check
        setIsLoading(true);
        try {
          // Simulate API call delay
@@ -121,30 +119,12 @@ export default function ReportsPage() {
        }
      };
 
-     if (!authLoading && user) {
-       fetchReports();
-     } else if (!authLoading && !user) {
-        setIsLoading(false); // Stop loading if not logged in
-        // Clear state if logged out
-        setKpis(null);
-        setValueOverTime([]);
-        setCategoryDistribution([]);
-        setProcessingVolume([]);
-     }
-   }, [dateRange, authLoading, user, toast]); // Re-fetch when dateRange or auth state changes
+     fetchReports(); // Fetch data directly
+     // Removed authLoading and user dependencies
+   }, [dateRange, toast]); // Re-fetch when dateRange changes
 
 
-    // Redirect if not logged in
-   useEffect(() => {
-     if (!authLoading && !user) {
-       router.push('/login');
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view reports.",
-          variant: "destructive",
-        });
-     }
-   }, [authLoading, user, router, toast]);
+    // Removed useEffect for auth redirection
 
 
     // Memoize filtered data for charts based on the current state
@@ -153,7 +133,7 @@ export default function ReportsPage() {
    const barChartData = useMemo(() => processingVolume, [processingVolume]);
 
 
-   if (authLoading || isLoading) {
+   if (isLoading) { // Removed authLoading check
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -161,11 +141,7 @@ export default function ReportsPage() {
      );
    }
 
-    if (!user) {
-        // Should be redirected by the effect, but this is a fallback
-        return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-    }
-
+    // Removed !user check
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8">

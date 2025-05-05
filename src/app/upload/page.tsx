@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { useAuth } from '@/context/AuthContext';
+// Removed useAuth import
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 // Define the structure for upload history items
@@ -22,6 +22,8 @@ interface UploadHistoryItem {
   errorMessage?: string;
 }
 
+const UPLOAD_HISTORY_KEY = 'uploadHistory_global'; // Generic key
+
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -31,12 +33,11 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth(); // Get user context
+  // Removed user and authLoading from useAuth
 
   // Load history from local storage on mount
    useEffect(() => {
-     if (!authLoading && user) { // Only load if user is logged in
-       const savedHistory = localStorage.getItem(`uploadHistory_${user.id}`);
+       const savedHistory = localStorage.getItem(UPLOAD_HISTORY_KEY);
        if (savedHistory) {
          try {
            const parsedHistory = JSON.parse(savedHistory).map((item: any) => ({
@@ -46,22 +47,16 @@ export default function UploadPage() {
            setUploadHistory(parsedHistory);
          } catch (error) {
            console.error("Failed to parse upload history:", error);
-           localStorage.removeItem(`uploadHistory_${user.id}`);
+           localStorage.removeItem(UPLOAD_HISTORY_KEY);
          }
        }
-     } else if (!authLoading && !user) {
-       // Clear history if user logs out
-       setUploadHistory([]);
-     }
-   }, [authLoading, user]);
+   }, []);
 
 
   // Save history to local storage whenever it changes
    useEffect(() => {
-     if (user) {
-        localStorage.setItem(`uploadHistory_${user.id}`, JSON.stringify(uploadHistory));
-     }
-   }, [uploadHistory, user]);
+        localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(uploadHistory));
+   }, [uploadHistory]);
 
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,7 +91,7 @@ export default function UploadPage() {
 
 
  const handleUpload = async () => {
-    if (!selectedFile || !user) return;
+    if (!selectedFile) return; // Removed user check
 
     setIsUploading(true);
     setIsProcessing(false); // Ensure processing is false initially
@@ -196,33 +191,8 @@ export default function UploadPage() {
      }
   };
 
-   // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-       toast({
-         title: "Authentication Required",
-         description: "Please log in to upload documents.",
-         variant: "destructive",
-       });
-    }
-  }, [authLoading, user, router, toast]);
-
-
-  // Render loading state or placeholder if auth is loading or no user
-  if (authLoading) {
-     return (
-       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-       </div>
-     );
-  }
-
-   if (!user) {
-     // Should be redirected by the effect, but this is a fallback
-     return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-   }
-
+  // Removed useEffect for auth redirection
+  // Removed authLoading check
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-8">

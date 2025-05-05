@@ -2,32 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext"; // Keep useAuth to optionally show user info
 import { Package, FileText, BarChart2, ScanLine, Loader2 } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { useEffect } from 'react';
-import { useToast } from "@/hooks/use-toast";
-
+// Removed useEffect and useToast
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth(); // Still check auth to customize experience if logged in
   const router = useRouter();
-  const { toast } = useToast();
+  // Removed toast import
 
-
-  // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-       toast({
-         title: "Authentication Required",
-         description: "Please log in to access the application.",
-         variant: "destructive",
-       });
-    }
-  }, [authLoading, user, router, toast]);
-
+  // Removed useEffect for auth redirection
 
   const handleScanClick = () => {
     router.push('/upload');
@@ -41,27 +27,17 @@ export default function Home() {
     router.push('/reports');
   };
 
-  // Show loading indicator while checking auth status
+  // Show loading indicator while checking auth status (optional, but good UX if you personalize)
    if (authLoading) {
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-         <p className="mt-4 text-muted-foreground">Loading user data...</p>
+         <p className="mt-4 text-muted-foreground">Loading...</p>
        </div>
      );
    }
 
-  // Render a placeholder or null while redirecting
-   if (!user) {
-     return (
-       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
-          <p className="text-muted-foreground">Redirecting to login...</p>
-       </div>
-     );
-   }
-
-
-  // Render the main content if the user is authenticated
+  // Render the main content (no redirect needed)
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8 home-background">
       <div className="w-full max-w-4xl text-center fade-in-content">
@@ -69,7 +45,7 @@ export default function Home() {
           Welcome to InvoTrack Mobile
         </h1>
         <p className="text-lg text-muted-foreground mb-8">
-          Hello, {user.username}! Manage your inventory efficiently.
+          {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Manage your inventory efficiently.'}
         </p>
 
         {/* Quick Stats Dashboard */}

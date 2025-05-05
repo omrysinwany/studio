@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+// Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -79,14 +79,14 @@ export default function InvoicesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('uploadTime');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  // Removed user, authLoading
   const { toast } = useToast();
 
 
    // Fetch invoice data (replace with actual API call)
    useEffect(() => {
      const fetchInvoices = async () => {
-       if (!user) return;
+       // Removed user check
        setIsLoading(true);
        try {
          // Simulate API call delay
@@ -134,26 +134,12 @@ export default function InvoicesPage() {
        }
      };
 
-     if (!authLoading && user) {
-       fetchInvoices();
-     } else if (!authLoading && !user) {
-       setIsLoading(false);
-       setInvoices([]);
-     }
-   }, [authLoading, user, filterSupplier, filterStatus, dateRange, toast]);
+     fetchInvoices(); // Fetch data directly
+     // Removed authLoading and user dependencies
+   }, [filterSupplier, filterStatus, dateRange, toast]);
 
 
-   // Redirect if not logged in
-   useEffect(() => {
-     if (!authLoading && !user) {
-       router.push('/login');
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view invoices.",
-          variant: "destructive",
-        });
-     }
-   }, [authLoading, user, router, toast]);
+   // Removed useEffect for auth redirection
 
 
   const handleSort = (key: SortKey) => {
@@ -225,7 +211,7 @@ export default function InvoicesPage() {
    };
 
 
-  if (authLoading) {
+  if (isLoading) { // Removed authLoading check
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -233,9 +219,7 @@ export default function InvoicesPage() {
     );
   }
 
-    if (!user) {
-       return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-    }
+    // Removed !user check
 
   const renderStatusIcon = (status: InvoiceHistoryItem['status']) => {
     switch (status) {

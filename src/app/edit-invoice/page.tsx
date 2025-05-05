@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Trash2, PlusCircle, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { saveProducts, Product } from '@/services/backend'; // Import Product type and save function
-import { useAuth } from '@/context/AuthContext';
+// Removed useAuth import
 
 // Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
@@ -20,7 +20,7 @@ function EditInvoiceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, loading: authLoading } = useAuth(); // Get user context
+  // Removed user and authLoading from useAuth
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
   const [fileName, setFileName] = useState<string>('');
@@ -75,17 +75,7 @@ function EditInvoiceContent() {
   }, [searchParams, router, toast, initialDataLoaded]);
 
 
-   // Redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-       toast({
-         title: "Authentication Required",
-         description: "Please log in to edit invoices.",
-         variant: "destructive",
-       });
-    }
-  }, [authLoading, user, router, toast]);
+   // Removed useEffect for auth redirection
 
 
   const handleInputChange = (id: string, field: keyof Product, value: string | number) => {
@@ -118,10 +108,7 @@ function EditInvoiceContent() {
   };
 
   const handleSave = async () => {
-     if (!user) {
-        toast({ title: "Authentication Error", description: "You must be logged in to save.", variant: "destructive"});
-        return;
-     }
+     // Removed user check
      setIsSaving(true);
      try {
        // Remove the temporary 'id' field before sending to the backend
@@ -144,7 +131,7 @@ function EditInvoiceContent() {
      }
    };
 
-   if (authLoading || isLoading || !initialDataLoaded) {
+   if (isLoading || !initialDataLoaded) { // Removed authLoading check
      return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -152,10 +139,7 @@ function EditInvoiceContent() {
      );
    }
 
-   if (!user) {
-      // Should be redirected by the effect, but this is a fallback
-      return <div className="container mx-auto p-4 md:p-8"><p>Redirecting to login...</p></div>;
-   }
+   // Removed !user check
 
 
   return (
