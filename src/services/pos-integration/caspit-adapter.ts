@@ -4,15 +4,19 @@
  */
 
 import type { IPosSystemAdapter, PosConnectionConfig, SyncResult, Product } from './pos-adapter.interface';
-import { saveProducts } from '@/services/backend'; // Import saveProducts to save synced data
+// Removed import { saveProducts } from '@/services/backend'; // Import saveProducts to save synced data
 import { testCaspitConnectionAction, syncCaspitProductsAction, syncCaspitSalesAction } from '@/actions/caspit-actions'; // Import server actions
 
 // Define expected structure for Caspit product (adjust based on actual API response)
+// This interface is now mainly for reference, actual mapping happens in the action
 interface CaspitProduct {
-  ProductID?: string; // Example field, adjust as needed
-  ProductName?: string;
+  ProductId?: string; // Example field, adjust as needed
+  Name?: string; // Use Name
+  Description?: string; // Fallback Description
   CatalogNumber?: string;
-  SalePrice?: number; // Assuming this is the unit price
+  SalePrice1?: number; // Priority for unit price
+  PurchasePrice?: number; // Fallback for unit price
+  QtyInStock?: number; // Quantity in stock
   // Add other relevant fields from Caspit API
 }
 
@@ -47,7 +51,7 @@ class CaspitAdapter implements IPosSystemAdapter {
         const result = await syncCaspitProductsAction(config);
         console.log(`[CaspitAdapter] Product sync result from server action:`, result);
         return result;
-        // Note: Saving products via saveProducts is now handled *within* the server action if needed
+        // Note: Saving products via saveProducts is now handled *within* the server action
     } catch (error: any) {
         console.error("[CaspitAdapter] Error calling product sync server action:", error);
         return { success: false, message: `Product sync failed: ${error.message || 'Unknown error'}` };
@@ -55,30 +59,8 @@ class CaspitAdapter implements IPosSystemAdapter {
   }
 
 
-  // --- Map Caspit Product to InvoTrack Product (Still needed if mapping happens client-side, but likely moved server-side) ---
-  // This might be better placed within the server action itself if mapping happens there.
-  private mapCaspitProduct(caspitProduct: any): Product | null {
-     // Basic mapping, adjust fields based on actual CaspitProduct structure
-     const catalogNumber = caspitProduct.CatalogNumber || '';
-     const description = caspitProduct.ProductName || '';
-     const unitPrice = caspitProduct.SalePrice ?? 0;
-
-     // Skip if essential data is missing
-     if (!catalogNumber && !description) {
-       console.warn('[CaspitAdapter] Skipping product due to missing catalog number and description:', caspitProduct);
-       return null;
-     }
-
-     const invoTrackProduct: Product = {
-       id: caspitProduct.ProductID, // Use Caspit's ID if available
-       catalogNumber: catalogNumber || 'N/A', // Fallback for catalog number
-       description: description || 'No Description', // Fallback for description
-       quantity: 0, // Initial quantity is 0, sales sync should update this
-       unitPrice: unitPrice,
-       lineTotal: 0, // This will be calculated based on quantity * unitPrice later or by sales sync
-     };
-     return invoTrackProduct;
-   }
+  // --- Map Caspit Product to InvoTrack Product (Removed - Logic moved to server action) ---
+  // private mapCaspitProduct(caspitProduct: any): Product | null { ... }
 
 
   // --- Sales Sync ---
