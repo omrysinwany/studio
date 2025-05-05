@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -60,6 +61,8 @@ function EditInvoiceContent() {
                 parsedData = JSON.parse(storedData);
             } catch (jsonParseError) {
                  console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
+                 // If parsing fails, remove the invalid item
+                 localStorage.removeItem(dataKey);
                  throw new Error("Invalid JSON structure received from storage.");
             }
 
@@ -80,11 +83,13 @@ function EditInvoiceContent() {
               setProducts(productsWithIds);
                setErrorLoading(null); // Clear any previous error
 
-                // Clean up localStorage item after successful load
-                localStorage.removeItem(dataKey);
+                // DO NOT remove the localStorage item here. Keep it until saved or explicitly discarded.
+                // localStorage.removeItem(dataKey); // REMOVED FROM HERE
 
             } else {
               console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
+              // Remove invalid item
+              localStorage.removeItem(dataKey);
               throw new Error("Invalid data structure received after parsing.");
             }
         } catch (error: any) {
@@ -96,8 +101,10 @@ function EditInvoiceContent() {
               description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
               variant: "destructive",
             });
-             // Clean up potentially invalid localStorage item
-             if (dataKey) localStorage.removeItem(dataKey);
+             // Don't remove if the error was 'not found', otherwise remove potentially invalid data key
+             if (error.message && !error.message.startsWith("Scan results not found")) {
+                 if (dataKey) localStorage.removeItem(dataKey);
+             }
         }
     } else if (!initialDataLoaded) {
        // Only show error/redirect if it's the initial load attempt and NO key param found
@@ -116,16 +123,11 @@ function EditInvoiceContent() {
         setInitialDataLoaded(true); // Mark initial data load attempt complete only if we tried
     }
 
-     // Cleanup function: remove any leftover temp data on unmount or navigation
+     // General cleanup function: remove any leftover temp data on unmount or navigation (optional)
      return () => {
-         if (typeof window !== 'undefined') {
-             for (let i = 0; i < localStorage.length; i++) {
-                 const key = localStorage.key(i);
-                 if (key && key.startsWith(TEMP_DATA_KEY_PREFIX)) {
-                     localStorage.removeItem(key);
-                 }
-             }
-         }
+         // Can add specific cleanup logic here if user navigates away *before* saving
+         // For now, we rely on saving to clear the specific item.
+         // A more robust solution might involve clearing *all* old temp keys on app start.
      };
 
   // Add initialDataLoaded to dependencies to prevent re-running on subsequent renders unless specifically needed
@@ -194,6 +196,7 @@ function EditInvoiceContent() {
 
   const handleSave = async () => {
      setIsSaving(true);
+     const dataKey = searchParams.get('key'); // Get the key again
      try {
        // Remove the temporary 'id' field and ensure numbers are numeric before sending
        const productsToSave: Product[] = products
@@ -216,6 +219,12 @@ function EditInvoiceContent() {
        console.log("Attempting to save products:", productsToSave, "for file:", fileName); // Log data being sent
        await saveProducts(productsToSave, fileName); // Use the backend service function, passing fileName
 
+        // Remove the temp data from localStorage ONLY AFTER successful save
+        if (dataKey) {
+            localStorage.removeItem(dataKey);
+            console.log(`Removed temp data with key: ${dataKey}`);
+        }
+
        toast({
          title: "Products Saved",
          description: "Your changes have been saved successfully.",
@@ -229,10 +238,21 @@ function EditInvoiceContent() {
          description: "Could not save the product data. Please try again.",
          variant: "destructive",
        });
+        // DO NOT remove the temp data if save failed, allow user to retry
      } finally {
        setIsSaving(false);
      }
    };
+
+    const handleGoBack = () => {
+        // Optionally clear the temp data if the user explicitly navigates back *without* saving
+        const dataKey = searchParams.get('key');
+        if (dataKey) {
+            localStorage.removeItem(dataKey);
+            console.log(`Cleared temp data with key ${dataKey} on explicit back navigation.`);
+        }
+        router.push('/upload');
+    };
 
    // Show loading state while initial check is happening
    if (isLoading && !initialDataLoaded) {
@@ -252,7 +272,7 @@ function EditInvoiceContent() {
                     <AlertTitle>Error Loading Invoice Data</AlertTitle>
                     <AlertDescription>{errorLoading}</AlertDescription>
                 </Alert>
-                <Button variant="outline" onClick={() => router.push('/upload')}>
+                <Button variant="outline" onClick={handleGoBack}>
                    Go Back to Upload
                 </Button>
             </div>
@@ -295,7 +315,7 @@ function EditInvoiceContent() {
                              </Button>
                          </div>
                            <div className="mt-6">
-                               <Button variant="outline" onClick={() => router.push('/upload')}>
+                               <Button variant="outline" onClick={handleGoBack}>
                                    Go Back to Upload
                                </Button>
                            </div>
@@ -413,7 +433,7 @@ function EditInvoiceContent() {
              </Button>
           </div>
              <div className="mt-6">
-                 <Button variant="outline" onClick={() => router.push('/upload')}>
+                 <Button variant="outline" onClick={handleGoBack}>
                      Go Back to Upload
                  </Button>
              </div>

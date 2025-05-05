@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -11,6 +12,7 @@ import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import getInvoices for history
+
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 
