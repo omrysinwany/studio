@@ -3,17 +3,15 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext"; // Keep useAuth to optionally show user info
-import { Package, FileText, BarChart2, ScanLine, Loader2 } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"; // Added more icons for KPIs
 import Link from 'next/link';
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-// Removed useEffect and useToast
+import { cn } from '@/lib/utils'; // Import cn for conditional classes
+
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth(); // Still check auth to customize experience if logged in
   const router = useRouter();
-  // Removed toast import
-
-  // Removed useEffect for auth redirection
 
   const handleScanClick = () => {
     router.push('/upload');
@@ -37,6 +35,15 @@ export default function Home() {
      );
    }
 
+  // Placeholder Data (Replace with actual data fetching later)
+  const kpiData = {
+    totalItems: 1234,
+    inventoryValue: 15678.90,
+    valueChangePercent: 5.2,
+    docsProcessed: 89,
+    lowStockItems: 2,
+  };
+
   // Render the main content (no redirect needed)
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8 home-background">
@@ -49,37 +56,65 @@ export default function Home() {
         </p>
 
         {/* Quick Stats Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-           <Card className="shadow-md hover:shadow-lg transition-shadow duration-300">
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-               <Package className="h-4 w-4 text-muted-foreground" />
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold">1,234</div> {/* Placeholder */}
-               <p className="text-xs text-muted-foreground">+5% from last month</p> {/* Placeholder */}
-             </CardContent>
-           </Card>
-           <Card className="shadow-md hover:shadow-lg transition-shadow duration-300">
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
-               <span className="h-4 w-4 text-muted-foreground">$</span>
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold">$15,678.90</div> {/* Placeholder */}
-               <p className="text-xs text-muted-foreground">Updated yesterday</p> {/* Placeholder */}
-             </CardContent>
-           </Card>
-           <Card className="shadow-md hover:shadow-lg transition-shadow duration-300">
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium">Docs Processed (30d)</CardTitle>
-               <FileText className="h-4 w-4 text-muted-foreground" />
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold">89</div> {/* Placeholder */}
-               <p className="text-xs text-muted-foreground">Last: Invoice #INV-089</p> {/* Placeholder */}
-             </CardContent>
-           </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+           {/* Total Items Card */}
+           <Link href="/inventory" className="block hover:no-underline">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                 <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+                 <Package className="h-4 w-4 text-muted-foreground" />
+               </CardHeader>
+               <CardContent>
+                 <div className="text-2xl font-bold">{kpiData.totalItems.toLocaleString()}</div>
+                 <p className="text-xs text-muted-foreground">In stock</p>
+               </CardContent>
+             </Card>
+           </Link>
+
+            {/* Inventory Value Card */}
+            <Link href="/reports" className="block hover:no-underline">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                 <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
+                 <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span> {/* Changed to ILS */}
+               </CardHeader>
+               <CardContent>
+                 <div className="text-2xl font-bold">₪{kpiData.inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <p className={cn("text-xs", kpiData.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
+                   {kpiData.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
+                   {Math.abs(kpiData.valueChangePercent)}% vs last period
+                 </p>
+               </CardContent>
+             </Card>
+            </Link>
+
+           {/* Docs Processed Card */}
+            <Link href="/invoices" className="block hover:no-underline">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                 <CardTitle className="text-sm font-medium">Docs Processed (30d)</CardTitle>
+                 <FileText className="h-4 w-4 text-muted-foreground" />
+               </CardHeader>
+               <CardContent>
+                 <div className="text-2xl font-bold">{kpiData.docsProcessed}</div>
+                 <p className="text-xs text-muted-foreground">Last: Invoice #INV-089</p> {/* Placeholder */}
+               </CardContent>
+             </Card>
+            </Link>
+
+             {/* Low Stock Items Card */}
+             <Link href="/inventory?filter=low" className="block hover:no-underline">
+                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                     <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+                     <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                 </CardHeader>
+                 <CardContent>
+                     <div className="text-2xl font-bold">{kpiData.lowStockItems}</div>
+                     <p className="text-xs text-muted-foreground">Items needing attention</p>
+                 </CardContent>
+                 </Card>
+            </Link>
          </div>
 
 

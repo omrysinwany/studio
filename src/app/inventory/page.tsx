@@ -20,14 +20,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import { useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Product, getProductsService } from '@/services/backend'; // Import getProductsService
+import { Product, getProductsService } from '@/services/backend'; // Use renamed service function
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
-
-// Mock data removed, using backend service
 
 // Assume backend provides categories
 const MOCK_CATEGORIES = ['Widgets', 'Gadgets', 'Components', 'Other'];
@@ -51,13 +50,14 @@ export default function InventoryPage() {
     actions: true, // Column for actions like 'View Details'
   });
   // const [filterCategory, setFilterCategory] = useState<string>(''); // Category filter depends on data
-  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock'>('all');
+  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all'); // Added 'out' option
   const [sortKey, setSortKey] = useState<SortKey>('description'); // Default sort by description
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const router = useRouter();
   const searchParams = useSearchParams(); // Get search params
   const { toast } = useToast();
   const shouldRefresh = searchParams.get('refresh'); // Check for refresh param
+  const initialFilter = searchParams.get('filter'); // Get initial filter from URL
 
 
    // Fetch inventory data (replace with actual API call)
@@ -89,12 +89,17 @@ export default function InventoryPage() {
 
      fetchInventory();
 
+     // Set initial filter based on URL param
+     if (initialFilter === 'low' && filterStockLevel === 'all') {
+       setFilterStockLevel('low');
+     }
+
      // Optionally remove the refresh param after fetching to prevent infinite loops if state changes cause re-renders
      // if (shouldRefresh) {
      //    router.replace('/inventory', { scroll: false }); // Remove query param without scroll jump
      // }
 
-   }, [toast, shouldRefresh]); // Add shouldRefresh to dependency array
+   }, [toast, shouldRefresh, initialFilter, filterStockLevel]); // Add shouldRefresh, initialFilter, filterStockLevel to dependency array
 
 
   const handleSort = (key: SortKey) => {
@@ -123,9 +128,11 @@ export default function InventoryPage() {
     //    result = result.filter(item => item.category === filterCategory);
     //  }
       if (filterStockLevel === 'low') {
-        result = result.filter(item => item.quantity <= 10); // Example threshold for low stock
+        result = result.filter(item => item.quantity > 0 && item.quantity <= 10); // Example threshold for low stock (excluding out of stock)
       } else if (filterStockLevel === 'inStock') {
         result = result.filter(item => item.quantity > 0);
+      } else if (filterStockLevel === 'out') {
+        result = result.filter(item => item.quantity === 0); // Filter for out of stock
       }
 
 
@@ -155,7 +162,7 @@ export default function InventoryPage() {
 
 
      return result;
-      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]); // Removed filterCategory dependency
+      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]); // Added filterStockLevel dependency
 
     const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id') => {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
@@ -165,7 +172,7 @@ export default function InventoryPage() {
   const columnHeaders: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
      { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
      { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
-     { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[80px]' },
+     { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' }, // Increased min-width for badge
      { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
      { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
      // { key: 'category', label: 'Category', sortable: true, className: 'min-w-[100px]' },
@@ -211,7 +218,10 @@ export default function InventoryPage() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline">
                         <Filter className="mr-2 h-4 w-4" />
-                         {filterStockLevel === 'low' ? 'Low Stock' : filterStockLevel === 'inStock' ? 'In Stock' : 'Stock Level'}
+                         {filterStockLevel === 'low' ? 'Low Stock' :
+                          filterStockLevel === 'inStock' ? 'In Stock' :
+                          filterStockLevel === 'out' ? 'Out of Stock' :
+                          'Stock Level'}
                         <ChevronDown className="ml-2 h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -234,7 +244,13 @@ export default function InventoryPage() {
                          checked={filterStockLevel === 'low'}
                          onCheckedChange={() => setFilterStockLevel('low')}
                        >
-                         Low Stock (≤10)
+                         Low Stock (1-10)
+                       </DropdownMenuCheckboxItem>
+                         <DropdownMenuCheckboxItem
+                         checked={filterStockLevel === 'out'}
+                         onCheckedChange={() => setFilterStockLevel('out')}
+                       >
+                         Out of Stock (0)
                        </DropdownMenuCheckboxItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -302,10 +318,14 @@ export default function InventoryPage() {
                        {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
-                          <TableCell className={cn("text-right", item.quantity <= 10 && "text-destructive font-semibold")}>
-                             {item.quantity}
-                             {item.quantity <= 10 && item.quantity > 0 && <span className="ml-1 text-xs">(Low)</span>}
-                             {item.quantity === 0 && <span className="ml-1 text-xs">(Out)</span>}
+                          <TableCell className="text-right">
+                            <span>{item.quantity}</span>
+                            {item.quantity === 0 && (
+                              <Badge variant="destructive" className="ml-2">Out</Badge>
+                            )}
+                            {item.quantity > 0 && item.quantity <= 10 && (
+                              <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80">Low</Badge>
+                            )}
                           </TableCell>
                         )}
                         {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice?.toFixed(2) ?? '0.00'}</TableCell>}

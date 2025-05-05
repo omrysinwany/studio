@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle } from 'lucide-react'; // Added AlertCircle
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -30,9 +30,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import backend service
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
-
-// Mock Data Removed - Using backend service now
 
 // Assume backend provides suppliers for filtering (or derive from fetched data)
 const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply']; // Keep for filtering UI for now
@@ -44,7 +43,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem, boolean>>({
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({ // Added 'actions'
     id: false,
     fileName: true,
     uploadTime: true,
@@ -52,7 +51,8 @@ export default function InvoicesPage() {
     invoiceNumber: true,
     supplier: true,
     totalAmount: true,
-    errorMessage: false, // Hide error message column by default
+    errorMessage: false, // Keep hidden by default
+    actions: true, // Show actions column
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -78,7 +78,7 @@ export default function InvoicesPage() {
               uploadTime: new Date(inv.uploadTime)
           }));
 
-         // Apply client-side filtering (if backend doesn't support it yet)
+         // Client-side filtering (keep as backend might not support yet)
          let filteredData = fetchedData;
          if (filterSupplier) {
             filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -128,7 +128,7 @@ export default function InvoicesPage() {
   const filteredAndSortedInvoices = useMemo(() => {
     let result = [...invoices];
 
-    // Search filtering (already applied in fetch effect if using client-side filtering)
+    // Search filtering
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
@@ -164,13 +164,14 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm, sortKey, sortDirection]);
 
 
-   const columnHeaders: { key: keyof InvoiceHistoryItem; label: string; sortable: boolean, className?: string }[] = [
+   const columnHeaders: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string }[] = [
       { key: 'fileName', label: 'File Name', sortable: true, className: 'min-w-[200px]' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[150px]' },
-      { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px]' },
+      { key: 'status', label: 'Status', sortable: true, className: 'min-w-[120px]' }, // Increased width for badge
       { key: 'invoiceNumber', label: 'Invoice #', sortable: true, className: 'min-w-[120px]' },
       { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[150px]' },
       { key: 'totalAmount', label: 'Total Amount (₪)', sortable: true, className: 'text-right min-w-[120px]' }, // Updated label
+       { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' } // Added actions header
    ];
 
 
@@ -179,10 +180,15 @@ export default function InvoicesPage() {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        return dateObj.toLocaleDateString();
+        // return dateObj.toLocaleDateString(); // Only date
+        return dateObj.toLocaleString(); // Date and time
      } catch (e) {
        return 'Invalid Date';
      }
+   };
+
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
+       setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
 
@@ -195,24 +201,44 @@ export default function InvoicesPage() {
   }
 
 
-  const renderStatusIcon = (status: InvoiceHistoryItem['status']) => {
-    switch (status) {
-        case 'completed': return <CheckCircle className="mr-1 h-3 w-3 text-green-600" />;
-        case 'processing': return <Loader className="mr-1 h-3 w-3 text-blue-600 animate-spin" />;
-        case 'pending': return <Clock className="mr-1 h-3 w-3 text-yellow-600" />;
-        case 'error': return <XCircle className="mr-1 h-3 w-3 text-red-600" />;
-        default: return null;
-    }
-  };
+  const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
+     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+     let className = '';
+     let icon = null;
 
-  const getStatusColorClass = (status: InvoiceHistoryItem['status']) => {
      switch (status) {
-        case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-        case 'processing': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse';
-        case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-        case 'error': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-        default: return '';
+         case 'completed':
+             variant = 'secondary';
+             className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+             icon = <CheckCircle className="mr-1 h-3 w-3" />;
+             break;
+         case 'processing':
+              variant = 'secondary';
+             className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
+             icon = <Loader className="mr-1 h-3 w-3 animate-spin" />;
+             break;
+         case 'pending':
+              variant = 'secondary';
+             className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
+             icon = <Clock className="mr-1 h-3 w-3" />;
+             break;
+         case 'error':
+             variant = 'destructive';
+             // className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; // Default destructive handles this
+             icon = <XCircle className="mr-1 h-3 w-3" />;
+             break;
+         default:
+             variant = 'outline';
+             icon = null;
+             break;
      }
+
+     return (
+        <Badge variant={variant} className={cn("text-xs font-medium", className)}>
+            {icon}
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+        </Badge>
+     );
   };
 
   return (
@@ -273,7 +299,7 @@ export default function InvoicesPage() {
                        numberOfMonths={2}
                      />
                      {dateRange && (
-                        <div className="p-2 border-t">
+                        <div className="p-2 border-t flex justify-end">
                              <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>Clear</Button>
                         </div>
                      )}
@@ -335,6 +361,38 @@ export default function InvoicesPage() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {/* Column Visibility Toggle */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Eye className="mr-2 h-4 w-4" /> View
+                    <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {columnHeaders.map((header) => (
+                    <DropdownMenuCheckboxItem
+                      key={header.key}
+                      className="capitalize"
+                      checked={visibleColumns[header.key]}
+                      onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions')}
+                    >
+                      {header.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  {/* Option to toggle error message column separately */}
+                  <DropdownMenuCheckboxItem
+                      key="errorMessage"
+                      checked={visibleColumns.errorMessage}
+                      onCheckedChange={() => toggleColumnVisibility('errorMessage')}
+                    >
+                      Error Message
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -347,7 +405,7 @@ export default function InvoicesPage() {
                     <TableHead
                       key={header.key}
                       className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
-                      onClick={() => header.sortable && handleSort(header.key)}
+                      onClick={() => header.sortable && handleSort(header.key as SortKey)} // Cast to SortKey
                     >
                       <div className="flex items-center gap-1">
                          {header.label}
@@ -359,14 +417,13 @@ export default function InvoicesPage() {
                       </div>
                     </TableHead>
                   ))}
-                   {/* Optional: Actions Column Header */}
-                   {/* <TableHead className="text-right">Actions</TableHead> */}
+                   {/* Optional: Actions Column Header - Removed as it's now part of columnHeaders */}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length + (/* Actions ? 1 : */ 0)} className="h-24 text-center">
+                    <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
                       <div className="flex justify-center items-center">
                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
                          <span className="ml-2">Loading invoices...</span>
@@ -375,7 +432,7 @@ export default function InvoicesPage() {
                   </TableRow>
                 ) : filteredAndSortedInvoices.length === 0 ? (
                   <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length + (/* Actions ? 1 : */ 0)} className="h-24 text-center">
+                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
                        No invoices found matching your criteria.
                      </TableCell>
                   </TableRow>
@@ -386,13 +443,7 @@ export default function InvoicesPage() {
                        {visibleColumns.uploadTime && <TableCell>{formatDate(item.uploadTime)}</TableCell>}
                        {visibleColumns.status && (
                          <TableCell>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColorClass(item.status)}`}>
-                                {renderStatusIcon(item.status)}
-                                {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                            </span>
-                             {item.status === 'error' && item.errorMessage && (
-                                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{item.errorMessage}</p>
-                             )}
+                            {renderStatusBadge(item.status)}
                          </TableCell>
                        )}
                        {visibleColumns.invoiceNumber && <TableCell>{item.invoiceNumber || '-'}</TableCell>}
@@ -402,10 +453,23 @@ export default function InvoicesPage() {
                             {item.totalAmount !== undefined ? `₪${item.totalAmount.toFixed(2)}` : '-'}
                          </TableCell>
                        )}
-                        {/* Optional Actions Cell */}
-                        {/* <TableCell className="text-right">
-                           <Button variant="ghost" size="sm" onClick={() => router.push(`/invoices/${item.id}`)}>Details</Button>
-                        </TableCell> */}
+                       {visibleColumns.errorMessage && ( // Conditionally render error message cell
+                         <TableCell className="text-xs text-destructive max-w-xs truncate">
+                             {item.status === 'error' ? item.errorMessage : '-'}
+                         </TableCell>
+                       )}
+                        {/* Actions Cell */}
+                        {visibleColumns.actions && (
+                         <TableCell className="text-right">
+                           {item.status === 'error' && item.errorMessage && (
+                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" title={item.errorMessage}>
+                               <AlertCircle className="h-4 w-4" />
+                             </Button>
+                           )}
+                            {/* Add more actions like 'View Details' if needed */}
+                           {/* <Button variant="ghost" size="sm" onClick={() => router.push(`/invoices/${item.id}`)}>Details</Button> */}
+                         </TableCell>
+                        )}
                     </TableRow>
                   ))
                 )}
@@ -418,4 +482,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-
