@@ -21,27 +21,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, Eye, Package } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-// Removed useAuth import
+import { useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Product, getProducts } from '@/services/backend'; // Import Product type and getProducts function
+import { Product, getProductsService } from '@/services/backend'; // Import getProductsService
 
-
-// Mock Product Data Interface (should match inventory page)
-// Using Product interface from backend service now
-// interface InventoryProduct {
-//   id: string; // Changed to optional as it might not be present initially, depends on backend
-//   name: string;
-//   catalogNumber: string;
-//   quantity: number;
-//   unitPrice: number; // Effective unit price
-//   category?: string; // Optional category for filtering
-//   lastUpdated: string; // ISO date string
-//   description?: string;
-//   supplier?: string;
-//   location?: string;
-// }
 
 // Mock data removed, using backend service
 
@@ -71,18 +55,18 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('description'); // Default sort by description
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const router = useRouter();
-  // Removed user and authLoading from useAuth
+  const searchParams = useSearchParams(); // Get search params
   const { toast } = useToast();
 
 
    // Fetch inventory data (replace with actual API call)
    useEffect(() => {
      const fetchInventory = async () => {
-       // Removed user check
        setIsLoading(true);
        try {
-         // Replace MOCK_INVENTORY with actual API call:
-         const data = await getProducts(); // Fetch products from backend service
+         console.log("Fetching inventory data...");
+         const data = await getProductsService(); // Fetch products from backend service using the renamed function
+          console.log("Fetched inventory data:", data);
           // Add a temporary ID for React keys if backend doesn't provide one
           const inventoryWithIds = data.map((item, index) => ({
             ...item,
@@ -103,11 +87,13 @@ export default function InventoryPage() {
      };
 
      fetchInventory(); // Fetch data directly
-     // Removed authLoading and user dependencies
-   }, [toast]);
 
+     // Check for a 'refresh' parameter to potentially force a refetch (though useEffect dependency array is usually sufficient)
+     // if (searchParams.get('refresh')) {
+     //   fetchInventory();
+     // }
 
-   // Removed useEffect for auth redirection
+   }, [toast]); // Removed searchParams dependency to avoid potential loops, useEffect runs on mount
 
 
   const handleSort = (key: SortKey) => {
@@ -128,8 +114,8 @@ export default function InventoryPage() {
      if (searchTerm) {
        const lowerSearchTerm = searchTerm.toLowerCase();
        result = result.filter(item =>
-         item.description.toLowerCase().includes(lowerSearchTerm) || // Search in description
-         item.catalogNumber.toLowerCase().includes(lowerSearchTerm)
+         (item.description?.toLowerCase() || '').includes(lowerSearchTerm) || // Search in description
+         (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm)
        );
      }
     //  if (filterCategory) { // Re-enable if category is added back
@@ -153,12 +139,7 @@ export default function InventoryPage() {
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
-             // Consider date sorting if 'lastUpdated' is added
-             // if (sortKey === 'lastUpdated') {
-             //    comparison = new Date(valA).getTime() - new Date(valB).getTime();
-             // } else {
                 comparison = valA.localeCompare(valB);
-             // }
            } else {
               // Fallback for mixed types or other types - place undefined/null last
               if (valA == null && valB != null) comparison = 1;
@@ -173,7 +154,6 @@ export default function InventoryPage() {
 
 
      return result;
-     // }, [inventory, searchTerm, filterCategory, filterStockLevel, sortKey, sortDirection]);
       }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]); // Removed filterCategory dependency
 
     const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id') => {
@@ -192,25 +172,13 @@ export default function InventoryPage() {
      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
   ];
 
-   // Format date for display - Keep if lastUpdated might be added later
-   // const formatDate = (dateString: string) => {
-   //   try {
-   //     return new Date(dateString).toLocaleDateString();
-   //   } catch (e) {
-   //     return 'Invalid Date';
-   //   }
-   // };
-
-
-    if (isLoading) { // Removed authLoading check
+    if (isLoading) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
        </div>
      );
    }
-
-    // Removed !user check
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
@@ -321,16 +289,7 @@ export default function InventoryPage() {
                  </TableRow>
                </TableHeader>
                <TableBody>
-                 {isLoading ? (
-                   <TableRow>
-                     <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
-                        <div className="flex justify-center items-center">
-                           <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                           <span className="ml-2">Loading inventory...</span>
-                        </div>
-                     </TableCell>
-                   </TableRow>
-                 ) : filteredAndSortedInventory.length === 0 ? (
+                 {filteredAndSortedInventory.length === 0 ? (
                    <TableRow>
                      <TableCell colSpan={columnHeaders.filter(h => visibleColumns[h.key]).length} className="h-24 text-center">
                        No inventory items found matching your criteria.
@@ -339,8 +298,8 @@ export default function InventoryPage() {
                  ) : (
                    filteredAndSortedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50">
-                       {visibleColumns.description && <TableCell className="font-medium">{item.description}</TableCell>}
-                        {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber}</TableCell>}
+                       {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
+                        {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className={cn("text-right", item.quantity <= 10 && "text-destructive font-semibold")}>
                              {item.quantity}
@@ -348,10 +307,8 @@ export default function InventoryPage() {
                              {item.quantity === 0 && <span className="ml-1 text-xs">(Out)</span>}
                           </TableCell>
                         )}
-                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice.toFixed(2)}</TableCell>}
-                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{item.lineTotal.toFixed(2)}</TableCell>}
-                        {/* {visibleColumns.category && <TableCell>{item.category || '-'}</TableCell>} */}
-                       {/* {visibleColumns.lastUpdated && <TableCell>{formatDate(item.lastUpdated)}</TableCell>} */}
+                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice?.toFixed(2) ?? '0.00'}</TableCell>}
+                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{item.lineTotal?.toFixed(2) ?? '0.00'}</TableCell>}
                        {visibleColumns.actions && (
                          <TableCell className="text-right">
                            <Button

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Trash2, PlusCircle, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { saveProducts, Product } from '@/services/backend'; // Import Product type and save function
-// Removed useAuth import
+
 
 // Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
@@ -20,7 +20,6 @@ function EditInvoiceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
-  // Removed user and authLoading from useAuth
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
   const [fileName, setFileName] = useState<string>('');
@@ -46,6 +45,10 @@ function EditInvoiceContent() {
           const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
             ...p,
             id: `${Date.now()}-${index}`, // Simple unique ID generation
+            // Ensure numeric fields are numbers, default to 0 if not
+            quantity: typeof p.quantity === 'number' ? p.quantity : 0,
+            unitPrice: typeof p.unitPrice === 'number' ? p.unitPrice : 0,
+            lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : 0,
           }));
           setProducts(productsWithIds);
         } else {
@@ -75,16 +78,24 @@ function EditInvoiceContent() {
   }, [searchParams, router, toast, initialDataLoaded]);
 
 
-   // Removed useEffect for auth redirection
-
-
   const handleInputChange = (id: string, field: keyof Product, value: string | number) => {
     setProducts(prevProducts =>
-      prevProducts.map(product =>
-        product.id === id ? { ...product, [field]: value } : product
-      )
+      prevProducts.map(product => {
+        if (product.id === id) {
+          const updatedProduct = { ...product, [field]: value };
+
+          // Auto-calculate lineTotal if quantity or unitPrice changes
+          if ((field === 'quantity' || field === 'unitPrice') && typeof updatedProduct.quantity === 'number' && typeof updatedProduct.unitPrice === 'number') {
+            updatedProduct.lineTotal = parseFloat((updatedProduct.quantity * updatedProduct.unitPrice).toFixed(2));
+          }
+
+          return updatedProduct;
+        }
+        return product;
+      })
     );
   };
+
 
   const handleAddRow = () => {
     const newProduct: EditableProduct = {
@@ -108,17 +119,29 @@ function EditInvoiceContent() {
   };
 
   const handleSave = async () => {
-     // Removed user check
      setIsSaving(true);
      try {
-       // Remove the temporary 'id' field before sending to the backend
-       const productsToSave: Product[] = products.map(({ id, ...rest }) => rest);
+       // Remove the temporary 'id' field and ensure numbers are numeric before sending
+       const productsToSave: Product[] = products
+         .map(({ id, ...rest }) => ({
+             ...rest,
+             quantity: parseFloat(String(rest.quantity)) || 0,
+             unitPrice: parseFloat(String(rest.unitPrice)) || 0,
+             lineTotal: parseFloat(String(rest.lineTotal)) || 0,
+         }))
+         // Optional: Filter out rows that are essentially empty
+         .filter(p => p.catalogNumber || p.description);
+
+       console.log("Attempting to save products:", productsToSave); // Log data being sent
        await saveProducts(productsToSave); // Use the backend service function
+
        toast({
          title: "Products Saved",
          description: "Your changes have been saved successfully.",
        });
-       router.push('/inventory'); // Navigate to inventory after saving
+        router.push('/inventory'); // Navigate to inventory
+        router.refresh(); // Force refresh to fetch updated data on inventory page
+
      } catch (error) {
        console.error("Failed to save products:", error);
        toast({
@@ -131,15 +154,13 @@ function EditInvoiceContent() {
      }
    };
 
-   if (isLoading || !initialDataLoaded) { // Removed authLoading check
+   if (isLoading || !initialDataLoaded) {
      return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
      );
    }
-
-   // Removed !user check
 
 
   return (
@@ -159,8 +180,8 @@ function EditInvoiceContent() {
                   <TableHead>Catalog #</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit Price</TableHead>
-                  <TableHead className="text-right">Line Total</TableHead>
+                  <TableHead className="text-right">Unit Price (₪)</TableHead>
+                  <TableHead className="text-right">Line Total (₪)</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -230,7 +251,7 @@ function EditInvoiceContent() {
              <Button variant="outline" onClick={handleAddRow}>
                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
              </Button>
-             <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary/90">
+             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90">
               {isSaving ? (
                  <>
                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...

@@ -90,46 +90,80 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
  * @returns A promise that resolves when the data is successfully saved.
  */
 export async function saveProducts(products: Product[]): Promise<void> {
-  // TODO: Implement this by calling your backend API.
   console.log('Saving products:', products);
-  // Simulate saving delay
   await new Promise(resolve => setTimeout(resolve, 300));
 
   products.forEach(newProduct => {
-    const existingIndex = mockInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
+    // Ensure values are numbers, default to 0 if not
+    const quantity = typeof newProduct.quantity === 'number' ? newProduct.quantity : 0;
+    const unitPrice = typeof newProduct.unitPrice === 'number' ? newProduct.unitPrice : 0;
+    const lineTotal = typeof newProduct.lineTotal === 'number' ? newProduct.lineTotal : 0;
+
+    // Attempt to find by ID first, then catalog number
+    let existingIndex = -1;
+    if (newProduct.id) {
+        existingIndex = mockInventory.findIndex(p => p.id === newProduct.id);
+    }
+    // Only search by catalog number if ID didn't match or wasn't provided
+    if (existingIndex === -1 && newProduct.catalogNumber && newProduct.catalogNumber !== 'N/A') {
+        existingIndex = mockInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
+    }
+
+
     if (existingIndex !== -1) {
-      // Update existing product quantity (simple merge logic for mock)
-      console.log(`Updating product ${newProduct.catalogNumber}, adding quantity ${newProduct.quantity}`);
-      mockInventory[existingIndex].quantity += newProduct.quantity;
-      // Optionally update price if needed, here we just update quantity
-      mockInventory[existingIndex].unitPrice = newProduct.unitPrice; // Update unit price
-      mockInventory[existingIndex].lineTotal = mockInventory[existingIndex].quantity * mockInventory[existingIndex].unitPrice; // Recalculate line total
+      // Update existing product
+      console.log(`Updating product ${mockInventory[existingIndex].catalogNumber} (ID: ${mockInventory[existingIndex].id})`);
+      // Replace existing data with new data, keeping the original ID
+      mockInventory[existingIndex] = {
+          ...newProduct, // Copy new data first
+          id: mockInventory[existingIndex].id, // Ensure original ID is kept
+          quantity: quantity, // Ensure quantity is updated numeric value
+          unitPrice: unitPrice, // Ensure unitPrice is updated numeric value
+          lineTotal: lineTotal, // Ensure lineTotal is updated numeric value
+          catalogNumber: newProduct.catalogNumber || mockInventory[existingIndex].catalogNumber, // Keep original catalog if new one is empty/N/A
+          description: newProduct.description || mockInventory[existingIndex].description, // Keep original description if new one is empty
+      };
+       console.log(`Product updated:`, mockInventory[existingIndex]);
+
     } else {
-      // Add new product
-      console.log(`Adding new product ${newProduct.catalogNumber}`);
-       const productToAdd: Product = {
-          ...newProduct,
-          id: newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(7)}`, // Assign ID if missing
-       };
+      // Add new product if it has some identifying information
+       if (!newProduct.catalogNumber && !newProduct.description) {
+           console.log("Skipping adding product with no catalog number or description:", newProduct);
+           return; // Skip adding essentially empty rows
+       }
+      console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description}`);
+      const productToAdd: Product = {
+        ...newProduct,
+        id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Generate a unique ID
+        quantity: quantity,
+        unitPrice: unitPrice,
+        lineTotal: lineTotal,
+        catalogNumber: newProduct.catalogNumber || 'N/A', // Ensure catalogNumber exists
+        description: newProduct.description || 'No Description', // Ensure description exists
+      };
       mockInventory.push(productToAdd);
+      console.log(`Product added:`, productToAdd);
     }
   });
   console.log('Updated mockInventory:', mockInventory);
   return;
 }
 
+
 /**
  * Asynchronously retrieves the list of all products from the backend.
+ * Renamed to avoid potential naming conflicts.
  *
  * @returns A promise that resolves to an array of Product objects.
  */
-export async function getProducts(): Promise<Product[]> {
+export async function getProductsService(): Promise<Product[]> {
   // TODO: Implement this by calling your backend API.
-  console.log("getProducts called");
+  console.log("getProductsService called");
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
-  // Return a copy of the mock data
-  return [...mockInventory];
+  // Return a deep copy of the mock data to prevent direct mutation issues
+  console.log("Returning inventory:", JSON.parse(JSON.stringify(mockInventory)));
+  return JSON.parse(JSON.stringify(mockInventory));
 }
 
 /**
@@ -144,7 +178,7 @@ export async function getProductById(productId: string): Promise<Product | null>
    // Simulate API delay
    await new Promise(resolve => setTimeout(resolve, 300));
    const product = mockInventory.find(p => p.id === productId);
-   return product || null;
+   return product ? { ...product } : null; // Return a copy or null
 }
 
 
