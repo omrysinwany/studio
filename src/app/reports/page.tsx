@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { BarChart, LineChart, PieChart, Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2 } from 'lucide-react';
+import { BarChart as BarChartIcon, LineChart as LineChartIcon, PieChart as PieChartIcon, Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2 } from 'lucide-react'; // Renamed chart icons to avoid conflict
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
-import { Bar, Line, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
+import { Bar, BarChart, Line, LineChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts'; // Keep recharts imports
 import { Button } from '@/components/ui/button';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -246,7 +246,6 @@ export default function ReportsPage() {
                 <CardContent>
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -258,7 +257,6 @@ export default function ReportsPage() {
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
                                 </LineChart>
-                            </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
                        <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
@@ -275,7 +273,6 @@ export default function ReportsPage() {
                  <CardContent>
                       {barChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -286,7 +283,6 @@ export default function ReportsPage() {
                                      />
                                     <Bar dataKey="count" fill="var(--color-count)" radius={4} />
                                 </BarChart>
-                             </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
                         <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
@@ -303,7 +299,6 @@ export default function ReportsPage() {
                  <CardContent className="flex items-center justify-center pb-8">
                      {pieChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <ChartTooltip
                                         cursor={false}
@@ -334,7 +329,6 @@ export default function ReportsPage() {
                                          wrapperStyle={{ paddingTop: 20 }}
                                      />
                                  </PieChart>
-                             </ResponsiveContainer>
                          </ChartContainer>
                      ) : (
                          <p className="text-center text-muted-foreground py-10">No category data available for this period.</p>
