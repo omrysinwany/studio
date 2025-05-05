@@ -31,6 +31,7 @@ export interface SyncResult {
   message: string;
   itemsSynced?: number;
   errors?: any[];
+  products?: Product[]; // Optional: Include products fetched during sync
 }
 
 /**
@@ -71,8 +72,9 @@ export interface IPosSystemAdapter {
   /**
    * Synchronizes product data from the POS system to InvoTrack.
    * (Or potentially two-way sync in the future).
+   * This method should fetch data and return it, not save it directly.
    * @param config - The connection configuration.
-   * @returns A promise resolving to a SyncResult object.
+   * @returns A promise resolving to a SyncResult object, potentially including the fetched products.
    */
   syncProducts(config: PosConnectionConfig): Promise<SyncResult>;
 

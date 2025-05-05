@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection, getPosAdapter, syncWithPos } from '@/services/pos-integration/integration-manager'; // Import syncWithPos
-import { savePosSettings, getPosSettings } from '@/services/backend'; // Import backend functions for settings
-import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Import SyncResult type
+import { savePosSettings, getPosSettings, saveProducts } from '@/services/backend'; // Import backend functions for settings AND saveProducts
+import type { PosConnectionConfig, SyncResult, Product } from '@/services/pos-integration/pos-adapter.interface'; // Import SyncResult type
 import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -133,22 +134,57 @@ export default function PosIntegrationSettingsPage() {
      setIsSyncing(true);
      setSyncResults([]); // Clear previous results
      toast({ title: "Sync Started", description: `Starting sync with ${selectedSystemId}...` });
+     let overallSuccess = true;
+     let allFetchedProducts: Product[] = [];
+
      try {
        // Perform both product and sales sync ('all')
        const results = await syncWithPos(selectedSystemId, configValues, 'all');
        setSyncResults(results);
 
-       const overallSuccess = results.every(r => r.success);
+       // Check overall success and collect products
+       results.forEach(result => {
+         if (!result.success) {
+           overallSuccess = false;
+         }
+         // Collect products if they exist in the result
+         if (result.products && Array.isArray(result.products)) {
+            allFetchedProducts = allFetchedProducts.concat(result.products);
+         }
+       });
+
+        // ** Save fetched products on the client-side **
+        if (allFetchedProducts.length > 0) {
+            try {
+                console.log(`[POS Page] Saving ${allFetchedProducts.length} synced products...`);
+                // Use the source 'caspit_sync' or derive from selectedSystemId
+                await saveProducts(allFetchedProducts, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
+                console.log(`[POS Page] Successfully saved synced products.`);
+                // Add a success message for saving products to syncResults if needed
+                setSyncResults(prev => [...prev, { success: true, message: `Saved ${allFetchedProducts.length} products to inventory.` }]);
+            } catch (saveError: any) {
+                console.error("[POS Page] Error saving synced products:", saveError);
+                overallSuccess = false; // Mark overall sync as failed if saving fails
+                // Add save error to sync results for display
+                setSyncResults(prev => [...prev, { success: false, message: `Failed to save products: ${saveError.message}` }]);
+                toast({
+                    title: "Product Save Failed",
+                    description: `Could not save synced products: ${saveError.message || 'Unknown error'}`,
+                    variant: "destructive",
+                });
+            }
+        }
+
        toast({
          title: overallSuccess ? "Sync Completed" : "Sync Partially Failed",
          description: overallSuccess
-           ? `Successfully synced data with ${selectedSystemId}.`
+           ? `Successfully synced data with ${selectedSystemId}. ${allFetchedProducts.length > 0 ? `${allFetchedProducts.length} products updated.` : ''}`
            : `Some sync operations failed. Check details below.`,
          variant: overallSuccess ? 'default' : 'destructive',
        });
 
        // Optionally refresh other parts of the app or indicate data updated
-        // Example: router.push('/inventory?refresh=true');
+        // Example: router.push('/inventory?refresh=true'); // Can cause issues if saveProducts is async, better handled differently
 
      } catch (error: any) {
        console.error("Error during manual sync:", error);

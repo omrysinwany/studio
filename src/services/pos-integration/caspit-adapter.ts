@@ -4,17 +4,12 @@
  */
 
 import type { IPosSystemAdapter, PosConnectionConfig, SyncResult, Product } from './pos-adapter.interface';
-// Removed import { saveProducts } from '@/services/backend';
+// Removed: import { saveProducts } from '@/services/backend'; // Cannot call client-side function from server
 import { testCaspitConnectionAction, syncCaspitProductsAction, syncCaspitSalesAction } from '@/actions/caspit-actions'; // Import server actions
-
-// Removed interface CaspitProduct as mapping happens in the action
 
 class CaspitAdapter implements IPosSystemAdapter {
   readonly systemId = 'caspit';
   readonly systemName = 'Caspit (כספית)';
-
-  // --- Authentication (handled within server actions now) ---
-  // Token logic removed from adapter
 
   // --- Connection Test ---
   async testConnection(config: PosConnectionConfig): Promise<{ success: boolean; message: string }> {
@@ -34,19 +29,18 @@ class CaspitAdapter implements IPosSystemAdapter {
   async syncProducts(config: PosConnectionConfig): Promise<SyncResult> {
     console.log(`[CaspitAdapter] Starting product sync via server action...`);
     try {
-        // Call the server action, passing the config. The action handles token fetching.
+        // Call the server action, passing the config. The action handles token fetching
+        // and now returns the products in the SyncResult object.
         const result = await syncCaspitProductsAction(config);
         console.log(`[CaspitAdapter] Product sync result from server action:`, result);
+        // ** DO NOT SAVE PRODUCTS HERE **
+        // The saving is handled on the client-side after the action returns.
         return result;
     } catch (error: any) {
         console.error("[CaspitAdapter] Error calling product sync server action:", error);
         return { success: false, message: `Product sync failed: ${error.message || 'Unknown error'}` };
     }
   }
-
-
-  // --- Map Caspit Product to InvoTrack Product (Removed - Logic moved to server action) ---
-
 
   // --- Sales Sync ---
   async syncSales(config: PosConnectionConfig): Promise<SyncResult> {

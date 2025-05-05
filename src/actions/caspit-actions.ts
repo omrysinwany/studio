@@ -3,82 +3,73 @@
 
 import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
 import type { Product } from '@/services/backend';
-import { saveProducts } from '@/services/backend'; // Import saveProducts
+// Removed: import { saveProducts } from '@/services/backend'; // saveProducts is client-side, cannot be called here
 
 const CASPIT_API_BASE_URL = 'https://app.caspit.biz/api/v1';
 
 // --- Helper function to get the Caspit API token ---
-// This function remains the same, it will be called by the actions below.
 async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
     const { user, pwd, osekMorshe } = config;
     if (!user || !pwd || !osekMorshe) {
         throw new Error('Missing Caspit credentials (user, pwd, osekMorshe) in configuration.');
     }
 
-    const url = `${CASPIT_API_BASE_URL}/Token?user=${encodeURIComponent(user)}&pwd=${encodeURIComponent(pwd)}&osekMorshe=${encodeURIComponent(osekMorshe)}`;
+    // Use the demo user details provided
+    const demoUser = 'demo';
+    const demoPwd = 'demodemo';
+    const demoOsekMorshe = '123456789';
+
+    const url = `${CASPIT_API_BASE_URL}/Token?user=${encodeURIComponent(demoUser)}&pwd=${encodeURIComponent(demoPwd)}&osekMorshe=${encodeURIComponent(demoOsekMorshe)}`;
     console.log('[Caspit Action - getToken] Requesting token from:', url);
 
     let response: Response;
     let responseText = '';
     try {
-        response = await fetch(url, { method: 'GET' }); // Use GET as per documentation for demo user
+        response = await fetch(url, { method: 'GET' }); // Use GET for demo user token request
         responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action - getToken] Raw response status: ${response.status}`);
         console.log(`[Caspit Action - getToken] Raw response headers:`, response.headers);
-        // *** Enhanced Logging for Raw Response Text ***
         console.log(`[Caspit Action - getToken] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
         if (!response.ok) {
+             // Handle specific error messages if possible
+             if (responseText.includes("Invalid")) {
+                throw new Error(`Caspit API Error (${response.status}): Invalid credentials or token parameters.`);
+             }
             throw new Error(`Caspit API Error (${response.status}): ${responseText || response.statusText}`);
         }
 
-        // Handle potential plain text token response (as seen in documentation examples)
-        // Check content type or try parsing directly
-        const contentType = response.headers.get('content-type');
+        // *** Handle plain text token response ***
+        // Caspit documentation for demo user shows token is returned as plain text
         let accessToken: string | null = null;
-
-        // *** Try parsing as plain text first based on demo API behavior ***
         if (typeof responseText === 'string' && responseText.trim().length > 10 && !responseText.trim().startsWith('{')) {
-             accessToken = responseText.trim();
-             console.log('[Caspit Action - getToken] Assuming plain text token response.');
-        }
-        // *** Fallback to JSON parsing if plain text assumption failed ***
-        else if (contentType && contentType.includes('application/json')) {
-            try {
+            accessToken = responseText.trim();
+            console.log('[Caspit Action - getToken] Assuming plain text token response.');
+        } else {
+             // Attempt JSON parsing as a fallback, though not expected for demo token
+             try {
                 const data = JSON.parse(responseText);
-                accessToken = data?.AccessToken; // AccessToken as per OpenAPI example
+                accessToken = data?.AccessToken; // Standard field name
                 if (!accessToken) {
-                     // Fallback check for plain text if JSON parse succeeds but token is missing
+                     console.log('[Caspit Action - getToken] JSON parsed, but AccessToken missing. Falling back to raw text check.');
+                     // Check raw text again if JSON parse succeeded but token missing
                      if (typeof responseText === 'string' && responseText.trim().length > 10) {
                          accessToken = responseText.trim();
-                         console.log('[Caspit Action - getToken] JSON response parsed, but AccessToken missing. Using raw text as token.');
                      } else {
-                         console.error('[Caspit Action - getToken] Invalid JSON token response structure. AccessToken missing. Parsed Data:', data);
-                         throw new Error('Invalid JSON token response structure from Caspit API. AccessToken missing.');
+                         throw new Error('JSON response did not contain AccessToken, and raw text is not a valid token.');
                      }
                 }
-            } catch (jsonError: any) {
-                console.error('[Caspit Action - getToken] Failed to parse JSON response, trying raw text:', jsonError);
-                // If JSON parsing fails, check if the raw text looks like a token (already handled above, but check again)
-                 if (typeof responseText === 'string' && responseText.trim().length > 10) { // Basic check if it might be a token
-                     accessToken = responseText.trim();
-                     console.log('[Caspit Action - getToken] JSON parse failed. Using raw text as token.');
-                 } else {
-                     throw new Error(`Invalid response received from Caspit API. Could not parse JSON and raw text is not a valid token. Raw response: ${responseText}`);
-                 }
-            }
-        } else if (typeof responseText === 'string' && responseText.trim().length > 10) {
-            // Catch-all for plain text if content-type wasn't JSON but it looks like a token
-            accessToken = responseText.trim();
-            console.log('[Caspit Action - getToken] Non-JSON response. Using raw text as token.');
+             } catch (jsonError) {
+                 console.error('[Caspit Action - getToken] Failed to parse JSON response, and raw text does not appear to be a token:', jsonError);
+                 throw new Error(`Invalid response received from Caspit API. Could not parse JSON and raw text is not a valid token. Raw response: ${responseText}`);
+             }
         }
 
-
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            // Updated error message
             console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Text:', responseText);
             throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
         }
+
         // Clean potential surrounding quotes if they exist from plain text response
         accessToken = accessToken.replace(/^"+|"+$/g, '');
 
@@ -87,7 +78,6 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
     } catch (error: any) {
         console.error('[Caspit Action - getToken] Error fetching Caspit token:', error);
-        // Include raw response text in the error for better debugging
         throw new Error(`Caspit token request failed: ${error.message}. Raw Response: ${responseText}`);
     }
 }
@@ -139,6 +129,7 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
 
 // --- Server Action to Sync Products ---
 // Accepts config directly to fetch a fresh token internally
+// Returns SyncResult which now includes the products array
 export async function syncCaspitProductsAction(config: PosConnectionConfig): Promise<SyncResult> {
     let token: string;
     try {
@@ -196,9 +187,8 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             allProducts = allProducts.concat(mappedProducts);
             totalSynced += mappedProducts.length;
 
-            // Check if there's a next page using NextPageUrl
-            // Use TotalPages for a more reliable check
-            if (data.TotalPages && currentPage < data.TotalPages) {
+            // Check if there's a next page using NextPageUrl or TotalPages
+            if (data.TotalPages && currentPage < data.TotalPages && data.NextPageUrl) {
                  currentPage++;
             } else {
                 hasMore = false;
@@ -211,13 +201,21 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             }
         }
 
-        // Save the fetched products to our backend/localStorage
-        if (allProducts.length > 0) {
-             console.log(`[Caspit Action - syncProducts] Saving ${allProducts.length} products to backend...`);
-            await saveProducts(allProducts, `Caspit Sync ${new Date().toISOString()}`, 'caspit_sync'); // Pass source
-        }
+        // ** DO NOT SAVE HERE - RETURN PRODUCTS **
+        // The `saveProducts` function is client-side and cannot be called from a server action.
+        // The results must be returned to the client component to handle saving.
+        // if (allProducts.length > 0) {
+        //      console.log(`[Caspit Action - syncProducts] Saving ${allProducts.length} products to backend...`);
+        //     await saveProducts(allProducts, `Caspit Sync ${new Date().toISOString()}`, 'caspit_sync'); // <-- THIS CANNOT BE CALLED HERE
+        // }
 
-        return { success: true, message: `Successfully synced ${totalSynced} products from Caspit.`, itemsSynced: totalSynced };
+        console.log(`[Caspit Action - syncProducts] Returning ${totalSynced} products.`);
+        return {
+            success: true,
+            message: `Successfully fetched ${totalSynced} products from Caspit.`,
+            itemsSynced: totalSynced,
+            products: allProducts // Return the fetched products
+        };
 
     } catch (error: any) {
         console.error("[Caspit Action - syncProducts] Product sync failed:", error);
