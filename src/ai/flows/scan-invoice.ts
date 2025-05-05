@@ -10,12 +10,23 @@
 
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
-import type { FinalProductSchema, ExtractedProductSchema } from './invoice-schemas'; // Import schemas
-import { ScanInvoiceInputSchema, ScanInvoiceOutputSchema } from './invoice-schemas'; // Import Zod schemas
-
+import {
+  ScanInvoiceInputSchema,
+  ScanInvoiceOutputSchema,
+  ExtractedProductSchema, // Import as value
+  FinalProductSchema // Import as value
+} from './invoice-schemas';
+import type { // Keep type exports if used elsewhere
+  ScanInvoiceInput,
+  ScanInvoiceOutput
+} from './invoice-schemas';
 
 // Re-export types for external use if needed by components
-export type { ScanInvoiceInput, ScanInvoiceOutput, FinalProductSchema };
+// Updated: No need to re-export FinalProductSchema type directly if using z.infer elsewhere
+export type { ScanInvoiceInput, ScanInvoiceOutput };
+// Expose FinalProductSchema type via z.infer if needed in components:
+// import type { FinalProductSchema as FinalProductSchemaType } from '@/ai/flows/invoice-schemas';
+// type MyProduct = z.infer<typeof FinalProductSchemaType>;
 
 
 export async function scanInvoice(input: ScanInvoiceInput): Promise<ScanInvoiceOutput> {
@@ -76,7 +87,8 @@ const scanInvoiceFlow = ai.defineFlow<
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema, // Ensure flow output matches final schema
 }, async input => {
-    let rawOutput: { products: any[] } | null = null; // Initialize rawOutput
+    // Infer the type for rawOutput products from the ExtractedProductSchema
+    let rawOutput: { products: z.infer<typeof ExtractedProductSchema>[] } | null = null;
     try {
         // Call the prompt to get raw extracted data
         const { output } = await prompt(input);
@@ -101,7 +113,13 @@ const scanInvoiceFlow = ai.defineFlow<
 
     // Process the raw data: calculate unitPrice and map to final schema
     try {
-        const processedProducts = rawOutput.products // Use the validated rawOutput
+        // Ensure rawOutput and rawOutput.products are valid before mapping
+        if (!rawOutput || !Array.isArray(rawOutput.products)) {
+            console.error('Invalid rawOutput structure before processing:', rawOutput);
+            return { products: [] };
+        }
+
+        const processedProducts = rawOutput.products
             .map((rawProduct) => {
                 // The Zod schema already validated the structure and types,
                 // but we still need to handle potential variations and calculate unitPrice.
@@ -113,9 +131,12 @@ const scanInvoiceFlow = ai.defineFlow<
 
                 // Calculate unit price based on extracted total and quantity
                 // Prefer calculation, fallback to purchase_price, then 0
-                const unitPrice = quantity !== 0 && lineTotal !== 0
+                const calculatedUnitPrice = quantity !== 0 && lineTotal !== 0
                                ? parseFloat((lineTotal / quantity).toFixed(2))
-                               : purchasePrice;
+                               : 0; // Default to 0 if calculation not possible
+
+                // Use purchase_price ONLY if calculation is not possible AND purchase_price exists
+                const unitPrice = calculatedUnitPrice !== 0 ? calculatedUnitPrice : purchasePrice;
 
 
                 // Use product_name if available, otherwise fallback to description or catalog number
@@ -131,8 +152,8 @@ const scanInvoiceFlow = ai.defineFlow<
                 };
                 return finalProduct;
             })
-             // No need to filter nulls as Zod ensures array elements match the schema
-            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product'); // Keep existing filter logic if desired
+             // Filter out products that couldn't be meaningfully processed (e.g., no catalog or description)
+            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product'); // Keep existing filter logic
 
         return { products: processedProducts };
 
