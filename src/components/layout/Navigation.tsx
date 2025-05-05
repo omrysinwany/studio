@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Use App Router's navigation
 import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon } from 'lucide-react'; // Added Menu, Palette, Sun, Moon
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -117,7 +117,7 @@ export default function Navigation() {
           {/* Desktop Auth/User Menu */}
           <div className="hidden md:flex items-center gap-2">
               {loading ? (
-                <div className="h-8 w-20 animate-pulse rounded-md bg-muted"></div> // Skeleton loader
+                <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div> // Adjusted skeleton size
               ) : user ? (
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -152,22 +152,23 @@ export default function Navigation() {
                 </DropdownMenu>
               ) : (
                 <>
-                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
-                    <Link href="/login">
-                       {/* Wrap icon and text in a single span */}
-                       <span className="flex items-center">
-                         <LogIn className="mr-1 h-4 w-4" /> Login
-                       </span>
-                    </Link>
-                  </Button>
-                  <Button size="sm" asChild>
-                    <Link href="/register">
-                       {/* Wrap icon and text in a single span */}
-                       <span className="flex items-center">
-                         <UserPlus className="mr-1 h-4 w-4" /> Register
-                       </span>
-                    </Link>
-                  </Button>
+                   {/* Apply button styles directly to Link */}
+                   <Link
+                     href="/login"
+                     className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+                   >
+                     <span className="flex items-center">
+                       <LogIn className="mr-1 h-4 w-4" /> Login
+                     </span>
+                   </Link>
+                   <Link
+                     href="/register"
+                     className={cn(buttonVariants({ size: 'sm' }))}
+                   >
+                     <span className="flex items-center">
+                       <UserPlus className="mr-1 h-4 w-4" /> Register
+                     </span>
+                   </Link>
                 </>
               )}
           </div>
@@ -277,5 +278,3 @@ export default function Navigation() {
     </header>
   );
 }
-
-    
