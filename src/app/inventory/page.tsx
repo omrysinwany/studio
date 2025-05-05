@@ -145,8 +145,8 @@ export default function InventoryPage() {
      // Sorting
       if (sortKey) {
         result.sort((a, b) => {
-          const valA = a[sortKey];
-          const valB = b[sortKey];
+          const valA = a[sortKey as keyof Product];
+          const valB = b[sortKey as keyof Product];
 
            // Handle different data types for comparison
            let comparison = 0;
@@ -287,7 +287,7 @@ export default function InventoryPage() {
                          key={header.key}
                          className="capitalize"
                          checked={visibleColumns[header.key]}
-                         onCheckedChange={() => toggleColumnVisibility(header.key)}
+                         onCheckedChange={() => toggleColumnVisibility(header.key as keyof Product | 'actions' | 'id')}
                        >
                          {header.label}
                        </DropdownMenuCheckboxItem>

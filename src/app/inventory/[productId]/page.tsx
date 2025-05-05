@@ -8,7 +8,7 @@ import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle
 // Removed useAuth import
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { getProductById, Product } from '@/services/backend'; // Import specific product fetch
+import { getProductById, Product } from '@/services/backend'; // Import specific product fetch and getProductById
 
 
 // Mock Product Data Interface (should match inventory page) - Using Product from backend now
