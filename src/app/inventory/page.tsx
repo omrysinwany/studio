@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,16 +20,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
-import { useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Product, getProductsService } from '@/services/backend'; // Use renamed service function
-import { Badge } from '@/components/ui/badge'; // Import Badge
+import { Product, getProductsService } from '@/services/backend';
+import { Badge } from '@/components/ui/badge';
 
 
-// Assume backend provides categories
-const MOCK_CATEGORIES = ['Widgets', 'Gadgets', 'Components', 'Other'];
+// Assume backend provides categories - Removed for now
+// const MOCK_CATEGORIES = ['Widgets', 'Gadgets', 'Components', 'Other'];
 
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
@@ -39,67 +39,69 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
-    id: false, // Keep ID hidden by default, but trackable
-    description: true, // Use 'description' instead of 'name' from Product interface
+    id: false,
+    description: true,
     catalogNumber: true,
     quantity: true,
     unitPrice: true,
-    // category: true, // Category not in Product interface
-    // lastUpdated: true, // lastUpdated not in Product interface
-    lineTotal: true, // Add lineTotal if needed/available
-    actions: true, // Column for actions like 'View Details'
+    lineTotal: true,
+    actions: true,
   });
-  // const [filterCategory, setFilterCategory] = useState<string>(''); // Category filter depends on data
-  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all'); // Added 'out' option
-  const [sortKey, setSortKey] = useState<SortKey>('description'); // Default sort by description
+  // const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('description');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const router = useRouter();
-  const searchParams = useSearchParams(); // Get search params
+  const searchParams = useSearchParams();
   const { toast } = useToast();
-  const shouldRefresh = searchParams.get('refresh'); // Check for refresh param
-  const initialFilter = searchParams.get('filter'); // Get initial filter from URL
+  const shouldRefresh = searchParams.get('refresh');
+  const initialFilter = searchParams.get('filter');
 
 
-   // Fetch inventory data (replace with actual API call)
+   // Function to fetch inventory data
+    const fetchInventory = useCallback(async () => {
+      setIsLoading(true);
+      try {
+        console.log("Fetching inventory data...");
+        const data = await getProductsService();
+        console.log("Fetched inventory data:", data);
+        // Add a temporary ID for React keys if backend doesn't provide one - ID is now generated in backend.ts
+        // const inventoryWithIds = data.map((item, index) => ({
+        //   ...item,
+        //   id: item.id || `temp-${index}-${Date.now()}`,
+        // }));
+        setInventory(data); // Use data directly as IDs should be handled by backend service
+      } catch (error) {
+        console.error("Failed to fetch inventory:", error);
+        toast({
+          title: "Error Fetching Inventory",
+          description: "Could not load inventory data. Please try again later.",
+          variant: "destructive",
+        });
+        setInventory([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, [toast]); // Include toast in dependencies
+
+
+   // Fetch inventory data on mount and when refresh param changes
    useEffect(() => {
-     const fetchInventory = async () => {
-       setIsLoading(true);
-       try {
-         console.log("Fetching inventory data...");
-         const data = await getProductsService(); // Fetch products from backend service using the renamed function
-          console.log("Fetched inventory data:", data);
-          // Add a temporary ID for React keys if backend doesn't provide one
-          const inventoryWithIds = data.map((item, index) => ({
-            ...item,
-            id: item.id || `temp-${index}-${Date.now()}`, // Use backend ID or generate temp one
-          }));
-         setInventory(inventoryWithIds);
-       } catch (error) {
-         console.error("Failed to fetch inventory:", error);
-         toast({
-           title: "Error Fetching Inventory",
-           description: "Could not load inventory data. Please try again later.",
-           variant: "destructive",
-         });
-         setInventory([]); // Clear inventory on error
-       } finally {
-         setIsLoading(false);
-       }
-     };
-
      fetchInventory();
 
-     // Set initial filter based on URL param
      if (initialFilter === 'low' && filterStockLevel === 'all') {
        setFilterStockLevel('low');
      }
 
-     // Optionally remove the refresh param after fetching to prevent infinite loops if state changes cause re-renders
-     // if (shouldRefresh) {
-     //    router.replace('/inventory', { scroll: false }); // Remove query param without scroll jump
-     // }
-
-   }, [toast, shouldRefresh, initialFilter, filterStockLevel]); // Add shouldRefresh, initialFilter, filterStockLevel to dependency array
+     // Remove refresh param after fetching to prevent re-fetching if other state changes
+     if (shouldRefresh) {
+        const current = new URLSearchParams(Array.from(searchParams.entries())); // Get current params
+        current.delete('refresh'); // Remove the refresh param
+        const search = current.toString();
+        const query = search ? `?${search}` : "";
+        router.replace(`${pathname}${query}`, { scroll: false }); // Update URL without refresh param
+     }
+   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams]); // Added dependencies
 
 
   const handleSort = (key: SortKey) => {
@@ -120,19 +122,17 @@ export default function InventoryPage() {
      if (searchTerm) {
        const lowerSearchTerm = searchTerm.toLowerCase();
        result = result.filter(item =>
-         (item.description?.toLowerCase() || '').includes(lowerSearchTerm) || // Search in description
+         (item.description?.toLowerCase() || '').includes(lowerSearchTerm) ||
          (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm)
        );
      }
-    //  if (filterCategory) { // Re-enable if category is added back
-    //    result = result.filter(item => item.category === filterCategory);
-    //  }
+    //  if (filterCategory) { ... }
       if (filterStockLevel === 'low') {
-        result = result.filter(item => item.quantity > 0 && item.quantity <= 10); // Example threshold for low stock (excluding out of stock)
+        result = result.filter(item => item.quantity > 0 && item.quantity <= 10);
       } else if (filterStockLevel === 'inStock') {
         result = result.filter(item => item.quantity > 0);
       } else if (filterStockLevel === 'out') {
-        result = result.filter(item => item.quantity === 0); // Filter for out of stock
+        result = result.filter(item => item.quantity === 0);
       }
 
 
@@ -142,27 +142,23 @@ export default function InventoryPage() {
           const valA = a[sortKey as keyof Product];
           const valB = b[sortKey as keyof Product];
 
-           // Handle different data types for comparison
            let comparison = 0;
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
            } else {
-              // Fallback for mixed types or other types - place undefined/null last
               if (valA == null && valB != null) comparison = 1;
               else if (valA != null && valB == null) comparison = -1;
-              else comparison = 0; // Keep original order if types are unexpected or both null/undefined
+              else comparison = 0;
            }
-
 
           return sortDirection === 'asc' ? comparison : comparison * -1;
         });
       }
 
-
      return result;
-      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]); // Added filterStockLevel dependency
+      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
 
     const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id') => {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
@@ -172,11 +168,9 @@ export default function InventoryPage() {
   const columnHeaders: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
      { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
      { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
-     { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' }, // Increased min-width for badge
-     { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
-     { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' }, // Updated label
-     // { key: 'category', label: 'Category', sortable: true, className: 'min-w-[100px]' },
-     // { key: 'lastUpdated', label: 'Last Updated', sortable: true, className: 'min-w-[150px]' },
+     { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' },
+     { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' },
+     { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' },
      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
   ];
 
@@ -190,7 +184,7 @@ export default function InventoryPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-       <Card className="shadow-md">
+       <Card className="shadow-md bg-card text-card-foreground">
          <CardHeader>
            <CardTitle className="text-2xl font-semibold text-primary flex items-center">
               <Package className="mr-2 h-6 w-6" /> Inventory Overview
@@ -203,15 +197,15 @@ export default function InventoryPage() {
               <div className="relative w-full md:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by description or catalog..." // Updated placeholder
+                  placeholder="Search by description or catalog..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
+                  aria-label="Search inventory"
                 />
               </div>
                <div className="flex gap-2 flex-wrap justify-center md:justify-end">
-                 {/* Category Filter - Removed, re-add if category is available */}
-                 {/* <DropdownMenu> ... </DropdownMenu> */}
+                 {/* Category Filter - Removed */}
 
                    {/* Stock Level Filter */}
                    <DropdownMenu>
@@ -291,12 +285,13 @@ export default function InventoryPage() {
                          <TableHead
                             key={header.key}
                             className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
-                            onClick={() => header.sortable && handleSort(header.key as SortKey)} // Cast key to SortKey
+                            onClick={() => header.sortable && handleSort(header.key as SortKey)}
+                            aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                          >
                              <div className="flex items-center gap-1">
                                {header.label}
                                 {header.sortable && sortKey === header.key && (
-                                    <span className="text-xs">
+                                    <span className="text-xs" aria-hidden="true">
                                       {sortDirection === 'asc' ? '▲' : '▼'}
                                     </span>
                                 )}
@@ -314,7 +309,7 @@ export default function InventoryPage() {
                    </TableRow>
                  ) : (
                    filteredAndSortedInventory.map((item) => (
-                     <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50">
+                     <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                        {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
@@ -335,9 +330,8 @@ export default function InventoryPage() {
                            <Button
                              variant="ghost"
                              size="sm"
-                             // Ensure item.id is defined before navigating
                              onClick={() => item.id && router.push(`/inventory/${item.id}`)}
-                             disabled={!item.id} // Disable if no ID
+                             disabled={!item.id}
                              aria-label={`View details for ${item.description}`}
                            >
                              <Eye className="mr-1 h-4 w-4" /> Details

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Represents a product extracted from a document.
  */
@@ -32,7 +34,7 @@ export interface Product {
 export interface InvoiceHistoryItem {
   id: string; // Could be the same ID as upload history or a separate one
   fileName: string;
-  uploadTime: Date;
+  uploadTime: Date | string; // Allow string for JSON parsing
   status: 'pending' | 'processing' | 'completed' | 'error';
   invoiceNumber?: string; // Extracted invoice number
   supplier?: string; // Extracted supplier
@@ -40,9 +42,11 @@ export interface InvoiceHistoryItem {
   errorMessage?: string;
 }
 
+const INVENTORY_STORAGE_KEY = 'mockInventoryData';
+const INVOICES_STORAGE_KEY = 'mockInvoicesData';
 
-// Mock inventory data store
-let mockInventory: Product[] = [
+// Initial mock inventory data store (only used if localStorage is empty)
+const initialMockInventory: Product[] = [
    { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
    { id: 'prod2', catalogNumber: '67890', description: 'Sample Product 2 (Mock)', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
    { id: 'prod3', catalogNumber: 'ABCDE', description: 'Another Mock Item', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
@@ -50,13 +54,46 @@ let mockInventory: Product[] = [
    { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
 ];
 
-// Mock invoice history data store
-let mockInvoices: InvoiceHistoryItem[] = [
-   // Keep initial mock data for display until real saves happen
-  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
-  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
-  { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5), status: 'error', errorMessage: 'Failed to extract totals' },
+// Initial mock invoice history data store (only used if localStorage is empty)
+const initialMockInvoices: InvoiceHistoryItem[] = [
+  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1).toISOString(), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
+  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3).toISOString(), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
+  { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5).toISOString(), status: 'error', errorMessage: 'Failed to extract totals' },
 ];
+
+// Helper to safely get data from localStorage
+const getStoredData = <T>(key: string, initialData: T[]): T[] => {
+  if (typeof window === 'undefined') {
+    // Return initial data during SSR or if window is not available
+    return initialData;
+  }
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    } else {
+      // Initialize localStorage if key doesn't exist
+      localStorage.setItem(key, JSON.stringify(initialData));
+      return initialData;
+    }
+  } catch (error) {
+    console.error(`Error reading ${key} from localStorage:`, error);
+    return initialData; // Return initial data on error
+  }
+};
+
+// Helper to safely save data to localStorage
+const saveStoredData = <T>(key: string, data: T[]): void => {
+  if (typeof window === 'undefined') {
+    console.warn('localStorage is not available. Data not saved.');
+    return;
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error(`Error writing ${key} to localStorage:`, error);
+  }
+};
 
 
 /**
@@ -71,6 +108,7 @@ export interface DocumentProcessingResponse {
 
 /**
  * Asynchronously uploads a document and retrieves the extracted product data.
+ * This remains a server-side concept simulation for now, as AI flow is server-side.
  *
  * @param document The document file to upload (JPEG, PNG, or PDF).
  * @returns A promise that resolves to a DocumentProcessingResponse object containing the extracted product data.
@@ -104,8 +142,8 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
 }
 
 /**
- * Asynchronously saves the edited product data to the backend and creates an invoice history record.
- * In this mock implementation, it adds/updates products in mockInventory and adds to mockInvoices.
+ * Asynchronously saves the edited product data and creates an invoice history record.
+ * Uses localStorage for persistence.
  *
  * @param products The list of products to save.
  * @param fileName The name of the original file processed.
@@ -113,60 +151,61 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
  */
 export async function saveProducts(products: Product[], fileName: string): Promise<void> {
   console.log('Saving products for file:', fileName, products);
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await new Promise(resolve => setTimeout(resolve, 100)); // Short delay
 
-  let invoiceTotalAmount = 0; // Calculate total amount for the invoice record
+  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+
+  let invoiceTotalAmount = 0;
+
+  const updatedInventory = [...currentInventory]; // Create a mutable copy
 
   products.forEach(newProduct => {
-    // Ensure values are numbers, default to 0 if not
-    const quantity = typeof newProduct.quantity === 'number' ? newProduct.quantity : 0;
-    const lineTotal = typeof newProduct.lineTotal === 'number' ? newProduct.lineTotal : 0;
-    // Recalculate unitPrice here to ensure consistency before saving
+    const quantity = parseFloat(String(newProduct.quantity)) || 0;
+    const lineTotal = parseFloat(String(newProduct.lineTotal)) || 0;
+    // Recalculate unit price here to ensure consistency before saving
     const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : 0;
 
-    invoiceTotalAmount += lineTotal; // Add to invoice total
+    invoiceTotalAmount += lineTotal;
 
-    // Attempt to find by ID first, then catalog number
     let existingIndex = -1;
     if (newProduct.id) {
-        existingIndex = mockInventory.findIndex(p => p.id === newProduct.id);
+        existingIndex = updatedInventory.findIndex(p => p.id === newProduct.id);
     }
-    // Only search by catalog number if ID didn't match or wasn't provided
     if (existingIndex === -1 && newProduct.catalogNumber && newProduct.catalogNumber !== 'N/A') {
-        existingIndex = mockInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
+        existingIndex = updatedInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
     }
 
     if (existingIndex !== -1) {
-      // Update existing product
-      console.log(`Updating product ${mockInventory[existingIndex].catalogNumber} (ID: ${mockInventory[existingIndex].id})`);
-      mockInventory[existingIndex] = {
-          ...newProduct, // Copy new data first
-          id: mockInventory[existingIndex].id, // Ensure original ID is kept
+      console.log(`Updating product ${updatedInventory[existingIndex].catalogNumber} (ID: ${updatedInventory[existingIndex].id})`);
+      // Merge existing data with new data, ensuring essential fields are updated
+      updatedInventory[existingIndex] = {
+          ...updatedInventory[existingIndex], // Keep existing fields like ID
+          ...newProduct, // Overwrite with new data
           quantity: quantity,
           unitPrice: unitPrice, // Use recalculated unit price
           lineTotal: lineTotal,
-          catalogNumber: newProduct.catalogNumber || mockInventory[existingIndex].catalogNumber,
-          description: newProduct.description || mockInventory[existingIndex].description,
+          catalogNumber: newProduct.catalogNumber || updatedInventory[existingIndex].catalogNumber,
+          description: newProduct.description || updatedInventory[existingIndex].description,
       };
-       console.log(`Product updated:`, mockInventory[existingIndex]);
+       console.log(`Product updated:`, updatedInventory[existingIndex]);
 
     } else {
-      // Add new product if it has some identifying information
        if (!newProduct.catalogNumber && !newProduct.description) {
            console.log("Skipping adding product with no catalog number or description:", newProduct);
-           return; // Skip adding essentially empty rows
+           return;
        }
       console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description}`);
       const productToAdd: Product = {
         ...newProduct,
-        id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Generate a unique ID
+        id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         quantity: quantity,
-        unitPrice: unitPrice, // Use recalculated unit price
+        unitPrice: unitPrice,
         lineTotal: lineTotal,
         catalogNumber: newProduct.catalogNumber || 'N/A',
         description: newProduct.description || 'No Description',
       };
-      mockInventory.push(productToAdd);
+      updatedInventory.push(productToAdd);
       console.log(`Product added:`, productToAdd);
     }
   });
@@ -175,64 +214,68 @@ export async function saveProducts(products: Product[], fileName: string): Promi
    const newInvoiceRecord: InvoiceHistoryItem = {
        id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
        fileName: fileName,
-       uploadTime: new Date(),
-       status: 'completed', // Assume saving means completion
-       totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)), // Store calculated total
-       // TODO: Add supplier/invoiceNumber if they are extracted by AI or entered by user
+       uploadTime: new Date().toISOString(), // Store as ISO string
+       status: 'completed',
+       totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
+       // TODO: Add supplier/invoiceNumber if available
    };
-   mockInvoices.push(newInvoiceRecord);
-   console.log('Added invoice record:', newInvoiceRecord);
-   console.log('Updated mockInventory:', mockInventory);
-   console.log('Updated mockInvoices:', mockInvoices);
+   const updatedInvoices = [newInvoiceRecord, ...currentInvoices];
+
+   // Save updated data back to localStorage
+   saveStoredData(INVENTORY_STORAGE_KEY, updatedInventory);
+   saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
+
+   console.log('Updated localStorage inventory:', updatedInventory);
+   console.log('Updated localStorage invoices:', updatedInvoices);
 
   return;
 }
 
 
 /**
- * Asynchronously retrieves the list of all products from the backend.
- * Renamed to avoid potential naming conflicts.
+ * Asynchronously retrieves the list of all products using localStorage.
  *
  * @returns A promise that resolves to an array of Product objects.
  */
 export async function getProductsService(): Promise<Product[]> {
-  // TODO: Implement this by calling your backend API.
   console.log("getProductsService called");
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  // Return a deep copy of the mock data to prevent direct mutation issues
-  console.log("Returning inventory:", JSON.parse(JSON.stringify(mockInventory)));
-  return JSON.parse(JSON.stringify(mockInventory));
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate small delay
+  const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  console.log("Returning inventory from localStorage:", inventory);
+  return inventory; // Directly return the data from localStorage helper
 }
 
 /**
- * Asynchronously retrieves a single product by its ID from the backend.
+ * Asynchronously retrieves a single product by its ID using localStorage.
  *
  * @param productId The ID of the product to retrieve.
  * @returns A promise that resolves to the Product object or null if not found.
  */
 export async function getProductById(productId: string): Promise<Product | null> {
-   // TODO: Implement this by calling your backend API.
    console.log(`getProductById called for ID: ${productId}`);
-   // Simulate API delay
-   await new Promise(resolve => setTimeout(resolve, 300));
-   const product = mockInventory.find(p => p.id === productId);
+   await new Promise(resolve => setTimeout(resolve, 50));
+   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+   const product = inventory.find(p => p.id === productId);
    return product ? { ...product } : null; // Return a copy or null
 }
 
 /**
- * Asynchronously retrieves the list of all processed invoices from the backend.
+ * Asynchronously retrieves the list of all processed invoices using localStorage.
+ * Parses date strings back into Date objects.
  *
  * @returns A promise that resolves to an array of InvoiceHistoryItem objects.
  */
 export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
-  // TODO: Implement this by calling your backend API.
   console.log("getInvoices called");
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 400));
-  // Return a deep copy
-  console.log("Returning invoices:", JSON.parse(JSON.stringify(mockInvoices)));
-  return JSON.parse(JSON.stringify(mockInvoices));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const invoicesRaw = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+  // Convert stored date strings back to Date objects
+  const invoices = invoicesRaw.map(inv => ({
+    ...inv,
+    uploadTime: new Date(inv.uploadTime) // Parse string back to Date
+  }));
+  console.log("Returning invoices from localStorage:", invoices);
+  return invoices;
 }
 
 
@@ -249,6 +292,7 @@ export interface AuthResponse {
   user: User;
 }
 
+// Auth functions remain as they interact with localStorage directly in AuthContext
 /**
  * Asynchronously registers a new user.
  *
@@ -256,7 +300,7 @@ export interface AuthResponse {
  * @returns A promise that resolves with the authentication response.
  */
 export async function register(userData: any): Promise<AuthResponse> {
-  // TODO: Implement this by calling your backend API.
+  // TODO: Implement this by calling your REAL backend API.
   console.log("Registering user:", userData.username);
   await new Promise(resolve => setTimeout(resolve, 500));
   const newUser: User = {
@@ -277,7 +321,7 @@ export async function register(userData: any): Promise<AuthResponse> {
  * @returns A promise that resolves with the authentication response.
  */
 export async function login(credentials: any): Promise<AuthResponse> {
-  // TODO: Implement this by calling your backend API.
+  // TODO: Implement this by calling your REAL backend API.
   console.log("Logging in user:", credentials.username);
   await new Promise(resolve => setTimeout(resolve, 500));
   // Simple mock logic: accept any login for now
