@@ -8,6 +8,7 @@ import { saveProducts } from '@/services/backend'; // Import saveProducts
 const CASPIT_API_BASE_URL = 'https://app.caspit.biz/api/v1';
 
 // --- Helper function to get the Caspit API token ---
+// This function remains the same, it will be called by the actions below.
 async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
     const { user, pwd, osekMorshe } = config;
     if (!user || !pwd || !osekMorshe) {
@@ -24,6 +25,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         responseText = await response.text(); // Read the response body as text first
         console.log(`[Caspit Action - getToken] Raw response status: ${response.status}`);
         console.log(`[Caspit Action - getToken] Raw response headers:`, response.headers);
+        // *** Enhanced Logging for Raw Response Text ***
         console.log(`[Caspit Action - getToken] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
         if (!response.ok) {
@@ -35,13 +37,18 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         const contentType = response.headers.get('content-type');
         let accessToken: string | null = null;
 
-        if (contentType && contentType.includes('application/json')) {
+        // *** Try parsing as plain text first based on demo API behavior ***
+        if (typeof responseText === 'string' && responseText.trim().length > 10 && !responseText.trim().startsWith('{')) {
+             accessToken = responseText.trim();
+             console.log('[Caspit Action - getToken] Assuming plain text token response.');
+        }
+        // *** Fallback to JSON parsing if plain text assumption failed ***
+        else if (contentType && contentType.includes('application/json')) {
             try {
                 const data = JSON.parse(responseText);
                 accessToken = data?.AccessToken; // AccessToken as per OpenAPI example
                 if (!accessToken) {
                      // Fallback check for plain text if JSON parse succeeds but token is missing
-                     // This scenario is less likely if content-type is json, but good for robustness
                      if (typeof responseText === 'string' && responseText.trim().length > 10) {
                          accessToken = responseText.trim();
                          console.log('[Caspit Action - getToken] JSON response parsed, but AccessToken missing. Using raw text as token.');
@@ -52,7 +59,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                 }
             } catch (jsonError: any) {
                 console.error('[Caspit Action - getToken] Failed to parse JSON response, trying raw text:', jsonError);
-                // If JSON parsing fails, check if the raw text looks like a token
+                // If JSON parsing fails, check if the raw text looks like a token (already handled above, but check again)
                  if (typeof responseText === 'string' && responseText.trim().length > 10) { // Basic check if it might be a token
                      accessToken = responseText.trim();
                      console.log('[Caspit Action - getToken] JSON parse failed. Using raw text as token.');
@@ -61,17 +68,21 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                  }
             }
         } else if (typeof responseText === 'string' && responseText.trim().length > 10) {
-            // Assume plain text token if not JSON and looks like a token
+            // Catch-all for plain text if content-type wasn't JSON but it looks like a token
             accessToken = responseText.trim();
             console.log('[Caspit Action - getToken] Non-JSON response. Using raw text as token.');
         }
 
-        if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Text:', responseText);
-            throw new Error('Failed to extract a valid AccessToken from Caspit API response.');
-        }
 
-        console.log('[Caspit Action - getToken] Successfully obtained token.');
+        if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
+            // Updated error message
+            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Text:', responseText);
+            throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
+        }
+        // Clean potential surrounding quotes if they exist from plain text response
+        accessToken = accessToken.replace(/^"+|"+$/g, '');
+
+        console.log('[Caspit Action - getToken] Successfully obtained token:', accessToken); // Log the extracted token
         return accessToken;
 
     } catch (error: any) {
@@ -86,11 +97,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 export async function testCaspitConnectionAction(config: PosConnectionConfig): Promise<{ success: boolean; message: string }> {
     try {
         const token = await getCaspitToken(config);
-        // Optionally, make a simple authenticated call like getting contacts page 1 to further verify
-        // const testUrl = `${CASPIT_API_BASE_URL}/Contacts?token=${token}&page=1&pageSize=1`;
-        // const testResponse = await fetch(testUrl);
-        // if (!testResponse.ok) throw new Error(`Test API call failed: ${testResponse.statusText}`);
-
+        // A successful token retrieval is the test
         return { success: true, message: 'Connection successful!' };
     } catch (error: any) {
         console.error("[Caspit Action - testConnection] Test failed:", error);
@@ -106,7 +113,8 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
       // Use Name first, then Description as fallback
       const description = caspitProduct.Name || caspitProduct.Description || '';
       // Prioritize SalePrice1, fallback to PurchasePrice, then 0
-      const unitPrice = caspitProduct.SalePrice1 ?? caspitProduct.PurchasePrice ?? 0;
+      // Note: The example shows PurchasePrice, SalePrice1 might not always exist
+      const unitPrice = caspitProduct.PurchasePrice ?? caspitProduct.SalePrice1 ?? 0;
       // Get quantity in stock from API if needed, otherwise default to 0 for sync
       const quantityInStock = caspitProduct.QtyInStock ?? 0;
 
@@ -130,10 +138,14 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
 
 
 // --- Server Action to Sync Products ---
+// Accepts config directly to fetch a fresh token internally
 export async function syncCaspitProductsAction(config: PosConnectionConfig): Promise<SyncResult> {
     let token: string;
     try {
+        // Fetch a fresh token *inside* the action, right before use
+        console.log('[Caspit Action - syncProducts] Fetching fresh token...');
         token = await getCaspitToken(config);
+        console.log('[Caspit Action - syncProducts] Fresh token obtained for product sync.');
     } catch (error: any) {
         return { success: false, message: `Product sync failed: Could not get token - ${error.message}` };
     }
@@ -145,6 +157,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
     try {
         while (hasMore) {
+            // Use the freshly obtained token
             const url = `${CASPIT_API_BASE_URL}/Products?token=${token}&page=${currentPage}`;
             console.log(`[Caspit Action - syncProducts] Fetching page ${currentPage}: ${url}`);
             const response = await fetch(url);
@@ -152,6 +165,10 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
             if (!response.ok) {
                  console.error(`[Caspit Action - syncProducts] Failed fetch for page ${currentPage}. Status: ${response.status}. Response: ${responseText}`);
+                 // Provide more specific error message for 401
+                 if (response.status === 401) {
+                    throw new Error(`Failed to fetch products: ${response.status} Invalid token. Token used: "${token}". Response: ${responseText}`);
+                 }
                 throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}. Response: ${responseText}`);
             }
 
@@ -165,9 +182,11 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
 
             // *** Check the structure based on the provided example ***
+            // The API returns an object like { CurrentPage: 1, Results: [...] }
             if (!data || typeof data !== 'object' || !Array.isArray(data.Results)) {
                 console.error(`[Caspit Action - syncProducts] Invalid product data structure received from Caspit API. Expected object with 'Results' array. Raw response: ${responseText}`);
-                throw new Error("Invalid product data structure received from Caspit API. Expected object with 'Results' array.");
+                // Provide the structure received for debugging
+                throw new Error(`Invalid product data structure received from Caspit API. Expected object with 'Results' array. Received structure: ${JSON.stringify(Object.keys(data))}. Raw response: ${responseText}`);
             }
 
             const mappedProducts = data.Results
@@ -178,13 +197,15 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             totalSynced += mappedProducts.length;
 
             // Check if there's a next page using NextPageUrl
-            if (data.NextPageUrl) {
-                currentPage++;
+            // Use TotalPages for a more reliable check
+            if (data.TotalPages && currentPage < data.TotalPages) {
+                 currentPage++;
             } else {
                 hasMore = false;
             }
              // Safety break - avoid infinite loops in case API logic is flawed
-            if (currentPage > (data.TotalPages || 50)) { // Limit to 50 pages max or TotalPages if provided
+             // Limit to 50 pages max or TotalPages if provided (adjust limit if needed)
+            if (currentPage > (data.TotalPages || 50)) {
                  console.warn(`[Caspit Action - syncProducts] Reached page limit (${currentPage}). Stopping sync.`);
                  hasMore = false;
             }
@@ -206,12 +227,22 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
 
 
 // --- Server Action to Sync Sales ---
+// Accepts config directly to fetch a fresh token internally
 export async function syncCaspitSalesAction(config: PosConnectionConfig): Promise<SyncResult> {
+    let token: string;
+    try {
+        // Fetch a fresh token *inside* the action, right before use
+        console.log('[Caspit Action - syncSales] Fetching fresh token...');
+        token = await getCaspitToken(config);
+        console.log('[Caspit Action - syncSales] Fresh token obtained for sales sync.');
+    } catch (error: any) {
+        return { success: false, message: `Sales sync failed: Could not get token - ${error.message}` };
+    }
+
     // Placeholder - Implement actual sales fetching and processing logic here
     console.log("[Caspit Action - syncSales] Placeholder for sales sync...");
      try {
-        const token = await getCaspitToken(config);
-        // Fetch sales data using token and relevant Caspit endpoints (e.g., Documents, ExpensePayments?)
+        // Fetch sales data using the fresh token and relevant Caspit endpoints (e.g., Documents, ExpensePayments?)
         // Process sales data (e.g., update inventory quantities in backend)
         // Example: Get recent documents
         // const salesUrl = `${CASPIT_API_BASE_URL}/Documents?token=${token}&page=1&trxTypeId=...&datStart=...`; // Adjust params
@@ -221,6 +252,10 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         return { success: true, message: "Sales sync placeholder completed." }; // Update message when implemented
     } catch (error: any) {
         console.error("[Caspit Action - syncSales] Error during sales sync:", error);
+         // Handle potential token errors specifically
+         if (error instanceof Error && error.message.includes('401')) {
+             return { success: false, message: `Sales sync failed: Invalid token. ${error.message}` };
+         }
         return { success: false, message: `Sales sync failed: ${error.message}` };
     }
 }
