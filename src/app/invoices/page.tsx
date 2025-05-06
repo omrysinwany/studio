@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -110,7 +109,7 @@ export default function InvoicesPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list'); // Added viewMode state
+  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Changed default view mode to 'grid'
 
 
     const fetchInvoices = useCallback(async () => {
@@ -898,4 +897,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-
