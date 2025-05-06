@@ -21,13 +21,39 @@ interface EditableProduct extends Product {
 // Define prefix for temporary data keys in localStorage
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 
-// Helper function to safely format numbers to two decimal places
-const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+// Helper function to safely format numbers
+// - decimals: Number of decimal places (default 2)
+// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
+const formatNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00'; // Or return '-' or 'N/A' based on preference
+        // Return a formatted zero based on options
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping, // Use grouping based on option
+        });
     }
-    return value.toFixed(decimals);
+
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping, // Use grouping based on option
+    });
 };
+
+// Function specifically for Input value prop - avoids commas but keeps decimals
+const formatInputValue = (value: number | undefined | null): string => {
+     if (value === null || value === undefined || isNaN(value)) {
+        return '0.00';
+    }
+    return value.toFixed(2); // Use toFixed(2) for input value to ensure 2 decimals without commas
+}
+
 
 function EditInvoiceContent() {
   const searchParams = useSearchParams();
@@ -146,12 +172,18 @@ function EditInvoiceContent() {
     setProducts(prevProducts =>
       prevProducts.map(product => {
         if (product.id === id) {
-          const updatedProduct = { ...product, [field]: value };
+          // Convert input value to number for calculations, handle potential NaN
+          let numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value; // Remove commas before parsing
+          if (isNaN(numericValue)) {
+              numericValue = 0; // Default to 0 if parsing fails
+          }
 
-          // Ensure values are treated as numbers for calculations
-          const quantity = parseFloat(String(updatedProduct.quantity)) || 0;
-          const unitPrice = parseFloat(String(updatedProduct.unitPrice)) || 0;
-          const lineTotal = parseFloat(String(updatedProduct.lineTotal)) || 0;
+          const updatedProduct = { ...product, [field]: numericValue };
+
+          // Ensure values used for calculation are numbers
+          const quantity = updatedProduct.quantity; // Already a number
+          const unitPrice = updatedProduct.unitPrice; // Already a number
+          const lineTotal = updatedProduct.lineTotal; // Already a number
 
           // Auto-calculate lineTotal OR unitPrice based on which was changed
           if (field === 'quantity' || field === 'unitPrice') {
@@ -167,14 +199,9 @@ function EditInvoiceContent() {
                }
           }
 
-          // Ensure the changed field is stored correctly (especially if it was a string input for numbers)
-          if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
-              // For display purposes, keep the string value if it's being edited,
-              // otherwise parse it. This is tricky, usually handleBlur is better.
-              // For simplicity here, we'll just parse. Consider libraries like react-number-format for better UX.
-               updatedProduct[field] = parseFloat(String(value)) || 0;
-          }
-
+          // Ensure the field being edited is stored as a number in the state
+          // This happens implicitly because we set `numericValue` above
+          // updatedProduct[field] = numericValue; // No need to set again
 
           return updatedProduct;
         }
@@ -212,10 +239,11 @@ function EditInvoiceContent() {
        // Remove the temporary 'id' field and ensure numbers are numeric before sending
        const productsToSave: Product[] = products
          .map(({ id, ...rest }) => {
-             const quantity = parseFloat(String(rest.quantity)) || 0;
-             const lineTotal = parseFloat(String(rest.lineTotal)) || 0;
+             // Data in state should already be numeric due to handleInputChange logic
+             const quantity = rest.quantity;
+             const lineTotal = rest.lineTotal;
              // Recalculate unit price before saving for consistency
-             const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : parseFloat(String(rest.unitPrice)) || 0; // Keep original if quantity is 0
+             const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : rest.unitPrice; // Keep original if quantity is 0
 
              return {
                  ...rest,
@@ -382,8 +410,8 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={formatNumber(product.quantity, 2)} // Format for display
-                        onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} // Pass string for controlled input
+                        value={formatInputValue(product.quantity)} // Format for input display (no commas)
+                        onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
                         className="w-24 text-right" // Increased width
                         min="0"
                         step="0.01" // Allow decimals
@@ -393,8 +421,8 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={formatNumber(product.unitPrice)} // Format for display
-                        onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} // Pass string
+                        value={formatInputValue(product.unitPrice)} // Format for input display (no commas)
+                        onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
                         className="w-28 text-right" // Increased width
                         step="0.01"
                         min="0"
@@ -404,8 +432,8 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={formatNumber(product.lineTotal)} // Format for display
-                        onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} // Pass string
+                        value={formatInputValue(product.lineTotal)} // Format for input display (no commas)
+                        onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
                         className="w-28 text-right" // Increased width
                         step="0.01"
                          min="0"

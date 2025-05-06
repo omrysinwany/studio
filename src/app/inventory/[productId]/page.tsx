@@ -12,12 +12,29 @@ import { Separator } from '@/components/ui/separator';
 import { getProductById, Product } from '@/services/backend'; // Import specific product fetch and getProductById
 
 
-// Helper function to safely format numbers to two decimal places
-const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+// Helper function to safely format numbers
+// - decimals: Number of decimal places (default 2)
+// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
+const formatNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00'; // Or return '-' or 'N/A' based on preference
+        // Return a formatted zero based on options
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping, // Use grouping based on option
+        });
     }
-    return value.toFixed(decimals);
+
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping, // Use grouping based on option
+    });
 };
 
 
@@ -75,9 +92,11 @@ export default function ProductDetailPage() {
   const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false) => {
     if (value === undefined || value === null || value === '') return null;
     const IconComponent = icon;
-    // Use formatNumber for numeric values
+    // Use formatNumber for numeric values with grouping enabled for display
     const displayValue = typeof value === 'number'
-      ? (isCurrency ? `₪${formatNumber(value)}` : formatNumber(value, 2)) // Specify decimals for quantity
+      ? (isCurrency
+            ? `₪${formatNumber(value, { useGrouping: true })}` // Currency with grouping
+            : formatNumber(value, { decimals: 2, useGrouping: true })) // Quantity with grouping
       : value;
     return (
       <div className="flex items-start space-x-3">
@@ -165,7 +184,7 @@ export default function ProductDetailPage() {
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              {renderDetailItem(Hash, "Catalog Number", product.catalogNumber)}
-             {renderDetailItem(Layers, "Quantity", product.quantity)} {/* Will be formatted by renderDetailItem */}
+             {renderDetailItem(Layers, "Quantity", product.quantity)} {/* Will be formatted with grouping */}
              {renderDetailItem(Tag, "Unit Price", product.unitPrice, true)} {/* Use Tag and set isCurrency */}
              {renderDetailItem(Tag, "Line Total", product.lineTotal, true)} {/* Use Tag and set isCurrency */}
              {/* {renderDetailItem(Tag, "Category", product.category)} */}

@@ -16,12 +16,29 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 // Removed useAuth, useRouter imports
 import { useToast } from '@/hooks/use-toast';
 
-// Helper function to safely format numbers to two decimal places
-const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+// Helper function to safely format numbers
+// - decimals: Number of decimal places (default 2)
+// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
+const formatNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00'; // Or return '-' or 'N/A' based on preference
+        // Return a formatted zero based on options
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping, // Use grouping based on option
+        });
     }
-    return value.toFixed(decimals);
+
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping, // Use grouping based on option
+    });
 };
 
 
@@ -204,12 +221,12 @@ export default function ReportsPage() {
                  <DollarSign className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 {/* Use formatNumber for display */}
-                 <div className="text-2xl font-bold">₪{formatNumber(kpis.totalValue)}</div> {/* Changed to ILS */}
+                 {/* Use formatNumber for display with grouping */}
+                 <div className="text-2xl font-bold">₪{formatNumber(kpis.totalValue, { useGrouping: true })}</div> {/* Changed to ILS */}
                  <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
                    {/* Use formatNumber for percentage */}
-                   {formatNumber(Math.abs(kpis.valueChangePercent), 1)}% from last period
+                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% from last period
                  </p>
                </CardContent>
              </Card>
@@ -219,7 +236,8 @@ export default function ReportsPage() {
                  <Package className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{kpis.totalItems.toLocaleString()}</div>
+                 {/* Format total items with grouping */}
+                 <div className="text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
                  {/* <p className="text-xs text-muted-foreground">+201 since last month</p> */}
                </CardContent>
              </Card>
@@ -229,7 +247,8 @@ export default function ReportsPage() {
                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{kpis.lowStockItems}</div>
+                 {/* Format low stock items with grouping */}
+                 <div className="text-2xl font-bold">{formatNumber(kpis.lowStockItems, { decimals: 0, useGrouping: true })}</div>
                  <p className="text-xs text-muted-foreground">Items with quantity ≤ 10</p>
                </CardContent>
              </Card>
@@ -261,13 +280,13 @@ export default function ReportsPage() {
                                 <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     {/* Use formatNumber for YAxis tickFormatter */}
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${formatNumber(value / 1000, 0)}k`} /> {/* Changed to ILS */}
+                                     {/* Use formatNumber for YAxis tickFormatter with grouping */}
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${formatNumber(value / 1000, { decimals: 0, useGrouping: true })}k`} /> {/* Changed to ILS */}
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        // Use formatNumber for tooltip value
-                                        formatter={(value: number) => `₪${formatNumber(value)}`} // Format tooltip value
+                                        // Use formatNumber for tooltip value with grouping
+                                        formatter={(value: number) => `₪${formatNumber(value, { useGrouping: true })}`} // Format tooltip value
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
                                 </LineChart>
@@ -292,10 +311,13 @@ export default function ReportsPage() {
                                 <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                                    {/* Format YAxis ticks with grouping */}
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
+                                        // Format tooltip value with grouping
+                                        formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
                                      />
                                     <Bar dataKey="count" fill="var(--color-count)" radius={4} />
                                 </BarChart>
@@ -321,8 +343,8 @@ export default function ReportsPage() {
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                        // Use formatNumber for tooltip value
-                                        formatter={(value: number, name) => `${name}: ₪${formatNumber(value)}`} // Format tooltip value
+                                        // Use formatNumber for tooltip value with grouping
+                                        formatter={(value: number, name) => `${name}: ₪${formatNumber(value, { useGrouping: true })}`} // Format tooltip value
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -334,7 +356,8 @@ export default function ReportsPage() {
                                          innerRadius={60} // Make it a donut chart
                                          paddingAngle={2}
                                          labelLine={false}
-                                         // label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} // Optional labels
+                                         // Optional labels
+                                         // label={({ name, percent }) => `${name} ${formatNumber(percent * 100, { decimals: 0, useGrouping: false })}%`}
                                     >
                                         {pieChartData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />

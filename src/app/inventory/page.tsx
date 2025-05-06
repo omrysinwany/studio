@@ -45,13 +45,31 @@ const ITEMS_PER_PAGE = 10; // Number of items per page
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-// Helper function to safely format numbers to two decimal places
-const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+// Helper function to safely format numbers
+// - decimals: Number of decimal places (default 2)
+// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
+const formatNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00'; // Or return '-' or 'N/A' based on preference
+        // Return a formatted zero based on options
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping, // Use grouping based on option
+        });
     }
-    return value.toFixed(decimals);
+
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping, // Use grouping based on option
+    });
 };
+
 
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
@@ -233,8 +251,8 @@ export default function InventoryPage() {
         }
         // Format numbers to two decimal places if applicable
         if (typeof value === 'number') {
-            // Use the helper function for consistent formatting
-            return formatNumber(value, 2);
+            // Use the helper function for consistent formatting (no grouping for CSV)
+            return formatNumber(value, { decimals: 2, useGrouping: false });
         }
         let stringValue = String(value);
         // If the value contains a comma, double quote, or newline, enclose it in double quotes
@@ -490,8 +508,8 @@ export default function InventoryPage() {
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-right">
-                             {/* Use formatNumber helper for quantity display */}
-                            <span>{formatNumber(item.quantity, 2)}</span>
+                             {/* Use formatNumber helper for quantity display with grouping */}
+                            <span>{formatNumber(item.quantity, { useGrouping: true })}</span>
                             {item.quantity === 0 && (
                               <Badge variant="destructive" className="ml-2">Out</Badge>
                             )}
@@ -500,10 +518,10 @@ export default function InventoryPage() {
                             )}
                           </TableCell>
                         )}
-                         {/* Use formatNumber helper for unitPrice display */}
-                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{formatNumber(item.unitPrice)}</TableCell>}
-                        {/* Display the recalculated and formatted lineTotal */}
-                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{formatNumber(item.lineTotal)}</TableCell>}
+                         {/* Use formatNumber helper for unitPrice display with grouping */}
+                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{formatNumber(item.unitPrice, { useGrouping: true })}</TableCell>}
+                        {/* Display the recalculated and formatted lineTotal with grouping */}
+                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{formatNumber(item.lineTotal, { useGrouping: true })}</TableCell>}
                        {visibleColumns.actions && (
                          <TableCell className="text-right">
                            <Button

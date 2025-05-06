@@ -33,13 +33,31 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 
-// Helper function to safely format numbers to two decimal places
-const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+// Helper function to safely format numbers
+// - decimals: Number of decimal places (default 2)
+// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
+const formatNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00'; // Or return '-' or 'N/A' based on preference
+        // Return a formatted zero based on options
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping, // Use grouping based on option
+        });
     }
-    return value.toFixed(decimals);
+
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping, // Use grouping based on option
+    });
 };
+
 
 // Assume backend provides suppliers for filtering (or derive from fetched data) - Kept for UI demo
 const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
@@ -272,10 +290,10 @@ export default function InvoicesPage() {
                 return 'Invalid Date';
             }
          }
-         // Format numbers to two decimal places if applicable
+         // Format numbers to two decimal places if applicable (no grouping for CSV)
          if (typeof value === 'number') {
               // Use the helper function for consistent formatting
-             return formatNumber(value, 2);
+             return formatNumber(value, { decimals: 2, useGrouping: false });
          }
         let stringValue = String(value);
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
@@ -544,8 +562,8 @@ export default function InvoicesPage() {
                        {visibleColumns.supplier && <TableCell>{item.supplier || '-'}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right">
-                             {/* Use formatNumber helper for totalAmount display */}
-                            {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount)}` : '-'}
+                             {/* Use formatNumber helper for totalAmount display with grouping */}
+                            {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
                          </TableCell>
                        )}
                        {visibleColumns.errorMessage && (
