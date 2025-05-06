@@ -170,7 +170,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
 /**
  * Asynchronously saves the edited product data and creates an invoice history record.
  * Uses localStorage for persistence.
- * If a product already exists (matched by ID or catalog number), its quantity is increased.
+ * If a product already exists (matched by ID or catalog number), its quantity is increased and lineTotal recalculated.
  * Otherwise, a new product is added.
  *
  * @param products The list of products to save.
@@ -217,8 +217,8 @@ export async function saveProducts(
       const existingProduct = updatedInventory[existingIndex];
       console.log(`Updating quantity for product ${existingProduct.catalogNumber} (ID: ${existingProduct.id}). Adding ${quantityToAdd}.`);
       existingProduct.quantity += quantityToAdd;
-      // Optional: Recalculate lineTotal if needed, but usually for adding stock, unit price stays the same.
-      // existingProduct.lineTotal = existingProduct.quantity * existingProduct.unitPrice;
+      // Recalculate lineTotal based on the new quantity and existing unit price
+      existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
       console.log(`Product updated:`, existingProduct);
 
     } else {
@@ -277,7 +277,13 @@ export async function getProductsService(): Promise<Product[]> {
   await new Promise(resolve => setTimeout(resolve, 50)); // Simulate small delay
   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
   console.log("Returning inventory from localStorage:", inventory);
-  return inventory; // Directly return the data from localStorage helper
+  // Recalculate lineTotal for consistency before returning
+  const inventoryWithRecalculatedTotals = inventory.map(item => ({
+      ...item,
+      lineTotal: parseFloat((item.quantity * item.unitPrice).toFixed(2))
+  }));
+  console.log("Returning inventory with recalculated totals:", inventoryWithRecalculatedTotals);
+  return inventoryWithRecalculatedTotals;
 }
 
 /**
@@ -291,7 +297,11 @@ export async function getProductById(productId: string): Promise<Product | null>
    await new Promise(resolve => setTimeout(resolve, 50));
    const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
    const product = inventory.find(p => p.id === productId);
-   return product ? { ...product } : null; // Return a copy or null
+   // Recalculate lineTotal before returning
+   return product ? {
+       ...product,
+       lineTotal: parseFloat((product.quantity * product.unitPrice).toFixed(2))
+    } : null; // Return a copy with recalculated total or null
 }
 
 /**

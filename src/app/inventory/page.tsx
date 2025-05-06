@@ -167,6 +167,12 @@ export default function InventoryPage() {
         });
       }
 
+     // Recalculate lineTotal for display consistency
+     result = result.map(item => ({
+         ...item,
+         lineTotal: parseFloat((item.quantity * item.unitPrice).toFixed(2))
+     }));
+
      return result;
       }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
 
