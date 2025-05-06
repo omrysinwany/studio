@@ -21,16 +21,26 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download } from 'lucide-react'; // Added Download
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Added Download, Trash2, Pagination icons
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Product, getProductsService } from '@/services/backend'; // Corrected import
+import { Product, getProductsService, clearInventory as clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventory
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Import AlertDialog
 
 
-// Assume backend provides categories - Removed for now
-// const MOCK_CATEGORIES = ['Widgets', 'Gadgets', 'Components', 'Other'];
+const ITEMS_PER_PAGE = 10; // Number of items per page
 
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
@@ -38,6 +48,7 @@ type SortDirection = 'asc' | 'desc';
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     id: false, // Keep ID internal if not needed for display but useful for export/keys
@@ -52,6 +63,7 @@ export default function InventoryPage() {
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('description');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [currentPage, setCurrentPage] = useState(1); // State for pagination
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname(); // Get pathname
@@ -67,11 +79,6 @@ export default function InventoryPage() {
         console.log("Fetching inventory data...");
         const data = await getProductsService(); // Use corrected function name
         console.log("Fetched inventory data:", data);
-        // Add a temporary ID for React keys if backend doesn't provide one - ID is now generated in backend.ts
-        // const inventoryWithIds = data.map((item, index) => ({
-        //   ...item,
-        //   id: item.id || `temp-${index}-${Date.now()}`,
-        // }));
         setInventory(data); // Use data directly as IDs should be handled by backend service
       } catch (error) {
         console.error("Failed to fetch inventory:", error);
@@ -114,6 +121,7 @@ export default function InventoryPage() {
        setSortKey(key);
        setSortDirection('asc');
      }
+     setCurrentPage(1); // Reset to first page on sort
    };
 
 
@@ -161,6 +169,21 @@ export default function InventoryPage() {
 
      return result;
       }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
+
+    // Pagination Calculations
+    const totalItems = filteredAndSortedInventory.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    const paginatedInventory = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIndex = startIndex + ITEMS_PER_PAGE;
+        return filteredAndSortedInventory.slice(startIndex, endIndex);
+    }, [filteredAndSortedInventory, currentPage]);
+
+    const handlePageChange = (newPage: number) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+        }
+    };
 
     const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id') => {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
@@ -235,6 +258,30 @@ export default function InventoryPage() {
     };
     // --- End CSV Export ---
 
+    // --- Delete All Inventory ---
+    const handleDeleteAllInventory = async () => {
+        setIsDeleting(true);
+        try {
+            await clearInventoryService(); // Call backend service
+            await fetchInventory(); // Refetch data
+            setCurrentPage(1); // Reset to page 1
+            toast({
+                title: "Inventory Cleared",
+                description: "All inventory items have been deleted.",
+            });
+        } catch (error) {
+            console.error("Failed to clear inventory:", error);
+            toast({
+                title: "Error Clearing Inventory",
+                description: "Could not delete inventory data. Please try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+    // --- End Delete All Inventory ---
+
 
     if (isLoading) {
      return (
@@ -255,13 +302,13 @@ export default function InventoryPage() {
          </CardHeader>
          <CardContent>
            {/* Toolbar */}
-           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 flex-wrap">
               <div className="relative w-full md:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by description or catalog..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} // Reset page on search
                   className="pl-10"
                   aria-label="Search inventory"
                 />
@@ -286,25 +333,25 @@ export default function InventoryPage() {
                        <DropdownMenuSeparator />
                        <DropdownMenuCheckboxItem
                            checked={filterStockLevel === 'all'}
-                           onCheckedChange={() => setFilterStockLevel('all')}
+                           onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }} // Reset page on filter
                          >
                            All
                        </DropdownMenuCheckboxItem>
                         <DropdownMenuCheckboxItem
                             checked={filterStockLevel === 'inStock'}
-                            onCheckedChange={() => setFilterStockLevel('inStock')}
+                            onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
                           >
                             In Stock
                         </DropdownMenuCheckboxItem>
                        <DropdownMenuCheckboxItem
                          checked={filterStockLevel === 'low'}
-                         onCheckedChange={() => setFilterStockLevel('low')}
+                         onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
                        >
                          Low Stock (1-10)
                        </DropdownMenuCheckboxItem>
                          <DropdownMenuCheckboxItem
                          checked={filterStockLevel === 'out'}
-                         onCheckedChange={() => setFilterStockLevel('out')}
+                         onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
                        >
                          Out of Stock (0)
                        </DropdownMenuCheckboxItem>
@@ -342,6 +389,37 @@ export default function InventoryPage() {
                     <Download className="mr-2 h-4 w-4" /> Export CSV
                   </Button>
 
+                    {/* Delete All Button */}
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isDeleting}>
+                                {isDeleting ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                )}
+                                Delete All
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete all inventory items.
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteAllInventory} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                {isDeleting ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                Yes, delete all
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
                </div>
            </div>
 
@@ -371,14 +449,14 @@ export default function InventoryPage() {
                  </TableRow>
                </TableHeader>
                <TableBody>
-                 {filteredAndSortedInventory.length === 0 ? (
+                 {paginatedInventory.length === 0 ? (
                    <TableRow>
                      <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
                        No inventory items found matching your criteria.
                      </TableCell>
                    </TableRow>
                  ) : (
-                   filteredAndSortedInventory.map((item) => (
+                   paginatedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                        {/* Render cells based on visibility state */}
                         {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
@@ -415,9 +493,35 @@ export default function InventoryPage() {
                </TableBody>
              </Table>
            </div>
-            {/* TODO: Add Pagination if needed */}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-end space-x-2 py-4">
+                    <span className="text-sm text-muted-foreground">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" /> Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                    >
+                        Next <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
          </CardContent>
        </Card>
     </div>
   );
 }
+
+    

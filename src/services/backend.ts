@@ -246,6 +246,7 @@ export async function saveProducts(
   });
 
    // Add a record to the invoice history ONLY if the source is an upload/manual edit
+   // This prevents duplicate invoice records when syncing from POS
    if (source === 'upload') {
        const newInvoiceRecord: InvoiceHistoryItem = {
            id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -315,6 +316,17 @@ export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
   }));
   console.log("Returning invoices from localStorage:", invoices);
   return invoices;
+}
+
+/**
+ * Asynchronously clears all inventory data from localStorage.
+ * @returns A promise that resolves when the inventory is cleared.
+ */
+export async function clearInventory(): Promise<void> {
+    console.log("clearInventory called");
+    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
+    saveStoredData(INVENTORY_STORAGE_KEY, []); // Save an empty array
+    console.log("Inventory cleared from localStorage.");
 }
 
 
@@ -403,3 +415,5 @@ export async function login(credentials: any): Promise<AuthResponse> {
     user: loggedInUser,
   };
 }
+
+    
