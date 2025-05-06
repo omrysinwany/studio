@@ -4,13 +4,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Edit, Save, X, DollarSign } from 'lucide-react'; // Added DollarSign
+import { Button, buttonVariants } from '@/components/ui/button';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2 } from 'lucide-react'; // Added Trash2
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { getProductById, updateProduct, Product } from '@/services/backend'; // Import updateProduct
+import { getProductById, updateProduct, deleteProduct, Product } from '@/services/backend'; // Import deleteProduct
 import { Input } from '@/components/ui/input'; // Import Input for editing
 import { Label } from '@/components/ui/label'; // Import Label for editing
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Import AlertDialog
+import { cn } from '@/lib/utils'; // Import cn
 
 
 // Helper function to safely format numbers for display
@@ -18,7 +30,7 @@ const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = false } = options || {};
+    const { decimals = 2, useGrouping = true } = options || {}; // Default: 2 decimals, WITH grouping
 
     if (value === null || value === undefined || isNaN(value)) {
         return (0).toLocaleString(undefined, {
@@ -43,6 +55,13 @@ const formatInputValue = (value: number | undefined | null): string => {
     return value.toFixed(2); // Use toFixed for consistent decimal places
 };
 
+// Helper function to format quantity as integer for display (with grouping)
+const formatIntegerQuantity = (
+    value: number | undefined | null
+): string => {
+    return formatDisplayNumber(value, { decimals: 0, useGrouping: true }); // Use 0 decimals and grouping
+};
+
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -50,8 +69,9 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [editedProduct, setEditedProduct] = useState<Partial<Product>>({}); // State for edited values
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false); // State to toggle edit mode
+  const [isEditing] = useState(true); // Always in edit mode on this page now
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [error, setError] = useState<string | null>(null);
 
   const productId = params.productId as string;
@@ -139,8 +159,10 @@ export default function ProductDetailPage() {
         title: "Product Updated",
         description: "Changes saved successfully.",
       });
-      setIsEditing(false); // Exit edit mode
+      // isEditing is always true, so no need to setIsEditing(false);
       await loadProduct(); // Reload product data to show saved values
+       // Navigate back to inventory list after saving
+       router.push('/inventory?refresh=true');
     } catch (err) {
       console.error("Failed to save product:", err);
       toast({
@@ -153,22 +175,49 @@ export default function ProductDetailPage() {
     }
   };
 
-  // Handle cancelling edit mode
+   // Handle Deleting Product
+   const handleDelete = async () => {
+    if (!product || !product.id) return;
+    setIsDeleting(true);
+    try {
+      await deleteProduct(product.id); // Call backend delete function
+      toast({
+        title: "Product Deleted",
+        description: `Product "${product.description}" has been deleted.`,
+      });
+      router.push('/inventory?refresh=true'); // Go back to inventory list after delete
+    } catch (err) {
+      console.error("Failed to delete product:", err);
+      toast({
+        title: "Delete Failed",
+        description: "Could not delete the product.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+
+  // Handle cancelling edit mode (now just goes back)
   const handleCancel = () => {
-    setEditedProduct({ ...product }); // Reset edited state to original product data
-    setIsEditing(false);
+    // setEditedProduct({ ...product }); // Reset edited state to original product data
+    // setIsEditing(false);
+     router.back(); // Go back to the previous page (inventory list)
   };
 
 
   const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false) => {
-    if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
+    // No longer need to check value === '' because inputs handle empty state
+    // if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
     const IconComponent = icon;
 
+    // Display formatting remains the same as before
     const displayValue = typeof value === 'number'
       ? (isCurrency
             ? `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}` // Currency with grouping
             : (isQuantity
-                 ? formatDisplayNumber(value, { decimals: 0, useGrouping: true }) // Quantity as integer with grouping
+                 ? formatIntegerQuantity(value) // Use integer formatter for quantity display
                  : formatDisplayNumber(value, { decimals: 2, useGrouping: true })) // Other numbers with grouping
         )
       : value;
@@ -178,22 +227,25 @@ export default function ProductDetailPage() {
       <div className="flex items-start space-x-3 py-2">
         <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
         <div className="flex-grow">
-          <Label htmlFor={isEditing ? fieldKey : undefined} className="text-sm font-medium text-muted-foreground">{label}</Label>
-          {isEditing && (fieldKey === 'catalogNumber' || fieldKey === 'description' || fieldKey === 'quantity' || fieldKey === 'unitPrice') ? (
-            <Input
-              id={fieldKey}
-              type={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? 'number' : 'text'}
-              value={fieldKey === 'quantity' || fieldKey === 'unitPrice'
-                        ? formatInputValue(editedProduct[fieldKey] as number | undefined)
-                        : editedProduct[fieldKey] || ''}
-              onChange={(e) => handleInputChange(fieldKey, e.target.value)}
-              className="mt-1 h-9"
-              step={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0.01' : undefined}
-              min={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0' : undefined}
-            />
-          ) : (
-            <p className="text-base mt-0.5">{displayValue}</p>
-          )}
+          <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
+          {/* Always show Input as isEditing is always true */}
+          <Input
+            id={fieldKey}
+            type={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? 'number' : 'text'}
+            value={fieldKey === 'quantity' || fieldKey === 'unitPrice'
+                      ? formatInputValue(editedProduct[fieldKey] as number | undefined)
+                      : editedProduct[fieldKey] || ''}
+            onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+            className="mt-1 h-9"
+            step={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0.01' : undefined}
+            min={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0' : undefined}
+             // Disable lineTotal input
+            disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
+          />
+          {/* Conditionally render display value for non-editable fields or when not editing */}
+           {/* {fieldKey === 'lineTotal' && (
+               <p className="text-base mt-0.5">{displayValue}</p>
+           )} */}
         </div>
       </div>
     );
@@ -234,31 +286,48 @@ export default function ProductDetailPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-        {/* Back and Edit/Save Buttons */}
+        {/* Back, Save, Cancel, Delete Buttons */}
        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-         <Button variant="outline" onClick={() => !isEditing && router.back()} disabled={isEditing}>
-           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Inventory
+         {/* Go Back button - now acts as Cancel */}
+         <Button variant="outline" onClick={handleCancel} disabled={isSaving || isDeleting}>
+           <ArrowLeft className="mr-2 h-4 w-4" /> Cancel / Back
          </Button>
-         {isEditing ? (
-            <div className="flex gap-2">
-                <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-                   <X className="mr-2 h-4 w-4" /> Cancel
-                </Button>
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Changes
-                </Button>
-            </div>
-         ) : (
-            <Button variant="secondary" onClick={() => setIsEditing(true)}>
-              <Edit className="mr-2 h-4 w-4" /> Edit Product
+         <div className="flex gap-2">
+             {/* Delete Button */}
+             <AlertDialog>
+                <AlertDialogTrigger asChild>
+                   <Button variant="destructive" disabled={isSaving || isDeleting}>
+                       {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                       Delete
+                   </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                   <AlertDialogHeader>
+                   <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                   <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete the product "{product.description}".
+                   </AlertDialogDescription>
+                   </AlertDialogHeader>
+                   <AlertDialogFooter>
+                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                   <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                      {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Yes, Delete Product
+                   </AlertDialogAction>
+                   </AlertDialogFooter>
+                </AlertDialogContent>
+             </AlertDialog>
+            {/* Save Button */}
+            <Button onClick={handleSave} disabled={isSaving || isDeleting}>
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Changes
             </Button>
-         )}
+        </div>
        </div>
 
       <Card className="shadow-lg">
         <CardHeader>
-           {isEditing ? (
+           {/* Always show inputs for editing */}
               <>
                 <Label htmlFor="description" className="text-sm font-medium text-muted-foreground">Product Description</Label>
                 <Input
@@ -266,6 +335,7 @@ export default function ProductDetailPage() {
                     value={editedProduct.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     className="text-2xl sm:text-3xl font-bold h-auto p-0 border-0 shadow-none focus-visible:ring-0"
+                    disabled={isSaving || isDeleting}
                     />
                  <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2">Catalog Number</Label>
                  <Input
@@ -273,17 +343,11 @@ export default function ProductDetailPage() {
                     value={editedProduct.catalogNumber || ''}
                     onChange={(e) => handleInputChange('catalogNumber', e.target.value)}
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
+                    disabled={isSaving || isDeleting}
                   />
               </>
-           ) : (
-             <>
-               <CardTitle className="text-2xl sm:text-3xl font-bold text-primary flex items-center">
-                 <Package className="mr-3 h-6 sm:h-8 w-6 sm:w-8 flex-shrink-0" /> <span className='truncate'>{product.description}</span>
-               </CardTitle>
-               <CardDescription>Detailed information for catalog #{product.catalogNumber}</CardDescription>
-             </>
-           )}
-           {product.quantity <= 10 && !isEditing && (
+
+           {product.quantity <= 10 && ( // Show low stock badge based on original product data
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                     product.quantity === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                 }`}>
@@ -296,12 +360,10 @@ export default function ProductDetailPage() {
            <Separator className="my-4" />
 
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
-             {/* Show Catalog # only in view mode if header editing handles it */}
-             {!isEditing && renderDetailItem(Hash, "Catalog Number", product.catalogNumber, 'catalogNumber')}
-             {renderDetailItem(Layers, "Quantity", isEditing ? editedProduct.quantity : product.quantity, 'quantity', false, true)}
-             {renderDetailItem(Tag, "Unit Price", isEditing ? editedProduct.unitPrice : product.unitPrice, 'unitPrice', true)}
-             {/* Line Total is calculated, maybe don't make it editable directly */}
-             {renderDetailItem(DollarSign, "Line Total", isEditing ? editedProduct.lineTotal : product.lineTotal, 'lineTotal', true)}
+             {/* Always render inputs */}
+             {renderDetailItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
+             {renderDetailItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
+             {renderDetailItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
              {/* Add other fields as needed */}
           </div>
         </CardContent>
@@ -309,4 +371,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-

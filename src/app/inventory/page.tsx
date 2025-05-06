@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Edit } from 'lucide-react'; // Added Edit
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Removed Edit, kept Trash2 for Delete All, Added Eye
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -80,7 +80,7 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [searchTerm, setSearchTerm] = useState('');
-  // Updated default visible columns
+  // Updated default visible columns to Name, Qty, Price
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     id: false,
     description: true, // Show name/description
@@ -527,21 +527,12 @@ export default function InventoryPage() {
                                     size="icon"
                                     onClick={() => item.id && router.push(`/inventory/${item.id}`)}
                                     disabled={!item.id}
-                                    aria-label={`View/Edit details for ${item.description}`}
-                                    className="h-8 w-8 text-primary hover:text-primary/80" // View/Edit Icon
+                                    aria-label={`View details for ${item.description}`}
+                                    className="h-8 w-8 text-primary hover:text-primary/80" // View/Inspect Icon
                                 >
-                                    <Edit className="h-4 w-4" />
+                                    <Eye className="h-4 w-4" />
                                 </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    // onClick={() => handleDeleteItem(item.id)} // TODO: Implement single item delete
-                                    disabled={!item.id}
-                                    aria-label={`Delete ${item.description}`}
-                                    className="h-8 w-8 text-destructive hover:text-destructive/80" // Delete Icon
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
+                                {/* Delete button moved to Product Detail Page */}
                             </div>
                          </TableCell>
                         )}

@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -372,6 +373,29 @@ export async function updateProduct(productId: string, updatedData: Partial<Prod
 
   saveStoredData(INVENTORY_STORAGE_KEY, currentInventory);
   console.log(`Product ${productId} updated successfully.`);
+}
+
+/**
+ * Asynchronously deletes a product from localStorage by its ID.
+ * @param productId The ID of the product to delete.
+ * @returns A promise that resolves when the deletion is complete.
+ * @throws Error if the product with the given ID is not found.
+ */
+export async function deleteProduct(productId: string): Promise<void> {
+  console.log(`deleteProduct called for ID: ${productId}`);
+  await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
+
+  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  const initialLength = currentInventory.length;
+  const updatedInventory = currentInventory.filter(p => p.id !== productId);
+
+  if (updatedInventory.length === initialLength) {
+      console.error(`Product with ID ${productId} not found for deletion.`);
+      throw new Error(`Product with ID ${productId} not found.`);
+  }
+
+  saveStoredData(INVENTORY_STORAGE_KEY, updatedInventory);
+  console.log(`Product ${productId} deleted successfully.`);
 }
 
 
