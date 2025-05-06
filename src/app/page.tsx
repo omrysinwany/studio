@@ -50,10 +50,10 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <div className="w-full max-w-4xl text-center fade-in-content">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-primary">
-          Welcome to InvoTrack Mobile
+          Welcome to InvoTrack
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8">
-          {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Manage your inventory efficiently.'}
+          {user ? `Hello, ${user.username}! Your inventory, simplified.` : 'Your inventory, simplified.'}
         </p>
 
         {/* Quick Stats Dashboard */}
