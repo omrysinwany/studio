@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -23,35 +22,18 @@ interface EditableProduct extends Product {
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_'; // Key for storing image URI
 
-// Helper function to safely format numbers
-const formatNumber = (
-    value: number | undefined | null,
-    options?: { decimals?: number, useGrouping?: boolean }
-): string => {
-    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
-
-    if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-            useGrouping: useGrouping,
-        });
-    }
-
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-        useGrouping: useGrouping,
-    });
-};
 
 // Function specifically for Input value prop - avoids commas but keeps decimals
-const formatInputValue = (value: number | undefined | null): string => {
+const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
      if (value === null || value === undefined || isNaN(value)) {
-        return '0.00';
+        if (fieldType === 'stockLevel') return ''; // Allow empty for stock levels
+        return fieldType === 'currency' ? '0.00' : '0';
     }
-    return value.toFixed(2); // Use toFixed(2) for input value to ensure 2 decimals without commas
-}
+    if (fieldType === 'currency') {
+      return parseFloat(String(value)).toFixed(2);
+    }
+    return parseInt(String(value), 10).toString(); // For quantity and stockLevel, ensure integer
+};
 
 
 function EditInvoiceContent() {
@@ -76,15 +58,15 @@ function EditInvoiceContent() {
     const key = searchParams.get('key');
     const imgKey = searchParams.get('imageKey'); // Get image URI key
     const nameParam = searchParams.get('fileName');
-    setDataKey(key); 
+    setDataKey(key);
     setImageUriKey(imgKey); // Store image URI key
 
-    let hasAttemptedLoad = false; 
+    let hasAttemptedLoad = false;
 
     if (nameParam) {
       setFileName(decodeURIComponent(nameParam));
     } else {
-        setFileName('Unknown Document'); 
+        setFileName('Unknown Document');
     }
 
     if (key) {
@@ -99,7 +81,7 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-             if (key) localStorage.removeItem(key); 
+             if (key) localStorage.removeItem(key);
              if (imgKey) localStorage.removeItem(imgKey); // Also clear image URI key on error
              setIsLoading(false);
              setInitialDataLoaded(true);
@@ -111,7 +93,7 @@ function EditInvoiceContent() {
             parsedData = JSON.parse(storedData);
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-             if (key) localStorage.removeItem(key); 
+             if (key) localStorage.removeItem(key);
              if (imgKey) localStorage.removeItem(imgKey);
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
@@ -128,13 +110,15 @@ function EditInvoiceContent() {
         if (parsedData && Array.isArray(parsedData.products)) {
           const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
             ...p,
-            id: p.id || `${Date.now()}-${index}`, 
-            _originalId: p.id, 
+            id: p.id || `${Date.now()}-${index}`,
+            _originalId: p.id,
             quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
             lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
              unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
                         ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
                         : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
+            minStockLevel: p.minStockLevel ?? undefined,
+            maxStockLevel: p.maxStockLevel ?? undefined,
           }));
           setProducts(productsWithIds);
            setErrorLoading(null);
@@ -169,28 +153,32 @@ function EditInvoiceContent() {
         setInitialDataLoaded(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, toast, initialDataLoaded]); 
+  }, [searchParams, toast, initialDataLoaded]);
 
 
   const handleInputChange = (id: string, field: keyof Product, value: string | number) => {
     setProducts(prevProducts =>
       prevProducts.map(product => {
         if (product.id === id) {
-          let numericValue: number | string = value; 
-          if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
+          let numericValue: number | string | undefined = value;
+          if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
               const stringValue = String(value);
-              numericValue = parseFloat(stringValue.replace(/,/g, '')); 
-              if (isNaN(numericValue)) {
-                 numericValue = 0;
+              if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel')) {
+                  numericValue = undefined; // Allow empty string to become undefined for optional fields
+              } else {
+                numericValue = parseFloat(stringValue.replace(/,/g, ''));
+                if (isNaN(numericValue as number)) {
+                   numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
+                }
               }
           }
 
 
           const updatedProduct = { ...product, [field]: numericValue };
 
-          const quantity = updatedProduct.quantity || 0; 
-          const unitPrice = updatedProduct.unitPrice || 0; 
-          const lineTotal = updatedProduct.lineTotal || 0; 
+          const quantity = updatedProduct.quantity || 0;
+          const unitPrice = updatedProduct.unitPrice || 0;
+          const lineTotal = updatedProduct.lineTotal || 0;
 
 
           if (field === 'quantity' || field === 'unitPrice') {
@@ -219,7 +207,9 @@ function EditInvoiceContent() {
       quantity: 0,
       unitPrice: 0,
       lineTotal: 0,
-      barcode: undefined, 
+      barcode: undefined,
+      minStockLevel: undefined,
+      maxStockLevel: undefined,
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
   };
@@ -236,12 +226,11 @@ function EditInvoiceContent() {
 
   // Function to proceed with the actual saving after barcode prompt (if needed)
   const proceedWithSave = async (finalProductsToSave: Product[]) => {
-      setIsSaving(true); 
+      setIsSaving(true);
       try {
           const imageUri = (imageUriKey && imageUriKey.trim() !== '') ? localStorage.getItem(imageUriKey) : null;
           console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
-          
-          // Pass 'upload' as source and the image URI to create invoice history
+
           await saveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined);
 
           if (dataKey) {
@@ -268,14 +257,14 @@ function EditInvoiceContent() {
               variant: "destructive",
           });
       } finally {
-          setIsSaving(false); 
+          setIsSaving(false);
       }
   };
 
 
   // Main save handler - checks for new products first
   const handleSave = async () => {
-     setIsSaving(true); 
+     setIsSaving(true);
 
      try {
          const currentInventory = await getProductsService();
@@ -286,23 +275,23 @@ function EditInvoiceContent() {
              if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
          });
 
-         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest); 
+         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
          const newProductsWithoutBarcode = productsFromEdit.filter(p => {
              const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
              const existsById = p.id && inventoryMap.has(`id:${p.id}`);
              const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
              return !existsByBarcode && !existsById && !existsByCatalog && !p.barcode;
-         }).map(p => ({ ...p, _isNewForPrompt: true })); 
+         }).map(p => ({ ...p, _isNewForPrompt: true }));
 
 
          if (newProductsWithoutBarcode.length > 0) {
              console.log("New products without barcode found:", newProductsWithoutBarcode);
-             setPromptingForBarcodes(newProductsWithoutBarcode); 
-             setIsSaving(false); 
+             setPromptingForBarcodes(newProductsWithoutBarcode);
+             setIsSaving(false);
          } else {
              console.log("No new products require barcode prompt. Proceeding to save.");
-             await proceedWithSave(productsFromEdit); 
+             await proceedWithSave(productsFromEdit);
          }
 
      } catch (error) {
@@ -312,7 +301,7 @@ function EditInvoiceContent() {
              description: "Could not check inventory to identify new products. Please try again.",
              variant: "destructive",
          });
-         setIsSaving(false); 
+         setIsSaving(false);
      }
   };
 
@@ -320,23 +309,17 @@ function EditInvoiceContent() {
  const handleBarcodePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
      if (updatedProductsFromPrompt) {
          console.log("Barcode prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
-         
-         // Merge updates from the dialog back into the main products list.
-         // We need to ensure that products *not* in the prompt (because they were skipped or already had barcodes)
-         // are still included in the final save.
+
          const finalProductsToSave = products.map(originalProduct => {
              const productFromPrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
              if (productFromPrompt) {
-                 // This product was in the prompt and might have an updated barcode
                  return { ...originalProduct, barcode: productFromPrompt.barcode, _isNewForPrompt: false };
              }
-             // This product was not in the prompt (e.g., already had a barcode, or was skipped *before* prompt)
-             // or it was in the prompt but the user chose to "skip" it in the dialog (by not providing barcode)
-             return { ...originalProduct, _isNewForPrompt: false }; // Keep its existing barcode or lack thereof
-         }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest); // Clean internal flags
+             return { ...originalProduct, _isNewForPrompt: false };
+         }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
 
-         setProducts(finalProductsToSave); 
+         setProducts(finalProductsToSave);
          proceedWithSave(finalProductsToSave);
      } else {
          console.log("Barcode prompt cancelled.");
@@ -346,7 +329,7 @@ function EditInvoiceContent() {
              variant: "default",
          });
      }
-     setPromptingForBarcodes(null); 
+     setPromptingForBarcodes(null);
  };
 
 
@@ -442,7 +425,7 @@ function EditInvoiceContent() {
         <CardContent>
           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[700px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -450,6 +433,8 @@ function EditInvoiceContent() {
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -458,9 +443,9 @@ function EditInvoiceContent() {
                   <TableRow key={product.id}>
                     <TableCell className="px-2 sm:px-4 py-2">
                       <Input
-                        value={product.catalogNumber || ''} 
+                        value={product.catalogNumber || ''}
                         onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
-                        className="min-w-[100px] h-9" 
+                        className="min-w-[100px] h-9"
                         aria-label={`Catalog number for ${product.description}`}
                       />
                     </TableCell>
@@ -468,27 +453,27 @@ function EditInvoiceContent() {
                       <Input
                         value={product.description || ''}
                         onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
-                        className="min-w-[150px] sm:min-w-[200px] h-9" 
+                        className="min-w-[150px] sm:min-w-[200px] h-9"
                         aria-label={`Description for catalog number ${product.catalogNumber}`}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.quantity)}
+                        value={formatInputValue(product.quantity, 'quantity')}
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
-                        className="w-20 sm:w-24 text-right h-9" 
+                        className="w-20 sm:w-24 text-right h-9"
                         min="0"
-                        step="any" 
+                        step="any"
                         aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.unitPrice)}
+                        value={formatInputValue(product.unitPrice, 'currency')}
                         onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
-                        className="w-24 sm:w-28 text-right h-9" 
+                        className="w-24 sm:w-28 text-right h-9"
                         step="0.01"
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
@@ -497,12 +482,36 @@ function EditInvoiceContent() {
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.lineTotal)}
+                        value={formatInputValue(product.lineTotal, 'currency')}
                         onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
-                        className="w-24 sm:w-28 text-right h-9" 
+                        className="w-24 sm:w-28 text-right h-9"
                         step="0.01"
                          min="0"
                          aria-label={`Line total for ${product.description}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
+                      <Input
+                        type="number"
+                        value={formatInputValue(product.minStockLevel, 'stockLevel')}
+                        onChange={(e) => handleInputChange(product.id, 'minStockLevel', e.target.value)}
+                        className="w-20 sm:w-24 text-right h-9"
+                        min="0"
+                        step="1"
+                        placeholder="Optional"
+                        aria-label={`Min stock for ${product.description}`}
+                      />
+                    </TableCell>
+                     <TableCell className="text-right px-2 sm:px-4 py-2">
+                      <Input
+                        type="number"
+                        value={formatInputValue(product.maxStockLevel, 'stockLevel')}
+                        onChange={(e) => handleInputChange(product.id, 'maxStockLevel', e.target.value)}
+                        className="w-20 sm:w-24 text-right h-9"
+                        min="0"
+                        step="1"
+                        placeholder="Optional"
+                        aria-label={`Max stock for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
@@ -510,7 +519,7 @@ function EditInvoiceContent() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleRemoveRow(product.id)}
-                        className="text-destructive hover:text-destructive/80 h-8 w-8" 
+                        className="text-destructive hover:text-destructive/80 h-8 w-8"
                          aria-label={`Remove row for ${product.description}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -521,7 +530,7 @@ function EditInvoiceContent() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3"> 
+          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
              </Button>
