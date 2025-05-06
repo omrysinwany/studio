@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -5,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 import { Camera, Save, SkipForward, X } from 'lucide-react';
 import BarcodeScanner from '@/components/barcode-scanner'; // Import the scanner component
 import type { Product } from '@/services/backend'; // Import Product type
@@ -55,6 +56,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   // Function to skip adding barcode for a specific product
   const handleSkipProduct = (productId: string) => {
      // Set barcode to empty string or keep undefined
+     // Setting to empty string makes it clear in the input field
      handleBarcodeChange(productId, '');
      console.log(`Skipping barcode entry for product ID: ${productId}`);
      // Optionally, visually indicate skipped state, though Input just becomes empty
@@ -64,6 +66,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
       {/* Adjust content styling for better mobile experience */}
+      {/* Added max-h and flex structure */}
       <DialogContent className="sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[80vh] flex flex-col p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Assign Barcodes (Optional)</DialogTitle>
@@ -72,6 +75,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
           </DialogDescription>
         </DialogHeader>
 
+        {/* Wrap product list in ScrollArea */}
         <ScrollArea className="flex-grow -mx-4 sm:-mx-6 px-4 sm:px-6"> {/* Adjust padding */}
           <div className="space-y-4 py-4">
             {updatedProducts.map((product) => (
@@ -106,7 +110,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                          type="button"
                          variant="ghost"
                          size="sm"
-                         onClick={() => handleSkipProduct(product.id)}
+                         onClick={() => handleSkipProduct(product.id)} // Attach handler
                          className="text-xs text-muted-foreground h-9 px-2" // Align height
                          title="Skip barcode for this item"
                        >
@@ -120,6 +124,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
           </div>
         </ScrollArea>
 
+        {/* Ensure footer is fixed at the bottom */}
         <DialogFooter className="mt-auto pt-4 border-t flex-col sm:flex-row gap-2"> {/* Flex column on mobile */}
           <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
             <X className="mr-2 h-4 w-4" /> Cancel Save
@@ -143,3 +148,6 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
 };
 
 export default BarcodePromptDialog;
+
+
+    
