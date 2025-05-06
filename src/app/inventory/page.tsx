@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -39,11 +40,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; // Import AlertDialog
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip"; // Import Tooltip components
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"; // Import Popover components
 
 
 const ITEMS_PER_PAGE = 10; // Number of items per page
@@ -124,6 +124,8 @@ export default function InventoryPage() {
             const unitPrice = Number(item.unitPrice) || 0;
              return {
                  ...item,
+                 quantity: quantity, // Ensure quantity is a number
+                 unitPrice: unitPrice, // Ensure unitPrice is a number
                  lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Always recalculate
              };
         });
@@ -222,6 +224,8 @@ export default function InventoryPage() {
          const unitPrice = Number(item.unitPrice) || 0;
          return {
             ...item,
+             quantity: quantity, // Ensure quantity is a number
+             unitPrice: unitPrice, // Ensure unitPrice is a number
             // Recalculate lineTotal based on current data
             lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Recalculate here
          };
@@ -358,7 +362,6 @@ export default function InventoryPage() {
    }
 
   return (
-    <TooltipProvider> {/* Wrap with TooltipProvider */}
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground">
          <CardHeader>
@@ -550,16 +553,16 @@ export default function InventoryPage() {
                         )}
                         {visibleColumns.shortName && (
                             <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span className="cursor-help underline decoration-dashed decoration-muted-foreground/50 underline-offset-2">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
                                             {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
-                                        </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" align="start" className="max-w-[300px] break-words">
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg">
                                         <p>{item.description || 'No description available.'}</p>
-                                    </TooltipContent>
-                                </Tooltip>
+                                    </PopoverContent>
+                                </Popover>
                             </TableCell>
                         )}
                          {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
@@ -620,7 +623,7 @@ export default function InventoryPage() {
          </CardContent>
        </Card>
     </div>
-    </TooltipProvider> // Close TooltipProvider
   );
 }
 
+    
