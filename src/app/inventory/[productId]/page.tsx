@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2 } from 'lucide-react'; // Added Trash2
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil } from 'lucide-react'; // Added Pencil, X
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductById, updateProduct, deleteProduct, Product } from '@/services/backend'; // Import deleteProduct
@@ -40,7 +40,7 @@ const formatDisplayNumber = (
         });
     }
 
-    return value.toLocaleString(undefined, {
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
@@ -69,7 +69,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [editedProduct, setEditedProduct] = useState<Partial<Product>>({}); // State for edited values
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing] = useState(true); // Always in edit mode on this page now
+  const [isEditing, setIsEditing] = useState(false); // Default to view mode
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export default function ProductDetailPage() {
       const data = await getProductById(productId);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data }); // Initialize edited state
+        setEditedProduct({ ...data }); // Initialize edited state for potential editing later
       } else {
         setError("Product not found.");
          toast({
@@ -159,10 +159,8 @@ export default function ProductDetailPage() {
         title: "Product Updated",
         description: "Changes saved successfully.",
       });
-      // isEditing is always true, so no need to setIsEditing(false);
+      setIsEditing(false); // Switch back to view mode after saving
       await loadProduct(); // Reload product data to show saved values
-       // Navigate back to inventory list after saving
-       router.push('/inventory?refresh=true');
     } catch (err) {
       console.error("Failed to save product:", err);
       toast({
@@ -198,58 +196,81 @@ export default function ProductDetailPage() {
     }
   };
 
-
-  // Handle cancelling edit mode (now just goes back)
-  const handleCancel = () => {
-    // setEditedProduct({ ...product }); // Reset edited state to original product data
-    // setIsEditing(false);
-     router.back(); // Go back to the previous page (inventory list)
+  // Handle entering edit mode
+  const handleEdit = () => {
+    if (product) {
+        setEditedProduct({ ...product }); // Initialize editor with current product data
+        setIsEditing(true);
+    }
   };
 
-
-  const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false) => {
-    // No longer need to check value === '' because inputs handle empty state
-    // if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) return null;
-    const IconComponent = icon;
-
-    // Display formatting remains the same as before
-    const displayValue = typeof value === 'number'
-      ? (isCurrency
-            ? `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}` // Currency with grouping
-            : (isQuantity
-                 ? formatIntegerQuantity(value) // Use integer formatter for quantity display
-                 : formatDisplayNumber(value, { decimals: 2, useGrouping: true })) // Other numbers with grouping
-        )
-      : value;
-
-
-    return (
-      <div className="flex items-start space-x-3 py-2">
-        <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
-        <div className="flex-grow">
-          <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
-          {/* Always show Input as isEditing is always true */}
-          <Input
-            id={fieldKey}
-            type={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? 'number' : 'text'}
-            value={fieldKey === 'quantity' || fieldKey === 'unitPrice'
-                      ? formatInputValue(editedProduct[fieldKey] as number | undefined)
-                      : editedProduct[fieldKey] || ''}
-            onChange={(e) => handleInputChange(fieldKey, e.target.value)}
-            className="mt-1 h-9"
-            step={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0.01' : undefined}
-            min={fieldKey === 'quantity' || fieldKey === 'unitPrice' ? '0' : undefined}
-             // Disable lineTotal input
-            disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
-          />
-          {/* Conditionally render display value for non-editable fields or when not editing */}
-           {/* {fieldKey === 'lineTotal' && (
-               <p className="text-base mt-0.5">{displayValue}</p>
-           )} */}
-        </div>
-      </div>
-    );
+  // Handle cancelling edit mode
+  const handleCancelEdit = () => {
+    if (product) {
+        setEditedProduct({ ...product }); // Reset edited state to original product data
+        setIsEditing(false);
+        toast({
+            title: "Edit Cancelled",
+            description: "Your changes were not saved.",
+            variant: "default",
+        });
+    }
   };
+
+  // Handle Back button click
+   const handleBack = () => {
+      router.back(); // Go back to the previous page (inventory list)
+   };
+
+
+   // Render individual detail item in VIEW mode
+   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false, isQuantity: boolean = false) => {
+     const IconComponent = icon;
+     const displayValue = typeof value === 'number'
+       ? (isCurrency
+             ? `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`
+             : (isQuantity
+                  ? formatIntegerQuantity(value)
+                  : formatDisplayNumber(value, { decimals: 2, useGrouping: true }))
+         )
+       : (value || '-'); // Show '-' for empty/null string values
+
+     return (
+       <div className="flex items-center space-x-3 py-2">
+         <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+         <div>
+           <p className="text-sm font-medium text-muted-foreground">{label}</p>
+           <p className="text-base font-semibold">{displayValue}</p>
+         </div>
+       </div>
+     );
+   };
+
+    // Render individual detail item in EDIT mode
+    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false) => {
+        const IconComponent = icon;
+        return (
+          <div className="flex items-start space-x-3 py-2">
+            <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+            <div className="flex-grow">
+              <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
+              <Input
+                id={fieldKey}
+                type={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? 'number' : 'text'}
+                value={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal'
+                          ? formatInputValue(editedProduct[fieldKey] as number | undefined)
+                          : editedProduct[fieldKey] || ''}
+                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                className="mt-1 h-9"
+                step={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? '0.01' : undefined}
+                min={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? '0' : undefined}
+                // Disable lineTotal input as it's calculated
+                disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
+              />
+            </div>
+          </div>
+        );
+      };
 
 
   if (isLoading) {
@@ -265,7 +286,7 @@ export default function ProductDetailPage() {
       <div className="container mx-auto p-4 md:p-8 text-center">
          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
         <p className="text-xl text-destructive mb-4">{error}</p>
-        <Button variant="outline" onClick={() => router.back()}>
+        <Button variant="outline" onClick={handleBack}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
         </Button>
       </div>
@@ -276,7 +297,7 @@ export default function ProductDetailPage() {
      return (
        <div className="container mx-auto p-4 md:p-8 text-center">
          <p>Product not found.</p>
-         <Button variant="outline" onClick={() => router.back()} className="mt-4">
+         <Button variant="outline" onClick={handleBack} className="mt-4">
            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
          </Button>
        </div>
@@ -286,49 +307,62 @@ export default function ProductDetailPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-        {/* Back, Save, Cancel, Delete Buttons */}
+        {/* Back, Edit/Save, Cancel, Delete Buttons */}
        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-         {/* Go Back button - now acts as Cancel */}
-         <Button variant="outline" onClick={handleCancel} disabled={isSaving || isDeleting}>
-           <ArrowLeft className="mr-2 h-4 w-4" /> Cancel / Back
+         {/* Go Back button */}
+         <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting}>
+           <ArrowLeft className="mr-2 h-4 w-4" /> Back
          </Button>
          <div className="flex gap-2">
-             {/* Delete Button */}
-             <AlertDialog>
-                <AlertDialogTrigger asChild>
-                   <Button variant="destructive" disabled={isSaving || isDeleting}>
-                       {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                       Delete
-                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                   <AlertDialogHeader>
-                   <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                   <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete the product "{product.description}".
-                   </AlertDialogDescription>
-                   </AlertDialogHeader>
-                   <AlertDialogFooter>
-                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                   <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                      {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Yes, Delete Product
-                   </AlertDialogAction>
-                   </AlertDialogFooter>
-                </AlertDialogContent>
-             </AlertDialog>
-            {/* Save Button */}
-            <Button onClick={handleSave} disabled={isSaving || isDeleting}>
-                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Changes
-            </Button>
+             {isEditing ? (
+                 <>
+                     <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving || isDeleting}>
+                         <X className="mr-2 h-4 w-4" /> Cancel
+                     </Button>
+                     <Button onClick={handleSave} disabled={isSaving || isDeleting}>
+                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                         Save Changes
+                     </Button>
+                 </>
+             ) : (
+                 <>
+                     {/* Delete Button - Only show in View mode */}
+                      <AlertDialog>
+                         <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isDeleting}>
+                                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                                Delete
+                            </Button>
+                         </AlertDialogTrigger>
+                         <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                               This action cannot be undone. This will permanently delete the product "{product.description}".
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                               {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                               Yes, Delete Product
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                         </AlertDialogContent>
+                      </AlertDialog>
+
+                     <Button onClick={handleEdit}>
+                         <Pencil className="mr-2 h-4 w-4" /> Edit
+                     </Button>
+                 </>
+             )}
         </div>
        </div>
 
       <Card className="shadow-lg">
         <CardHeader>
-           {/* Always show inputs for editing */}
-              <>
+           {isEditing ? (
+             <>
                 <Label htmlFor="description" className="text-sm font-medium text-muted-foreground">Product Description</Label>
                 <Input
                     id="description"
@@ -346,8 +380,17 @@ export default function ProductDetailPage() {
                     disabled={isSaving || isDeleting}
                   />
               </>
+           ) : (
+               <>
+                 <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">{product.description}</CardTitle>
+                 <CardDescription className="flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-muted-foreground"/>
+                    {product.catalogNumber}
+                 </CardDescription>
+               </>
+           )}
 
-           {product.quantity <= 10 && ( // Show low stock badge based on original product data
+           {product.quantity <= 10 && !isEditing && ( // Show low stock badge only in view mode
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                     product.quantity === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                 }`}>
@@ -360,14 +403,25 @@ export default function ProductDetailPage() {
            <Separator className="my-4" />
 
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
-             {/* Always render inputs */}
-             {renderDetailItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
-             {renderDetailItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
-             {renderDetailItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
-             {/* Add other fields as needed */}
+             {isEditing ? (
+                 <>
+                    {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
+                    {renderEditItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
+                    {renderEditItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
+                 </>
+             ) : (
+                 <>
+                    {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
+                    {renderViewItem(Tag, "Unit Price", product.unitPrice, true)}
+                    {renderViewItem(DollarSign, "Line Total", product.lineTotal, true)}
+                 </>
+             )}
+             {/* Add other fields as needed, adapting for view/edit mode */}
           </div>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    
