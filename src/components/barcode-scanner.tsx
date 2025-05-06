@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -54,15 +55,16 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
       streamRef.current = null;
     }
      if (readerRef.current) {
-        // The BrowserMultiFormatReader instance itself doesn't have a public reset method.
-        // Stopping the tracks and clearing the video source is the primary way to stop scanning.
-        // readerRef.current.reset(); // REMOVED - This method does not exist on the instance.
-        console.log("ZXing reader stream stopped (no specific reset method called).");
+        // Explicitly reset the reader to stop any ongoing decoding processes
+        readerRef.current.reset();
+        console.log("ZXing reader explicitly reset.");
      }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+      videoRef.current.pause(); // Explicitly pause video
+      videoRef.current.removeAttribute('src'); // Remove src attribute as well
       videoRef.current.load(); // Explicitly tell the video element to load nothing
-       console.log("Video element srcObject cleared and loaded empty.");
+      console.log("Video element paused, srcObject cleared, src removed, and loaded empty.");
     }
   }, []);
 
@@ -120,9 +122,32 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                      deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
                      // Explicitly add facingMode if possible, helps mobile browsers
                      facingMode: rearCamera ? 'environment' : 'user',
+                     // Request higher resolution potentially for better scanning
+                     // width: { ideal: 1280 },
+                     // height: { ideal: 720 }
                  }
              };
-             streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
+
+             try {
+                streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
+             } catch (getUserMediaError: any) {
+                 console.error("getUserMedia failed:", getUserMediaError);
+                 // Re-throw specific errors for permission/device issues
+                 if (getUserMediaError.name === 'NotAllowedError') {
+                     throw new Error('Camera permission denied.');
+                 } else if (getUserMediaError.name === 'NotFoundError' || getUserMediaError.name === 'DevicesNotFoundError') {
+                     throw new Error('No suitable camera device found.');
+                 } else if (getUserMediaError.name === 'NotReadableError') {
+                      throw new Error('Camera is already in use or hardware error.');
+                 } else if (getUserMediaError.name === 'OverconstrainedError') {
+                      console.warn('OverconstrainedError getting user media, trying without specific device ID', getUserMediaError.constraint);
+                       // Try again without specific device ID as a fallback
+                       streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: rearCamera ? 'environment' : 'user' } });
+                 } else {
+                     throw new Error(`Failed to access camera: ${getUserMediaError.name} - ${getUserMediaError.message}`);
+                 }
+             }
+
              console.log("User media stream obtained:", streamRef.current);
 
              if (!isMountedRef.current) {
@@ -131,17 +156,19 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                  return;
              }
 
-             console.log("Assigning stream to video element srcObject.");
+             // Assign the stream to the video element
              videoRef.current.srcObject = streamRef.current;
+             console.log("Assigned stream to video element srcObject. Current srcObject:", videoRef.current.srcObject);
 
-             // Listen for video metadata loaded to ensure dimensions are known
+             // Add event listeners *before* calling play()
              videoRef.current.onloadedmetadata = async () => {
                  console.log("Video metadata loaded. Video dimensions:", videoRef.current?.videoWidth, "x", videoRef.current?.videoHeight);
-                 // Attempt to play the video element
+                 // Attempt to play the video element only after metadata is loaded
                  try {
-                     console.log("Attempting to play video element...");
+                     console.log("Attempting to play video element after metadata loaded...");
                      await videoRef.current?.play();
                      console.log("Video element play() called successfully.");
+
                      if (!isMountedRef.current) { // Check again after play() resolves
                          console.log("Component unmounted after video play initiated.");
                          stopStream();
@@ -174,24 +201,47 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                              }
                          }
                      });
-                 } catch (playError) {
+
+                 } catch (playError: any) {
                      console.error("Error playing video:", playError);
                      if (isMountedRef.current) {
-                         setErrorMessage(`Could not start camera video playback: ${playError}`);
+                         setErrorMessage(`Could not start camera video playback: ${playError.name} - ${playError.message}`);
                          setStatus('error');
                          stopStream();
                      }
                  }
              };
-             // Handle cases where metadata doesn't load
+
              videoRef.current.onerror = (err) => {
-                 console.error("Video element error:", err);
+                 console.error("Video element error event:", err);
                  if (isMountedRef.current) {
-                      setErrorMessage(`Video element failed to load: ${err}`);
+                      setErrorMessage(`Video element encountered an error.`);
                       setStatus('error');
                       stopStream();
                  }
              };
+
+              videoRef.current.onstalled = () => {
+                 console.warn("Video stream stalled.");
+                 // Optionally attempt to restart or show message?
+              };
+
+              videoRef.current.onplaying = () => {
+                 console.log("Video element is playing.");
+              };
+
+              videoRef.current.oncanplay = () => {
+                  console.log("Video element can play.");
+                  // Try playing again if not already playing? Might be redundant with autoPlay
+                  // if (videoRef.current?.paused) {
+                  //     videoRef.current?.play().catch(e => console.error("oncanplay play error:", e));
+                  // }
+              };
+
+              // Force load after setting srcObject - might help in some cases
+              videoRef.current.load();
+              console.log("Called video.load() after setting srcObject.");
+
 
         } else {
           console.error("Video element reference is missing.");
@@ -205,7 +255,8 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
        let userMessage = `Camera/Scan error: ${error.message}`;
        let newStatus: ScannerStatus = 'error';
 
-       if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
+       // Check error message strings more reliably
+        if (error.message?.toLowerCase().includes('permission denied')) {
          userMessage = 'Camera access denied. Please grant permission in your browser/OS settings.';
          newStatus = 'permission_denied';
          toast({
@@ -213,7 +264,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
            title: 'Camera Permission Denied',
            description: 'Allow camera access to scan barcodes.',
          });
-        } else if (error.message?.includes('No camera devices found')) {
+        } else if (error.message?.toLowerCase().includes('no suitable camera device found') || error.message?.toLowerCase().includes('no camera devices found')) {
             userMessage = 'No suitable camera found. Ensure a camera is connected and enabled.';
             newStatus = 'no_devices';
             toast({
@@ -221,7 +272,15 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                 title: 'Camera Not Found',
                 description: 'Could not find a suitable camera.',
             });
-         } else if (error.name === 'NotSupportedError' || error.message?.includes('getUserMedia is not supported')) {
+         } else if (error.message?.toLowerCase().includes('already in use') || error.message?.toLowerCase().includes('hardware error')) {
+             userMessage = 'Camera is already in use by another application or encountered a hardware issue.';
+             newStatus = 'error';
+             toast({
+                 variant: 'destructive',
+                 title: 'Camera Access Issue',
+                 description: userMessage,
+             });
+         } else if (error.name === 'NotSupportedError' || error.message?.toLowerCase().includes('getusermedia is not supported')) {
              userMessage = 'Camera access or barcode scanning is not supported by your browser or device.';
              newStatus = 'error'; // Or a more specific status if needed
              toast({
@@ -264,16 +323,17 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
       case 'scanning':
         return (
           <>
-            {/* Video element required by zxing, ensure it's visible and has correct attributes */}
+            {/* Ensure video element is consistently rendered when scanning */}
             <video
                 ref={videoRef}
-                className="w-full h-auto max-h-[70vh] rounded-md bg-black" // Added bg-black for empty state
-                playsInline // Important for iOS
-                muted // Important for autoplay
+                className="w-full h-auto max-h-[70vh] rounded-md bg-gray-800" // Use a dark bg
+                playsInline // Essential for iOS
+                muted // Essential for autoplay
                 autoPlay // Try to autoplay
+                controls={false} // Hide default controls
             />
             <div className="absolute inset-0 flex items-center justify-center bg-transparent rounded-md pointer-events-none"> {/* Transparent overlay */}
-              <div className="w-3/4 h-1/2 border-2 border-dashed border-white/80 rounded-lg animate-pulse" /> {/* Added pulse animation */}
+              <div className="w-3/4 h-1/2 border-2 border-dashed border-white/80 rounded-lg" /> {/* Removed pulse */}
             </div>
              {errorMessage && ( // Show non-critical errors during scan if needed
                  <Alert variant="destructive" className="mt-4 absolute bottom-4 left-4 right-4 z-10 opacity-80">
