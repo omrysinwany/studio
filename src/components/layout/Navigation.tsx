@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Use App Router's navigation
 import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon, Plug } from 'lucide-react'; // Added Plug
-import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Button } from '@/components/ui/button'; // Import buttonVariants
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -14,14 +14,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuPortal,
-  DropdownMenuSubContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"; // Removed AvatarImage as it's not used
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'; // Import Sheet components and SheetTitle
 import React, { useState } from 'react';
 import { useTheme } from 'next-themes'; // Import useTheme
@@ -31,32 +27,32 @@ const navItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/upload', label: 'Upload', icon: ScanLine },
   { href: '/inventory', label: 'Inventory', icon: Package },
-  { href: '/invoices', label: 'Invoices', icon: FileText }, // Use imported FileText
+  { href: '/invoices', label: 'Invoices', icon: FileText },
   { href: '/reports', label: 'Reports', icon: BarChart2 },
-  { href: '/settings', label: 'Settings', icon: Settings }, // Add Settings link here
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function Navigation() {
   const pathname = usePathname();
   const { user, logout, loading } = useAuth();
   const router = useRouter();
-  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false); // State for mobile sheet
-  const { theme, setTheme } = useTheme(); // Theme hook
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
 
 
   const handleLogout = () => {
     logout();
-    router.push('/login'); // Redirect to login after logout
+    router.push('/login');
   };
 
    const handleMobileNavClick = (href: string) => {
       router.push(href);
-      setIsMobileSheetOpen(false); // Close sheet on navigation
+      setIsMobileSheetOpen(false);
    };
 
   const getInitials = (name: string | undefined) => {
     if (!name) return '?';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2); // Limit to 2 initials
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   return (
@@ -64,9 +60,8 @@ export default function Navigation() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         {/* Logo/Brand */}
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
-          {/* Optional: Add a logo SVG here */}
-          <Package className="h-6 w-6 text-primary" /> {/* Ensure logo has primary color */}
-          <span className="text-primary">InvoTrack</span> {/* Ensure text has primary color */}
+          <Package className="h-6 w-6 text-primary" />
+          <span className="text-primary">InvoTrack</span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -76,10 +71,10 @@ export default function Navigation() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-in-out", // Adjusted gap and duration
-                pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) // Highlight settings and sub-routes
-                  ? "bg-accent text-accent-foreground" // Use accent for active state
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground" // Use muted for inactive hover
+                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-in-out",
+                pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings'))
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
                aria-current={pathname === item.href ? 'page' : undefined}
             >
@@ -119,15 +114,13 @@ export default function Navigation() {
           {/* Desktop Auth/User Menu */}
           <div className="hidden md:flex items-center gap-2">
               {loading ? (
-                <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div> // Adjusted skeleton size
+                <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
               ) : user ? (
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full"> {/* Slightly larger */}
+                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                       <Avatar className="h-9 w-9">
-                        {/* Add AvatarImage if you have user profile pictures */}
-                        {/* <AvatarImage src="/avatars/01.png" alt={user.username} /> */}
-                        <AvatarFallback className="text-xs">{getInitials(user.username)}</AvatarFallback> {/* Smaller text */}
+                        <AvatarFallback className="text-xs">{getInitials(user.username)}</AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
@@ -141,13 +134,7 @@ export default function Navigation() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {/* Remove Settings from dropdown if it's in the main nav now */}
-                    {/* <DropdownMenuItem onClick={() => router.push('/settings')}>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator /> */}
-                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')}> {/* Direct link to POS settings */}
+                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')}>
                        <Plug className="mr-2 h-4 w-4" />
                        <span>POS Integration</span>
                      </DropdownMenuItem>
@@ -161,7 +148,7 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild>{/* Ghost button for login */}
+                   <Button variant="ghost" size="sm" asChild>
                     <Link href="/login">
                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
@@ -169,7 +156,7 @@ export default function Navigation() {
                        </span>
                     </Link>
                   </Button>
-                   <Button size="sm" asChild>{/* Default button for register */}
+                   <Button size="sm" asChild>
                      <Link href="/register">
                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
@@ -190,34 +177,30 @@ export default function Navigation() {
                      <span className="sr-only">Toggle Navigation</span>
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col"> {/* Full width, flex col, remove padding */}
-                   {/* Add hidden title for accessibility */}
+                <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col">
                     <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                   {/* Top section: Mobile Logo/Brand & Nav */}
-                   <div className="p-4 border-b"> {/* Add padding and border */}
+                   <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
                           <span className="text-primary">InvoTrack</span>
                       </Link>
                     </div>
-                    <nav className="flex-grow overflow-y-auto p-4"> {/* Allow nav to scroll, add padding */}
+                    <nav className="flex-grow overflow-y-auto p-4">
                         {navItems.map((item) => (
                           <Button
                              key={item.href}
-                             variant={pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) ? 'secondary' : 'ghost'} // Use secondary for active
-                             className="w-full justify-start gap-2 text-base py-3 mb-1" // Larger text, padding, margin bottom
+                             variant={pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) ? 'secondary' : 'ghost'}
+                             className="w-full justify-start gap-2 text-base py-3 mb-1"
                              onClick={() => handleMobileNavClick(item.href)}
                           >
-                             <item.icon className="h-5 w-5" /> {/* Slightly larger icons */}
+                             <item.icon className="h-5 w-5" />
                              {item.label}
                           </Button>
                         ))}
                       </nav>
 
 
-                    {/* Bottom section: Auth/User & Theme */}
-                    <div className="mt-auto border-t p-4 space-y-4"> {/* Add padding */}
-                        {/* Mobile Auth/User Section */}
+                    <div className="mt-auto border-t p-4 space-y-4">
                          <div>
                            {loading ? (
                               <div className="h-10 w-full animate-pulse rounded-md bg-muted"></div>
@@ -232,11 +215,6 @@ export default function Navigation() {
                                             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                                         </div>
                                     </div>
-                                   {/* Settings is in main nav now */}
-                                   {/* <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings')}>
-                                      <Settings className="h-5 w-5" />
-                                      Settings
-                                   </Button> */}
                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
                                        <Plug className="h-5 w-5" />
                                        POS Integration
@@ -266,7 +244,6 @@ export default function Navigation() {
                                   <Palette className="h-5 w-5" /> Theme: <span className="ml-auto capitalize font-medium">{theme}</span>
                                </Button>
                              </DropdownMenuTrigger>
-                             <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
                                    <DropdownMenuLabel>Theme</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
@@ -282,7 +259,6 @@ export default function Navigation() {
                                      </DropdownMenuRadioItem>
                                    </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
-                             </DropdownMenuPortal>
                            </DropdownMenu>
                          </div>
                     </div>
@@ -294,3 +270,4 @@ export default function Navigation() {
     </header>
   );
 }
+
