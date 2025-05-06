@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -171,6 +170,8 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
 /**
  * Asynchronously saves the edited product data and creates an invoice history record.
  * Uses localStorage for persistence.
+ * If a product already exists (matched by ID or catalog number), its quantity is increased.
+ * Otherwise, a new product is added.
  *
  * @param products The list of products to save.
  * @param fileName The name of the original file processed.
@@ -193,15 +194,16 @@ export async function saveProducts(
   const updatedInventory = [...currentInventory]; // Create a mutable copy
 
   products.forEach(newProduct => {
-    const quantity = parseFloat(String(newProduct.quantity)) || 0;
+    const quantityToAdd = parseFloat(String(newProduct.quantity)) || 0;
     const lineTotal = parseFloat(String(newProduct.lineTotal)) || 0;
-    // Recalculate unit price here to ensure consistency before saving
-    const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : (parseFloat(String(newProduct.unitPrice)) || 0); // Fallback to original unitPrice if quantity is 0
+    // Unit price calculation might not be relevant if only adding quantity,
+    // but keep it for new products.
+    const unitPrice = quantityToAdd !== 0 ? parseFloat((lineTotal / quantityToAdd).toFixed(2)) : (parseFloat(String(newProduct.unitPrice)) || 0);
 
     invoiceTotalAmount += lineTotal;
 
     let existingIndex = -1;
-    // Prioritize matching by ID if available (especially from POS syncs)
+    // Prioritize matching by ID if available
     if (newProduct.id) {
         existingIndex = updatedInventory.findIndex(p => p.id === newProduct.id);
     }
@@ -211,21 +213,16 @@ export async function saveProducts(
     }
 
     if (existingIndex !== -1) {
-      console.log(`Updating product ${updatedInventory[existingIndex].catalogNumber} (ID: ${updatedInventory[existingIndex].id})`);
-       // Merge existing data with new data, ensuring essential fields are updated
-       // Important: Decide merge strategy. Overwrite quantity or add? For now, overwrite.
-      updatedInventory[existingIndex] = {
-          ...updatedInventory[existingIndex], // Keep existing fields like ID
-          ...newProduct, // Overwrite with new data (includes description, potentially others)
-          quantity: quantity, // Overwrite quantity (adjust if needed)
-          unitPrice: unitPrice, // Use recalculated/provided unit price
-          lineTotal: lineTotal,
-          catalogNumber: newProduct.catalogNumber || updatedInventory[existingIndex].catalogNumber, // Keep existing if new is 'N/A'
-          description: newProduct.description || updatedInventory[existingIndex].description, // Keep existing if new is empty
-      };
-       console.log(`Product updated:`, updatedInventory[existingIndex]);
+      // Product exists, ADD to quantity
+      const existingProduct = updatedInventory[existingIndex];
+      console.log(`Updating quantity for product ${existingProduct.catalogNumber} (ID: ${existingProduct.id}). Adding ${quantityToAdd}.`);
+      existingProduct.quantity += quantityToAdd;
+      // Optional: Recalculate lineTotal if needed, but usually for adding stock, unit price stays the same.
+      // existingProduct.lineTotal = existingProduct.quantity * existingProduct.unitPrice;
+      console.log(`Product updated:`, existingProduct);
 
     } else {
+       // Product is new, add it to inventory
        if (!newProduct.catalogNumber && !newProduct.description) {
            console.log("Skipping adding product with no catalog number or description:", newProduct);
            return;
@@ -234,7 +231,7 @@ export async function saveProducts(
       const productToAdd: Product = {
         ...newProduct,
         id: newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Use provided ID or generate new
-        quantity: quantity,
+        quantity: quantityToAdd,
         unitPrice: unitPrice,
         lineTotal: lineTotal,
         catalogNumber: newProduct.catalogNumber || 'N/A',
@@ -246,7 +243,6 @@ export async function saveProducts(
   });
 
    // Add a record to the invoice history ONLY if the source is an upload/manual edit
-   // This prevents duplicate invoice records when syncing from POS
    if (source === 'upload') {
        const newInvoiceRecord: InvoiceHistoryItem = {
            id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -254,7 +250,6 @@ export async function saveProducts(
            uploadTime: new Date().toISOString(), // Store as ISO string
            status: 'completed',
            totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-           // TODO: Add supplier/invoiceNumber if available from extraction/edit
        };
        const updatedInvoices = [newInvoiceRecord, ...currentInvoices];
        saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
@@ -415,5 +410,3 @@ export async function login(credentials: any): Promise<AuthResponse> {
     user: loggedInUser,
   };
 }
-
-    
