@@ -15,6 +15,8 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { getProductsService, Product, InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import backend functions
+import { calculateInventoryValue, calculateTotalItems, getLowStockItems, calculateGrossProfitMargin, calculateInventoryTurnoverRate, calculateAverageOrderValue } from '@/lib/kpi-calculations'; // Import helper functions
 
 // Helper function to safely format numbers
 const formatNumber = (
@@ -41,65 +43,16 @@ const formatNumber = (
 };
 
 
-// Mock Data - Replace with actual API calls fetching aggregated data
-const MOCK_KPIS_INITIAL = {
-  totalValue: 15678.90,
-  totalItems: 1234,
-  lowStockItems: 2,
-  inventoryTurnoverRate: 4.5, // New KPI
-  averageOrderValue: 185.50, // New KPI (from invoices, needs real data eventually)
-  grossProfitMargin: 35.2, // New KPI (conceptual, needs CoGS)
-  valueChangePercent: 5.2,
-  mostValuableCategory: 'Gadgets',
-};
+// Mock Data - REMOVE MOCK DATA
+// REMOVE const MOCK_KPIS_INITIAL =
+// REMOVE const MOCK_VALUE_OVER_TIME =
+// REMOVE const MOCK_CATEGORY_VALUE_DISTRIBUTION =
+// REMOVE const MOCK_PROCESSING_VOLUME =
 
-const MOCK_VALUE_OVER_TIME = [
-  { date: '2024-01', value: 12000 },
-  { date: '2024-02', value: 13500 },
-  { date: '2024-03', value: 14000 },
-  { date: '2024-04', value: 14800 },
-  { date: '2024-05', value: 15200 },
-  { date: '2024-06', value: 15678.90 },
-];
-
-const MOCK_CATEGORY_VALUE_DISTRIBUTION = [
-  { name: 'Widgets', value: 5000 },
-  { name: 'Gadgets', value: 8000 },
-  { name: 'Components', value: 2678.90 },
-  { name: 'Other', value: 1200 },
-];
-
-const MOCK_PROCESSING_VOLUME = [
-  { period: 'Jan', count: 50 },
-  { period: 'Feb', count: 65 },
-  { period: 'Mar', count: 70 },
-  { period: 'Apr', count: 80 },
-  { period: 'May', count: 75 },
-  { period: 'Jun', count: 89 },
-];
-
-// New Mock Data for additional charts
-const MOCK_SALES_BY_CATEGORY = [
-    { category: 'Widgets', sales: 7500.00 },
-    { category: 'Gadgets', sales: 12000.00 },
-    { category: 'Components', sales: 4000.50 },
-    { category: 'Other', sales: 1800.75 },
-];
-
-const MOCK_TOP_SELLING_PRODUCTS = [
-    { name: 'Super Widget', quantitySold: 150, totalValue: 2250.00 },
-    { name: 'Mega Gadget', quantitySold: 95, totalValue: 4750.00 },
-    { name: 'Basic Component A', quantitySold: 300, totalValue: 1500.00 },
-    { name: 'Premium Other Item', quantitySold: 50, totalValue: 1000.00 },
-    { name: 'Standard Widget', quantitySold: 120, totalValue: 1200.00 },
-];
-
-const MOCK_STOCK_ALERTS = [
-    { name: 'Hyper Gadget X', quantity: 5, status: 'Low Stock', catalogNumber: 'HGX001' },
-    { name: 'Regular Component B', quantity: 0, status: 'Out of Stock', catalogNumber: 'RCB002' },
-    { name: 'Ultra Widget Pro', quantity: 8, status: 'Low Stock', catalogNumber: 'UWP003' },
-];
-
+// REMOVE New Mock Data for additional charts
+// REMOVE const MOCK_SALES_BY_CATEGORY =
+// REMOVE const MOCK_TOP_SELLING_PRODUCTS =
+// REMOVE const MOCK_STOCK_ALERTS =
 
 const chartConfig = {
   value: { label: 'Value (₪)', color: 'hsl(var(--chart-1))' },
@@ -122,13 +75,15 @@ const PIE_COLORS = [
 ];
 
 export default function ReportsPage() {
-  const [kpis, setKpis] = useState<typeof MOCK_KPIS_INITIAL | null>(null);
-  const [valueOverTime, setValueOverTime] = useState<typeof MOCK_VALUE_OVER_TIME>([]);
-  const [categoryDistribution, setCategoryDistribution] = useState<typeof MOCK_CATEGORY_VALUE_DISTRIBUTION>([]);
-  const [processingVolume, setProcessingVolume] = useState<typeof MOCK_PROCESSING_VOLUME>([]);
-  const [salesByCategory, setSalesByCategory] = useState<typeof MOCK_SALES_BY_CATEGORY>([]);
-  const [topSellingProducts, setTopSellingProducts] = useState<typeof MOCK_TOP_SELLING_PRODUCTS>([]);
-  const [stockAlerts, setStockAlerts] = useState<typeof MOCK_STOCK_ALERTS>([]);
+  const [kpis, setKpis] = useState<any | null>(null); // Update type to any to avoid errors
+  const [valueOverTime, setValueOverTime] = useState<any>([]);
+  const [categoryDistribution, setCategoryDistribution] = useState<any>([]);
+  const [processingVolume, setProcessingVolume] = useState<any>([]);
+  const [salesByCategory, setSalesByCategory] = useState<any>([]);
+  const [topSellingProducts, setTopSellingProducts] = useState<any>([]);
+  const [stockAlerts, setStockAlerts] = useState<any>([]);
+
+  const [inventory, setInventory] = useState<Product[]>([]); // inventory state
 
   const [isLoading, setIsLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -137,6 +92,29 @@ export default function ReportsPage() {
   });
   const { toast } = useToast();
 
+    // Fetch inventory data
+    useEffect(() => {
+        const fetchInventory = async () => {
+            setIsLoading(true);
+            try {
+                const data = await getProductsService();
+                setInventory(data);
+            } catch (error) {
+                console.error("Failed to fetch inventory:", error);
+                toast({
+                    title: "Error Fetching Inventory",
+                    description: "Could not load inventory data. Please try again later.",
+                    variant: "destructive",
+                });
+                setInventory([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchInventory();
+    }, [toast]);
+
    useEffect(() => {
      const fetchReports = async () => {
        setIsLoading(true);
@@ -144,13 +122,31 @@ export default function ReportsPage() {
          console.log('Fetching reports for date range:', dateRange);
          await new Promise(resolve => setTimeout(resolve, 1200));
 
-         setKpis(MOCK_KPIS_INITIAL);
-         setValueOverTime(MOCK_VALUE_OVER_TIME);
-         setCategoryDistribution(MOCK_CATEGORY_VALUE_DISTRIBUTION.filter(item => item.value > 0));
-         setProcessingVolume(MOCK_PROCESSING_VOLUME);
-         setSalesByCategory(MOCK_SALES_BY_CATEGORY);
-         setTopSellingProducts(MOCK_TOP_SELLING_PRODUCTS.sort((a,b) => b.totalValue - a.totalValue).slice(0,5)); // Top 5 by value
-         setStockAlerts(MOCK_STOCK_ALERTS);
+        // -- Calculate KPIs from actual inventory data --
+        const totalValue = inventory ? calculateInventoryValue(inventory) : 0;
+        const totalItems = inventory ? calculateTotalItems(inventory) : 0;
+        const lowStockItems = inventory ? getLowStockItems(inventory).length : 0; // number of low stock items
+        const grossProfitMargin = 35.2; // TODO: Replace with actual calculation
+        const inventoryTurnoverRate = 4.5; // TODO: Replace with actual calculation
+        const averageOrderValue = 185.50; // TODO: Replace with actual calculation
+
+           setKpis({
+             totalValue,
+             totalItems,
+             lowStockItems,
+             grossProfitMargin,
+             inventoryTurnoverRate,
+             averageOrderValue,
+             valueChangePercent: 5.2,
+           });
+
+          // -- TODO: Replace MOCK data with real data from backend --
+          setValueOverTime([]); // Replace with real sales data
+          setCategoryDistribution([]); // Replace with actual category data
+          setProcessingVolume([]); // Replace with actual volume
+          setSalesByCategory([]); // Replace with real sales by category
+          setTopSellingProducts([]); // Replace with real data
+          setStockAlerts([]); // Replace with real stock alerts
 
        } catch (error) {
          console.error("Failed to fetch report data:", error);
@@ -163,24 +159,22 @@ export default function ReportsPage() {
           setValueOverTime([]);
           setCategoryDistribution([]);
           setProcessingVolume([]);
-          setSalesByCategory([]);
-          setTopSellingProducts([]);
-          setStockAlerts([]);
+         setSalesByCategory([]);
+         setTopSellingProducts([]);
+         setStockAlerts([]);
        } finally {
          setIsLoading(false);
        }
      };
 
      fetchReports();
-   }, [dateRange, toast]);
-
+   }, [dateRange, toast, inventory]);
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
    const processingBarChartData = useMemo(() => processingVolume, [processingVolume]);
    const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
-
 
    if (isLoading) {
      return (
