@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 import { Camera, Save, SkipForward, X } from 'lucide-react';
 import BarcodeScanner from '@/components/barcode-scanner'; // Import the scanner component
 import type { Product } from '@/services/backend'; // Import Product type
+import { toast } from '@/hooks/use-toast'; // Import toast for feedback
 
 interface BarcodePromptDialogProps {
   products: Product[]; // Products needing barcode assignment
@@ -35,9 +36,13 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   const handleBarcodeDetected = useCallback((barcodeValue: string) => {
     if (currentScanningProductId) {
       handleBarcodeChange(currentScanningProductId, barcodeValue);
+      toast({
+        title: "Barcode Scanned",
+        description: `Barcode ${barcodeValue} assigned.`,
+      });
     }
     setCurrentScanningProductId(null); // Close scanner after detection
-  }, [currentScanningProductId]);
+  }, [currentScanningProductId, toast]); // Added toast dependency
 
   const handleScannerClose = () => {
     setCurrentScanningProductId(null);
@@ -55,7 +60,13 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   // Function to skip adding barcode for a specific product by removing it from the prompt list
   const handleSkipProduct = (productId: string) => {
      console.log(`Skipping barcode entry for product ID: ${productId} by removing from prompt.`);
+     const skippedProduct = promptedProducts.find(p => p.id === productId);
      setPromptedProducts(prev => prev.filter(p => p.id !== productId));
+     toast({
+         title: "Product Skipped",
+         description: `Barcode assignment skipped for "${skippedProduct?.shortName || skippedProduct?.description || 'Product'}".`,
+         variant: "default",
+     });
      // Note: The product itself isn't deleted, just removed from this assignment step.
      // The handleSave function will return the remaining promptedProducts.
      // If the list becomes empty after skipping, the dialog behavior depends on how handleSave is called.
@@ -75,13 +86,14 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
         </DialogHeader>
 
         {/* Wrap product list in ScrollArea - ensure it grows */}
-        <ScrollArea className="flex-grow -mx-4 sm:-mx-6 px-4 sm:px-6 border-t border-b"> {/* Add borders for visual separation */}
-          <div className="space-y-4 py-4">
+        {/* Use ScrollArea for the list */}
+        <ScrollArea className="flex-grow -mx-4 sm:-mx-6 border-t border-b"> {/* Add borders for visual separation */}
+          <div className="space-y-4 px-4 sm:px-6 py-4"> {/* Add padding back inside ScrollArea */}
              {promptedProducts.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No new products remaining to assign barcodes.</p>
              ) : (
                 promptedProducts.map((product) => (
-                  <div key={product.id} className="space-y-2 border-b pb-4 last:border-b-0 px-1"> {/* Added padding */}
+                  <div key={product.id} className="space-y-2 border-b pb-4 last:border-b-0"> {/* Removed padding here, added in parent */}
                     <Label htmlFor={`barcode-${product.id}`} className="font-medium">
                       {product.shortName || product.description}
                     </Label>
