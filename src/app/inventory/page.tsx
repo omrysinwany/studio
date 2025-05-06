@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import {
   Table,
   TableBody,
@@ -523,5 +523,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
-    
