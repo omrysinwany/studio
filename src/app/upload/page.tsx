@@ -173,6 +173,7 @@ export default function UploadPage() {
              console.log('AI Scan Result:', scanResult);
              
              // Call saveProducts with the tempId so it can update the correct optimistic entry
+             // Ensure 'source' is 'upload' to create invoice history
              await saveProducts(scanResult.products, selectedFile.name, 'upload', base64data, tempId);
 
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;

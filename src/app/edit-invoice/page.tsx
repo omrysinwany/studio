@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -6,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react'; // Removed Barcode icon
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { saveProducts, Product, getProductsService } from '@/services/backend'; // Import Product type, save function, and getProductsService
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert
-import BarcodePromptDialog from '@/components/barcode-prompt-dialog'; // Import the new dialog component
+import { saveProducts, Product, getProductsService } from '@/services/backend';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 
 // Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
@@ -225,7 +226,8 @@ function EditInvoiceContent() {
       setIsSaving(true); // Set saving state here
       try {
           console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName);
-          await saveProducts(finalProductsToSave, fileName, 'upload');
+          // Change source to 'manual-edit' or similar to prevent invoice history creation
+          await saveProducts(finalProductsToSave, fileName, 'manual-edit');
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
@@ -429,12 +431,11 @@ function EditInvoiceContent() {
         <CardContent>
           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
                   <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
-                  {/* Removed Barcode column header */}
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
@@ -460,7 +461,6 @@ function EditInvoiceContent() {
                         aria-label={`Description for catalog number ${product.catalogNumber}`}
                       />
                     </TableCell>
-                    {/* Removed Barcode input cell */}
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
@@ -559,4 +559,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-
