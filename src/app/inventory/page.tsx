@@ -540,8 +540,17 @@ export default function InventoryPage() {
                                             {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg">
+                                    <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
+                                        <p className="font-semibold">Description:</p>
                                         <p>{item.description || 'No description available.'}</p>
+                                        <p className="font-semibold mt-2">Catalog #:</p>
+                                        <p>{item.catalogNumber || 'N/A'}</p>
+                                        {item.barcode && (
+                                            <>
+                                                <p className="font-semibold mt-2">Barcode:</p>
+                                                <p>{item.barcode}</p>
+                                            </>
+                                        )}
                                     </PopoverContent>
                                 </Popover>
                             </TableCell>
@@ -556,7 +565,7 @@ export default function InventoryPage() {
                             {item.quantity === 0 && (
                               <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
                             )}
-                            {item.quantity > 0 && item.quantity <= (item.minStockLevel || 10) && (
+                            {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && (
                               <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
                             )}
                             {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && (
