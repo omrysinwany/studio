@@ -305,11 +305,23 @@ function EditInvoiceContent() {
          console.log("Barcode prompt completed. Updated products:", updatedProducts);
          // Merge the updates from the dialog back into the main products state
          const finalProducts = products.map(p => {
+             // Find if this product was in the prompt list (by checking _isNewForPrompt flag)
+             const wasPrompted = p._isNewForPrompt;
+             if (!wasPrompted) {
+                 // If it wasn't prompted, keep it as is (it either wasn't new or already had a barcode)
+                 return p;
+             }
+             // If it was prompted, find its updated version from the dialog results
              const updatedVersion = updatedProducts.find(up => up.id === p.id);
-             // If an updated version exists (meaning it was in the dialog), use its barcode
-             // Otherwise, keep the original product (it might have had a barcode already or wasn't new)
-             return updatedVersion ? { ...p, barcode: updatedVersion.barcode, _isNewForPrompt: false } : p;
+             // If an updated version exists (meaning user didn't skip it in the dialog), use its barcode
+             if (updatedVersion) {
+                 return { ...p, barcode: updatedVersion.barcode, _isNewForPrompt: false };
+             } else {
+                 // If no updated version exists (meaning user skipped it), keep barcode as undefined/null
+                 return { ...p, barcode: undefined, _isNewForPrompt: false };
+             }
          });
+
 
           setProducts(finalProducts); // Update state locally
 
@@ -417,7 +429,7 @@ function EditInvoiceContent() {
         <CardContent>
           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -547,3 +559,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+
