@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react'; // Removed Barcode icon
 import { useToast } from '@/hooks/use-toast';
 import { saveProducts, Product, getProductsService } from '@/services/backend'; // Import Product type, save function, and getProductsService
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert
@@ -303,11 +303,16 @@ function EditInvoiceContent() {
      if (updatedProducts) {
          // User provided barcodes (or skipped some), merge updates and proceed to save
          console.log("Barcode prompt completed. Updated products:", updatedProducts);
+         // Merge the updates from the dialog back into the main products state
          const finalProducts = products.map(p => {
              const updatedVersion = updatedProducts.find(up => up.id === p.id);
-             return updatedVersion ? { ...p, barcode: updatedVersion.barcode, _isNewForPrompt: false } : p; // Update barcode and clear flag
+             // If an updated version exists (meaning it was in the dialog), use its barcode
+             // Otherwise, keep the original product (it might have had a barcode already or wasn't new)
+             return updatedVersion ? { ...p, barcode: updatedVersion.barcode, _isNewForPrompt: false } : p;
          });
-          setProducts(finalProducts); // Update state locally (optional but good practice)
+
+          setProducts(finalProducts); // Update state locally
+
          // Prepare for final save (remove internal flags)
          const productsToSave = finalProducts.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
          proceedWithSave(productsToSave);
@@ -411,12 +416,12 @@ function EditInvoiceContent() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto"> {/* Make table scrollable */}
-            <Table className="min-w-[700px]"> {/* Set min-width for scroll */}
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
                   <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
-                  <TableHead className="px-2 sm:px-4 py-2">Barcode</TableHead> {/* Added Barcode column */}
+                  {/* Removed Barcode column header */}
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
@@ -442,15 +447,7 @@ function EditInvoiceContent() {
                         aria-label={`Description for catalog number ${product.catalogNumber}`}
                       />
                     </TableCell>
-                    <TableCell className="px-2 sm:px-4 py-2"> {/* Barcode Cell */}
-                      <Input
-                        value={product.barcode || ''} // Handle undefined
-                        onChange={(e) => handleInputChange(product.id, 'barcode', e.target.value)}
-                        className="min-w-[120px] sm:min-w-[150px] h-9"
-                        aria-label={`Barcode for ${product.description}`}
-                        placeholder="Enter or scan"
-                      />
-                    </TableCell>
+                    {/* Removed Barcode input cell */}
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"

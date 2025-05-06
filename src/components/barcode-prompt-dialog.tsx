@@ -44,6 +44,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   };
 
   const handleSave = () => {
+    // Pass back the products as they are (some might have barcodes, some might not)
     onComplete(updatedProducts);
   };
 
@@ -51,29 +52,27 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
     onComplete(null); // Indicate cancellation
   };
 
-  // Optional: Handle skipping a single product
+  // Function to skip adding barcode for a specific product
   const handleSkipProduct = (productId: string) => {
-     // Mark the product somehow if needed (e.g., set barcode to empty string explicitly),
-     // or simply proceed without a barcode for this one.
-     // For simplicity, let's just keep the barcode undefined/empty.
-     // You might want to filter this out before calling onComplete if skipped products shouldn't be saved.
+     // Set barcode to empty string or keep undefined
+     handleBarcodeChange(productId, '');
      console.log(`Skipping barcode entry for product ID: ${productId}`);
-     // For now, we just move on. The save function will handle products without barcodes.
-     // If you need specific "skip" logic, implement it here.
+     // Optionally, visually indicate skipped state, though Input just becomes empty
   };
 
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-md md:max-w-lg max-h-[80vh] flex flex-col">
+      {/* Adjust content styling for better mobile experience */}
+      <DialogContent className="sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[80vh] flex flex-col p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>Assign Barcodes to New Products</DialogTitle>
+          <DialogTitle>Assign Barcodes (Optional)</DialogTitle>
           <DialogDescription>
-            Some new products were found without barcodes. Please assign them below, or skip.
+            Assign barcodes to new products. You can scan, enter manually, or skip. Click "Confirm & Save" when done.
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-grow pr-6 -mr-6"> {/* Add padding for scrollbar */}
+        <ScrollArea className="flex-grow -mx-4 sm:-mx-6 px-4 sm:px-6"> {/* Adjust padding */}
           <div className="space-y-4 py-4">
             {updatedProducts.map((product) => (
               <div key={product.id} className="space-y-2 border-b pb-4 last:border-b-0">
@@ -83,45 +82,50 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                 <p className="text-xs text-muted-foreground">
                   Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity}
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap"> {/* Wrap on small screens */}
                   <Input
                     id={`barcode-${product.id}`}
                     value={product.barcode || ''}
                     onChange={(e) => handleBarcodeChange(product.id, e.target.value)}
                     placeholder="Enter or scan barcode"
-                    className="flex-grow"
+                    className="flex-grow min-w-[150px]" // Allow input to grow
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleScanClick(product.id)}
-                    className="shrink-0"
-                  >
-                    <Camera className="h-4 w-4" />
-                    <span className="sr-only">Scan Barcode</span>
-                  </Button>
-                   {/* Optional Skip Button per product */}
-                   {/* <Button
-                     type="button"
-                     variant="ghost"
-                     size="sm"
-                     onClick={() => handleSkipProduct(product.id)}
-                     className="text-xs text-muted-foreground"
-                   >
-                     Skip
-                   </Button> */}
+                  <div className="flex gap-1 shrink-0"> {/* Keep buttons together */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleScanClick(product.id)}
+                        className="h-9 w-9" // Standard icon button size
+                      >
+                        <Camera className="h-4 w-4" />
+                        <span className="sr-only">Scan Barcode</span>
+                      </Button>
+                       {/* Skip Button per product */}
+                       <Button
+                         type="button"
+                         variant="ghost"
+                         size="sm"
+                         onClick={() => handleSkipProduct(product.id)}
+                         className="text-xs text-muted-foreground h-9 px-2" // Align height
+                         title="Skip barcode for this item"
+                       >
+                         <SkipForward className="h-4 w-4 sm:mr-1" /> {/* Icon only on mobile */}
+                         <span className="hidden sm:inline">Skip</span>
+                       </Button>
+                   </div>
                 </div>
               </div>
             ))}
           </div>
         </ScrollArea>
 
-        <DialogFooter className="mt-auto pt-4 border-t">
-          <Button variant="outline" onClick={handleCancel}>
+        <DialogFooter className="mt-auto pt-4 border-t flex-col sm:flex-row gap-2"> {/* Flex column on mobile */}
+          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
             <X className="mr-2 h-4 w-4" /> Cancel Save
           </Button>
-          <Button onClick={handleSave}>
+          {/* Save button allows saving even without barcodes assigned */}
+          <Button onClick={handleSave} className="w-full sm:w-auto">
             <Save className="mr-2 h-4 w-4" /> Confirm & Save All
           </Button>
         </DialogFooter>
