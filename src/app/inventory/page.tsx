@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Removed Edit, kept Trash2 for Delete All, Added Eye
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Kept Eye for Inspect
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; // Import AlertDialog
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"; // Import Tooltip components
 
 
 const ITEMS_PER_PAGE = 10; // Number of items per page
@@ -53,6 +59,7 @@ const formatDisplayNumber = (
     const { decimals = 2, useGrouping = true } = options || {}; // Default: 2 decimals, WITH grouping
 
     if (value === null || value === undefined || isNaN(value)) {
+        // Format 0 with specified decimals
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
@@ -71,7 +78,8 @@ const formatDisplayNumber = (
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    return formatDisplayNumber(value, { decimals: 0, useGrouping: true }); // Use 0 decimals and grouping
+    // Use formatDisplayNumber with 0 decimals and grouping
+    return formatDisplayNumber(value, { decimals: 0, useGrouping: true });
 };
 
 
@@ -350,7 +358,8 @@ export default function InventoryPage() {
    }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+    <TooltipProvider> {/* Wrap with TooltipProvider */}
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground">
          <CardHeader>
            <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
@@ -530,7 +539,7 @@ export default function InventoryPage() {
                                     size="icon"
                                     onClick={() => item.id && router.push(`/inventory/${item.id}`)}
                                     disabled={!item.id}
-                                    aria-label={`View details for ${item.description}`}
+                                    aria-label={`View details for ${item.shortName || item.description}`}
                                     className="h-8 w-8 text-primary hover:text-primary/80" // View/Inspect Icon
                                 >
                                     <Eye className="h-4 w-4" />
@@ -539,7 +548,20 @@ export default function InventoryPage() {
                             </div>
                          </TableCell>
                         )}
-                        {visibleColumns.shortName && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">{item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}</TableCell>}
+                        {visibleColumns.shortName && (
+                            <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <span className="cursor-help underline decoration-dashed decoration-muted-foreground/50 underline-offset-2">
+                                            {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="start" className="max-w-[300px] break-words">
+                                        <p>{item.description || 'No description available.'}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TableCell>
+                        )}
                          {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
@@ -598,5 +620,7 @@ export default function InventoryPage() {
          </CardContent>
        </Card>
     </div>
+    </TooltipProvider> // Close TooltipProvider
   );
 }
+
