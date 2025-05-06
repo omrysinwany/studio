@@ -1,18 +1,88 @@
-
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/context/AuthContext"; // Keep useAuth to optionally show user info
-import { Package, FileText, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"; // Added more icons for KPIs
+import { useAuth } from "@/context/AuthContext";
+import { Package, FileText, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { cn } from '@/lib/utils'; // Import cn for conditional classes
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { getProductsService, Product, getInvoicesService, InvoiceHistoryItem } from '@/services/backend';
+import { calculateInventoryValue, calculateTotalItems, getLowStockItems } from '@/lib/kpi-calculations';
+import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
+
+interface KpiData {
+  totalItems: number;
+  inventoryValue: number;
+  docsProcessedLast30Days: number;
+  lowStockItems: number;
+  latestDocName?: string;
+}
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth(); // Still check auth to customize experience if logged in
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
+
+  const [kpiData, setKpiData] = useState<KpiData | null>(null);
+  const [isLoadingKpis, setIsLoadingKpis] = useState(true);
+  const [kpiError, setKpiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchKpiData() {
+      if (authLoading) return; // Wait for auth to settle
+
+      setIsLoadingKpis(true);
+      setKpiError(null);
+      try {
+        const [products, invoices] = await Promise.all([
+          getProductsService(),
+          getInvoicesService()
+        ]);
+
+        const totalItems = calculateTotalItems(products);
+        const inventoryValue = calculateInventoryValue(products);
+        const lowStockItemsCount = getLowStockItems(products).length;
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const recentInvoices = invoices.filter(
+          (invoice) => new Date(invoice.uploadTime) >= thirtyDaysAgo
+        );
+        const docsProcessedLast30Days = recentInvoices.length;
+        
+        const latestDoc = invoices.length > 0 
+          ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
+          : null;
+
+        setKpiData({
+          totalItems,
+          inventoryValue,
+          docsProcessedLast30Days,
+          lowStockItems: lowStockItemsCount,
+          latestDocName: latestDoc?.fileName.length > 15 ? `${latestDoc.fileName.substring(0,12)}...` : latestDoc?.fileName
+        });
+
+      } catch (error) {
+        console.error("Failed to fetch KPI data:", error);
+        setKpiError("Could not load dashboard data. Please try again later.");
+        toast({
+          title: "Error Loading Dashboard",
+          description: "Failed to fetch key performance indicators.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingKpis(false);
+      }
+    }
+
+    fetchKpiData();
+  }, [authLoading, toast]);
+
 
   const handleScanClick = () => {
     router.push('/upload');
@@ -26,8 +96,30 @@ export default function Home() {
     router.push('/reports');
   };
 
-  // Show loading indicator while checking auth status (optional, but good UX if you personalize)
-   if (authLoading) {
+  const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
+    if (isLoadingKpis) {
+      return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
+    }
+    if (kpiError) return <span className="text-destructive text-sm">-</span>;
+    if (value === undefined || value === null) return '-';
+    
+    const options: Intl.NumberFormatOptions = {
+      minimumFractionDigits: isInteger ? 0 : 2,
+      maximumFractionDigits: isInteger ? 0 : 2,
+    };
+    return `${isCurrency ? '₪' : ''}${value.toLocaleString(undefined, options)}`;
+  };
+  
+  const renderKpiText = (text: string | undefined) => {
+    if (isLoadingKpis) {
+      return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />;
+    }
+    if (kpiError) return <span className="text-destructive text-xs">-</span>;
+    return text || '-';
+  };
+
+
+   if (authLoading && !kpiData) { // Show main loader if auth is still loading and no kpiData yet
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -36,16 +128,6 @@ export default function Home() {
      );
    }
 
-  // Placeholder Data (Replace with actual data fetching later)
-  const kpiData = {
-    totalItems: 1234,
-    inventoryValue: 15678.90,
-    valueChangePercent: 5.2,
-    docsProcessed: 89,
-    lowStockItems: 2,
-  };
-
-  // Render the main content (no redirect needed)
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <div className="w-full max-w-4xl text-center fade-in-content">
@@ -56,9 +138,14 @@ export default function Home() {
           {user ? `Hello, ${user.username}! Your inventory, simplified.` : 'Your inventory, simplified.'}
         </p>
 
-        {/* Quick Stats Dashboard */}
+        {kpiError && !isLoadingKpis && (
+          <Alert variant="destructive" className="mb-6 md:mb-8 text-left">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{kpiError}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 md:mb-12">
-           {/* Total Items Card */}
            <Link href="/inventory" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -66,30 +153,25 @@ export default function Home() {
                  <Package className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{kpiData.totalItems.toLocaleString()}</div>
+                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
                  <p className="text-xs text-muted-foreground">In stock</p>
                </CardContent>
              </Card>
            </Link>
 
-            {/* Inventory Value Card */}
             <Link href="/reports" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
-                 <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span> {/* Changed to ILS */}
+                 <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span>
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">₪{kpiData.inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <p className={cn("text-xs", kpiData.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
-                   {kpiData.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
-                   {Math.abs(kpiData.valueChangePercent)}% vs last period
-                 </p>
+                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.inventoryValue, true)}</div>
+                 <p className="text-xs text-muted-foreground">Current total value</p>
                </CardContent>
              </Card>
             </Link>
 
-           {/* Docs Processed Card */}
             <Link href="/invoices" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -97,13 +179,14 @@ export default function Home() {
                  <FileText className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{kpiData.docsProcessed}</div>
-                 <p className="text-xs text-muted-foreground">Last: Invoice #INV-089</p> {/* Placeholder */}
+                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
+                 <p className="text-xs text-muted-foreground truncate" title={kpiData?.latestDocName || ''}>
+                    Last: {renderKpiText(kpiData?.latestDocName)}
+                  </p>
                </CardContent>
              </Card>
             </Link>
 
-             {/* Low Stock Items Card */}
              <Link href="/inventory?filter=low" className="block hover:no-underline">
                  <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -111,7 +194,7 @@ export default function Home() {
                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                  </CardHeader>
                  <CardContent>
-                     <div className="text-2xl font-bold">{kpiData.lowStockItems}</div>
+                     <div className="text-2xl font-bold">{renderKpiValue(kpiData?.lowStockItems, false, true)}</div>
                      <p className="text-xs text-muted-foreground">Items needing attention</p>
                  </CardContent>
                  </Card>
@@ -119,7 +202,6 @@ export default function Home() {
          </div>
 
 
-        {/* Quick Action Buttons */}
         <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
           <Button
             size="lg"
