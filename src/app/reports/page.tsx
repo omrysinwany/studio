@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -63,30 +62,32 @@ const PIE_COLORS = [
 ];
 
 interface StockAlert {
+  id: string;
   name: string;
   catalogNumber: string;
   quantity: number;
   status: 'Low Stock' | 'Out of Stock' | 'Over Stock';
   minStock?: number;
   maxStock?: number;
+  isDefaultMinStock?: boolean; // Flag to indicate if default min stock was used
 }
 
 
 export default function ReportsPage() {
   const [kpis, setKpis] = useState<any | null>(null);
-  const [valueOverTime, setValueOverTime] = useState<any[]>([]); // Ensure array type
-  const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]); // Ensure array type
-  const [processingVolume, setProcessingVolume] = useState<any[]>([]); // Ensure array type
-  const [salesByCategory, setSalesByCategory] = useState<any[]>([]); // Ensure array type
-  const [topSellingProducts, setTopSellingProducts] = useState<any[]>([]); // Ensure array type
-  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]); // Ensure array type
+  const [valueOverTime, setValueOverTime] = useState<any[]>([]);
+  const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
+  const [processingVolume, setProcessingVolume] = useState<any[]>([]);
+  const [salesByCategory, setSalesByCategory] = useState<any[]>([]);
+  const [topSellingProducts, setTopSellingProducts] = useState<any[]>([]);
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
 
   const [inventory, setInventory] = useState<Product[]>([]);
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subMonths(new Date(), 1), // Default to last month
+    from: subMonths(new Date(), 1),
     to: new Date(),
   });
   const { toast } = useToast();
@@ -120,9 +121,8 @@ export default function ReportsPage() {
 
    useEffect(() => {
      const generateReports = () => {
-       if (isLoading || inventory.length === 0) return; // Don't generate if loading or no inventory
+       if (isLoading || inventory.length === 0) return;
 
-       // Filter invoices based on dateRange
        const filteredInvoices = invoices.filter(invoice => {
          const invoiceDate = new Date(invoice.uploadTime);
          if (dateRange?.from && invoiceDate < dateRange.from) return false;
@@ -133,90 +133,90 @@ export default function ReportsPage() {
 
        const totalValue = calculateInventoryValue(inventory);
        const totalItemsCount = calculateTotalItems(inventory);
-       const lowStockItems = getLowStockItems(inventory).length;
+       // Use the getLowStockItems function which already uses the default threshold
+       const lowStockItemsCount = getLowStockItems(inventory).length;
 
-       // Placeholder - need actual revenue and COGS data
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Simulate revenue
-       const mockCogs = mockTotalRevenue * 0.65; // Simulate COGS
+
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5;
+       const mockCogs = mockTotalRevenue * 0.65;
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue / 2); // Avg inventory
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue / 2);
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
          totalValue,
          totalItems: totalItemsCount,
-         lowStockItems,
+         lowStockItems: lowStockItemsCount,
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         valueChangePercent: Math.random() * 10 - 5, // Random change for mock
+         valueChangePercent: Math.random() * 10 - 5,
        });
 
-       // Mock Value Over Time (replace with actual logic)
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
        while (currentDate <= endDate) {
            votData.push({
                date: format(currentDate, "MMM dd"),
-               value: totalValue * (0.8 + Math.random() * 0.4) // Simulate fluctuations
+               value: totalValue * (0.8 + Math.random() * 0.4)
            });
-           currentDate.setDate(currentDate.getDate() + 7); // Weekly data points
+           currentDate.setDate(currentDate.getDate() + 7);
        }
        setValueOverTime(votData);
 
-
-       // Category Distribution (Mock - needs product categories)
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other'];
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; // Mock categories
        const catDistData = categories.map(cat => ({
            name: cat,
            value: Math.floor(Math.random() * 5000) + 1000
        }));
        setCategoryDistribution(catDistData);
 
-
-       // Processing Volume (Based on filtered invoices)
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yyyy");
            const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yyyy") === monthStr).length;
-           if(!procVolData.find(d => d.period === monthStr)) { // Avoid duplicates if iterating too fast
+           if(!procVolData.find(d => d.period === monthStr)) {
              procVolData.push({ period: monthStr, count });
            }
            currentDate.setMonth(currentDate.getMonth() + 1);
        }
        setProcessingVolume(procVolData);
 
-
-       // Sales by Category (Mock - needs product categories & sales data)
        setSalesByCategory(categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 })));
 
-       // Top Selling Products (Mock - needs sales data per product)
         const topProducts = inventory.slice(0, 5).map(p => ({
+            id: p.id,
             name: p.shortName || p.description.slice(0,20),
             quantitySold: Math.floor(Math.random() * 100) + 10,
             totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * 100) + 10)
         })).sort((a,b) => b.totalValue - a.totalValue);
        setTopSellingProducts(topProducts);
 
-       // Stock Alerts
-       const alerts: StockAlert[] = inventory.reduce((acc, p) => {
-           if (p.quantity === 0) {
-               acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Out of Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
-           } else if (p.minStockLevel !== undefined && p.quantity <= p.minStockLevel) {
-               acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Low Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
-           } else if (p.maxStockLevel !== undefined && p.quantity > p.maxStockLevel) {
-                acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Over Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
-           }
-           return acc;
-       }, [] as StockAlert[]);
-       setStockAlerts(alerts);
+        // Refined Stock Alerts Logic
+        const alerts: StockAlert[] = inventory.reduce((acc, p) => {
+            const minStockLevelOrDefault = p.minStockLevel ?? 10;
+            const isDefaultMin = p.minStockLevel === undefined;
+
+            if (p.quantity === 0) {
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Out of Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+            } else if (p.maxStockLevel !== undefined && p.quantity > p.maxStockLevel) {
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Over Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+            } else if (p.quantity <= minStockLevelOrDefault) { // Check low stock after overstock to prioritize overstock alert
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Low Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel, isDefaultMinStock: isDefaultMin });
+            }
+            return acc;
+        }, [] as StockAlert[]);
+        setStockAlerts(alerts.sort((a, b) => { // Sort alerts: Out of Stock > Low Stock > Over Stock
+            const statusOrder = { 'Out of Stock': 1, 'Low Stock': 2, 'Over Stock': 3 };
+            return statusOrder[a.status] - statusOrder[b.status];
+        }));
 
      };
 
      generateReports();
-   }, [dateRange, toast, inventory, invoices, isLoading]); // Re-run if these change
+   }, [dateRange, toast, inventory, invoices, isLoading]);
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -224,7 +224,7 @@ export default function ReportsPage() {
    const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
-   if (isLoading && !inventory.length && !invoices.length) { // Show loader only on initial full load
+   if (isLoading && !inventory.length && !invoices.length) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -495,7 +495,7 @@ export default function ReportsPage() {
                                 </TableHeader>
                                 <TableBody>
                                     {topSellingProductsBarData.map((product, index) => (
-                                        <TableRow key={index}>
+                                        <TableRow key={product.id || index}>
                                             <TableCell className="font-medium">{product.name}</TableCell>
                                             <TableCell className="text-right">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
                                             <TableCell className="text-right">{formatNumber(product.totalValue, { currency: true })}</TableCell>
@@ -530,12 +530,16 @@ export default function ReportsPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {stockAlerts.map((alert, index) => (
-                                        <TableRow key={index}>
+                                    {stockAlerts.map((alert) => (
+                                        <TableRow key={alert.id}>
                                             <TableCell className="font-medium">{alert.name}</TableCell>
                                             <TableCell>{alert.catalogNumber}</TableCell>
                                             <TableCell className="text-right">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right">{alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right">
+                                                {alert.isDefaultMinStock && alert.status === 'Low Stock'
+                                                    ? `${formatNumber(10, { decimals: 0 })} (Default)`
+                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-')}
+                                            </TableCell>
                                             <TableCell className="text-right">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
@@ -563,3 +567,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+
