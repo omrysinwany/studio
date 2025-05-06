@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -118,14 +117,28 @@ export default function UploadPage() {
     setIsProcessing(false);
     setUploadProgress(0);
 
-    // Optimistic UI: Add a temporary item to history
-    const tempId = `temp-${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '')}`; // Sanitize filename for ID
+    const tempId = `temp-${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
+    let base64dataForOptimistic: string | undefined = undefined;
+
+    // Try to read file for optimistic URI early if it's an image for immediate preview
+    if (selectedFile.type.startsWith('image/')) {
+        const optimisticReader = new FileReader();
+        optimisticReader.onloadend = () => {
+            base64dataForOptimistic = optimisticReader.result as string;
+            // Update optimistic item *after* URI is ready
+            setUploadHistory(prev => prev.map(item =>
+                item.id === tempId ? { ...item, invoiceDataUri: base64dataForOptimistic } : item
+            ));
+        };
+        optimisticReader.readAsDataURL(selectedFile);
+    }
+
     const optimisticItem: InvoiceHistoryItem = {
       id: tempId,
       fileName: selectedFile.name,
       uploadTime: new Date(),
       status: 'pending',
-      invoiceDataUri: undefined, // No URI initially
+      invoiceDataUri: base64dataForOptimistic, // May be undefined initially for PDFs
     };
     setUploadHistory(prev => [optimisticItem, ...prev.filter(item => item.id !== tempId)].slice(0, 10));
 
@@ -150,7 +163,6 @@ export default function UploadPage() {
       reader.onloadend = async () => {
          const base64data = reader.result as string;
 
-         // Update optimistic item to 'processing'
          setUploadHistory(prev => prev.map(item => item.id === tempId ? { ...item, status: 'processing', invoiceDataUri: base64data } : item));
          setUploadProgress(100);
          setIsUploading(false);
@@ -159,49 +171,41 @@ export default function UploadPage() {
          try {
              const scanResult = await scanInvoice({ invoiceDataUri: base64data });
              console.log('AI Scan Result:', scanResult);
-
+             
              // Call saveProducts with the tempId so it can update the correct optimistic entry
-             // Ensure invoiceDataUri is passed to saveProducts if you want it saved with the invoice history item
              await saveProducts(scanResult.products, selectedFile.name, 'upload', base64data, tempId);
 
-
-             // Store result in localStorage for editing page
-             const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}`;
+             const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
              localStorage.setItem(dataKey, JSON.stringify(scanResult));
 
              toast({
                title: 'Processing & Save Complete',
-               description: `${selectedFile.name} processed. Review in edit page or inventory/invoices.`,
+               description: `${selectedFile.name} processed. Review in edit page.`,
              });
              router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
 
          } catch (aiOrSaveError: any) {
              console.error('AI processing or saveProducts failed:', aiOrSaveError);
-             // Check if the error was already handled by saveProducts (which updates the invoice history)
+             // If error was flagged by saveProducts, it means the invoice history was likely updated already.
              if (!aiOrSaveError.updatedBySaveProducts) {
                 setUploadHistory(prev => prev.map(item =>
-                    item.id === tempId ? { ...item, status: 'error', errorMessage: (aiOrSaveError as Error).message || 'Processing failed before save' } : item
+                    item.id === tempId ? { ...item, status: 'error', errorMessage: (aiOrSaveError as Error).message || 'Processing failed before save', invoiceDataUri: base64data } : item
                 ));
-                 toast({
-                    title: 'Processing Failed',
-                    description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
-                    variant: 'destructive',
-                 });
-             } else {
-                 // Error was handled by saveProducts (invoice already marked as error), just toast the message.
-                 toast({
-                    title: 'Save Partially Failed',
-                    description: (aiOrSaveError as Error).message || 'Some products might not have been saved correctly.',
-                    variant: 'destructive',
-                 });
              }
+             // Always show a toast, but the message might be more generic if updatedBySaveProducts is true
+             toast({
+                title: 'Processing Error',
+                description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
+                variant: 'destructive',
+             });
           } finally {
              setIsProcessing(false);
              setSelectedFile(null);
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              await fetchHistory(); // Refresh history to get the final status from backend
+              // Crucial: Fetch history AFTER all operations to get the definitive record from backend
+              await fetchHistory();
           }
       };
 
@@ -209,7 +213,6 @@ export default function UploadPage() {
          console.error('Error reading file:', error);
          clearInterval(progressInterval);
          setIsUploading(false);
-         // Update the specific optimistic item to error
          setUploadHistory(prev => prev.map(item =>
             item.id === tempId ? { ...item, status: 'error', errorMessage: 'Failed to read file' } : item
          ));
@@ -218,14 +221,13 @@ export default function UploadPage() {
            description: 'Could not read the selected file.',
            variant: 'destructive',
          });
-         await fetchHistory(); // Refresh history as the optimistic item needs to be confirmed/removed
+         await fetchHistory();
        };
 
     } catch (error) {
        console.error('Upload failed:', error);
        clearInterval(progressInterval);
        setIsUploading(false);
-        // Update the specific optimistic item to error
        setUploadHistory(prev => prev.map(item =>
           item.id === tempId ? { ...item, status: 'error', errorMessage: 'Unexpected upload error' } : item
        ));
@@ -234,7 +236,7 @@ export default function UploadPage() {
          description: 'An unexpected error occurred. Please try again.',
          variant: 'destructive',
        });
-       await fetchHistory(); // Refresh history
+       await fetchHistory();
      }
   };
 
@@ -470,5 +472,3 @@ export default function UploadPage() {
     </div>
   );
 }
-
-

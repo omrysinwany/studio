@@ -245,6 +245,7 @@ export async function saveProducts(
   } catch (error) {
     console.error("Error processing products for inventory:", error);
     productsProcessedSuccessfully = false;
+    // Re-throw to be caught by the caller on the UploadPage
     throw new Error(`Failed to process products for inventory: ${(error as Error).message}`);
   }
 
@@ -252,15 +253,19 @@ export async function saveProducts(
   if (source === 'upload') {
     const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
     const errorMessage = productsProcessedSuccessfully ? undefined : 'Failed to process some products into inventory.';
-    
-    // Filter out any existing invoice with the same tempId BEFORE creating the new one.
-    // This prevents duplicates when the upload page optimistically adds an entry.
-    let updatedInvoices = tempId ? currentInvoices.filter(inv => inv.id !== tempId) : [...currentInvoices];
 
-    // Use tempId if provided, otherwise generate a new ID.
-    const invoiceIdToUse = tempId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    let invoiceIdToUse: string;
+    let existingInvoiceIndex = -1;
 
-    const newInvoiceRecord: InvoiceHistoryItem = {
+    if (tempId) {
+        existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempId);
+        invoiceIdToUse = tempId;
+    } else {
+        // Generate a new ID if no tempId is provided
+        invoiceIdToUse = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    }
+
+    const invoiceRecord: InvoiceHistoryItem = {
         id: invoiceIdToUse,
         fileName: fileName,
         uploadTime: new Date().toISOString(), // Always use current time for the definitive record
@@ -268,21 +273,31 @@ export async function saveProducts(
         totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
         invoiceDataUri: invoiceDataUri,
         errorMessage: errorMessage,
-        invoiceNumber: undefined, // Initialize, could be populated later if AI extracts it
-        supplier: undefined,    // Initialize, could be populated later if AI extracts it
+        // Preserve existing invoiceNumber and supplier if updating an existing optimistic entry
+        invoiceNumber: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].invoiceNumber : undefined,
+        supplier: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].supplier : undefined,
     };
 
-    updatedInvoices = [newInvoiceRecord, ...updatedInvoices]; // Add the definitive record to the beginning
-    
-    saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
-    console.log(`Saved/Updated invoice record with ID: ${invoiceIdToUse}`);
-    console.log('Updated localStorage invoices:', updatedInvoices);
+    if (existingInvoiceIndex !== -1) {
+        // Update the existing optimistic/pending invoice record
+        currentInvoices[existingInvoiceIndex] = invoiceRecord;
+        console.log(`Updated invoice record with ID: ${invoiceIdToUse}`);
+    } else {
+        // Add a new invoice record
+        currentInvoices = [invoiceRecord, ...currentInvoices];
+        console.log(`Created new invoice record with ID: ${invoiceIdToUse}`);
+    }
+
+    saveStoredData(INVOICES_STORAGE_KEY, currentInvoices);
+    console.log('Updated localStorage invoices:', currentInvoices);
   } else {
     console.log(`Skipping invoice history update for source: ${source}`);
   }
 
   if (!productsProcessedSuccessfully) {
-    const saveError = new Error('One or more products failed to save to inventory. Invoice marked as error.');
+    // Create a custom error to indicate that the invoice record might have been marked as error
+    const saveError = new Error('One or more products failed to save to inventory. Invoice record updated with error status.');
+    // Add a flag so the UploadPage knows this error originated from saveProducts and the invoice status is likely handled
     (saveError as any).updatedBySaveProducts = true;
     throw saveError;
   }
@@ -552,4 +567,3 @@ export async function login(credentials: any): Promise<AuthResponse> {
     user: loggedInUser,
   };
 }
-
