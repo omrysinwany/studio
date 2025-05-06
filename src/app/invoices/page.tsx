@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon, Trash2, Info } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save } from 'lucide-react'; // Added Edit, Save
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -30,9 +30,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices, deleteInvoice } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoices, deleteInvoice, updateInvoice } from '@/services/backend'; // Added updateInvoice
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'; // Added DialogFooter
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import {
   AlertDialog,
@@ -40,12 +40,15 @@ import {
   AlertDialogCancel,
   AlertDialogContent as AlertDialogContentComponent,
   AlertDialogDescription as AlertDialogDescriptionComponent,
-  AlertDialogFooter as AlertDialogFooterComponent, // Renamed to avoid conflict if DialogFooter was also named AlertDialogFooter
+  AlertDialogFooter as AlertDialogFooterComponent,
   AlertDialogHeader as AlertDialogHeaderComponent,
   AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label'; // For edit form
+import { Textarea } from '@/components/ui/textarea'; // For error message editing
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // For status editing
 
 
 // Helper function to safely format numbers
@@ -71,7 +74,7 @@ const formatNumber = (
 };
 
 
-const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
+const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply']; // TODO: Fetch dynamically
 
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
@@ -103,6 +106,11 @@ export default function InvoicesPage() {
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // State for editing invoice details in modal
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
 
     const fetchInvoices = useCallback(async () => {
       setIsLoading(true);
@@ -111,18 +119,12 @@ export default function InvoicesPage() {
         
         let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
         fetchedData.forEach(invoice => {
-            // If an invoice with the same ID already exists, prioritize the one with an image URI
             const existing = uniqueInvoices.get(invoice.id);
             if (existing) {
                 if (!existing.invoiceDataUri && invoice.invoiceDataUri) {
                     uniqueInvoices.set(invoice.id, invoice);
-                } else if (existing.invoiceDataUri && !invoice.invoiceDataUri) {
-                    // keep existing
-                } else {
-                    // if both have or don't have URI, keep the one with more details or later upload
-                     if (new Date(invoice.uploadTime) > new Date(existing.uploadTime)) {
-                        uniqueInvoices.set(invoice.id, invoice);
-                     }
+                } else if (new Date(invoice.uploadTime) > new Date(existing.uploadTime)) {
+                     uniqueInvoices.set(invoice.id, invoice);
                 }
             } else {
                 uniqueInvoices.set(invoice.id, invoice);
@@ -130,7 +132,6 @@ export default function InvoicesPage() {
         });
         
         let filteredData = Array.from(uniqueInvoices.values());
-
 
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -215,9 +216,9 @@ export default function InvoicesPage() {
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'viewDetails'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2' },
+      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' }, // Sticky left
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[25%] sm:w-[30%] min-w-[80px] sm:min-w-[100px] truncate' }, // Reduced width
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
@@ -249,6 +250,8 @@ export default function InvoicesPage() {
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
     setSelectedInvoiceDetails(invoice);
+    setEditedInvoiceData({ ...invoice }); // Initialize edit form
+    setIsEditingDetails(false); // Start in view mode
     setShowDetailsModal(true);
   };
 
@@ -272,6 +275,45 @@ export default function InvoicesPage() {
         });
     } finally {
         setIsDeleting(false);
+    }
+  };
+
+  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | InvoiceHistoryItem['status']) => {
+    setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveInvoiceDetails = async () => {
+    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id) return;
+    setIsSavingDetails(true);
+    try {
+        // Construct the updated invoice object
+        const updatedInvoice: Partial<InvoiceHistoryItem> = {
+            fileName: editedInvoiceData.fileName || selectedInvoiceDetails.fileName,
+            invoiceNumber: editedInvoiceData.invoiceNumber || undefined,
+            supplier: editedInvoiceData.supplier || undefined,
+            totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
+            status: editedInvoiceData.status || selectedInvoiceDetails.status,
+            errorMessage: editedInvoiceData.errorMessage || undefined,
+        };
+
+        await updateInvoice(selectedInvoiceDetails.id, updatedInvoice);
+        toast({
+            title: "Invoice Updated",
+            description: "Invoice details saved successfully.",
+        });
+        setIsEditingDetails(false); // Switch back to view mode
+        fetchInvoices(); // Reload invoices to show updated data
+        // Update selectedInvoiceDetails with new data for modal display
+        setSelectedInvoiceDetails(prev => prev ? { ...prev, ...updatedInvoice, uploadTime: prev.uploadTime, invoiceDataUri: prev.invoiceDataUri } : null);
+    } catch (error) {
+        console.error("Failed to save invoice details:", error);
+        toast({
+            title: "Save Failed",
+            description: "Could not save invoice details.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsSavingDetails(false);
     }
   };
 
@@ -299,7 +341,7 @@ export default function InvoicesPage() {
          case 'processing':
               variant = 'secondary';
              className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
-             icon = <Loader className="mr-1 h-3 w-3 animate-spin" />;
+             icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
              break;
          case 'pending':
               variant = 'secondary';
@@ -426,7 +468,7 @@ export default function InvoicesPage() {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden"
+                       className="sm:block hidden" // Corrected: sm:block hidden to show on small screens, then hidden (no effect unless other class overrides)
                      />
                        <Calendar
                         initialFocus
@@ -435,7 +477,7 @@ export default function InvoicesPage() {
                         selected={dateRange}
                         onSelect={setDateRange}
                         numberOfMonths={2}
-                        className="hidden sm:block"
+                        className="hidden sm:block" // Show on sm and up
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -632,50 +674,110 @@ export default function InvoicesPage() {
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>Invoice Details</DialogTitle>
-            <DialogDescription>
-              Detailed information for: {selectedInvoiceDetails?.fileName}
-            </DialogDescription>
+             <DialogTitle>{isEditingDetails ? 'Edit Invoice Details' : 'Invoice Details'}</DialogTitle>
+             <DialogDescription>
+                {isEditingDetails ? `Editing: ${selectedInvoiceDetails?.fileName}` : `Detailed information for: ${selectedInvoiceDetails?.fileName}`}
+             </DialogDescription>
           </DialogHeader>
           {selectedInvoiceDetails && (
             <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
-                  <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
-                  <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+              {isEditingDetails ? (
+                <div className="space-y-3">
+                    <div>
+                        <Label htmlFor="editFileName">File Name</Label>
+                        <Input id="editFileName" value={editedInvoiceData.fileName || ''} onChange={(e) => handleEditDetailsInputChange('fileName', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editInvoiceNumber">Invoice Number</Label>
+                        <Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editSupplier">Supplier</Label>
+                        <Input id="editSupplier" value={editedInvoiceData.supplier || ''} onChange={(e) => handleEditDetailsInputChange('supplier', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
+                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editStatus">Status</Label>
+                         <Select
+                            value={editedInvoiceData.status || ''}
+                            onValueChange={(value) => handleEditDetailsInputChange('status', value as InvoiceHistoryItem['status'])}
+                            disabled={isSavingDetails}
+                        >
+                            <SelectTrigger id="editStatus">
+                                <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="processing">Processing</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                                <SelectItem value="error">Error</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {editedInvoiceData.status === 'error' && (
+                        <div>
+                            <Label htmlFor="editErrorMessage">Error Message</Label>
+                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
+                        </div>
+                    )}
                 </div>
-                <div>
-                  <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
-                  <p><strong>Supplier:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
-                  <p><strong>Total Amount:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
-                </div>
-              </div>
-              {selectedInvoiceDetails.errorMessage && (
-                <div>
-                  <p className="font-semibold text-destructive">Error Message:</p>
-                  <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
-                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
+                      <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                      <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+                    </div>
+                    <div>
+                      <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
+                      <p><strong>Supplier:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
+                      <p><strong>Total Amount:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
+                    </div>
+                  </div>
+                  {selectedInvoiceDetails.errorMessage && (
+                    <div>
+                      <p className="font-semibold text-destructive">Error Message:</p>
+                      <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
+                    </div>
+                  )}
+                  <Separator />
+                  <div className="overflow-auto max-h-[50vh]">
+                    {selectedInvoiceDetails.invoiceDataUri ? (
+                      <NextImage
+                        src={selectedInvoiceDetails.invoiceDataUri}
+                        alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
+                        width={800}
+                        height={1100}
+                        className="rounded-md object-contain mx-auto"
+                        data-ai-hint="invoice document"
+                      />
+                    ) : (
+                      <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                    )}
+                  </div>
+                </>
               )}
-              <Separator />
-              <div className="overflow-auto max-h-[50vh]">
-                {selectedInvoiceDetails.invoiceDataUri ? (
-                  <NextImage
-                    src={selectedInvoiceDetails.invoiceDataUri}
-                    alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
-                    width={800}
-                    height={1100}
-                    className="rounded-md object-contain mx-auto"
-                    data-ai-hint="invoice document"
-                  />
+              <DialogFooter className="mt-4 flex-col sm:flex-row gap-2">
+                {isEditingDetails ? (
+                    <>
+                        <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
+                        <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
+                            {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                            Save Changes
+                        </Button>
+                    </>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                    <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
+                        <Edit className="mr-2 h-4 w-4" /> Edit Details
+                    </Button>
                 )}
-              </div>
-              <DialogFooter className="mt-4">
                  <AlertDialog>
                      <AlertDialogTrigger asChild>
-                         <Button variant="destructive" disabled={isDeleting}>
+                         <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
                              <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
                          </Button>
                      </AlertDialogTrigger>
@@ -704,3 +806,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

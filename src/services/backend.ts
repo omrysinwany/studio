@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -168,7 +169,7 @@ export async function saveProducts(
     productsToSave: Product[],
     fileName: string,
     source: string = 'upload',
-    invoiceDataUri?: string, // Explicitly pass this for invoice history
+    invoiceDataUri?: string,
     tempId?: string
 ): Promise<void> {
   console.log(`Saving products for file: ${fileName} (source: ${source}, tempId: ${tempId})`, productsToSave);
@@ -258,7 +259,7 @@ export async function saveProducts(
 
     if (tempId) {
         existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempId);
-        invoiceIdToUse = tempId; // Use the tempId if provided (for updating optimistic entry)
+        invoiceIdToUse = tempId;
     } else {
         invoiceIdToUse = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
     }
@@ -269,7 +270,7 @@ export async function saveProducts(
         uploadTime: new Date().toISOString(),
         status: finalStatus,
         totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-        invoiceDataUri: invoiceDataUri, // Use the passed invoiceDataUri
+        invoiceDataUri: invoiceDataUri,
         errorMessage: errorMessage,
         invoiceNumber: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].invoiceNumber : undefined,
         supplier: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].supplier : undefined,
@@ -436,6 +437,43 @@ export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
   console.log("Returning invoices from localStorage:", invoices);
   return invoices;
 }
+
+/**
+ * Asynchronously updates an existing invoice in localStorage.
+ * Finds the invoice by ID and replaces it with the updated data.
+ * @param invoiceId The ID of the invoice to update.
+ * @param updatedData Partial invoice data containing the fields to update.
+ * @returns A promise that resolves when the update is complete.
+ * @throws Error if the invoice with the given ID is not found.
+ */
+export async function updateInvoice(invoiceId: string, updatedData: Partial<InvoiceHistoryItem>): Promise<void> {
+  console.log(`updateInvoice called for ID: ${invoiceId}`, updatedData);
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+  const invoiceIndex = currentInvoices.findIndex(inv => inv.id === invoiceId);
+
+  if (invoiceIndex === -1) {
+    console.error(`Invoice with ID ${invoiceId} not found for update.`);
+    throw new Error(`Invoice with ID ${invoiceId} not found.`);
+  }
+
+  // Preserve existing uploadTime and invoiceDataUri if not explicitly provided in updatedData
+  const originalInvoice = currentInvoices[invoiceIndex];
+  const finalUpdatedData = {
+    ...originalInvoice, // Start with all original fields
+    ...updatedData,    // Override with new data
+    id: invoiceId,      // Ensure ID is not changed
+    uploadTime: originalInvoice.uploadTime, // Keep original uploadTime
+    invoiceDataUri: originalInvoice.invoiceDataUri, // Keep original image URI
+  };
+
+  currentInvoices[invoiceIndex] = finalUpdatedData;
+
+  saveStoredData(INVOICES_STORAGE_KEY, currentInvoices);
+  console.log(`Invoice ${invoiceId} updated successfully.`);
+}
+
 
 /**
  * Asynchronously deletes an invoice from localStorage by its ID.
