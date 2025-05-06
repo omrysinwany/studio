@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -192,7 +193,7 @@ export default function InvoicesPage() {
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[30%] sm:w-[40%] min-w-[120px] sm:min-w-[150px] truncate' },
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[25%] sm:w-[30%] min-w-[100px] sm:min-w-[120px] truncate' }, // Reduced width
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },

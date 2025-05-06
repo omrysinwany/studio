@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -162,7 +163,7 @@ export interface DocumentProcessingResponse {
  * @param fileName The name of the original file processed.
  * @param source Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
  * @param invoiceDataUri Optional URI of the scanned invoice image.
- * @param tempId Optional temporary ID used for optimistic UI updates.
+ * @param tempId Optional temporary ID used for optimistic UI updates. This ID will be used for the final record if provided.
  * @returns A promise that resolves when the data is successfully saved.
  */
 export async function saveProducts(
@@ -198,27 +199,36 @@ export async function saveProducts(
       if (newProduct.barcode) {
           existingIndex = updatedInventory.findIndex(p => p.barcode === newProduct.barcode);
       }
-      if (existingIndex === -1 && newProduct.id && newProduct.id !== tempId) { // Avoid matching by tempId
+      // Important: Prioritize ID matching (if it's not a temporary ID) over catalog number for updates
+      if (existingIndex === -1 && newProduct.id && newProduct.id !== tempId && !newProduct.id.startsWith('prod-new-')) {
           existingIndex = updatedInventory.findIndex(p => p.id === newProduct.id);
       }
       if (existingIndex === -1 && newProduct.catalogNumber && newProduct.catalogNumber !== 'N/A') {
           existingIndex = updatedInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
       }
 
+
       if (existingIndex !== -1) {
         const existingProduct = updatedInventory[existingIndex];
         existingProduct.quantity += quantityToAdd;
-        existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
+        // Use existing unit price if available and valid, otherwise the new product's unit price
+        const priceToUse = (existingProduct.unitPrice && existingProduct.unitPrice > 0) ? existingProduct.unitPrice : unitPrice;
+        existingProduct.unitPrice = priceToUse;
+        existingProduct.lineTotal = parseFloat((existingProduct.quantity * priceToUse).toFixed(2));
+
         existingProduct.description = existingProduct.description || newProduct.description;
         existingProduct.shortName = existingProduct.shortName || newProduct.shortName;
         existingProduct.barcode = existingProduct.barcode || newProduct.barcode;
         existingProduct.catalogNumber = existingProduct.catalogNumber || newProduct.catalogNumber;
+        console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, LineTotal=${existingProduct.lineTotal}`);
       } else {
          if (!newProduct.catalogNumber && !newProduct.description && !newProduct.barcode) {
              console.log("Skipping adding product with no identifier:", newProduct);
              return;
          }
-         const newId = newProduct.id && newProduct.id !== tempId ? newProduct.id : `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+         const newId = (newProduct.id && newProduct.id !== tempId && !newProduct.id.startsWith('prod-new-'))
+                        ? newProduct.id
+                        : `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
          const productToAdd: Product = {
           ...newProduct,
           id: newId,
@@ -231,6 +241,7 @@ export async function saveProducts(
           shortName: newProduct.shortName || (newProduct.description || 'No Description').split(' ').slice(0, 3).join(' '),
         };
         updatedInventory.push(productToAdd);
+        console.log(`Added new product with ID ${newId}:`, productToAdd);
       }
     });
     saveStoredData(INVENTORY_STORAGE_KEY, updatedInventory);
@@ -245,34 +256,53 @@ export async function saveProducts(
 
 
   // Handle Invoice History Item (Create or Update)
-  if (source === 'upload') {
+  if (source === 'upload') { // Only create/update invoice history for uploads
     const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
     const errorMessage = productsProcessedSuccessfully ? undefined : 'Failed to process all products into inventory.';
     let invoiceRecord: InvoiceHistoryItem;
+    let updatedInvoices = [...currentInvoices];
 
-    // Try to find an existing invoice record by tempId if provided, otherwise generate new ID
-    const existingInvoiceIndex = tempId ? currentInvoices.findIndex(inv => inv.id === tempId) : -1;
-    const newInvoiceId = tempId && existingInvoiceIndex !== -1 ? tempId : `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Try to find an existing invoice record by tempId if provided
+    const existingInvoiceIndex = tempId ? updatedInvoices.findIndex(inv => inv.id === tempId) : -1;
 
-    invoiceRecord = {
-        id: newInvoiceId,
-        fileName: fileName,
-        uploadTime: new Date().toISOString(),
+    if (existingInvoiceIndex !== -1) {
+      // Update the existing optimistic entry
+      updatedInvoices[existingInvoiceIndex] = {
+        ...updatedInvoices[existingInvoiceIndex], // Keep original uploadTime if already set
+        fileName: fileName, // Ensure filename is correct
         status: finalStatus,
         totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-        invoiceDataUri: invoiceDataUri,
+        invoiceDataUri: invoiceDataUri || updatedInvoices[existingInvoiceIndex].invoiceDataUri, // Prioritize new URI, fallback to old
         errorMessage: errorMessage,
-    };
-
-    let updatedInvoices;
-    if (tempId && existingInvoiceIndex !== -1) {
-        updatedInvoices = [...currentInvoices];
-        updatedInvoices[existingInvoiceIndex] = invoiceRecord; // Update existing optimistic entry
-        console.log(`Updated invoice record with ID: ${newInvoiceId}`);
+      };
+      console.log(`Updated invoice record with ID: ${tempId}`);
     } else {
-        updatedInvoices = [invoiceRecord, ...currentInvoices]; // Add new record
-        console.log(`Added new invoice record with ID: ${newInvoiceId}`);
+      // No matching tempId, or tempId not provided, create a new record
+      const newInvoiceId = `inv-${Date.now()}-${Math.random().toString(36).substring(7, 15)}`; // Ensure unique enough ID
+      invoiceRecord = {
+          id: newInvoiceId,
+          fileName: fileName,
+          uploadTime: new Date().toISOString(),
+          status: finalStatus,
+          totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
+          invoiceDataUri: invoiceDataUri,
+          errorMessage: errorMessage,
+      };
+      updatedInvoices = [invoiceRecord, ...updatedInvoices]; // Add new record to the beginning
+      console.log(`Added new invoice record with ID: ${newInvoiceId}`);
     }
+
+    // Filter out any other potential duplicates by fileName if they don't have an image URI and the new one does
+    // This is a fallback, the primary fix is handling tempId correctly
+    if (invoiceDataUri) {
+        updatedInvoices = updatedInvoices.filter(inv => {
+            if (inv.fileName === fileName && inv.id !== (existingInvoiceIndex !== -1 ? tempId : updatedInvoices[0].id)) {
+                return !!inv.invoiceDataUri; // Keep other duplicates only if they also have an image
+            }
+            return true;
+        });
+    }
+
 
     saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);
     console.log('Updated localStorage invoices:', updatedInvoices);
