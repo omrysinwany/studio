@@ -214,7 +214,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             success: true,
             message: `Successfully fetched ${totalSynced} products from Caspit.`,
             itemsSynced: totalSynced,
-            products: allProducts // Return the fetched products
+            products: allProducts // Explicitly return the fetched products
         };
 
     } catch (error: any) {

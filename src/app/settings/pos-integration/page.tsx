@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getAvailablePosSystems, testPosConnection, getPosAdapter, syncWithPos } from '@/services/pos-integration/integration-manager'; // Import syncWithPos
+import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager'; // Removed syncWithPos
 import { savePosSettings, getPosSettings, saveProducts } from '@/services/backend'; // Import backend functions for settings AND saveProducts
 import type { PosConnectionConfig, SyncResult, Product } from '@/services/pos-integration/pos-adapter.interface'; // Import SyncResult type
+import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the new inventory sync action
+import { syncCaspitSalesAction } from '@/actions/caspit-actions'; // Keep sales action for demo
 import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,7 +21,6 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 type PosSystemInfo = { systemId: string; systemName: string };
 
 // Define field structures for different systems
-// In a real app, this could come from adapter.getSettingsSchema() if implemented
 const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[]> = {
   caspit: [
     { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
@@ -27,13 +28,11 @@ const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label
     { key: 'osekMorshe', label: 'Business ID (Osek Morshe)', type: 'text', tooltip: 'Your Caspit business identifier (עוסק מורשה).' },
   ],
   hashavshevet: [
-     // Add fields specific to Hashavshevet based on its API documentation
      { key: 'apiKey', label: 'Hashavshevet API Key', type: 'password', tooltip: 'Your unique API key for Hashavshevet.' },
      { key: 'apiSecret', label: 'Hashavshevet API Secret (Optional)', type: 'password', tooltip: 'Your API Secret, if required by Hashavshevet.' },
      { key: 'companyId', label: 'Hashavshevet Company ID', type: 'text', tooltip: 'Your specific company identifier in Hashavshevet.' },
      { key: 'endpointUrl', label: 'Hashavshevet API URL (Optional)', type: 'text', tooltip: 'Override the default API URL if needed.' },
   ],
-  // Add other systems here
 };
 
 
@@ -42,11 +41,11 @@ export default function PosIntegrationSettingsPage() {
   const [selectedSystemId, setSelectedSystemId] = useState<string>('');
   const [configValues, setConfigValues] = useState<PosConnectionConfig>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false); // Initialize with false
+  const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false); // State for sync process
-  const [syncResults, setSyncResults] = useState<SyncResult[]>([]); // State for sync results
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResults, setSyncResults] = useState<SyncResult[]>([]); // Combined results from diff sync types
   const { toast } = useToast();
 
   // Fetch available systems and load existing settings on mount
@@ -59,7 +58,7 @@ export default function PosIntegrationSettingsPage() {
       const savedSettings = await getPosSettings();
       if (savedSettings) {
         setSelectedSystemId(savedSettings.systemId);
-        setConfigValues(savedSettings.config || {}); // Ensure config is an object
+        setConfigValues(savedSettings.config || {});
       }
     } catch (error) {
       console.error("Error loading POS settings:", error);
@@ -71,60 +70,53 @@ export default function PosIntegrationSettingsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]); // Include toast in dependencies
+  }, [toast]);
 
   useEffect(() => {
     loadInitialData();
-  }, [loadInitialData]); // Run loadInitialData on mount
+  }, [loadInitialData]);
 
   const handleSystemChange = (systemId: string) => {
     setSelectedSystemId(systemId);
-    // Load default/empty config for the selected system, or previously saved config if available
-    // This logic can be enhanced if we store settings per-system separately
     getPosSettings().then(savedSettings => {
         if (savedSettings && savedSettings.systemId === systemId) {
             setConfigValues(savedSettings.config || {});
         } else {
-            setConfigValues({}); // Reset to empty if different system or no settings
+            setConfigValues({});
         }
     });
-    setTestResult(null); // Reset test result
-    setSyncResults([]); // Reset sync results
+    setTestResult(null);
+    setSyncResults([]);
   };
 
   const handleInputChange = (field: keyof PosConnectionConfig, value: string) => {
     setConfigValues(prev => ({ ...prev, [field]: value }));
-    setTestResult(null); // Reset test result on input change
-    setSyncResults([]); // Reset sync results
+    setTestResult(null);
+    setSyncResults([]);
   };
 
   const handleTestConnection = async () => {
      if (!selectedSystemId) return;
      setIsTesting(true);
      setTestResult(null);
-     let result: { success: boolean; message: string } | null = null; // To store the result from action
-     console.log(`[POS Page] Testing connection for ${selectedSystemId} with config:`, configValues); // Log config being sent
+     let result: { success: boolean; message: string } | null = null;
+     console.log(`[POS Page] Testing connection for ${selectedSystemId} with config:`, configValues);
      try {
-       // Directly call the manager function which calls the adapter/action
-        // We now expect the action to return the success status and a message
        result = await testPosConnection(selectedSystemId, configValues);
-       setTestResult(result); // Store the result directly
-
-       // Use the message from the result for the toast
+       setTestResult(result);
        toast({
          title: result.success ? 'Connection Test Succeeded' : 'Connection Test Failed',
-         description: result.message, // Use the message returned from the action
+         description: result.message,
          variant: result.success ? 'default' : 'destructive',
        });
      } catch (error: any) {
-        // This catch block handles errors if testPosConnection itself throws (e.g., adapter not found)
-       console.error("[POS Page] Error during test connection call:", error);
+        console.error("[POS Page] Error during test connection call:", error);
         const errorMessage = `Error: ${error.message || 'Unknown error during test'}`;
-        result = { success: false, message: errorMessage }; // Create a result object for the error
+        result = { success: false, message: errorMessage };
         setTestResult(result);
        toast({
          title: 'Connection Test Error',
-         description: errorMessage, // Show the specific error message
+         description: errorMessage,
          variant: 'destructive',
        });
      } finally {
@@ -137,14 +129,13 @@ export default function PosIntegrationSettingsPage() {
     if (!selectedSystemId) return;
     setIsSaving(true);
     try {
-      // Only save settings for the currently selected system
       await savePosSettings(selectedSystemId, configValues);
       toast({
         title: "Settings Saved",
         description: `POS integration settings for ${availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || 'system'} saved successfully.`,
       });
-       setTestResult(null); // Reset test result after saving
-       setSyncResults([]); // Reset sync results
+       setTestResult(null);
+       setSyncResults([]);
     } catch (error: any) {
       console.error("Error saving settings:", error);
       toast({
@@ -159,85 +150,98 @@ export default function PosIntegrationSettingsPage() {
 
    const handleSyncNow = async () => {
      if (!selectedSystemId) return;
-     setIsSyncing(true);
-     setSyncResults([]); // Clear previous results
-     toast({ title: "Sync Started", description: `Starting sync with ${selectedSystemId}...` });
-     let overallSuccess = true;
-     let allFetchedProducts: Product[] = [];
 
-     try {
-       // Perform both product and sales sync ('all')
-       const results = await syncWithPos(selectedSystemId, configValues, 'all');
-       setSyncResults(results);
+     // --- Specific Inventory Sync (using syncInventoryAction) ---
+     if (selectedSystemId === 'caspit') {
+         setIsSyncing(true);
+         setSyncResults([]); // Clear previous results
+         toast({ title: "Inventory Sync Started", description: `Starting inventory sync with ${selectedSystemId}...` });
+         let inventorySyncSucceeded = false;
 
-       // Check overall success and collect products
-       results.forEach(result => {
-         if (!result.success) {
-           overallSuccess = false;
-         }
-         // Collect products if they exist in the result
-         if (result.products && Array.isArray(result.products)) {
-            allFetchedProducts = allFetchedProducts.concat(result.products);
-         }
-       });
+         try {
+             // Call the specific server action for inventory sync
+             const inventoryResult = await syncInventoryAction(selectedSystemId);
+             setSyncResults([inventoryResult]); // Show inventory sync result
 
-        // ** Save fetched products on the client-side **
-        if (allFetchedProducts.length > 0) {
-            try {
-                console.log(`[POS Page] Saving ${allFetchedProducts.length} synced products...`);
-                // Use the source 'caspit_sync' or derive from selectedSystemId
-                await saveProducts(allFetchedProducts, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
-                console.log(`[POS Page] Successfully saved synced products.`);
-                // Add a success message for saving products to syncResults if needed
-                setSyncResults(prev => [...prev, { success: true, message: `Saved ${allFetchedProducts.length} products to inventory.` }]);
-            } catch (saveError: any) {
-                console.error("[POS Page] Error saving synced products:", saveError);
-                overallSuccess = false; // Mark overall sync as failed if saving fails
-                // Add save error to sync results for display
-                setSyncResults(prev => [...prev, { success: false, message: `Failed to save products: ${saveError.message}` }]);
+             if (inventoryResult.success && inventoryResult.products) {
+                 inventorySyncSucceeded = true;
+                 // Save fetched products ON THE CLIENT using saveProducts
+                 try {
+                     console.log(`[POS Page] Saving ${inventoryResult.products.length} synced products...`);
+                     await saveProducts(inventoryResult.products, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
+                     console.log(`[POS Page] Successfully saved synced products.`);
+                     // Add success message for saving
+                     setSyncResults(prev => [...prev, { success: true, message: `Saved ${inventoryResult.products?.length ?? 0} products to inventory.` }]);
+                     toast({
+                        title: "Inventory Sync Completed",
+                        description: `Successfully synced and saved ${inventoryResult.products.length} products from ${selectedSystemId}.`,
+                     });
+                 } catch (saveError: any) {
+                     inventorySyncSucceeded = false; // Mark as failed if saving fails
+                     console.error("[POS Page] Error saving synced products:", saveError);
+                     setSyncResults(prev => [...prev, { success: false, message: `Failed to save products: ${saveError.message}` }]);
+                     toast({
+                         title: "Product Save Failed",
+                         description: `Could not save synced products: ${saveError.message || 'Unknown error'}`,
+                         variant: "destructive",
+                     });
+                 }
+             } else {
+                // Inventory sync failed at fetching stage
                 toast({
-                    title: "Product Save Failed",
-                    description: `Could not save synced products: ${saveError.message || 'Unknown error'}`,
+                    title: "Inventory Sync Failed",
+                    description: inventoryResult.message || `Failed to sync inventory with ${selectedSystemId}.`,
                     variant: "destructive",
                 });
+             }
+         } catch (error: any) {
+             console.error(`[POS Page] Error during ${selectedSystemId} inventory sync:`, error);
+             setSyncResults([{ success: false, message: `Inventory sync failed: ${error.message || 'Unknown error'}` }]);
+             toast({
+                 title: "Inventory Sync Error",
+                 description: `An error occurred during inventory synchronization: ${error.message || 'Unknown error'}`,
+                 variant: "destructive",
+             });
+         } finally {
+             setIsSyncing(false);
+         }
+
+         // --- Placeholder for Sales Sync (Keep separate if needed) ---
+         // You might trigger this separately or combine logic if desired
+         /*
+         setIsSyncing(true); // Reuse or use separate state if running concurrently
+         try {
+            const salesConfig = await getPosSettings(); // Refetch config just in case
+            if (salesConfig && salesConfig.systemId === 'caspit' && salesConfig.config) {
+                const salesResult = await syncCaspitSalesAction(salesConfig.config);
+                // Add sales result to syncResults (careful with state updates if concurrent)
+                setSyncResults(prev => [...prev, salesResult]);
+                toast({
+                    title: salesResult.success ? "Sales Sync Completed (Placeholder)" : "Sales Sync Failed (Placeholder)",
+                    description: salesResult.message,
+                    variant: salesResult.success ? 'default' : 'destructive',
+                });
             }
-        }
+         } catch (salesError: any) {
+            // Handle sales sync error
+         } finally {
+            // Update syncing state
+         }
+         */
 
-       toast({
-         title: overallSuccess ? "Sync Completed" : "Sync Partially Failed",
-         description: overallSuccess
-           ? `Successfully synced data with ${selectedSystemId}. ${allFetchedProducts.length > 0 ? `${allFetchedProducts.length} products updated.` : ''}`
-           : `Some sync operations failed. Check details below.`,
-         variant: overallSuccess ? 'default' : 'destructive',
-       });
-
-       // Optionally refresh other parts of the app or indicate data updated
-        // Example: router.push('/inventory?refresh=true'); // Can cause issues if saveProducts is async, better handled differently
-
-     } catch (error: any) {
-       console.error("Error during manual sync:", error);
-       setSyncResults([{ success: false, message: `Sync failed: ${error.message || 'Unknown error'}` }]);
-       toast({
-         title: "Sync Error",
-         description: `An error occurred during synchronization: ${error.message || 'Unknown error'}`,
-         variant: "destructive",
-       });
-     } finally {
-       setIsSyncing(false);
+     } else {
+        // Handle sync for other systems if needed
+        toast({ title: "Not Implemented", description: `Manual sync for ${selectedSystemId} is not yet implemented.` });
      }
    };
 
   // --- Dynamic Form Fields based on selected system ---
   const renderConfigFields = () => {
     if (!selectedSystemId) return null;
-
-    // Get the fields definition for the selected system
     const fields = systemConfigFields[selectedSystemId] || [];
-
     if (fields.length === 0) {
         return <p className="text-sm text-muted-foreground">No specific configuration needed for this system, or configuration fields not yet defined.</p>;
     }
-
     return (
         <TooltipProvider>
             {fields.map(field => (
@@ -257,7 +261,7 @@ export default function PosIntegrationSettingsPage() {
                     </Label>
                     <Input
                     id={field.key}
-                    type={field.type} // Use 'password' for sensitive fields
+                    type={field.type}
                     value={configValues[field.key] || ''}
                     onChange={(e) => handleInputChange(field.key, e.target.value)}
                     placeholder={`Enter ${field.label}`}
@@ -283,7 +287,7 @@ export default function PosIntegrationSettingsPage() {
           <CardTitle className="text-2xl font-semibold text-primary flex items-center">
             <Plug className="mr-2 h-6 w-6" /> Point of Sale (POS) Integration
           </CardTitle>
-          <CardDescription>Connect InvoTrack to your POS system to synchronize data automatically.</CardDescription>
+          <CardDescription>Connect InvoTrack to your POS system to synchronize data.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* System Selection */}
@@ -354,17 +358,17 @@ export default function PosIntegrationSettingsPage() {
            {/* Manual Sync Section */}
            {selectedSystemId && (
                <Card className="p-4 md:p-6 space-y-4 border">
-                   <h3 className="text-lg font-medium">Manual Synchronization</h3>
+                   <h3 className="text-lg font-medium">Manual Inventory Synchronization</h3>
                    <Separator />
                    <div className="flex flex-col sm:flex-row items-center gap-4">
                        <Button
-                           onClick={handleSyncNow}
+                           onClick={handleSyncNow} // This button now triggers inventory sync
                            disabled={isSyncing || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving} // Disable if no config or saving
                        >
                            {isSyncing ? (
-                               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing...</>
+                               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing Inventory...</>
                            ) : (
-                               <><RefreshCw className="mr-2 h-4 w-4" /> Sync Now (All)</>
+                               <><RefreshCw className="mr-2 h-4 w-4" /> Sync Inventory Now</> // Changed label
                            )}
                        </Button>
                        {/* Display Sync Results */}
@@ -379,7 +383,9 @@ export default function PosIntegrationSettingsPage() {
                            </div>
                        )}
                    </div>
-                    <p className="text-xs text-muted-foreground">Manually synchronizes products and sales data with the selected POS system.</p>
+                    <p className="text-xs text-muted-foreground">Manually synchronizes product data from the selected POS system.</p>
+                    {/* Add notes about scheduled sync if needed */}
+                    <p className="text-xs text-muted-foreground mt-2">Note: Automatic daily sync requires additional setup (e.g., Cron Jobs).</p>
                </Card>
            )}
 

@@ -64,35 +64,6 @@ export async function testPosConnection(systemId: string, config: PosConnectionC
   }
 }
 
-/**
- * Placeholder function to trigger synchronization for the currently configured POS system.
- * @param systemId - The ID of the POS system to sync.
- * @param config - The connection configuration.
- * @param syncType - The type of sync to perform ('products', 'sales', 'all').
- * @returns A promise resolving to an array of SyncResult objects (one for each sync type).
- */
-export async function syncWithPos(systemId: string, config: PosConnectionConfig, syncType: 'products' | 'sales' | 'all'): Promise<SyncResult[]> {
-  const adapter = getPosAdapter(systemId);
-  if (!adapter) {
-    const errorResult = { success: false, message: `Adapter not found for systemId: ${systemId}` };
-    return [errorResult];
-  }
-
-  const results: SyncResult[] = [];
-
-  try {
-    if (syncType === 'products' || syncType === 'all') {
-      const productResult = await adapter.syncProducts(config);
-      results.push(productResult);
-    }
-    if (syncType === 'sales' || syncType === 'all') {
-      const salesResult = await adapter.syncSales(config);
-      results.push(salesResult);
-    }
-  } catch (error: any) {
-     console.error(`[IntegrationManager] Error during sync for ${systemId}:`, error);
-     results.push({ success: false, message: `Sync failed: ${error.message || 'Unknown error'}` });
-  }
-
-  return results;
-}
+// Removed syncWithPos function - sync logic is now handled by specific actions (e.g., syncInventoryAction)
+// and triggered from the UI (e.g., PosIntegrationSettingsPage).
+// Scheduled sync needs external infrastructure (cron jobs + API endpoint).
