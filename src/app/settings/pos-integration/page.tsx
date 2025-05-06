@@ -23,7 +23,7 @@ type PosSystemInfo = { systemId: string; systemName: string };
 const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[]> = {
   caspit: [
     { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
-    { key: 'pwd', label: 'Caspit Password', type = 'password', tooltip = 'Your Caspit login password.' },
+    { key: 'pwd', label: 'Caspit Password', type: 'password', tooltip: 'Your Caspit login password.' },
     { key: 'osekMorshe', label: 'Business ID (Osek Morshe)', type: 'text', tooltip: 'Your Caspit business identifier (עוסק מורשה).' },
   ],
   hashavshevet: [
@@ -40,7 +40,7 @@ export default function PosIntegrationSettingsPage() {
   const [selectedSystemId, setSelectedSystemId] = useState<string>('');
   const [configValues, setConfigValues] = useState<PosConnectionConfig>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // Initialize state properly
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -164,16 +164,17 @@ export default function PosIntegrationSettingsPage() {
      let inventorySyncSucceeded = false;
 
      try {
-        // 1. Get current settings from client-side storage
-        const settings = await getPosSettings();
-        if (!settings || settings.systemId !== selectedSystemId || !settings.config) {
-             throw new Error(`POS settings for ${selectedSystemId} not configured or incomplete.`);
-        }
-        const currentConfig = settings.config;
 
-         // 2. Call the server action, passing the retrieved config
+         // **No need to call getPosSettings() here - pass configValues directly**
+         // const settings = await getPosSettings(); // REMOVED
+         // if (!settings || settings.systemId !== selectedSystemId || !settings.config) {
+         //      throw new Error(`POS settings for ${selectedSystemId} not configured or incomplete.`);
+         // }
+         // const currentConfig = settings.config; // REMOVED
+
+         // 2. Call the server action, passing the current config from state
          console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
-         const inventoryResult = await syncInventoryAction(currentConfig, selectedSystemId); // Pass config and systemId
+         const inventoryResult = await syncInventoryAction(configValues, selectedSystemId); // Pass configValues from state
          setSyncResults([inventoryResult]); // Show inventory sync result
 
          if (inventoryResult.success && inventoryResult.products) {
