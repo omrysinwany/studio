@@ -146,20 +146,26 @@ export default function UploadPage() {
              });
              router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
 
-         } catch (aiOrSaveError) {
+         } catch (aiOrSaveError: any) {
              console.error('AI processing or saveProducts failed:', aiOrSaveError);
-             // saveProducts should handle updating the history item to 'error' if it reaches that point
-             // If scanInvoice fails before, update the optimistic item here
-             if (!(aiOrSaveError instanceof Error && (aiOrSaveError.message.includes("updated by saveProducts") || aiOrSaveError.message.includes("One or more products failed")))) {
+             // Check if the error was already handled by saveProducts (which updates the invoice history)
+             if (!aiOrSaveError.updatedBySaveProducts) {
                 setUploadHistory(prev => prev.map(item =>
                     item.id === tempId ? { ...item, status: 'error', errorMessage: (aiOrSaveError as Error).message || 'Processing failed before save' } : item
                 ));
+                 toast({
+                    title: 'Processing Failed',
+                    description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
+                    variant: 'destructive',
+                 });
+             } else {
+                 // Error was handled by saveProducts (invoice already marked as error), just toast the message.
+                 toast({
+                    title: 'Save Partially Failed',
+                    description: (aiOrSaveError as Error).message || 'Some products might not have been saved correctly.',
+                    variant: 'destructive',
+                 });
              }
-              toast({
-                title: 'Processing Failed',
-                description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
-                variant: 'destructive',
-              });
           } finally {
              setIsProcessing(false);
              setSelectedFile(null);

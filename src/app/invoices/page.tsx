@@ -39,11 +39,11 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent,
-  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogContent as AlertDialogContentComponent, // Alias to avoid name clash
+  AlertDialogDescription as AlertDialogDescriptionComponent, // Alias
   AlertDialogFooter,
-  AlertDialogHeader as AlertDialogHeaderComponent,
-  AlertDialogTitle as AlertDialogTitleComponent,
+  AlertDialogHeader as AlertDialogHeaderComponent, // Alias
+  AlertDialogTitle as AlertDialogTitleComponent, // Alias
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
@@ -193,7 +193,7 @@ export default function InvoicesPage() {
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[25%] sm:w-[30%] min-w-[100px] sm:min-w-[120px] truncate' }, // Reduced width
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' }, // Reduced width further
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
