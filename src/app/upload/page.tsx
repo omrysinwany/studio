@@ -10,12 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
-import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
+import { useRouter } from 'next/navigation'; // Use App Router's useRouter
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
 import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
-import { Separator } from '@/components/ui/separator';
+import { Separator } from '@/components/ui/separator'; // Import Separator
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -145,16 +145,37 @@ export default function UploadPage() {
 
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
              const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
+             let imageUriSaved = false;
 
              localStorage.setItem(dataKey, JSON.stringify(scanResult));
-             localStorage.setItem(imageUriKey, base64data);
+             
+             try {
+                localStorage.setItem(imageUriKey, base64data);
+                imageUriSaved = true;
+             } catch (storageError: any) {
+                if (storageError.name === 'QuotaExceededError' || storageError.message.includes('exceeded the quota')) {
+                    console.warn(`[UploadPage] localStorage quota exceeded for image URI for file: ${selectedFile.name}. Proceeding without saving image URI.`);
+                    toast({
+                        title: 'Image Too Large',
+                        description: 'The invoice image is too large to be stored for preview. Processing will continue.',
+                        variant: 'default',
+                    });
+                } else {
+                    console.error(`[UploadPage] Error saving image URI to localStorage for file: ${selectedFile.name}`, storageError);
+                    // Optionally, still proceed or throw a different error
+                }
+                // imageUriKey will effectively be null or point to nothing if it's not set
+             }
+
 
              toast({
                title: 'Scan Complete',
                description: `${selectedFile.name} scanned. Review and save on the next page.`,
              });
-             // Pass tempInvoiceId to edit page
-             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriKey}&fileName=${encodeURIComponent(selectedFile.name)}&tempId=${tempInvoiceId}`);
+
+             // Pass tempInvoiceId to edit page. If imageUriSaved is false, imageKey might be invalid or not set by router.
+             // The edit page should handle cases where imageKey doesn't yield a valid image URI.
+             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSaved ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}&tempId=${tempInvoiceId}`);
 
          } catch (aiError: any) {
              console.error('[UploadPage] AI processing failed:', aiError);
@@ -169,8 +190,6 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              // Do not fetch history here; it will be fetched after saving on edit page
-              // await fetchHistory();
           }
       };
 
@@ -394,7 +413,9 @@ export default function UploadPage() {
                 <div>
                   <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
                   <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
-                  <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+                  <div className="flex items-center">
+                    <strong className="mr-1">Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                  </div>
                 </div>
                 <div>
                   <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>

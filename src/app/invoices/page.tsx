@@ -76,7 +76,7 @@ const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
 
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'list' | 'grid';
+type ViewMode = 'grid' | 'list';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
@@ -795,7 +795,9 @@ export default function InvoicesPage() {
                     <div>
                       <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
-                      <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+                      <div className="flex items-center">
+                        <strong className="mr-1">Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                      </div>
                     </div>
                     <div>
                       <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
@@ -811,17 +813,17 @@ export default function InvoicesPage() {
                   )}
                   <Separator />
                   <div className="overflow-auto max-h-[50vh]">
-                    {selectedInvoiceDetails.invoiceDataUri ? (
-                      <NextImage
+                  {selectedInvoiceDetails.invoiceDataUri && selectedInvoiceDetails.invoiceDataUri.trim() !== '' ? (
+                    <NextImage
                         src={selectedInvoiceDetails.invoiceDataUri}
                         alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
                         width={800}
                         height={1100}
                         className="rounded-md object-contain mx-auto"
                         data-ai-hint="invoice document"
-                      />
+                    />
                     ) : (
-                      <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                    <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
                     )}
                   </div>
                 </>

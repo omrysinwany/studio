@@ -238,7 +238,7 @@ function EditInvoiceContent() {
   const proceedWithSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true); 
       try {
-          const imageUri = imageUriKey ? localStorage.getItem(imageUriKey) : null;
+          const imageUri = (imageUriKey && imageUriKey.trim() !== '') ? localStorage.getItem(imageUriKey) : null;
           console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
           
           // Pass 'upload' as source and the image URI to create invoice history
@@ -248,7 +248,7 @@ function EditInvoiceContent() {
               localStorage.removeItem(dataKey);
               console.log(`Removed temp data with key: ${dataKey}`);
           }
-          if (imageUriKey) {
+          if (imageUriKey && imageUriKey.trim() !== '') {
               localStorage.removeItem(imageUriKey);
               console.log(`Removed temp image URI with key: ${imageUriKey}`);
           }
@@ -355,7 +355,7 @@ function EditInvoiceContent() {
             localStorage.removeItem(dataKey);
             console.log(`Cleared temp data with key ${dataKey} on explicit back navigation.`);
         }
-        if (imageUriKey) {
+        if (imageUriKey && imageUriKey.trim() !== '') {
             localStorage.removeItem(imageUriKey);
             console.log(`Cleared temp image URI with key ${imageUriKey} on explicit back navigation.`);
         }
@@ -440,6 +440,7 @@ function EditInvoiceContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
             <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
