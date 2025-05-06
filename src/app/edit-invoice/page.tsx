@@ -8,9 +8,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { saveProductsService, Product, getProductsService } from '@/services/backend';
+import {
+    Product,
+    getProductsService,
+    checkProductPricesBeforeSaveService,
+    finalizeSaveProductsService,
+    ProductPriceDiscrepancy,
+    PriceCheckResult
+} from '@/services/backend';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
+import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog'; // Import the new dialog
 
 // Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
@@ -52,6 +60,8 @@ function EditInvoiceContent() {
 
   // State for barcode prompt
   const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
+  const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
+  const [productsToSaveDirectly, setProductsToSaveDirectly] = useState<Product[]>([]);
 
 
   useEffect(() => {
@@ -224,14 +234,14 @@ function EditInvoiceContent() {
   };
 
 
-  // Function to proceed with the actual saving after barcode prompt (if needed)
-  const proceedWithSave = async (finalProductsToSave: Product[]) => {
+  // Function to proceed with the actual saving after barcode prompt AND price confirmation
+  const proceedWithFinalSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true);
       try {
           const imageUri = (imageUriKey && imageUriKey.trim() !== '') ? localStorage.getItem(imageUriKey) : null;
-          console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
+          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
 
-          await saveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined);
+          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined);
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
@@ -250,10 +260,10 @@ function EditInvoiceContent() {
           router.push('/inventory?refresh=true');
 
       } catch (error) {
-          console.error("Failed to save products:", error);
+          console.error("Failed to finalize save products:", error);
           toast({
               title: "Save Failed",
-              description: "Could not save the product data. Please try again.",
+              description: "Could not save the product data after all checks. Please try again.",
               variant: "destructive",
           });
       } finally {
@@ -262,65 +272,113 @@ function EditInvoiceContent() {
   };
 
 
-  // Main save handler - checks for new products first
-  const handleSave = async () => {
-     setIsSaving(true);
+ // Main save handler - checks for price discrepancies first, then new products for barcodes
+ const handleSave = async () => {
+    setIsSaving(true);
+    try {
+        const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
+        const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit);
 
-     try {
-         const currentInventory = await getProductsService();
-         const inventoryMap = new Map<string, Product>();
-         currentInventory.forEach(p => {
-             if (p.barcode) inventoryMap.set(`barcode:${p.barcode}`, p);
-             if (p.id) inventoryMap.set(`id:${p.id}`, p);
-             if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
-         });
+        setProductsToSaveDirectly(priceCheckResult.productsToSaveDirectly);
 
-         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
+        if (priceCheckResult.priceDiscrepancies.length > 0) {
+            setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
+            setIsSaving(false); // Stop saving, user needs to confirm prices
+        } else {
+            // No price discrepancies, proceed to barcode check
+            await checkForBarcodesAndSave(priceCheckResult.productsToSaveDirectly);
+        }
+    } catch (error) {
+        console.error("Error during initial save checks (price/barcode):", error);
+        toast({
+            title: "Error Preparing Save",
+            description: "Could not prepare data for saving. Please try again.",
+            variant: "destructive",
+        });
+        setIsSaving(false);
+    }
+};
 
-         const newProductsWithoutBarcode = productsFromEdit.filter(p => {
-             const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
-             const existsById = p.id && inventoryMap.has(`id:${p.id}`);
-             const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
-             return !existsByBarcode && !existsById && !existsByCatalog && !p.barcode;
-         }).map(p => ({ ...p, _isNewForPrompt: true }));
+// Handles barcode check after price discrepancies are resolved (or if there were none)
+const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
+    try {
+        const currentInventory = await getProductsService();
+        const inventoryMap = new Map<string, Product>();
+        currentInventory.forEach(p => {
+            if (p.barcode) inventoryMap.set(`barcode:${p.barcode}`, p);
+            if (p.id) inventoryMap.set(`id:${p.id}`, p); // Match by existing ID too
+            if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
+        });
+
+        const newProductsWithoutBarcode = productsForBarcodeCheck.filter(p => {
+            const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
+            // Check if it's a genuinely new product (not just an existing one being updated)
+            // A product is new if it doesn't have an ID that matches an existing inventory ID,
+            // and also doesn't match by catalog number (if no barcode yet).
+            const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
+            const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
+
+            return !isExistingProduct && !existsByBarcode && !existsByCatalog && !p.barcode;
+        }).map(p => ({ ...p, _isNewForPrompt: true }));
 
 
-         if (newProductsWithoutBarcode.length > 0) {
-             console.log("New products without barcode found:", newProductsWithoutBarcode);
-             setPromptingForBarcodes(newProductsWithoutBarcode);
-             setIsSaving(false);
-         } else {
-             console.log("No new products require barcode prompt. Proceeding to save.");
-             await proceedWithSave(productsFromEdit);
-         }
+        if (newProductsWithoutBarcode.length > 0) {
+            setPromptingForBarcodes(newProductsWithoutBarcode);
+            // productsToSaveDirectly are those from price check. If we prompt for barcodes,
+            // we need to merge these with the ones that didn't need price check.
+            // This state will be used if barcode prompt is confirmed.
+            setProductsToSaveDirectly(productsForBarcodeCheck);
+            setIsSaving(false); // Stop saving, user needs to enter barcodes
+        } else {
+            await proceedWithFinalSave(productsForBarcodeCheck);
+        }
+    } catch (error) {
+        console.error("Error checking inventory for barcode prompt:", error);
+        toast({
+            title: "Error Preparing Barcodes",
+            description: "Could not check for new products needing barcodes.",
+            variant: "destructive",
+        });
+        setIsSaving(false);
+    }
+};
 
-     } catch (error) {
-         console.error("Error checking inventory before save:", error);
-         toast({
-             title: "Error Preparing Save",
-             description: "Could not check inventory to identify new products. Please try again.",
-             variant: "destructive",
-         });
-         setIsSaving(false);
-     }
-  };
+
+// Callback for when the unit price confirmation dialog is closed/completed
+const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => {
+    if (resolvedProducts) {
+        // Merge resolved products with those that didn't have discrepancies
+        const allProductsReadyForBarcodeCheck = [...productsToSaveDirectly, ...resolvedProducts];
+        checkForBarcodesAndSave(allProductsReadyForBarcodeCheck);
+    } else {
+        toast({
+            title: "Save Cancelled",
+            description: "Price confirmation was cancelled. No changes were saved.",
+            variant: "default",
+        });
+    }
+    setPriceDiscrepancies(null); // Close the dialog
+};
+
 
  // Callback for when the barcode prompt dialog is closed/completed
  const handleBarcodePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
      if (updatedProductsFromPrompt) {
          console.log("Barcode prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
-
-         const finalProductsToSave = products.map(originalProduct => {
-             const productFromPrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
-             if (productFromPrompt) {
-                 return { ...originalProduct, barcode: productFromPrompt.barcode, _isNewForPrompt: false };
+         // `productsToSaveDirectly` here contains ALL products (those without price issues + those whose prices were resolved)
+         // that were passed to the barcode prompt stage.
+         // We need to update the barcodes on these products.
+         const finalProductsWithBarcodes = productsToSaveDirectly.map(originalProduct => {
+             const productFromBarcodePrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
+             if (productFromBarcodePrompt) { // This means it was one of the new products shown in barcode prompt
+                 return { ...originalProduct, barcode: productFromBarcodePrompt.barcode, _isNewForPrompt: false };
              }
-             return { ...originalProduct, _isNewForPrompt: false };
+             return { ...originalProduct, _isNewForPrompt: false }; // Existing product, or new product that was skipped in barcode prompt
          }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
 
-         setProducts(finalProductsToSave);
-         proceedWithSave(finalProductsToSave);
+         setProducts(finalProductsWithBarcodes); // Update local state if needed, though main save is next
+         proceedWithFinalSave(finalProductsWithBarcodes);
      } else {
          console.log("Barcode prompt cancelled.");
          toast({
@@ -425,7 +483,7 @@ function EditInvoiceContent() {
         <CardContent>
           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[700px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -559,6 +617,14 @@ function EditInvoiceContent() {
         <BarcodePromptDialog
           products={promptingForBarcodes}
           onComplete={handleBarcodePromptComplete}
+        />
+      )}
+
+      {/* Unit Price Confirmation Dialog */}
+      {priceDiscrepancies && (
+        <UnitPriceConfirmationDialog
+          discrepancies={priceDiscrepancies}
+          onComplete={handlePriceConfirmationComplete}
         />
       )}
     </div>
