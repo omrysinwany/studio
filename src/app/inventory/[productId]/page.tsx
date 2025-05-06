@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Edit, Save, X } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Edit, Save, X, DollarSign } from 'lucide-react'; // Added DollarSign
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductById, updateProduct, Product } from '@/services/backend'; // Import updateProduct
@@ -95,10 +96,14 @@ export default function ProductDetailPage() {
     // Handle input changes during editing
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value;
-      if (isNaN(numericValue) && (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal')) {
-        numericValue = 0;
+      let numericValue: number | string = value; // Keep as string for non-numeric fields initially
+      if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
+          numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value;
+          if (isNaN(numericValue)) {
+             numericValue = 0;
+          }
       }
+
 
       const updated = { ...prev, [field]: numericValue };
 
@@ -304,3 +309,4 @@ export default function ProductDetailPage() {
     </div>
   );
 }
+
