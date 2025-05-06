@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -37,7 +38,7 @@ const formatNumber = (
         });
     }
 
-    return value.toLocaleString(undefined, {
+    return value.toLocaleString(undefined, { // Use browser's locale for formatting
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
@@ -88,54 +89,69 @@ function EditInvoiceContent() {
 
     if (key) {
         hasAttemptedLoad = true;
-        let storedData = null;
-        try {
-            storedData = localStorage.getItem(key);
-            if (!storedData) {
-                 throw new Error("Scan results not found. They might have expired or been cleared.");
-            }
+        const storedData = localStorage.getItem(key);
 
-            let parsedData;
-            try {
-                parsedData = JSON.parse(storedData);
-            } catch (jsonParseError) {
-                 console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-                 if (key) localStorage.removeItem(key); 
-                 if (imgKey) localStorage.removeItem(imgKey);
-                 throw new Error("Invalid JSON structure received from storage.");
-            }
-
-            if (parsedData && Array.isArray(parsedData.products)) {
-              const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
-                ...p,
-                id: p.id || `${Date.now()}-${index}`, 
-                _originalId: p.id, 
-                quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
-                lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-                 unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
-                            ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
-                            : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
-              }));
-              setProducts(productsWithIds);
-               setErrorLoading(null);
-
-            } else {
-              console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-              if (key) localStorage.removeItem(key);
-              if (imgKey) localStorage.removeItem(imgKey);
-              throw new Error("Invalid data structure received after parsing.");
-            }
-        } catch (error: any) {
-            console.error("Failed to process product data:", error);
-            setErrorLoading(`Could not load the invoice data for editing. Error: ${error.message || 'Unknown error'}`);
+        if (!storedData) {
+            setErrorLoading("Scan results not found. They might have expired or been cleared.");
             setProducts([]);
             toast({
               title: "Error Loading Data",
-              description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
+              description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
              if (key) localStorage.removeItem(key); 
              if (imgKey) localStorage.removeItem(imgKey); // Also clear image URI key on error
+             setIsLoading(false);
+             setInitialDataLoaded(true);
+            return;
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(storedData);
+        } catch (jsonParseError) {
+             console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
+             if (key) localStorage.removeItem(key); 
+             if (imgKey) localStorage.removeItem(imgKey);
+             setErrorLoading("Invalid JSON structure received from storage.");
+              toast({
+                  title: "Error Loading Data",
+                  description: "Could not load the invoice data for editing. Invalid data format.",
+                  variant: "destructive",
+              });
+            setProducts([]);
+             setIsLoading(false);
+             setInitialDataLoaded(true);
+            return;
+        }
+
+        if (parsedData && Array.isArray(parsedData.products)) {
+          const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
+            ...p,
+            id: p.id || `${Date.now()}-${index}`, 
+            _originalId: p.id, 
+            quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
+            lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
+             unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
+                        ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
+                        : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
+          }));
+          setProducts(productsWithIds);
+           setErrorLoading(null);
+
+        } else {
+          console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
+          if (key) localStorage.removeItem(key);
+          if (imgKey) localStorage.removeItem(imgKey);
+           setErrorLoading("Invalid data structure received after parsing.");
+           toast({
+               title: "Error Loading Data",
+               description: "Could not load the invoice data for editing. Invalid data structure.",
+               variant: "destructive",
+           });
+          setProducts([]);
+           setIsLoading(false);
+           setInitialDataLoaded(true);
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
