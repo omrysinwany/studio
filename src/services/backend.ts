@@ -23,6 +23,10 @@ export interface Product {
    * A short, concise name for the product (e.g., for quick display). Optional.
    */
   shortName?: string;
+   /**
+   * The barcode (EAN/UPC) of the product. Optional.
+   */
+  barcode?: string;
   /**
    * The quantity of the product.
    */
@@ -56,11 +60,11 @@ const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings'; // New key for POS settings
 
 // --- Initial Mock Data ---
 const initialMockInventory: Product[] = [
-   { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
-   { id: 'prod2', catalogNumber: '67890', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
-   { id: 'prod3', catalogNumber: 'ABCDE', description: 'Another Mock Item', shortName: 'Another Mock', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
-   { id: 'prod4', catalogNumber: 'LOW01', description: 'Low Stock Mock', shortName: 'Low Stock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00 },
-   { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', shortName: 'Out Stock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
+   { id: 'prod1', catalogNumber: '12345', barcode: '7290012345011', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
+   { id: 'prod2', catalogNumber: '67890', barcode: '7290067890012', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
+   { id: 'prod3', catalogNumber: 'ABCDE', barcode: '72900ABCDE013', description: 'Another Mock Item', shortName: 'Another Mock', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
+   { id: 'prod4', catalogNumber: 'LOW01', barcode: '72900LOW01014', description: 'Low Stock Mock', shortName: 'Low Stock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00 },
+   { id: 'prod5', catalogNumber: 'OUT01', barcode: '72900OUT01015', description: 'Out of Stock Mock', shortName: 'Out Stock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
 ];
 
 const initialMockInvoices: InvoiceHistoryItem[] = [
@@ -164,6 +168,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
       {
         id: `new-${Date.now()}-1`,
         catalogNumber: 'EXTRACT-001',
+        barcode: '72900EXTRACT01',
         description: 'Extracted Item A',
         shortName: 'Extracted A',
         quantity: 2,
@@ -173,6 +178,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
       {
          id: `new-${Date.now()}-2`,
         catalogNumber: 'EXTRACT-002',
+        barcode: '72900EXTRACT02',
         description: 'Extracted Item B',
         shortName: 'Extracted B',
         quantity: 1,
@@ -221,11 +227,14 @@ export async function saveProducts(
     invoiceTotalAmount += lineTotal;
 
     let existingIndex = -1;
-    // Prioritize matching by ID if available
-    if (newProduct.id) {
+    // Priority for matching: 1. Barcode, 2. ID, 3. Catalog Number
+    if (newProduct.barcode) {
+        existingIndex = updatedInventory.findIndex(p => p.barcode === newProduct.barcode);
+    }
+    if (existingIndex === -1 && newProduct.id) {
         existingIndex = updatedInventory.findIndex(p => p.id === newProduct.id);
     }
-     // If no ID match or no ID provided, try matching by catalog number
+     // If no match yet, try matching by catalog number
     if (existingIndex === -1 && newProduct.catalogNumber && newProduct.catalogNumber !== 'N/A') {
         existingIndex = updatedInventory.findIndex(p => p.catalogNumber === newProduct.catalogNumber);
     }
@@ -233,26 +242,27 @@ export async function saveProducts(
     if (existingIndex !== -1) {
       // Product exists, ADD to quantity
       const existingProduct = updatedInventory[existingIndex];
-      console.log(`Updating quantity for product ${existingProduct.catalogNumber} (ID: ${existingProduct.id}). Adding ${quantityToAdd}.`);
+      console.log(`Updating quantity for product ${existingProduct.catalogNumber || existingProduct.barcode} (ID: ${existingProduct.id}). Adding ${quantityToAdd}.`);
       existingProduct.quantity += quantityToAdd;
       // Recalculate lineTotal based on the new quantity and existing unit price
-      // Use existingProduct.unitPrice, not the potentially recalculated unitPrice from the new product
       existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
-       // Optionally update description or shortName if the new one is more descriptive?
-       // For now, let's keep the existing description and shortName unless they are empty.
+       // Optionally update description, shortName, or barcode if the new one is more descriptive/accurate?
+       // For now, let's keep the existing data unless it's empty. Update barcode if new one exists and old one doesn't.
        existingProduct.description = existingProduct.description || newProduct.description;
        existingProduct.shortName = existingProduct.shortName || newProduct.shortName;
+       existingProduct.barcode = existingProduct.barcode || newProduct.barcode; // Update barcode if missing
+       existingProduct.catalogNumber = existingProduct.catalogNumber || newProduct.catalogNumber; // Update catalog# if missing
       console.log(`Product updated:`, existingProduct);
 
     } else {
        // Product is new, add it to inventory
-       if (!newProduct.catalogNumber && !newProduct.description) {
-           console.log("Skipping adding product with no catalog number or description:", newProduct);
+       if (!newProduct.catalogNumber && !newProduct.description && !newProduct.barcode) {
+           console.log("Skipping adding product with no identifier (catalog, description, barcode):", newProduct);
            return;
        }
-       // Generate a new unique ID if one wasn't provided or found
+       // Generate a new unique ID if one wasn't provided
        const newId = newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-       console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description} with ID ${newId}`);
+       console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.barcode || newProduct.description} with ID ${newId}`);
        const productToAdd: Product = {
         ...newProduct,
         id: newId,
@@ -261,10 +271,13 @@ export async function saveProducts(
         lineTotal: lineTotal,
         catalogNumber: newProduct.catalogNumber || 'N/A',
         description: newProduct.description || 'No Description',
+        barcode: newProduct.barcode, // Add barcode
         shortName: newProduct.shortName || (newProduct.description || 'No Description').split(' ').slice(0, 3).join(' '), // Generate fallback shortName
       };
       updatedInventory.push(productToAdd);
       console.log(`Product added:`, productToAdd);
+      // TODO: Consider adding a flag or notification here that this is a *new* product being added
+      // This could be used by the UI to prompt for barcode assignment if needed.
     }
   });
 
@@ -317,7 +330,8 @@ export async function getProductsService(): Promise<Product[]> {
         id: item.id || `prod-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         description: description,
         shortName: item.shortName || description.split(' ').slice(0, 3).join(' '), // Generate fallback shortName
-        lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+        lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
+        barcode: item.barcode || undefined // Ensure barcode exists or is undefined
       };
   });
   console.log("Returning inventory with recalculated totals and shortNames:", inventoryWithDefaults);
@@ -345,7 +359,8 @@ export async function getProductById(productId: string): Promise<Product | null>
            id: product.id || productId, // Ensure ID is present
            description: description,
            shortName: product.shortName || description.split(' ').slice(0, 3).join(' '), // Generate fallback shortName
-           lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+           lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
+           barcode: product.barcode || undefined // Ensure barcode exists or is undefined
         };
    }
    return null; // Return null if product not found
@@ -390,6 +405,8 @@ export async function updateProduct(productId: string, updatedData: Partial<Prod
          const description = updatedProduct.description || 'No Description';
          updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
     }
+    // Ensure barcode exists or is undefined
+    updatedProduct.barcode = updatedProduct.barcode || undefined;
 
 
   currentInventory[productIndex] = updatedProduct;

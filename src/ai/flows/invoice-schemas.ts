@@ -1,3 +1,4 @@
+
 // src/ai/flows/invoice-schemas.ts
 import { z } from 'genkit';
 
@@ -15,6 +16,7 @@ export const ScanInvoiceInputSchema = z.object({
 export const ExtractedProductSchema = z.object({
   product_name: z.string().optional().describe("The name/description of the product."),
   catalog_number: z.string().optional().describe('The catalog number of the product.'),
+  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product, if visible.'), // Added barcode
   // Ensure quantity, purchase_price, and total are correctly handled as numbers, even if optional
   quantity: z.number().describe('The quantity of the product (individual units).'), // Assuming prompt forces this to be a number
   purchase_price: z.number().optional().describe('The extracted purchase price (unit price if available).'), // Optional purchase price
@@ -26,6 +28,7 @@ export const ExtractedProductSchema = z.object({
 // Final processed product schema (used for saving and editing)
 export const FinalProductSchema = z.object({
   catalogNumber: z.string().describe('The catalog number of the product.'),
+  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product.'), // Added barcode
   description: z.string().describe('The description of the product.'),
   shortName: z.string().optional().describe("A short, concise name for the product."), // Added short name field (optional)
   quantity: z.number().describe('The quantity of the product (individual units).'),

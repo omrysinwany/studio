@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil } from 'lucide-react'; // Added Pencil, X
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera } from 'lucide-react'; // Added Pencil, X, Barcode, Camera
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductById, updateProduct, deleteProduct, Product } from '@/services/backend'; // Import deleteProduct
@@ -23,6 +23,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; // Import AlertDialog
 import { cn } from '@/lib/utils'; // Import cn
+import BarcodeScanner from '@/components/barcode-scanner'; // Import BarcodeScanner component
 
 
 // Helper function to safely format numbers for display
@@ -52,7 +53,8 @@ const formatInputValue = (value: number | undefined | null): string => {
     if (value === null || value === undefined || isNaN(value)) {
         return '0.00';
     }
-    return value.toFixed(2); // Use toFixed for consistent decimal places
+    // Use toFixed for consistent decimal places, but parse as float first to handle potential strings
+    return parseFloat(String(value)).toFixed(2);
 };
 
 // Helper function to format quantity as integer for display (with grouping)
@@ -72,6 +74,7 @@ export default function ProductDetailPage() {
   const [isEditing, setIsEditing] = useState(false); // Default to view mode
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
+  const [isScanning, setIsScanning] = useState(false); // State for barcode scanning modal
   const [error, setError] = useState<string | null>(null);
 
   const productId = params.productId as string;
@@ -118,7 +121,9 @@ export default function ProductDetailPage() {
     setEditedProduct(prev => {
       let numericValue: number | string = value; // Keep as string for non-numeric fields initially
       if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
-          numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value;
+          // Ensure value is treated as string before replacing commas
+          const stringValue = String(value);
+          numericValue = (typeof value === 'string' || typeof value === 'number') ? parseFloat(stringValue.replace(/,/g, '')) : value;
           if (isNaN(numericValue)) {
              numericValue = 0;
           }
@@ -149,6 +154,7 @@ export default function ProductDetailPage() {
         catalogNumber: editedProduct.catalogNumber || product.catalogNumber,
         description: editedProduct.description || product.description,
         shortName: editedProduct.shortName || product.shortName, // Include shortName
+        barcode: editedProduct.barcode || undefined, // Include barcode, ensure it's undefined if empty
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
         // Ensure lineTotal is recalculated based on potentially edited quantity/unitPrice
@@ -223,23 +229,38 @@ export default function ProductDetailPage() {
       router.back(); // Go back to the previous page (inventory list)
    };
 
+   // Handle opening the barcode scanner modal
+   const handleScanBarcode = () => {
+       setIsScanning(true);
+   };
+
+   // Handle barcode detection from the scanner component
+   const handleBarcodeDetected = (barcodeValue: string) => {
+       handleInputChange('barcode', barcodeValue); // Update the editedProduct state
+       setIsScanning(false); // Close the scanner modal
+       toast({
+           title: "Barcode Scanned",
+           description: `Barcode set to: ${barcodeValue}`,
+       });
+   };
+
 
    // Render individual detail item in VIEW mode
-   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false, isQuantity: boolean = false) => {
+   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false) => {
      const IconComponent = icon;
      const displayValue = typeof value === 'number'
        ? (isCurrency
              ? `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`
              : (isQuantity
-                  ? formatIntegerQuantity(value)
-                  : formatDisplayNumber(value, { decimals: 2, useGrouping: true }))
+                  ? formatIntegerQuantity(value) // Use integer formatter for quantity
+                  : formatDisplayNumber(value, { decimals: 2, useGrouping: true })) // Default number formatting
          )
-       : (value || '-'); // Show '-' for empty/null string values
+       : (value || (isBarcode ? 'Not set' : '-')); // Show 'Not set' for empty barcode, '-' otherwise
 
      return (
-       <div className="flex items-center space-x-3 py-2">
-         <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-         <div>
+       <div className="flex items-start space-x-3 py-2"> {/* Changed items-center to items-start */}
+         <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" /> {/* Added mt-1 */}
+         <div className="flex-grow"> {/* Added flex-grow */}
            <p className="text-sm font-medium text-muted-foreground">{label}</p>
            <p className="text-base font-semibold">{displayValue}</p>
          </div>
@@ -248,12 +269,13 @@ export default function ProductDetailPage() {
    };
 
     // Render individual detail item in EDIT mode
-    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false) => {
+    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false) => {
         const IconComponent = icon;
         const inputType =
           fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal'
             ? 'number'
             : 'text';
+         // Use formatInputValue for numbers, otherwise use the value directly or empty string
          const inputValue =
            inputType === 'number'
              ? formatInputValue(value as number | undefined)
@@ -264,17 +286,32 @@ export default function ProductDetailPage() {
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
             <div className="flex-grow">
               <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
-              <Input
-                id={fieldKey}
-                type={inputType}
-                value={inputValue}
-                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
-                className="mt-1 h-9"
-                step={inputType === 'number' ? '0.01' : undefined}
-                min={inputType === 'number' ? '0' : undefined}
-                // Disable lineTotal input as it's calculated
-                disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                    id={fieldKey}
+                    type={inputType}
+                    value={inputValue}
+                    onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                    className="mt-1 h-9 flex-grow" // Use flex-grow
+                    step={inputType === 'number' ? (isQuantity ? '1' : '0.01') : undefined} // Integer step for quantity
+                    min={inputType === 'number' ? '0' : undefined}
+                    // Disable lineTotal input as it's calculated
+                    disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
+                  />
+                  {isBarcode && (
+                    <Button
+                        type="button" // Important: prevent form submission if wrapped in form
+                        variant="outline"
+                        size="icon"
+                        className="mt-1 h-9 w-9 flex-shrink-0"
+                        onClick={handleScanBarcode}
+                        disabled={isSaving || isDeleting}
+                        aria-label="Scan Barcode"
+                    >
+                        <Camera className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
             </div>
           </div>
         );
@@ -424,12 +461,14 @@ export default function ProductDetailPage() {
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
              {isEditing ? (
                  <>
+                    {renderEditItem(Barcode, "Barcode", editedProduct.barcode, 'barcode', false, false, true)}
                     {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
                     {renderEditItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
                     {renderEditItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
                  </>
              ) : (
                  <>
+                    {renderViewItem(Barcode, "Barcode", product.barcode, false, false, true)}
                     {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
                     {renderViewItem(Tag, "Unit Price", product.unitPrice, true)}
                     {renderViewItem(DollarSign, "Line Total", product.lineTotal, true)}
@@ -439,6 +478,14 @@ export default function ProductDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Barcode Scanner Modal */}
+      {isScanning && (
+        <BarcodeScanner
+          onBarcodeDetected={handleBarcodeDetected}
+          onClose={() => setIsScanning(false)}
+        />
+      )}
     </div>
   );
 }

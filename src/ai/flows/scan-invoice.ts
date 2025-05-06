@@ -1,3 +1,4 @@
+
 // src/ai/flows/scan-invoice.ts
 'use server';
 /**
@@ -53,13 +54,14 @@ const prompt = ai.definePrompt({
                  .describe('Raw extracted product list from the invoice.'),
     })
   },
-  // Updated prompt to prioritize unit quantity and request short name
+  // Updated prompt to prioritize unit quantity, request short name, and barcode
   prompt: `
     Analyze the following image and extract information for ALL distinct products found.
     Provide the extracted data as a JSON **array** (list) of JSON objects.
     Each JSON object in the array should represent a single product and contain the following keys:
     "product_name",
     "catalog_number",
+    "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product),
     "quantity",
     "purchase_price",
     "total",
@@ -72,7 +74,7 @@ const prompt = ai.definePrompt({
 
     **NEW**: Also, include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
 
-    If a specific piece of information (other than description) for a product is not found, you can omit that key from that product's JSON object.
+    If a specific piece of information (other than description and barcode) for a product is not found, you can omit that key from that product's JSON object.
     Ensure the output is a valid JSON array.
     If no products are found, return an empty JSON array [].
 
@@ -151,6 +153,7 @@ const scanInvoiceFlow = ai.defineFlow<
                 // Construct the final product object conforming to FinalProductSchema
                 const finalProduct: z.infer<typeof FinalProductSchema> = {
                     catalogNumber: rawProduct.catalog_number || 'N/A',
+                    barcode: rawProduct.barcode, // Include the barcode (optional)
                     description: description,
                     shortName: shortName, // Assign the shortName
                     quantity: quantity, // Use parsed quantity
@@ -159,8 +162,8 @@ const scanInvoiceFlow = ai.defineFlow<
                 };
                 return finalProduct;
             })
-             // Filter out products that couldn't be meaningfully processed (e.g., no catalog or description)
-            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product'); // Keep existing filter logic
+             // Filter out products that couldn't be meaningfully processed (e.g., no catalog or description or barcode)
+            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product' || product.barcode); // Adjusted filter logic
 
         return { products: processedProducts };
 

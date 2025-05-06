@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -22,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Kept Eye for Inspect
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Barcode } from 'lucide-react'; // Added Barcode
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -88,15 +87,16 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [searchTerm, setSearchTerm] = useState('');
-  // Updated default visible columns to Product (shortName), Qty, Price
+  // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     id: false,
-    description: false, // Hide full description by default
+    description: false,
     shortName: true, // Show short name
-    catalogNumber: false, // Keep hidden by default
+    catalogNumber: false,
+    barcode: false, // Hide barcode by default initially
     quantity: true, // Show quantity
     unitPrice: true, // Show unit price
-    lineTotal: false, // Keep hidden by default
+    lineTotal: false,
     actions: true, // Keep actions visible
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
@@ -184,7 +184,8 @@ export default function InventoryPage() {
        result = result.filter(item =>
          (item.description?.toLowerCase() || '').includes(lowerSearchTerm) ||
          (item.shortName?.toLowerCase() || '').includes(lowerSearchTerm) || // Search shortName too
-         (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm)
+         (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm) ||
+         (item.barcode?.toLowerCase() || '').includes(lowerSearchTerm) // Search barcode too
        );
      }
       if (filterStockLevel === 'low') {
@@ -260,6 +261,7 @@ export default function InventoryPage() {
         { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true }, // Hide full desc by default
         { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
+        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Added barcode column
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default
         { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]' }, // Shorten label
@@ -297,7 +299,7 @@ export default function InventoryPage() {
 
         // Define columns to export (can be different from visible columns if needed)
         const exportColumns: (keyof Product | 'id')[] = [
-            'id', 'catalogNumber', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal' // Added shortName
+            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal' // Added shortName & barcode
         ];
 
         const headers = exportColumns
@@ -568,6 +570,7 @@ export default function InventoryPage() {
                          {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
+                         {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-right px-2 sm:px-4 py-2">
                              {/* Use formatIntegerQuantity helper for display */}
@@ -625,5 +628,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
-    
