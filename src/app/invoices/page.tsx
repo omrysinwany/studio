@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon, Trash2, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -46,6 +46,7 @@ import {
   AlertDialogTitle as AlertDialogTitleComponent, // Alias
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Separator } from '@/components/ui/separator';
 
 
 // Helper function to safely format numbers
@@ -99,8 +100,8 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
   const { toast } = useToast();
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [currentImageUri, setCurrentImageUri] = useState<string | undefined>(undefined);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
 
@@ -193,7 +194,7 @@ export default function InvoicesPage() {
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' }, // Reduced width further
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
@@ -224,17 +225,9 @@ export default function InvoicesPage() {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
-   const handleViewImage = (imageUri: string | undefined) => {
-    if (imageUri) {
-      setCurrentImageUri(imageUri);
-      setShowImageModal(true);
-    } else {
-      toast({
-        title: "No Image",
-        description: "No image is available for this invoice.",
-        variant: "default",
-      });
-    }
+   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
+    setSelectedInvoiceDetails(invoice);
+    setShowDetailsModal(true);
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -567,18 +560,14 @@ export default function InvoicesPage() {
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                        {visibleColumns.fileName && (
                           <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
-                            {item.invoiceDataUri ? (
-                              <Button
+                            <Button
                                 variant="link"
                                 className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
-                                onClick={() => handleViewImage(item.invoiceDataUri)}
-                                title={`View image for ${item.fileName}`}
+                                onClick={() => handleViewDetails(item)}
+                                title={`View details for ${item.fileName}`}
                               >
                                 {item.fileName}
-                              </Button>
-                            ) : (
-                              <span className="truncate">{item.fileName}</span>
-                            )}
+                            </Button>
                           </TableCell>
                        )}
                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
@@ -602,18 +591,16 @@ export default function InvoicesPage() {
                         {visibleColumns.actions && (
                          <TableCell className="text-right px-2 sm:px-4 py-2">
                             <div className="flex items-center justify-end gap-1">
-                                {item.invoiceDataUri && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-primary hover:text-primary/80 h-7 w-7"
-                                    onClick={() => handleViewImage(item.invoiceDataUri)}
-                                    title={`View image for ${item.fileName}`}
-                                    aria-label={`View image for ${item.fileName}`}
-                                  >
-                                    <ImageIcon className="h-4 w-4" />
-                                  </Button>
-                               )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-primary hover:text-primary/80 h-7 w-7"
+                                  onClick={() => handleViewDetails(item)}
+                                  title={`View details for ${item.fileName}`}
+                                  aria-label={`View details for ${item.fileName}`}
+                                >
+                                  <Info className="h-4 w-4" />
+                                </Button>
                                 {item.status === 'error' && item.errorMessage && (
                                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title={item.errorMessage} aria-label="View error details">
                                    <AlertCircle className="h-4 w-4" />
@@ -653,27 +640,56 @@ export default function InvoicesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>Invoice Image</DialogTitle>
-            <DialogDescription>Viewing scanned document.</DialogDescription>
+            <DialogTitle>Invoice Details</DialogTitle>
+            <DialogDescription>
+              Detailed information for: {selectedInvoiceDetails?.fileName}
+            </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 overflow-auto max-h-[70vh]">
-            {currentImageUri && (
-              <NextImage
-                src={currentImageUri}
-                alt="Scanned Invoice"
-                width={800}
-                height={1100}
-                className="rounded-md object-contain"
-                data-ai-hint="invoice document"
-              />
-            )}
-          </div>
+          {selectedInvoiceDetails && (
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
+                  <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                  <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+                </div>
+                <div>
+                  <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
+                  <p><strong>Supplier:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
+                  <p><strong>Total Amount:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
+                </div>
+              </div>
+              {selectedInvoiceDetails.errorMessage && (
+                <div>
+                  <p className="font-semibold text-destructive">Error Message:</p>
+                  <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
+                </div>
+              )}
+              <Separator />
+              <div className="overflow-auto max-h-[50vh]">
+                {selectedInvoiceDetails.invoiceDataUri ? (
+                  <NextImage
+                    src={selectedInvoiceDetails.invoiceDataUri}
+                    alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
+                    width={800}
+                    height={1100}
+                    className="rounded-md object-contain mx-auto"
+                    data-ai-hint="invoice document"
+                  />
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
     </div>
   );
 }
+
+

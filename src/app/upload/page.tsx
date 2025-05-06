@@ -11,13 +11,40 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
 import { InvoiceHistoryItem, getInvoices, saveProducts } from '@/services/backend'; // Import getInvoices and saveProducts
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
+import { Separator } from '@/components/ui/separator'; // Import Separator
+import { Badge } from '@/components/ui/badge'; // Import Badge
+import { format } from 'date-fns'; // Import format for date display
+import { cn } from '@/lib/utils'; // Import cn for conditional classes
 
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
+
+// Helper function to safely format numbers
+const formatDisplayNumber = (
+    value: number | undefined | null,
+    options?: { decimals?: number, useGrouping?: boolean }
+): string => {
+    const { decimals = 2, useGrouping = true } = options || {};
+
+    if (value === null || value === undefined || isNaN(value)) {
+        return (0).toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+            useGrouping: useGrouping,
+        });
+    }
+
+    return value.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+        useGrouping: useGrouping,
+    });
+};
+
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -30,8 +57,8 @@ export default function UploadPage() {
   const { toast } = useToast();
   const router = useRouter();
 
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [currentImageUri, setCurrentImageUri] = useState<string | undefined>(undefined);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
 
   // Function to fetch upload history
   const fetchHistory = useCallback(async () => {
@@ -134,7 +161,9 @@ export default function UploadPage() {
              console.log('AI Scan Result:', scanResult);
 
              // Call saveProducts with the tempId so it can update the correct optimistic entry
+             // Ensure invoiceDataUri is passed to saveProducts if you want it saved with the invoice history item
              await saveProducts(scanResult.products, selectedFile.name, 'upload', base64data, tempId);
+
 
              // Store result in localStorage for editing page
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}`;
@@ -221,18 +250,50 @@ export default function UploadPage() {
      }
    };
 
-   const handleViewImage = (imageUri: string | undefined) => {
-    if (imageUri) {
-      setCurrentImageUri(imageUri);
-      setShowImageModal(true);
-    } else {
-      toast({
-        title: "No Image",
-        description: "No image is available for this invoice.",
-        variant: "default",
-      });
-    }
-  };
+    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
+        setSelectedInvoiceDetails(invoice);
+        setShowDetailsModal(true);
+    };
+
+    const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
+        let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+        let className = '';
+        let icon = null;
+
+        switch (status) {
+            case 'completed':
+                variant = 'secondary';
+                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+                icon = <CheckCircle className="mr-1 h-3 w-3" />;
+                break;
+            case 'processing':
+                variant = 'secondary';
+                className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
+                icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
+                break;
+            case 'pending':
+                variant = 'secondary';
+                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
+                icon = <Clock className="mr-1 h-3 w-3" />;
+                break;
+            case 'error':
+                variant = 'destructive';
+                icon = <XCircle className="mr-1 h-3 w-3" />;
+                break;
+            default:
+                variant = 'outline';
+                icon = null;
+                break;
+        }
+
+        return (
+            <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
+                {icon}
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+            </Badge>
+        );
+    };
+
 
 
   return (
@@ -320,52 +381,35 @@ export default function UploadPage() {
                     {uploadHistory.map((item) => (
                     <TableRow key={item.id}>
                         <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">
-                            {item.invoiceDataUri ? (
-                              <Button
+                           <Button
                                 variant="link"
                                 className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
-                                onClick={() => handleViewImage(item.invoiceDataUri)}
-                                title={`View image for ${item.fileName}`}
+                                onClick={() => handleViewDetails(item)}
+                                title={`View details for ${item.fileName}`}
                               >
                                 {item.fileName}
-                              </Button>
-                            ) : (
-                              item.fileName
-                            )}
+                            </Button>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground px-2 sm:px-4 py-2">
                         {formatDate(item.uploadTime)}
                         </TableCell>
                         <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            item.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                            item.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse' :
-                            item.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                            item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                        }`}>
-                            {item.status === 'completed' && <CheckCircle className="mr-1 h-3 w-3" />}
-                            {item.status === 'processing' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                            {item.status === 'pending' && <Clock className="mr-1 h-3 w-3" />}
-                            {item.status === 'error' && <XCircle className="mr-1 h-3 w-3" />}
-                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                        </span>
+                            {renderStatusBadge(item.status)}
                         {item.status === 'error' && item.errorMessage && (
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-right" title={item.errorMessage}>{item.errorMessage}</p>
                         )}
                         </TableCell>
                         <TableCell className="text-right px-2 sm:px-4 py-2">
-                            {item.invoiceDataUri && (
-                              <Button
+                            <Button
                                 variant="ghost"
                                 size="icon"
                                 className="text-primary hover:text-primary/80 h-7 w-7"
-                                onClick={() => handleViewImage(item.invoiceDataUri)}
-                                title={`View image for ${item.fileName}`}
-                                aria-label={`View image for ${item.fileName}`}
-                              >
-                                <ImageIcon className="h-4 w-4" />
-                              </Button>
-                           )}
+                                onClick={() => handleViewDetails(item)}
+                                title={`View details for ${item.fileName}`}
+                                aria-label={`View details for ${item.fileName}`}
+                            >
+                                <Info className="h-4 w-4" />
+                            </Button>
                         </TableCell>
                     </TableRow>
                     ))}
@@ -376,26 +420,55 @@ export default function UploadPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle>Invoice Image</DialogTitle>
-            <DialogDescription>Viewing scanned document.</DialogDescription>
+            <DialogTitle>Invoice Details</DialogTitle>
+            <DialogDescription>
+              Detailed information for: {selectedInvoiceDetails?.fileName}
+            </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 overflow-auto max-h-[70vh]">
-            {currentImageUri && (
-              <NextImage
-                src={currentImageUri}
-                alt="Scanned Invoice"
-                width={800}
-                height={1100}
-                className="rounded-md object-contain"
-                data-ai-hint="invoice document"
-              />
-            )}
-          </div>
+          {selectedInvoiceDetails && (
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
+                  <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                  <p><strong>Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}</p>
+                </div>
+                <div>
+                  <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
+                  <p><strong>Supplier:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
+                  <p><strong>Total Amount:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatDisplayNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
+                </div>
+              </div>
+              {selectedInvoiceDetails.errorMessage && (
+                <div>
+                  <p className="font-semibold text-destructive">Error Message:</p>
+                  <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
+                </div>
+              )}
+              <Separator />
+              <div className="overflow-auto max-h-[50vh]">
+                {selectedInvoiceDetails.invoiceDataUri ? (
+                  <NextImage
+                    src={selectedInvoiceDetails.invoiceDataUri}
+                    alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
+                    width={800}
+                    height={1100}
+                    className="rounded-md object-contain mx-auto"
+                    data-ai-hint="invoice document"
+                  />
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+
