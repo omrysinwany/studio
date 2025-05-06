@@ -81,11 +81,10 @@ export default function InventoryPage() {
     description: true,
     catalogNumber: true,
     quantity: true,
-    unitPrice: true,
-    lineTotal: true,
+    unitPrice: false, // Hide unit price by default on mobile
+    lineTotal: true, // Keep line total visible
     actions: true,
   });
-  // const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('description');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -162,7 +161,6 @@ export default function InventoryPage() {
          (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm)
        );
      }
-    //  if (filterCategory) { ... }
       if (filterStockLevel === 'low') {
         result = result.filter(item => item.quantity > 0 && item.quantity <= 10);
       } else if (filterStockLevel === 'inStock') {
@@ -201,8 +199,8 @@ export default function InventoryPage() {
          return {
             ...item,
             // Ensure internal data remains numeric
-            quantity: quantity,
-            unitPrice: unitPrice,
+            quantity: parseFloat(quantity.toFixed(2)), // Ensure 2 decimals for quantity
+            unitPrice: parseFloat(unitPrice.toFixed(2)), // Ensure 2 decimals for unit price
             lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
          };
      });
@@ -230,17 +228,17 @@ export default function InventoryPage() {
     };
 
     // Column definition including internal 'id'
-    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string }[] = [
+    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
         { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
-        { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[200px]' },
-        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[120px]' },
-        { key: 'quantity', label: 'Quantity', sortable: true, className: 'text-right min-w-[100px]' },
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[100px]' },
-        { key: 'lineTotal', label: 'Line Total (₪)', sortable: true, className: 'text-right min-w-[100px]' },
+        { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]' },
+        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
+        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: true }, // Hide unit price on mobile
+        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]' }, // Shorten label
         { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
     ];
 
-    // Filter columns for header display based on visibility state
+    // Filter columns for header display based on visibility state AND mobileHidden flag
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
 
 
@@ -337,85 +335,83 @@ export default function InventoryPage() {
    }
 
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground">
          <CardHeader>
-           <CardTitle className="text-2xl font-semibold text-primary flex items-center">
-              <Package className="mr-2 h-6 w-6" /> Inventory Overview
+           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+              <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Inventory Overview
            </CardTitle>
            <CardDescription>Browse, search, and manage your inventory items.</CardDescription>
          </CardHeader>
          <CardContent>
            {/* Toolbar */}
-           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 flex-wrap">
-              <div className="relative w-full md:max-w-sm">
+           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
+              <div className="relative w-full md:max-w-xs lg:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by description or catalog..."
+                  placeholder="Search..." // Shorten placeholder
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} // Reset page on search
                   className="pl-10"
                   aria-label="Search inventory"
                 />
               </div>
-               <div className="flex gap-2 flex-wrap justify-center md:justify-end">
-                 {/* Category Filter - Removed */}
-
-                   {/* Stock Level Filter */}
-                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline">
-                        <Filter className="mr-2 h-4 w-4" />
-                         {filterStockLevel === 'low' ? 'Low Stock' :
-                          filterStockLevel === 'inStock' ? 'In Stock' :
-                          filterStockLevel === 'out' ? 'Out of Stock' :
-                          'Stock Level'}
-                        <ChevronDown className="ml-2 h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                       <DropdownMenuLabel>Filter by Stock Level</DropdownMenuLabel>
-                       <DropdownMenuSeparator />
-                       <DropdownMenuCheckboxItem
-                           checked={filterStockLevel === 'all'}
-                           onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }} // Reset page on filter
-                         >
-                           All
-                       </DropdownMenuCheckboxItem>
-                        <DropdownMenuCheckboxItem
-                            checked={filterStockLevel === 'inStock'}
-                            onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
-                          >
-                            In Stock
-                        </DropdownMenuCheckboxItem>
-                       <DropdownMenuCheckboxItem
-                         checked={filterStockLevel === 'low'}
-                         onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
+               <div className="flex gap-2 flex-wrap justify-start md:justify-end">
+                 {/* Stock Level Filter */}
+                 <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
+                      <Filter className="mr-2 h-4 w-4" />
+                       {filterStockLevel === 'low' ? 'Low Stock' :
+                        filterStockLevel === 'inStock' ? 'In Stock' :
+                        filterStockLevel === 'out' ? 'Out of Stock' :
+                        'Stock'} {/* Shorten Label */}
+                      <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                     <DropdownMenuLabel>Filter by Stock Level</DropdownMenuLabel>
+                     <DropdownMenuSeparator />
+                     <DropdownMenuCheckboxItem
+                         checked={filterStockLevel === 'all'}
+                         onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }} // Reset page on filter
                        >
-                         Low Stock (1-10)
-                       </DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem
-                         checked={filterStockLevel === 'out'}
-                         onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
-                       >
-                         Out of Stock (0)
-                       </DropdownMenuCheckboxItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                         All
+                     </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                          checked={filterStockLevel === 'inStock'}
+                          onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
+                        >
+                          In Stock
+                      </DropdownMenuCheckboxItem>
+                     <DropdownMenuCheckboxItem
+                       checked={filterStockLevel === 'low'}
+                       onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
+                     >
+                       Low Stock (1-10)
+                     </DropdownMenuCheckboxItem>
+                       <DropdownMenuCheckboxItem
+                       checked={filterStockLevel === 'out'}
+                       onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
+                     >
+                       Out of Stock (0)
+                     </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
 
                  {/* Column Visibility Toggle */}
                  <DropdownMenu>
                    <DropdownMenuTrigger asChild>
-                     <Button variant="outline">
+                     <Button variant="outline" className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
                        <Eye className="mr-2 h-4 w-4" /> View
-                       <ChevronDown className="ml-2 h-4 w-4" />
+                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
                      </Button>
                    </DropdownMenuTrigger>
                    <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                     {/* Map over definitions that should be toggleable (exclude 'actions' or 'id' if needed) */}
+                     {/* Map over definitions that should be toggleable */}
                      {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
                        <DropdownMenuCheckboxItem
                          key={header.key}
@@ -430,14 +426,14 @@ export default function InventoryPage() {
                  </DropdownMenu>
 
                   {/* Export Button */}
-                  <Button variant="outline" onClick={handleExportInventory}>
+                  <Button variant="outline" onClick={handleExportInventory} className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
                     <Download className="mr-2 h-4 w-4" /> Export CSV
                   </Button>
 
                     {/* Delete All Button */}
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isDeleting}>
+                            <Button variant="destructive" disabled={isDeleting} className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
                                 {isDeleting ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
@@ -477,7 +473,13 @@ export default function InventoryPage() {
                     {visibleColumnHeaders.map((header) => (
                          <TableHead
                             key={header.key}
-                            className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
+                            className={cn(
+                                header.className,
+                                header.sortable && "cursor-pointer hover:bg-muted/50",
+                                // Apply mobileHidden classes conditionally based on screen size
+                                header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
+                                'px-2 sm:px-4 py-2' // Reduce padding for all cells
+                            )}
                             onClick={() => header.sortable && handleSort(header.key as SortKey)}
                             aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                          >
@@ -496,42 +498,41 @@ export default function InventoryPage() {
                <TableBody>
                  {paginatedInventory.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
+                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2"> {/* Reduce padding */}
                        No inventory items found matching your criteria.
                      </TableCell>
                    </TableRow>
                  ) : (
                    paginatedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
-                       {/* Render cells based on visibility state */}
-                        {visibleColumns.description && <TableCell className="font-medium">{item.description || 'N/A'}</TableCell>}
-                        {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
+                       {/* Render cells based on visibility state and mobileHidden */}
+                        {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
+                        {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
-                          <TableCell className="text-right">
+                          <TableCell className="text-right px-2 sm:px-4 py-2">
                              {/* Use formatNumber helper for quantity display with grouping */}
-                            <span>{formatNumber(item.quantity, { useGrouping: true })}</span>
+                            <span>{formatNumber(item.quantity, { decimals: 2, useGrouping: true })}</span>
                             {item.quantity === 0 && (
-                              <Badge variant="destructive" className="ml-2">Out</Badge>
+                              <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
                             )}
                             {item.quantity > 0 && item.quantity <= 10 && (
-                              <Badge variant="secondary" className="ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80">Low</Badge>
+                              <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
                             )}
                           </TableCell>
                         )}
-                         {/* Use formatNumber helper for unitPrice display with grouping */}
-                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{formatNumber(item.unitPrice, { useGrouping: true })}</TableCell>}
-                        {/* Display the recalculated and formatted lineTotal with grouping */}
-                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{formatNumber(item.lineTotal, { useGrouping: true })}</TableCell>}
+                        {visibleColumns.unitPrice && <TableCell className={cn('text-right px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
+                        {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
                        {visibleColumns.actions && (
-                         <TableCell className="text-right">
+                         <TableCell className="text-right px-2 sm:px-4 py-2">
                            <Button
                              variant="ghost"
                              size="sm"
                              onClick={() => item.id && router.push(`/inventory/${item.id}`)}
                              disabled={!item.id}
                              aria-label={`View details for ${item.description}`}
+                             className="h-8 px-2" // Adjust button size for mobile
                            >
-                             <Eye className="mr-1 h-4 w-4" /> Details
+                             <Eye className="mr-1 h-4 w-4" /> <span className="hidden sm:inline">Details</span> {/* Hide text on mobile */}
                            </Button>
                          </TableCell>
                         )}
@@ -544,26 +545,33 @@ export default function InventoryPage() {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-                <div className="flex items-center justify-end space-x-2 py-4">
-                    <span className="text-sm text-muted-foreground">
-                        Page {currentPage} of {totalPages}
+                <div className="flex items-center justify-between sm:justify-end space-x-2 py-4">
+                     <span className="text-sm text-muted-foreground hidden sm:block">
+                        Page {currentPage} of {totalPages} ({totalItems} items)
                     </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                    >
-                        <ChevronLeft className="h-4 w-4" /> Previous
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                    >
-                        Next <ChevronRight className="h-4 w-4" />
-                    </Button>
+                     <div className="flex space-x-1">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="h-8 px-2" // Smaller buttons for mobile
+                        >
+                            <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Previous</span>
+                        </Button>
+                        <span className="text-sm text-muted-foreground sm:hidden px-2 flex items-center">
+                            {currentPage}/{totalPages}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                             className="h-8 px-2" // Smaller buttons for mobile
+                        >
+                            <span className="hidden sm:inline">Next</span> <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
             )}
          </CardContent>

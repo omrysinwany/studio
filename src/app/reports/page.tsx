@@ -17,8 +17,6 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 // Helper function to safely format numbers
-// - decimals: Number of decimal places (default 2)
-// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -26,18 +24,17 @@ const formatNumber = (
     const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Return a formatted zero based on options
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, // Use grouping based on option
+            useGrouping: useGrouping,
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, // Use grouping based on option
+        useGrouping: useGrouping,
     });
 };
 
@@ -103,28 +100,19 @@ export default function ReportsPage() {
     from: new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1), // Default to last 6 months
     to: new Date(),
   });
-    // Removed user, authLoading, router
     const { toast } = useToast();
 
    // Fetch report data (replace with actual API calls)
    useEffect(() => {
      const fetchReports = async () => {
-       // Removed user check
        setIsLoading(true);
        try {
-         // Simulate API call delay
          console.log('Fetching reports for date range:', dateRange);
          await new Promise(resolve => setTimeout(resolve, 1200));
 
          // TODO: Replace MOCK data with actual API calls using dateRange
-         // const kpiResponse = await fetch(`/api/reports/kpis?from=${dateRange?.from}&to=${dateRange?.to}`, ...);
-         // const valueResponse = await fetch(`/api/reports/value-over-time?from=${dateRange?.from}&to=${dateRange?.to}`, ...);
-         // const categoryResponse = await fetch(`/api/reports/category-distribution?from=${dateRange?.from}&to=${dateRange?.to}`, ...);
-         // const volumeResponse = await fetch(`/api/reports/processing-volume?from=${dateRange?.from}&to=${dateRange?.to}`, ...);
-
          setKpis(MOCK_KPIS);
          setValueOverTime(MOCK_VALUE_OVER_TIME);
-         // Filter out categories with 0 value for Pie chart
          setCategoryDistribution(MOCK_CATEGORY_VALUE_DISTRIBUTION.filter(item => item.value > 0));
          setProcessingVolume(MOCK_PROCESSING_VOLUME);
 
@@ -135,7 +123,6 @@ export default function ReportsPage() {
             description: "Could not load report data. Please try again later.",
             variant: "destructive",
           });
-          // Optionally clear state on error
           setKpis(null);
           setValueOverTime([]);
           setCategoryDistribution([]);
@@ -145,21 +132,17 @@ export default function ReportsPage() {
        }
      };
 
-     fetchReports(); // Fetch data directly
-     // Removed authLoading and user dependencies
-   }, [dateRange, toast]); // Re-fetch when dateRange changes
+     fetchReports();
+   }, [dateRange, toast]);
 
 
-    // Removed useEffect for auth redirection
-
-
-    // Memoize filtered data for charts based on the current state
+   // Memoize filtered data for charts based on the current state
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
    const barChartData = useMemo(() => processingVolume, [processingVolume]);
 
 
-   if (isLoading) { // Removed authLoading check
+   if (isLoading) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -167,20 +150,18 @@ export default function ReportsPage() {
      );
    }
 
-    // Removed !user check
-
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       {/* Page Header and Date Range Picker */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-        <h1 className="text-3xl font-bold text-primary">Reports & Statistics</h1>
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-primary shrink-0">Reports & Statistics</h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
               id="date"
               variant={"outline"}
               className={cn(
-                "w-[300px] justify-start text-left font-normal",
+                "w-full md:w-[300px] justify-start text-left font-normal", // Full width on mobile
                 !dateRange && "text-muted-foreground"
               )}
             >
@@ -188,11 +169,10 @@ export default function ReportsPage() {
               {dateRange?.from ? (
                 dateRange.to ? (
                   <>
-                    {format(dateRange.from, "LLL dd, y")} -{" "}
-                    {format(dateRange.to, "LLL dd, y")}
+                    {format(dateRange.from, "PP")} - {format(dateRange.to, "PP")} {/* Use short format */}
                   </>
                 ) : (
-                  format(dateRange.from, "LLL dd, y")
+                  format(dateRange.from, "PP")
                 )
               ) : (
                 <span>Pick a date range</span>
@@ -200,33 +180,46 @@ export default function ReportsPage() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
-            <Calendar
-              initialFocus
-              mode="range"
-              defaultMonth={dateRange?.from}
-              selected={dateRange}
-              onSelect={setDateRange}
-              numberOfMonths={2}
-            />
+             <Calendar
+               initialFocus
+               mode="range"
+               defaultMonth={dateRange?.from}
+               selected={dateRange}
+               onSelect={setDateRange}
+               numberOfMonths={1} // Show only 1 month on mobile
+               className="sm:hidden" // Show only on mobile
+             />
+             <Calendar
+               initialFocus
+               mode="range"
+               defaultMonth={dateRange?.from}
+               selected={dateRange}
+               onSelect={setDateRange}
+               numberOfMonths={2}
+               className="hidden sm:block" // Show 2 months on larger screens
+             />
+            {dateRange && (
+                <div className="p-2 border-t flex justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>Clear</Button>
+                </div>
+            )}
           </PopoverContent>
         </Popover>
       </div>
 
       {/* KPIs */}
        {kpis && (
-           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
              <Card>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Total Inventory Value</CardTitle>
+                 <CardTitle className="text-sm font-medium">Total Value</CardTitle> {/* Shorten */}
                  <DollarSign className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 {/* Use formatNumber for display with grouping */}
-                 <div className="text-2xl font-bold">₪{formatNumber(kpis.totalValue, { useGrouping: true })}</div> {/* Changed to ILS */}
+                 <div className="text-2xl font-bold">₪{formatNumber(kpis.totalValue, { useGrouping: true })}</div>
                  <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
-                   {/* Use formatNumber for percentage */}
-                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% from last period
+                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}%
                  </p>
                </CardContent>
              </Card>
@@ -236,30 +229,28 @@ export default function ReportsPage() {
                  <Package className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 {/* Format total items with grouping */}
                  <div className="text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
-                 {/* <p className="text-xs text-muted-foreground">+201 since last month</p> */}
+                 {/* <p className="text-xs text-muted-foreground">+201</p> */}
                </CardContent>
              </Card>
              <Card>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+                 <CardTitle className="text-sm font-medium">Low Stock</CardTitle> {/* Shorten */}
                  <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                </CardHeader>
                <CardContent>
-                 {/* Format low stock items with grouping */}
                  <div className="text-2xl font-bold">{formatNumber(kpis.lowStockItems, { decimals: 0, useGrouping: true })}</div>
-                 <p className="text-xs text-muted-foreground">Items with quantity ≤ 10</p>
+                 <p className="text-xs text-muted-foreground">Items ≤ 10</p> {/* Shorten */}
                </CardContent>
              </Card>
              <Card>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Most Valuable Category</CardTitle>
+                 <CardTitle className="text-sm font-medium">Top Category</CardTitle> {/* Shorten */}
                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{kpis.mostValuableCategory}</div>
-                 {/* <p className="text-xs text-muted-foreground">Based on total value</p> */}
+                 <div className="text-lg sm:text-2xl font-bold truncate">{kpis.mostValuableCategory}</div> {/* Truncate */}
+                 {/* <p className="text-xs text-muted-foreground">by value</p> */}
                </CardContent>
              </Card>
            </div>
@@ -269,82 +260,77 @@ export default function ReportsPage() {
         <div className="grid gap-6 md:grid-cols-2">
             {/* Inventory Value Over Time */}
             <Card>
-                <CardHeader>
-                    <CardTitle>Inventory Value Over Time</CardTitle>
-                    <CardDescription>Total value trend for the selected period.</CardDescription>
+                <CardHeader className="pb-4"> {/* Reduce bottom padding */}
+                    <CardTitle className="text-lg">Value Over Time</CardTitle> {/* Shorten */}
+                    {/* <CardDescription>Total value trend.</CardDescription> */}
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pl-0 pr-2 pb-4"> {/* Adjust padding */}
                     {lineChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                        <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full"> {/* Adjust height */}
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}> {/* Adjust margins */}
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     {/* Use formatNumber for YAxis tickFormatter with grouping */}
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${formatNumber(value / 1000, { decimals: 0, useGrouping: true })}k`} /> {/* Changed to ILS */}
+                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} /> {/* Smaller font */}
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${formatNumber(value / 1000, { decimals: 0, useGrouping: true })}k`} />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        // Use formatNumber for tooltip value with grouping
-                                        formatter={(value: number) => `₪${formatNumber(value, { useGrouping: true })}`} // Format tooltip value
+                                        formatter={(value: number) => `₪${formatNumber(value, { useGrouping: true })}`}
                                     />
-                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 5 }} /> {/* Smaller active dot */}
                                 </LineChart>
                            </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                       <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
+                       <p className="text-center text-muted-foreground py-10">No data available.</p>
                     )}
                 </CardContent>
             </Card>
 
             {/* Document Processing Volume */}
             <Card>
-                 <CardHeader>
-                     <CardTitle>Document Processing Volume</CardTitle>
-                     <CardDescription>Number of documents processed per period.</CardDescription>
+                 <CardHeader className="pb-4"> {/* Reduce bottom padding */}
+                     <CardTitle className="text-lg">Docs Processed</CardTitle> {/* Shorten */}
+                     {/* <CardDescription>Documents processed per period.</CardDescription> */}
                  </CardHeader>
-                 <CardContent>
+                 <CardContent className="pl-0 pr-2 pb-4"> {/* Adjust padding */}
                       {barChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                        <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full"> {/* Adjust height */}
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                                <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}> {/* Adjust margins */}
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                    {/* Format YAxis ticks with grouping */}
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
+                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} /> {/* Smaller font */}
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        // Format tooltip value with grouping
                                         formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
                                      />
-                                    <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+                                    <Bar dataKey="count" fill="var(--color-count)" radius={3} /> {/* Smaller radius */}
                                 </BarChart>
                            </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
-                        <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
+                        <p className="text-center text-muted-foreground py-10">No data available.</p>
                      )}
                  </CardContent>
             </Card>
 
             {/* Category Value Distribution */}
-             <Card className="md:col-span-2"> {/* Span full width on medium screens */}
-                 <CardHeader>
-                     <CardTitle>Inventory Value by Category</CardTitle>
-                     <CardDescription>Distribution of total inventory value across categories.</CardDescription>
+             <Card className="md:col-span-2">
+                 <CardHeader className="pb-4"> {/* Reduce bottom padding */}
+                     <CardTitle className="text-lg">Value by Category</CardTitle> {/* Shorten */}
+                     {/* <CardDescription>Value distribution across categories.</CardDescription> */}
                  </CardHeader>
-                 <CardContent className="flex items-center justify-center pb-8">
+                 <CardContent className="flex items-center justify-center pb-4 sm:pb-8"> {/* Reduce bottom padding */}
                      {pieChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[300px]">
+                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[250px] sm:h-[300px]"> {/* Adjust height */}
                            <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                        // Use formatNumber for tooltip value with grouping
-                                        formatter={(value: number, name) => `${name}: ₪${formatNumber(value, { useGrouping: true })}`} // Format tooltip value
+                                        formatter={(value: number, name) => `${name}: ₪${formatNumber(value, { useGrouping: true })}`}
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -352,12 +338,10 @@ export default function ReportsPage() {
                                          nameKey="name"
                                          cx="50%"
                                          cy="50%"
-                                         outerRadius={100}
-                                         innerRadius={60} // Make it a donut chart
+                                         outerRadius={80} // Smaller radius
+                                         innerRadius={50} // Adjust inner radius
                                          paddingAngle={2}
                                          labelLine={false}
-                                         // Optional labels
-                                         // label={({ name, percent }) => `${name} ${formatNumber(percent * 100, { decimals: 0, useGrouping: false })}%`}
                                     >
                                         {pieChartData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
@@ -368,24 +352,17 @@ export default function ReportsPage() {
                                          verticalAlign="bottom"
                                          align="center"
                                          iconType="circle"
-                                         wrapperStyle={{ paddingTop: 20 }}
+                                         wrapperStyle={{ paddingTop: 15, fontSize: '12px' }} // Adjust legend style
                                      />
                                  </PieChart>
                            </ResponsiveContainer>
                          </ChartContainer>
                      ) : (
-                         <p className="text-center text-muted-foreground py-10">No category data available for this period.</p>
+                         <p className="text-center text-muted-foreground py-10">No category data.</p>
                       )}
                  </CardContent>
              </Card>
         </div>
-
-        {/* Optional Data Export */}
-        {/* <div className="mt-8 text-center">
-            <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" /> Export Reports (CSV/PDF)
-            </Button>
-        </div> */}
     </div>
   );
 }

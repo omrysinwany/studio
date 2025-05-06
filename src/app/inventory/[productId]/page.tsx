@@ -5,16 +5,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle } from 'lucide-react'; // Removed DollarSign
-// Removed useAuth import
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductById, Product } from '@/services/backend'; // Import specific product fetch and getProductById
 
 
 // Helper function to safely format numbers
-// - decimals: Number of decimal places (default 2)
-// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -22,18 +19,17 @@ const formatNumber = (
     const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Return a formatted zero based on options
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, // Use grouping based on option
+            useGrouping: useGrouping,
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, // Use grouping based on option
+        useGrouping: useGrouping,
     });
 };
 
@@ -41,7 +37,6 @@ const formatNumber = (
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
-  // Removed user, token, authLoading from useAuth
   const { toast } = useToast();
   const [product, setProduct] = useState<Product | null>(null); // Use backend Product type
   const [isLoading, setIsLoading] = useState(true);
@@ -52,12 +47,11 @@ export default function ProductDetailPage() {
    // Fetch product details
   useEffect(() => {
     const loadProduct = async () => {
-       if (!productId) return; // Removed user check
+       if (!productId) return;
 
       setIsLoading(true);
       setError(null);
       try {
-        // Passing null for token as it's not needed without auth
         const data = await getProductById(productId); // Use backend service
         if (data) {
           setProduct(data);
@@ -82,24 +76,20 @@ export default function ProductDetailPage() {
       }
     };
 
-     loadProduct(); // Load product directly
-     // Removed authLoading and user dependencies
+     loadProduct();
   }, [productId, toast]);
 
-
-    // Removed useEffect for auth redirection
 
   const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false) => {
     if (value === undefined || value === null || value === '') return null;
     const IconComponent = icon;
-    // Use formatNumber for numeric values with grouping enabled for display
     const displayValue = typeof value === 'number'
       ? (isCurrency
-            ? `₪${formatNumber(value, { useGrouping: true })}` // Currency with grouping
+            ? `₪${formatNumber(value, { decimals: 2, useGrouping: true })}` // Currency with grouping
             : formatNumber(value, { decimals: 2, useGrouping: true })) // Quantity with grouping
       : value;
     return (
-      <div className="flex items-start space-x-3">
+      <div className="flex items-start space-x-3 py-2"> {/* Add padding */}
         <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -113,22 +103,20 @@ export default function ProductDetailPage() {
    const formatDate = (dateString: string | undefined) => {
      if (!dateString) return 'N/A';
      try {
-       return new Date(dateString).toLocaleString(); // Show date and time
+       return new Date(dateString).toLocaleString();
      } catch (e) {
        return 'Invalid Date';
      }
    };
 
 
-  if (isLoading) { // Removed authLoading check
+  if (isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-
-   // Removed !user check
 
   if (error) {
     return (
@@ -143,7 +131,6 @@ export default function ProductDetailPage() {
   }
 
   if (!product) {
-     // This case might occur briefly or if fetch returns null unexpectedly after loading
      return (
        <div className="container mx-auto p-4 md:p-8 text-center">
          <p>Product not found.</p>
@@ -156,19 +143,19 @@ export default function ProductDetailPage() {
 
 
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Button variant="outline" onClick={() => router.back()} className="mb-4">
          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Inventory
        </Button>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="text-3xl font-bold text-primary flex items-center">
-             <Package className="mr-3 h-8 w-8" /> {product.description} {/* Use description */}
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-primary flex items-center">
+             <Package className="mr-3 h-6 sm:h-8 w-6 sm:w-8" /> {product.description}
           </CardTitle>
           <CardDescription>Detailed information for catalog #{product.catalogNumber}</CardDescription>
            {product.quantity <= 10 && (
-                <span className={`mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                     product.quantity === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                 }`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
@@ -176,30 +163,16 @@ export default function ProductDetailPage() {
                 </span>
             )}
         </CardHeader>
-        <CardContent className="space-y-6">
-           {/* Removed extra description section as it's the title now */}
-           {/* {product.description && ( ... )} */}
-
+        <CardContent className="space-y-4 sm:space-y-6">
            <Separator />
 
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0 sm:gap-y-4"> {/* Adjust gap */}
              {renderDetailItem(Hash, "Catalog Number", product.catalogNumber)}
-             {renderDetailItem(Layers, "Quantity", product.quantity)} {/* Will be formatted with grouping */}
-             {renderDetailItem(Tag, "Unit Price", product.unitPrice, true)} {/* Use Tag and set isCurrency */}
-             {renderDetailItem(Tag, "Line Total", product.lineTotal, true)} {/* Use Tag and set isCurrency */}
-             {/* {renderDetailItem(Tag, "Category", product.category)} */}
-             {/* {renderDetailItem(Tag, "Supplier", product.supplier)} */}
-             {/* {renderDetailItem(Tag, "Location", product.location)} */}
+             {renderDetailItem(Layers, "Quantity", product.quantity)}
+             {renderDetailItem(Tag, "Unit Price", product.unitPrice, true)}
+             {renderDetailItem(Tag, "Line Total", product.lineTotal, true)}
              {/* {renderDetailItem(Calendar, "Last Updated", formatDate(product.lastUpdated))} */}
           </div>
-
-           {/* Optional Actions */}
-           {/* <Separator />
-           <div className="flex gap-2">
-              <Button>Edit Product</Button>
-              <Button variant="destructive">Delete Product</Button>
-           </div> */}
-
         </CardContent>
       </Card>
     </div>

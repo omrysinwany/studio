@@ -34,8 +34,6 @@ import { InvoiceHistoryItem, getInvoices } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 
 // Helper function to safely format numbers
-// - decimals: Number of decimal places (default 2)
-// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -43,18 +41,17 @@ const formatNumber = (
     const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Return a formatted zero based on options
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, // Use grouping based on option
+            useGrouping: useGrouping,
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, // Use grouping based on option
+        useGrouping: useGrouping,
     });
 };
 
@@ -72,9 +69,9 @@ export default function InvoicesPage() {
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
     id: false, // Keep ID internal if not needed for display but useful for export/keys
     fileName: true,
-    uploadTime: true,
+    uploadTime: false, // Hide time by default on mobile
     status: true,
-    invoiceNumber: true,
+    invoiceNumber: false, // Hide invoice# by default on mobile
     supplier: true,
     totalAmount: true,
     errorMessage: false, // Keep hidden by default
@@ -108,7 +105,6 @@ export default function InvoicesPage() {
            filteredData = filteredData.filter(inv => inv.status === filterStatus);
         }
          if (dateRange?.from) {
-             // Ensure date comparison includes the start date
             const startDate = new Date(dateRange.from);
             startDate.setHours(0, 0, 0, 0); // Set to start of the day
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime) >= startDate);
@@ -117,6 +113,29 @@ export default function InvoicesPage() {
             const endDate = new Date(dateRange.to);
             endDate.setHours(23, 59, 59, 999); // Set to end of the day
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime) <= endDate);
+         }
+
+        // Sort before setting state
+         if (sortKey) {
+             filteredData.sort((a, b) => {
+                 const valA = a[sortKey as keyof InvoiceHistoryItem];
+                 const valB = b[sortKey as keyof InvoiceHistoryItem];
+                 let comparison = 0;
+                 if (sortKey === 'uploadTime') {
+                     const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
+                     const dateB = valB instanceof Date ? valB.getTime() : new Date(valB as string).getTime();
+                     comparison = dateA - dateB;
+                 } else if (typeof valA === 'number' && typeof valB === 'number') {
+                     comparison = valA - valB;
+                 } else if (typeof valA === 'string' && typeof valB === 'string') {
+                     comparison = valA.localeCompare(valB);
+                 } else {
+                    if (valA == null && valB != null) comparison = 1;
+                    else if (valA != null && valB == null) comparison = -1;
+                    else comparison = 0;
+                 }
+                 return sortDirection === 'asc' ? comparison : comparison * -1;
+             });
          }
 
         setInvoices(filteredData);
@@ -132,10 +151,10 @@ export default function InvoicesPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast]); // Dependencies for re-fetching
+    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection]); // Added sortKey, sortDirection
 
 
-   // Fetch invoice data on mount and when filters change
+   // Fetch invoice data on mount and when filters/sort change
    useEffect(() => {
      fetchInvoices();
    }, [fetchInvoices]); // fetchInvoices includes all its own dependencies
@@ -149,12 +168,15 @@ export default function InvoicesPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
+     // Re-fetch will handle sorting now
+    // fetchInvoices(); // Trigger refetch which includes sorting
   };
 
-  const filteredAndSortedInvoices = useMemo(() => {
-    let result = [...invoices];
+   // Memoization is less crucial now as sorting happens in fetchInvoices
+   const filteredAndSortedInvoices = useMemo(() => {
+    let result = [...invoices]; // Use the already filtered and sorted data from state
 
-    // Search filtering
+    // Search filtering (applied after fetching/sorting)
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
@@ -164,44 +186,20 @@ export default function InvoicesPage() {
       );
     }
 
-    // Sorting
-    if (sortKey) {
-      result.sort((a, b) => {
-        const valA = a[sortKey as keyof InvoiceHistoryItem]; // Use assertion here
-        const valB = b[sortKey as keyof InvoiceHistoryItem]; // Use assertion here
-
-        let comparison = 0;
-        if (sortKey === 'uploadTime') {
-            const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
-            const dateB = valB instanceof Date ? valB.getTime() : new Date(valB as string).getTime();
-            comparison = dateA - dateB;
-        } else if (typeof valA === 'number' && typeof valB === 'number') {
-          comparison = valA - valB;
-        } else if (typeof valA === 'string' && typeof valB === 'string') {
-          comparison = valA.localeCompare(valB);
-        } else {
-           if (valA == null && valB != null) comparison = 1;
-           else if (valA != null && valB == null) comparison = -1;
-           else comparison = 0;
-        }
-        return sortDirection === 'asc' ? comparison : comparison * -1;
-      });
-    }
-
     return result;
-  }, [invoices, searchTerm, sortKey, sortDirection]);
+  }, [invoices, searchTerm]);
 
 
    // Column definition including internal 'id'
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string }[] = [
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'min-w-[200px]' },
-      { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[150px]' },
-      { key: 'status', label: 'Status', sortable: true, className: 'min-w-[120px]' },
-      { key: 'invoiceNumber', label: 'Invoice #', sortable: true, className: 'min-w-[120px]' },
-      { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[150px]' },
-      { key: 'totalAmount', label: 'Total Amount (₪)', sortable: true, className: 'text-right min-w-[120px]' },
-      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate' }, // Add definition for error message
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] truncate' },
+      { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true }, // Hide time on mobile
+      { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
+      { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Shorten, hide on mobile
+      { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true }, // Hide supplier on mobile
+      { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' }, // Shorten label
+      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate' },
       { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
    ];
 
@@ -213,11 +211,11 @@ export default function InvoicesPage() {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        // Check if date is valid before formatting
-        if (isNaN(dateObj.getTime())) {
-          return 'Invalid Date';
-        }
-        return dateObj.toLocaleString(); // Date and time
+        if (isNaN(dateObj.getTime())) return 'Invalid Date';
+        // Show shorter format on mobile
+        return window.innerWidth < 640
+             ? format(dateObj, 'dd/MM/yy')
+             : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
        console.error("Error formatting date:", e, "Input:", date);
        return 'Invalid Date';
@@ -270,7 +268,7 @@ export default function InvoicesPage() {
      }
 
      return (
-        <Badge variant={variant} className={cn("text-xs font-medium", className)}>
+        <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}> {/* Smaller badge on mobile */}
             {icon}
             {status.charAt(0).toUpperCase() + status.slice(1)}
         </Badge>
@@ -282,17 +280,10 @@ export default function InvoicesPage() {
         if (value === null || value === undefined) {
           return '';
         }
-         // Format date values specifically
          if (value instanceof Date) {
-            try {
-                return value.toISOString(); // Use ISO format for consistency
-            } catch {
-                return 'Invalid Date';
-            }
+            try { return value.toISOString(); } catch { return 'Invalid Date'; }
          }
-         // Format numbers to two decimal places if applicable (no grouping for CSV)
          if (typeof value === 'number') {
-              // Use the helper function for consistent formatting
              return formatNumber(value, { decimals: 2, useGrouping: false });
          }
         let stringValue = String(value);
@@ -308,28 +299,20 @@ export default function InvoicesPage() {
             toast({ title: "No Data", description: "There is no invoice data to export." });
             return;
         }
-
-        // Define columns to export
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
             'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
         ];
-
         const headers = exportColumns
-            .map(key => columnDefinitions.find(col => col.key === key)?.label || key) // Get labels
+            .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
             .map(escapeCsvValue)
             .join(',');
-
         const rows = filteredAndSortedInvoices.map(item => {
-            return exportColumns
-                .map(key => escapeCsvValue(item[key]))
-                .join(',');
+            return exportColumns.map(key => escapeCsvValue(item[key])).join(',');
         });
-
         const csvContent = [headers, ...rows].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
-
         link.setAttribute('href', url);
         link.setAttribute('download', 'invoices_export.csv');
         link.style.visibility = 'hidden';
@@ -337,34 +320,33 @@ export default function InvoicesPage() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-
         toast({ title: "Export Started", description: "Your invoice data is being downloaded as CSV." });
     };
     // --- End CSV Export ---
 
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground">
         <CardHeader>
-          <CardTitle className="text-2xl font-semibold text-primary flex items-center">
-            <FileText className="mr-2 h-6 w-6" /> Uploaded Invoices
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+            <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
           </CardTitle>
           <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
         </CardHeader>
         <CardContent>
           {/* Toolbar */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 flex-wrap">
-            <div className="relative w-full md:max-w-sm">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
+            <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search file, invoice #, supplier..."
+                placeholder="Search..." // Shorten placeholder
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
                 aria-label="Search invoices"
               />
             </div>
-            <div className="flex gap-2 flex-wrap justify-center md:justify-end">
+            <div className="flex gap-2 flex-wrap justify-start md:justify-end">
                 {/* Date Range Filter */}
                  <Popover>
                    <PopoverTrigger asChild>
@@ -372,7 +354,7 @@ export default function InvoicesPage() {
                        id="invoiceDate"
                        variant={"outline"}
                        className={cn(
-                         "w-[260px] justify-start text-left font-normal",
+                         "w-full sm:w-[260px] justify-start text-left font-normal", // Full width on mobile
                          !dateRange && "text-muted-foreground"
                        )}
                        aria-label="Select date range for filtering invoices"
@@ -381,14 +363,13 @@ export default function InvoicesPage() {
                        {dateRange?.from ? (
                          dateRange.to ? (
                            <>
-                             {format(dateRange.from, "LLL dd, y")} -{" "}
-                             {format(dateRange.to, "LLL dd, y")}
+                             {format(dateRange.from, "PP")} - {format(dateRange.to, "PP")} {/* Short format */}
                            </>
                          ) : (
-                           format(dateRange.from, "LLL dd, y")
+                           format(dateRange.from, "PP")
                          )
                        ) : (
-                         <span>Filter by Upload Date</span>
+                         <span>Date Range</span> // Shorten label
                        )}
                      </Button>
                    </PopoverTrigger>
@@ -399,7 +380,17 @@ export default function InvoicesPage() {
                        defaultMonth={dateRange?.from}
                        selected={dateRange}
                        onSelect={setDateRange}
-                       numberOfMonths={2}
+                       numberOfMonths={1} // Show only 1 month on mobile
+                       className="sm:block hidden" // Hide default on mobile
+                     />
+                       <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange?.from}
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        numberOfMonths={2}
+                        className="hidden sm:block" // Show 2 months on larger screens
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -412,10 +403,10 @@ export default function InvoicesPage() {
               {/* Supplier Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`}>
+                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`}> {/* Full width on mobile */}
                     <Filter className="mr-2 h-4 w-4" />
                     {filterSupplier || 'Supplier'}
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -443,10 +434,10 @@ export default function InvoicesPage() {
               {/* Status Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button variant="outline" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`}>
+                   <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`}> {/* Full width on mobile */}
                     <Filter className="mr-2 h-4 w-4" />
                     {filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'Status'}
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -468,15 +459,14 @@ export default function InvoicesPage() {
               {/* Column Visibility Toggle */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" aria-label="Toggle column visibility">
+                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility"> {/* Full width on mobile */}
                     <Eye className="mr-2 h-4 w-4" /> View
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                   {/* Map over definitions that should be toggleable */}
                   {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id' && h.key !== 'errorMessage').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
@@ -487,7 +477,6 @@ export default function InvoicesPage() {
                       {header.label}
                     </DropdownMenuCheckboxItem>
                   ))}
-                  {/* Option to toggle error message column separately */}
                   <DropdownMenuCheckboxItem
                       key="errorMessage"
                       className="capitalize"
@@ -500,26 +489,30 @@ export default function InvoicesPage() {
               </DropdownMenu>
 
                {/* Export Button */}
-               <Button variant="outline" onClick={handleExportInvoices}>
+               <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial"> {/* Full width on mobile */}
                  <Download className="mr-2 h-4 w-4" /> Export CSV
                </Button>
             </div>
           </div>
 
           {/* Invoices Table */}
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto"> {/* Make table scrollable horizontally */}
+            <Table className="min-w-[600px]"> {/* Set a minimum width for horizontal scroll */}
               <TableHeader>
                 <TableRow>
-                   {/* Use filtered visibleColumnHeaders for rendering */}
                   {visibleColumnHeaders.map((header) => (
                     <TableHead
                       key={header.key}
-                      className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50")}
+                      className={cn(
+                          header.className,
+                          header.sortable && "cursor-pointer hover:bg-muted/50",
+                          header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', // Hide columns based on flag
+                          'px-2 sm:px-4 py-2' // Reduce padding
+                      )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 whitespace-nowrap"> {/* Prevent wrapping */}
                          {header.label}
                          {header.sortable && sortKey === header.key && (
                             <span className="text-xs" aria-hidden="true">
@@ -534,7 +527,7 @@ export default function InvoicesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
+                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                       <div className="flex justify-center items-center">
                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
                          <span className="ml-2">Loading invoices...</span>
@@ -543,44 +536,41 @@ export default function InvoicesPage() {
                   </TableRow>
                 ) : filteredAndSortedInvoices.length === 0 ? (
                   <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
+                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                        No invoices found matching your criteria.
                      </TableCell>
                   </TableRow>
                 ) : (
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                       {/* Render cells based on visibility state */}
-                       {visibleColumns.fileName && <TableCell className="font-medium truncate max-w-xs">{item.fileName}</TableCell>}
-                       {visibleColumns.uploadTime && <TableCell>{formatDate(item.uploadTime)}</TableCell>}
+                       {/* Render cells based on visibility state and mobileHidden */}
+                       {visibleColumns.fileName && <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">{item.fileName}</TableCell>}
+                       {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
                        {visibleColumns.status && (
-                         <TableCell>
+                         <TableCell className="px-2 sm:px-4 py-2">
                             {renderStatusBadge(item.status)}
                          </TableCell>
                        )}
-                       {visibleColumns.invoiceNumber && <TableCell>{item.invoiceNumber || '-'}</TableCell>}
-                       {visibleColumns.supplier && <TableCell>{item.supplier || '-'}</TableCell>}
+                       {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || '-'}</TableCell>}
+                       {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || '-'}</TableCell>}
                        {visibleColumns.totalAmount && (
-                         <TableCell className="text-right">
-                             {/* Use formatNumber helper for totalAmount display with grouping */}
+                         <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap"> {/* Prevent wrapping */}
                             {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
                          </TableCell>
                        )}
                        {visibleColumns.errorMessage && (
-                         <TableCell className={cn(columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
+                         <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
                              {item.status === 'error' ? item.errorMessage : '-'}
                          </TableCell>
                        )}
-                        {/* Actions Cell */}
                         {visibleColumns.actions && (
-                         <TableCell className="text-right">
+                         <TableCell className="text-right px-2 sm:px-4 py-2">
                            {item.status === 'error' && item.errorMessage && (
-                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" title={item.errorMessage} aria-label="View error details">
+                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title={item.errorMessage} aria-label="View error details"> {/* Smaller icon button */}
                                <AlertCircle className="h-4 w-4" />
                              </Button>
                            )}
-                            {/* Potential future action */}
-                           {/* <Button variant="ghost" size="sm" onClick={() => router.push(`/invoices/${item.id}`)} aria-label={`View details for invoice ${item.invoiceNumber || item.fileName}`}>Details</Button> */}
+                           {/* <Button variant="ghost" size="sm" className="h-7 px-1.5">Details</Button> */}
                          </TableCell>
                         )}
                     </TableRow>

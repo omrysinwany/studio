@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2 } from 'lucide-react';
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
 import { useToast } from '@/hooks/use-toast';
 import { saveProducts, Product } from '@/services/backend'; // Import Product type and save function
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Import Alert
@@ -22,8 +22,6 @@ interface EditableProduct extends Product {
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 
 // Helper function to safely format numbers
-// - decimals: Number of decimal places (default 2)
-// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -31,18 +29,17 @@ const formatNumber = (
     const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Return a formatted zero based on options
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, // Use grouping based on option
+            useGrouping: useGrouping,
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, // Use grouping based on option
+        useGrouping: useGrouping,
     });
 };
 
@@ -83,65 +80,52 @@ function EditInvoiceContent() {
         hasAttemptedLoad = true;
         let storedData = null;
         try {
-            // Attempt to retrieve data from localStorage
             storedData = localStorage.getItem(dataKey);
             if (!storedData) {
                  throw new Error("Scan results not found. They might have expired or been cleared.");
             }
 
-            // Attempt to parse the JSON data
             let parsedData;
             try {
                 parsedData = JSON.parse(storedData);
             } catch (jsonParseError) {
                  console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-                 // If parsing fails, remove the invalid item
                  localStorage.removeItem(dataKey);
                  throw new Error("Invalid JSON structure received from storage.");
             }
 
-            // Validate the structure AFTER parsing
             if (parsedData && Array.isArray(parsedData.products)) {
-              // Add a unique ID to each product for stable editing
               const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
                 ...p,
-                id: `${Date.now()}-${index}`, // Simple unique ID generation
-                // Ensure numeric fields are numbers, default to 0 if not
+                id: `${Date.now()}-${index}`,
                 quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
                 lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-                 // Calculate unitPrice here if not provided or needs recalculation
                  unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
                             ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
-                            : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0), // Fallback
+                            : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
               }));
               setProducts(productsWithIds);
-               setErrorLoading(null); // Clear any previous error
-
-                // DO NOT remove the localStorage item here. Keep it until saved or explicitly discarded.
-                // localStorage.removeItem(dataKey); // REMOVED FROM HERE
+               setErrorLoading(null);
 
             } else {
               console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-              // Remove invalid item
               localStorage.removeItem(dataKey);
               throw new Error("Invalid data structure received after parsing.");
             }
         } catch (error: any) {
             console.error("Failed to process product data:", error);
             setErrorLoading(`Could not load the invoice data for editing. Error: ${error.message || 'Unknown error'}`);
-            setProducts([]); // Clear products on error
+            setProducts([]);
             toast({
               title: "Error Loading Data",
               description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
               variant: "destructive",
             });
-             // Don't remove if the error was 'not found', otherwise remove potentially invalid data key
              if (error.message && !error.message.startsWith("Scan results not found")) {
                  if (dataKey) localStorage.removeItem(dataKey);
              }
         }
     } else if (!initialDataLoaded) {
-       // Only show error/redirect if it's the initial load attempt and NO key param found
        hasAttemptedLoad = true;
        setErrorLoading("No invoice data key provided in the URL.");
        setProducts([]);
@@ -152,19 +136,15 @@ function EditInvoiceContent() {
         });
     }
 
-    setIsLoading(false); // Loading finished (even if it failed)
+    setIsLoading(false);
     if (hasAttemptedLoad) {
-        setInitialDataLoaded(true); // Mark initial data load attempt complete only if we tried
+        setInitialDataLoaded(true);
     }
 
-     // General cleanup function: remove any leftover temp data on unmount or navigation (optional)
      return () => {
-         // Can add specific cleanup logic here if user navigates away *before* saving
-         // For now, we rely on saving to clear the specific item.
-         // A more robust solution might involve clearing *all* old temp keys on app start.
+         // Optional: Cleanup logic if needed
      };
 
-  // Add initialDataLoaded to dependencies to prevent re-running on subsequent renders unless specifically needed
   }, [searchParams, router, toast, initialDataLoaded]);
 
 
@@ -172,36 +152,26 @@ function EditInvoiceContent() {
     setProducts(prevProducts =>
       prevProducts.map(product => {
         if (product.id === id) {
-          // Convert input value to number for calculations, handle potential NaN
-          let numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value; // Remove commas before parsing
+          let numericValue = (typeof value === 'string') ? parseFloat(value.replace(/,/g, '')) : value;
           if (isNaN(numericValue)) {
-              numericValue = 0; // Default to 0 if parsing fails
+              numericValue = 0;
           }
 
           const updatedProduct = { ...product, [field]: numericValue };
 
-          // Ensure values used for calculation are numbers
-          const quantity = updatedProduct.quantity; // Already a number
-          const unitPrice = updatedProduct.unitPrice; // Already a number
-          const lineTotal = updatedProduct.lineTotal; // Already a number
+          const quantity = updatedProduct.quantity;
+          const unitPrice = updatedProduct.unitPrice;
+          const lineTotal = updatedProduct.lineTotal;
 
-          // Auto-calculate lineTotal OR unitPrice based on which was changed
           if (field === 'quantity' || field === 'unitPrice') {
-              // If quantity or unitPrice changes, recalculate lineTotal
                updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
-
           } else if (field === 'lineTotal') {
-              // If lineTotal changes, recalculate unitPrice (only if quantity is not zero)
                if (quantity !== 0) {
                    updatedProduct.unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
                } else {
-                    updatedProduct.unitPrice = 0; // Avoid division by zero, set unitPrice to 0
+                    updatedProduct.unitPrice = 0;
                }
           }
-
-          // Ensure the field being edited is stored as a number in the state
-          // This happens implicitly because we set `numericValue` above
-          // updatedProduct[field] = numericValue; // No need to set again
 
           return updatedProduct;
         }
@@ -234,31 +204,26 @@ function EditInvoiceContent() {
 
   const handleSave = async () => {
      setIsSaving(true);
-     const dataKey = searchParams.get('key'); // Get the key again
+     const dataKey = searchParams.get('key');
      try {
-       // Remove the temporary 'id' field and ensure numbers are numeric before sending
        const productsToSave: Product[] = products
          .map(({ id, ...rest }) => {
-             // Data in state should already be numeric due to handleInputChange logic
              const quantity = rest.quantity;
              const lineTotal = rest.lineTotal;
-             // Recalculate unit price before saving for consistency
-             const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : rest.unitPrice; // Keep original if quantity is 0
+             const unitPrice = quantity !== 0 ? parseFloat((lineTotal / quantity).toFixed(2)) : rest.unitPrice;
 
              return {
                  ...rest,
                  quantity: quantity,
-                 unitPrice: unitPrice, // Send recalculated or original unit price
+                 unitPrice: unitPrice,
                  lineTotal: lineTotal,
              };
          })
-         // Optional: Filter out rows that are essentially empty
          .filter(p => p.catalogNumber || p.description);
 
-       console.log("Attempting to save products:", productsToSave, "for file:", fileName); // Log data being sent
-       await saveProducts(productsToSave, fileName); // Use the backend service function, passing fileName
+       console.log("Attempting to save products:", productsToSave, "for file:", fileName);
+       await saveProducts(productsToSave, fileName, 'upload'); // Pass 'upload' as source
 
-        // Remove the temp data from localStorage ONLY AFTER successful save
         if (dataKey) {
             localStorage.removeItem(dataKey);
             console.log(`Removed temp data with key: ${dataKey}`);
@@ -268,7 +233,7 @@ function EditInvoiceContent() {
          title: "Products Saved",
          description: "Your changes have been saved successfully.",
        });
-        router.push('/inventory?refresh=true'); // Navigate to inventory and add refresh param
+        router.push('/inventory?refresh=true');
 
      } catch (error) {
        console.error("Failed to save products:", error);
@@ -277,14 +242,12 @@ function EditInvoiceContent() {
          description: "Could not save the product data. Please try again.",
          variant: "destructive",
        });
-        // DO NOT remove the temp data if save failed, allow user to retry
      } finally {
        setIsSaving(false);
      }
    };
 
     const handleGoBack = () => {
-        // Optionally clear the temp data if the user explicitly navigates back *without* saving
         const dataKey = searchParams.get('key');
         if (dataKey) {
             localStorage.removeItem(dataKey);
@@ -293,7 +256,6 @@ function EditInvoiceContent() {
         router.push('/upload');
     };
 
-   // Show loading state while initial check is happening
    if (isLoading && !initialDataLoaded) {
      return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
@@ -303,7 +265,6 @@ function EditInvoiceContent() {
      );
    }
 
-    // Show error message if loading failed
     if (errorLoading) {
         return (
             <div className="container mx-auto p-4 md:p-8 space-y-4">
@@ -312,13 +273,12 @@ function EditInvoiceContent() {
                     <AlertDescription>{errorLoading}</AlertDescription>
                 </Alert>
                 <Button variant="outline" onClick={handleGoBack}>
-                   Go Back to Upload
+                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
                 </Button>
             </div>
         );
     }
 
-    // Show if data loaded but products array is empty
     if (initialDataLoaded && products.length === 0 && !errorLoading) {
          return (
              <div className="container mx-auto p-4 md:p-8 space-y-4">
@@ -328,20 +288,19 @@ function EditInvoiceContent() {
                          The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.
                      </AlertDescription>
                  </Alert>
-                 {/* Allow adding rows even if none were detected */}
                  <Card className="shadow-md">
                      <CardHeader>
-                         <CardTitle className="text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
+                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
                          <CardDescription>
                             File: <span className="font-medium">{fileName || 'Unknown Document'}</span>
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
-                           <div className="mt-4 flex justify-between items-center">
-                             <Button variant="outline" onClick={handleAddRow}>
+                           <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                             <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
                              </Button>
-                             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90">
+                             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                               {isSaving ? (
                                  <>
                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -355,7 +314,7 @@ function EditInvoiceContent() {
                          </div>
                            <div className="mt-6">
                                <Button variant="outline" onClick={handleGoBack}>
-                                   Go Back to Upload
+                                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
                                </Button>
                            </div>
                       </CardContent>
@@ -365,87 +324,86 @@ function EditInvoiceContent() {
     }
 
 
-  // Render the table only if initial load is done, there's no error, and products exist
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
       <Card className="shadow-md">
         <CardHeader>
-          <CardTitle className="text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
           <CardDescription>
              Review and edit the extracted data for: <span className="font-medium">{fileName || 'Unknown Document'}</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto"> {/* Make table scrollable */}
+            <Table className="min-w-[700px]"> {/* Set min-width for scroll */}
               <TableHeader>
                 <TableRow>
-                  <TableHead>Catalog #</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit Price (₪)</TableHead>
-                  <TableHead className="text-right">Line Total (₪)</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
+                  <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
                   <TableRow key={product.id}>
-                    <TableCell>
+                    <TableCell className="px-2 sm:px-4 py-2">
                       <Input
                         value={product.catalogNumber}
                         onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
-                        className="min-w-[100px]"
+                        className="min-w-[100px] h-9" // Adjust height
                         aria-label={`Catalog number for ${product.description}`}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-2 sm:px-4 py-2">
                       <Input
                         value={product.description}
                         onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
-                        className="min-w-[200px]"
+                        className="min-w-[150px] sm:min-w-[200px] h-9" // Adjust height
                         aria-label={`Description for catalog number ${product.catalogNumber}`}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.quantity)} // Format for input display (no commas)
+                        value={formatInputValue(product.quantity)}
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
-                        className="w-24 text-right" // Increased width
+                        className="w-20 sm:w-24 text-right h-9" // Adjust height and width
                         min="0"
-                        step="0.01" // Allow decimals
+                        step="0.01"
                         aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.unitPrice)} // Format for input display (no commas)
+                        value={formatInputValue(product.unitPrice)}
                         onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
-                        className="w-28 text-right" // Increased width
+                        className="w-24 sm:w-28 text-right h-9" // Adjust height and width
                         step="0.01"
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
-                        value={formatInputValue(product.lineTotal)} // Format for input display (no commas)
+                        value={formatInputValue(product.lineTotal)}
                         onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
-                        className="w-28 text-right" // Increased width
+                        className="w-24 sm:w-28 text-right h-9" // Adjust height and width
                         step="0.01"
                          min="0"
                          aria-label={`Line total for ${product.description}`}
                       />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => handleRemoveRow(product.id)}
-                        className="text-destructive hover:text-destructive/80"
+                        className="text-destructive hover:text-destructive/80 h-8 w-8" // Adjust size
                          aria-label={`Remove row for ${product.description}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -456,11 +414,11 @@ function EditInvoiceContent() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex justify-between items-center">
-             <Button variant="outline" onClick={handleAddRow}>
+          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3"> {/* Stack buttons on mobile */}
+             <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
              </Button>
-             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90">
+             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
               {isSaving ? (
                  <>
                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -474,7 +432,7 @@ function EditInvoiceContent() {
           </div>
              <div className="mt-6">
                  <Button variant="outline" onClick={handleGoBack}>
-                     Go Back to Upload
+                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
                  </Button>
              </div>
         </CardContent>

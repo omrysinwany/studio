@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -46,20 +47,20 @@ export default function Home() {
 
   // Render the main content (no redirect needed)
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8 home-background">
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <div className="w-full max-w-4xl text-center fade-in-content">
-        <h1 className="text-4xl md:text-5xl font-bold mb-4 text-primary">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-primary">
           Welcome to InvoTrack Mobile
         </h1>
-        <p className="text-lg text-muted-foreground mb-8">
+        <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8">
           {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Manage your inventory efficiently.'}
         </p>
 
         {/* Quick Stats Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 md:mb-12">
            {/* Total Items Card */}
            <Link href="/inventory" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Items</CardTitle>
                  <Package className="h-4 w-4 text-muted-foreground" />
@@ -73,7 +74,7 @@ export default function Home() {
 
             {/* Inventory Value Card */}
             <Link href="/reports" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
                  <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span> {/* Changed to ILS */}
@@ -90,7 +91,7 @@ export default function Home() {
 
            {/* Docs Processed Card */}
             <Link href="/invoices" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Docs Processed (30d)</CardTitle>
                  <FileText className="h-4 w-4 text-muted-foreground" />
@@ -104,7 +105,7 @@ export default function Home() {
 
              {/* Low Stock Items Card */}
              <Link href="/inventory?filter=low" className="block hover:no-underline">
-                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full">
+                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                      <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -119,10 +120,10 @@ export default function Home() {
 
 
         {/* Quick Action Buttons */}
-        <div className="flex flex-col sm:flex-row justify-center gap-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
           <Button
             size="lg"
-            className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-shadow duration-300"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
             onClick={handleScanClick}
           >
             <ScanLine className="mr-2 h-5 w-5" /> Scan New Document
@@ -130,7 +131,7 @@ export default function Home() {
           <Button
             variant="outline"
             size="lg"
-            className="border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-shadow duration-300"
+            className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
              onClick={handleInventoryClick}
           >
             <Package className="mr-2 h-5 w-5" /> View Inventory
@@ -138,7 +139,7 @@ export default function Home() {
           <Button
             variant="secondary"
             size="lg"
-            className="bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-shadow duration-300"
+            className="w-full sm:w-auto bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
              onClick={handleReportsClick}
           >
             <BarChart2 className="mr-2 h-5 w-5" /> View Reports

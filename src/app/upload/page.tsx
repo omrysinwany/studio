@@ -154,8 +154,6 @@ export default function UploadPage() {
                      description: 'Could not store scan results for editing. Please try again.',
                      variant: 'destructive',
                  });
-                 // Fallback: Attempt to navigate with data in URL, though it might fail again
-                 // router.push(`/edit-invoice?data=${encodeURIComponent(JSON.stringify(result))}&fileName=${encodeURIComponent(selectedFile.name)}`);
                  await fetchHistory(); // Refresh history
              }
 
@@ -213,7 +211,8 @@ export default function UploadPage() {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        return dateObj.toLocaleString(); // Date and time
+        // Use locale string for better readability
+        return dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
        return 'Invalid Date';
      }
@@ -221,29 +220,29 @@ export default function UploadPage() {
 
 
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-8">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground">
         <CardHeader>
-          <CardTitle className="text-2xl font-semibold text-primary flex items-center">
-             <UploadCloud className="mr-2 h-6 w-6" /> Upload New Document
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+             <UploadCloud className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Upload New Document
           </CardTitle>
           <CardDescription>Select a JPEG, PNG, or PDF file of your invoice or delivery note.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"> {/* Use items-stretch for column */}
             <Input
               id="document"
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
               accept=".jpg,.jpeg,.png,.pdf"
-              className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+              className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
               aria-label="Select document file"
             />
              <Button
                 onClick={handleUpload}
                 disabled={!selectedFile || isUploading || isProcessing}
-                className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground"
+                className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground shrink-0" // shrink-0 prevents button shrinking
               >
                {isUploading ? (
                  <>
@@ -277,7 +276,7 @@ export default function UploadPage() {
 
       <Card className="shadow-md bg-card text-card-foreground">
         <CardHeader>
-          <CardTitle className="text-xl font-semibold text-primary flex items-center">
+          <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
              <FileText className="mr-2 h-5 w-5" /> Upload History (Recent 10)
           </CardTitle>
           <CardDescription>Status of your recent document uploads.</CardDescription>
@@ -289,44 +288,48 @@ export default function UploadPage() {
                 <span className="ml-2">Loading history...</span>
              </div>
            ) : uploadHistory.length === 0 ? (
-            <p className="text-center text-muted-foreground">No recent uploads.</p>
+            <p className="text-center text-muted-foreground py-4">No recent uploads.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>File Name</TableHead>
-                  <TableHead>Upload Time</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {uploadHistory.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium truncate max-w-xs">{item.fileName}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                       {formatDate(item.uploadTime)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                        item.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse' :
-                        item.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                        item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' // Fallback style
-                      }`}>
-                        {item.status === 'completed' && <CheckCircle className="mr-1 h-3 w-3" />}
-                        {item.status === 'processing' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                         {item.status === 'pending' && <Clock className="mr-1 h-3 w-3" />}
-                        {item.status === 'error' && <XCircle className="mr-1 h-3 w-3" />}
-                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                      </span>
-                       {item.status === 'error' && item.errorMessage && (
-                          <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-right" title={item.errorMessage}>{item.errorMessage}</p>
-                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+                <Table>
+                <TableHeader>
+                    <TableRow>
+                    <TableHead>File Name</TableHead>
+                    <TableHead>Upload Time</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {uploadHistory.map((item) => (
+                    <TableRow key={item.id}>
+                        <TableCell className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2"> {/* Reduced padding */}
+                            {item.fileName}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground px-2 sm:px-4 py-2"> {/* Reduced padding */}
+                        {formatDate(item.uploadTime)}
+                        </TableCell>
+                        <TableCell className="text-right px-2 sm:px-4 py-2"> {/* Reduced padding */}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            item.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                            item.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse' :
+                            item.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                            item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' // Fallback style
+                        }`}>
+                            {item.status === 'completed' && <CheckCircle className="mr-1 h-3 w-3" />}
+                            {item.status === 'processing' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                            {item.status === 'pending' && <Clock className="mr-1 h-3 w-3" />}
+                            {item.status === 'error' && <XCircle className="mr-1 h-3 w-3" />}
+                            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                        </span>
+                        {item.status === 'error' && item.errorMessage && (
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-right" title={item.errorMessage}>{item.errorMessage}</p>
+                        )}
+                        </TableCell>
+                    </TableRow>
+                    ))}
+                </TableBody>
+                </Table>
+            </div>
           )}
         </CardContent>
       </Card>
