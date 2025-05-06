@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Added Download, Trash2, Pagination icons
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Edit } from 'lucide-react'; // Added Edit
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -44,27 +45,33 @@ const ITEMS_PER_PAGE = 10; // Number of items per page
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-// Helper function to safely format numbers for display
+// Helper function to safely format numbers for display (with grouping)
 const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+    const { decimals = 2, useGrouping = true } = options || {}; // Default: 2 decimals, WITH grouping
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Return a formatted zero based on options
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, // Use grouping based on option
+            useGrouping: useGrouping,
         });
     }
 
     return value.toLocaleString(undefined, { // Use browser's locale for formatting
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, // Use grouping based on option
+        useGrouping: useGrouping,
     });
+};
+
+// Helper function to format quantity as integer for display (with grouping)
+const formatIntegerQuantity = (
+    value: number | undefined | null
+): string => {
+    return formatDisplayNumber(value, { decimals: 0, useGrouping: true }); // Use 0 decimals and grouping
 };
 
 
@@ -76,11 +83,11 @@ export default function InventoryPage() {
   // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     id: false,
-    description: true,
-    catalogNumber: false, // Hide catalog # by default
-    quantity: true,
-    unitPrice: true,
-    lineTotal: false, // Hide line total by default
+    description: true, // Show name/description
+    catalogNumber: false, // Keep hidden by default
+    quantity: true, // Show quantity
+    unitPrice: true, // Show unit price
+    lineTotal: false, // Keep hidden by default
     actions: true, // Keep actions visible
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
@@ -103,10 +110,14 @@ export default function InventoryPage() {
         const data = await getProductsService(); // Use corrected function name
         console.log("Fetched inventory data:", data);
         // Ensure lineTotal is calculated correctly when fetching
-        const inventoryWithCorrectTotals = data.map(item => ({
-             ...item,
-             lineTotal: parseFloat(((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2))
-        }));
+        const inventoryWithCorrectTotals = data.map(item => {
+            const quantity = Number(item.quantity) || 0;
+            const unitPrice = Number(item.unitPrice) || 0;
+             return {
+                 ...item,
+                 lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Always recalculate
+             };
+        });
         setInventory(inventoryWithCorrectTotals);
       } catch (error) {
         console.error("Failed to fetch inventory:", error);
@@ -201,9 +212,7 @@ export default function InventoryPage() {
          const unitPrice = Number(item.unitPrice) || 0;
          return {
             ...item,
-            // Ensure internal data remains numeric, but recalculate lineTotal
-            quantity: parseFloat(quantity.toFixed(2)),
-            unitPrice: parseFloat(unitPrice.toFixed(2)),
+            // Recalculate lineTotal based on current data
             lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Recalculate here
          };
      });
@@ -232,9 +241,9 @@ export default function InventoryPage() {
 
     // Column definition including internal 'id' - Moved Actions to the beginning
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-left' }, // Actions first, text-left
-        { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-left sticky left-0 bg-card z-10 px-2 sm:px-4' }, // Actions first, sticky left
         { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]' },
+        { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default
@@ -468,7 +477,7 @@ export default function InventoryPage() {
            </div>
 
            {/* Inventory Table */}
-           <div className="overflow-x-auto">
+           <div className="overflow-x-auto relative">
              <Table>
                <TableHeader>
                  <TableRow>
@@ -481,7 +490,8 @@ export default function InventoryPage() {
                                 header.sortable && "cursor-pointer hover:bg-muted/50",
                                 // Apply mobileHidden classes conditionally based on screen size
                                 header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                                'px-2 sm:px-4 py-2' // Reduce padding for all cells
+                                'px-2 sm:px-4 py-2', // Reduce padding for all cells
+                                header.key === 'actions' && 'sticky left-0 bg-card z-10' // Ensure Actions header is sticky too
                             )}
                             onClick={() => header.sortable && handleSort(header.key as SortKey)}
                             aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -510,25 +520,38 @@ export default function InventoryPage() {
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                        {/* Render cells based on visibility state and mobileHidden */}
                         {visibleColumns.actions && (
-                         <TableCell className="text-left px-2 sm:px-4 py-2"> {/* Changed to text-left */}
-                           <Button
-                             variant="ghost"
-                             size="sm"
-                             onClick={() => item.id && router.push(`/inventory/${item.id}`)}
-                             disabled={!item.id}
-                             aria-label={`View details for ${item.description}`}
-                             className="h-8 px-2" // Adjust button size for mobile
-                           >
-                             <Eye className="mr-1 h-4 w-4" /> <span className="hidden sm:inline">Details</span> {/* Hide text on mobile */}
-                           </Button>
+                         <TableCell className={cn('text-left sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}> {/* Sticky cell */}
+                            <div className="flex gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => item.id && router.push(`/inventory/${item.id}`)}
+                                    disabled={!item.id}
+                                    aria-label={`View/Edit details for ${item.description}`}
+                                    className="h-8 w-8 text-primary hover:text-primary/80" // View/Edit Icon
+                                >
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    // onClick={() => handleDeleteItem(item.id)} // TODO: Implement single item delete
+                                    disabled={!item.id}
+                                    aria-label={`Delete ${item.description}`}
+                                    className="h-8 w-8 text-destructive hover:text-destructive/80" // Delete Icon
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
                          </TableCell>
                         )}
-                        {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
+                         {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
+                        {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-right px-2 sm:px-4 py-2">
-                             {/* Use formatDisplayNumber helper for quantity display as integer with grouping */}
-                            <span>{formatDisplayNumber(item.quantity, { decimals: 0, useGrouping: true })}</span>
+                             {/* Use formatIntegerQuantity helper for display */}
+                            <span>{formatIntegerQuantity(item.quantity)}</span>
                             {item.quantity === 0 && (
                               <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
                             )}
