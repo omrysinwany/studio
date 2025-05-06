@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -9,8 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices, saveProducts } from '@/services/backend'; // Import getInvoices and saveProducts
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import NextImage from 'next/image';
 
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
@@ -25,6 +28,9 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
+
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [currentImageUri, setCurrentImageUri] = useState<string | undefined>(undefined);
 
   // Function to fetch upload history
   const fetchHistory = useCallback(async () => {
@@ -76,30 +82,25 @@ export default function UploadPage() {
     }
   };
 
-  // Function to update the status of a specific history item (used visually during upload/processing)
-   const updateVisualStatus = useCallback((id: string, status: InvoiceHistoryItem['status'], errorMessage?: string) => {
-      setUploadHistory(prev => prev.map(item =>
-          item.id === id ? { ...item, status, errorMessage } : item
-      ));
-   }, []);
-
 
  const handleUpload = async () => {
     if (!selectedFile) return;
 
     setIsUploading(true);
-    setIsProcessing(false); // Ensure processing is false initially
+    setIsProcessing(false);
     setUploadProgress(0);
 
-    const tempId = `temp-${Date.now()}-${selectedFile.name}`; // Temporary ID for visual feedback
+    // Optimistic UI: Add a temporary item to history
+    const tempId = `temp-${Date.now()}-${selectedFile.name}`;
     const optimisticItem: InvoiceHistoryItem = {
       id: tempId,
       fileName: selectedFile.name,
-      uploadTime: new Date(), // Use Date object locally
+      uploadTime: new Date(),
       status: 'pending',
+      invoiceDataUri: undefined, // No URI initially
     };
-    // Add optimistic item to the top
-    setUploadHistory(prev => [optimisticItem, ...prev].slice(0, 10));
+    setUploadHistory(prev => [optimisticItem, ...prev.filter(item => item.id !== tempId)].slice(0, 10));
+
 
     // Simulate upload progress
     const progressInterval = setInterval(() => {
@@ -115,96 +116,86 @@ export default function UploadPage() {
 
 
    try {
-      // Convert file to data URI for the AI flow
       const reader = new FileReader();
       reader.readAsDataURL(selectedFile);
+
       reader.onloadend = async () => {
          const base64data = reader.result as string;
 
-         // Update visual status to processing
-         updateVisualStatus(tempId, 'processing');
-         setUploadProgress(100); // Mark upload as complete visually
+         // Update optimistic item to 'processing'
+         setUploadHistory(prev => prev.map(item => item.id === tempId ? { ...item, status: 'processing' } : item));
+         setUploadProgress(100);
          setIsUploading(false);
-         setIsProcessing(true); // Indicate processing has started visually
+         setIsProcessing(true);
 
          try {
-             const result = await scanInvoice({ invoiceDataUri: base64data });
-             console.log('AI Scan Result:', result);
+             const scanResult = await scanInvoice({ invoiceDataUri: base64data });
+             console.log('AI Scan Result:', scanResult);
 
-             // Store result in localStorage and navigate with a key
+             // Now call saveProducts with all necessary data including the base64 image URI
+             // saveProducts will create the actual InvoiceHistoryItem with status 'completed' or 'error'
+             await saveProducts(scanResult.products, selectedFile.name, 'upload', base64data, tempId);
+
+             // Store result in localStorage for editing page (if needed for temporary pass-through)
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}`;
-             try {
-                // Save products (and invoice history) using the backend service
-                // The AI result (result.products) and the base64data (invoiceDataUri) are passed here
-                await saveProducts(result.products, selectedFile.name, 'upload', base64data);
+             localStorage.setItem(dataKey, JSON.stringify(scanResult));
 
-                localStorage.setItem(dataKey, JSON.stringify(result)); // Still store for editing if needed
-                 toast({
-                   title: 'Processing & Save Complete',
-                   description: `${selectedFile.name} processed and saved. Review in inventory/invoices.`,
-                 });
+             toast({
+               title: 'Processing & Save Complete',
+               description: `${selectedFile.name} processed. Review in edit page or inventory/invoices.`,
+             });
+             router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
 
-                 // Navigate to edit page with the key and filename
-                 router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
-             } catch (storageOrSaveError) {
-                 console.error("Failed to save products or store scan results:", storageOrSaveError);
-                 updateVisualStatus(tempId, 'error', 'Failed to save data or prepare for editing.');
-                 toast({
-                     title: 'Error Saving Data',
-                     description: 'Could not save products or store scan results for editing. Please try again.',
-                     variant: 'destructive',
-                 });
-                 await fetchHistory(); // Refresh history
-             }
-
-         } catch (aiError) {
-             console.error('AI processing failed:', aiError);
-             // Update visual status to error
-             updateVisualStatus(tempId, 'error', 'AI failed to process the document.');
+         } catch (aiOrSaveError) {
+             console.error('AI processing or saveProducts failed:', aiOrSaveError);
+             // If saveProducts failed, it should have updated the history item's status to 'error'
+             // If scanInvoice failed before saveProducts was called, update optimistic item
+             setUploadHistory(prev => prev.map(item =>
+                item.id === tempId ? { ...item, status: 'error', errorMessage: (aiOrSaveError as Error).message || 'Processing/Save failed' } : item
+             ));
               toast({
                 title: 'Processing Failed',
-                description: 'The AI could not process the document. Please try again or check the file.',
+                description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
                 variant: 'destructive',
               });
-              await fetchHistory(); // Refresh history to show the error from backend if it exists
           } finally {
-             setIsProcessing(false); // Processing finished (success or error) visually
-             setSelectedFile(null); // Clear selection after processing attempt
+             setIsProcessing(false);
+             setSelectedFile(null);
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              // Fetch history again after processing attempt completes (success or failure)
-              // to get the actual record created by saveProducts or see the error persist
-              await fetchHistory();
+              await fetchHistory(); // Refresh history to get the final status from backend
           }
       };
 
        reader.onerror = async (error) => {
          console.error('Error reading file:', error);
-         clearInterval(progressInterval); // Clear interval on read error
+         clearInterval(progressInterval);
          setIsUploading(false);
-         // Update visual status to error
-         updateVisualStatus(tempId, 'error', 'Failed to read the file.');
+         setUploadHistory(prev => prev.map(item =>
+            item.id === tempId ? { ...item, status: 'error', errorMessage: 'Failed to read file' } : item
+         ));
          toast({
            title: 'Upload Failed',
            description: 'Could not read the selected file.',
            variant: 'destructive',
          });
-         await fetchHistory(); // Refresh history
+         await fetchHistory();
        };
 
     } catch (error) {
        console.error('Upload failed:', error);
-       clearInterval(progressInterval); // Clear interval on unexpected error
+       clearInterval(progressInterval);
        setIsUploading(false);
-        // Update visual status to error
-       updateVisualStatus(tempId, 'error', 'An unexpected error occurred during upload.');
+       setUploadHistory(prev => prev.map(item =>
+          item.id === tempId ? { ...item, status: 'error', errorMessage: 'Unexpected upload error' } : item
+       ));
        toast({
          title: 'Upload Failed',
          description: 'An unexpected error occurred. Please try again.',
          variant: 'destructive',
        });
-       await fetchHistory(); // Refresh history
+       await fetchHistory();
      }
   };
 
@@ -214,12 +205,24 @@ export default function UploadPage() {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        // Use locale string for better readability
         return dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
        return 'Invalid Date';
      }
    };
+
+   const handleViewImage = (imageUri: string | undefined) => {
+    if (imageUri) {
+      setCurrentImageUri(imageUri);
+      setShowImageModal(true);
+    } else {
+      toast({
+        title: "No Image",
+        description: "No image is available for this invoice.",
+        variant: "default",
+      });
+    }
+  };
 
 
   return (
@@ -232,7 +235,7 @@ export default function UploadPage() {
           <CardDescription>Select a JPEG, PNG, or PDF file of your invoice or delivery note.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"> {/* Use items-stretch for column */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             <Input
               id="document"
               type="file"
@@ -245,7 +248,7 @@ export default function UploadPage() {
              <Button
                 onClick={handleUpload}
                 disabled={!selectedFile || isUploading || isProcessing}
-                className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground shrink-0" // shrink-0 prevents button shrinking
+                className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground shrink-0"
               >
                {isUploading ? (
                  <>
@@ -293,30 +296,42 @@ export default function UploadPage() {
            ) : uploadHistory.length === 0 ? (
             <p className="text-center text-muted-foreground py-4">No recent uploads.</p>
           ) : (
-            <div className="overflow-x-auto relative"> {/* Added relative positioning */}
+            <div className="overflow-x-auto relative">
                 <Table>
                 <TableHeader>
                     <TableRow>
-                    <TableHead>File Name</TableHead>
+                    <TableHead className="w-[40%] sm:w-[50%]">File Name</TableHead>
                     <TableHead>Upload Time</TableHead>
                     <TableHead className="text-right">Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {uploadHistory.map((item) => (
                     <TableRow key={item.id}>
-                        <TableCell className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2"> {/* Reduced padding */}
-                            {item.fileName}
+                        <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">
+                            {item.invoiceDataUri ? (
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline"
+                                onClick={() => handleViewImage(item.invoiceDataUri)}
+                                title={`View image for ${item.fileName}`}
+                              >
+                                {item.fileName}
+                              </Button>
+                            ) : (
+                              item.fileName
+                            )}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground px-2 sm:px-4 py-2"> {/* Reduced padding */}
+                        <TableCell className="text-sm text-muted-foreground px-2 sm:px-4 py-2">
                         {formatDate(item.uploadTime)}
                         </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2"> {/* Reduced padding */}
+                        <TableCell className="text-right px-2 sm:px-4 py-2">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             item.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                             item.status === 'processing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse' :
                             item.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                            item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' // Fallback style
+                            item.status === 'error' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
                         }`}>
                             {item.status === 'completed' && <CheckCircle className="mr-1 h-3 w-3" />}
                             {item.status === 'processing' && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
@@ -328,6 +343,20 @@ export default function UploadPage() {
                             <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-right" title={item.errorMessage}>{item.errorMessage}</p>
                         )}
                         </TableCell>
+                        <TableCell className="text-right px-2 sm:px-4 py-2">
+                            {item.invoiceDataUri && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-primary hover:text-primary/80 h-7 w-7"
+                                onClick={() => handleViewImage(item.invoiceDataUri)}
+                                title={`View image for ${item.fileName}`}
+                                aria-label={`View image for ${item.fileName}`}
+                              >
+                                <ImageIcon className="h-4 w-4" />
+                              </Button>
+                           )}
+                        </TableCell>
                     </TableRow>
                     ))}
                 </TableBody>
@@ -336,6 +365,27 @@ export default function UploadPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Invoice Image</DialogTitle>
+            <DialogDescription>Viewing scanned document.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 overflow-auto max-h-[70vh]">
+            {currentImageUri && (
+              <NextImage
+                src={currentImageUri}
+                alt="Scanned Invoice"
+                width={800}
+                height={1100}
+                className="rounded-md object-contain"
+                data-ai-hint="invoice document"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

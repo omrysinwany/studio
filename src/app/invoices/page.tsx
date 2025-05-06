@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon } from 'lucide-react'; // Added Eye, Download, ImageIcon
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -29,10 +30,21 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoices, deleteInvoice } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import Image from 'next/image'; // Import next/image
+import NextImage from 'next/image';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent as AlertDialogContentComponent,
+  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogFooter,
+  AlertDialogHeader as AlertDialogHeaderComponent,
+  AlertDialogTitle as AlertDialogTitleComponent,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 // Helper function to safely format numbers
@@ -40,7 +52,7 @@ const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = false } = options || {}; // Default: 2 decimals, no grouping for inputs
+    const { decimals = 2, useGrouping = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         return (0).toLocaleString(undefined, {
@@ -58,7 +70,6 @@ const formatNumber = (
 };
 
 
-// Assume backend provides suppliers for filtering (or derive from fetched data) - Kept for UI demo
 const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
 
 type SortKey = keyof InvoiceHistoryItem | '';
@@ -69,15 +80,15 @@ export default function InvoicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
-    id: false, // Keep ID internal if not needed for display but useful for export/keys
+    id: false,
     fileName: true,
-    uploadTime: false, // Hide time by default on mobile
+    uploadTime: false,
     status: true,
-    invoiceNumber: false, // Hide invoice# by default on mobile
+    invoiceNumber: false,
     supplier: true,
     totalAmount: true,
-    errorMessage: false, // Keep hidden by default
-    invoiceDataUri: false, // Hidden by default, used for image view
+    errorMessage: false,
+    invoiceDataUri: false,
     actions: true,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -89,19 +100,13 @@ export default function InvoicesPage() {
   const { toast } = useToast();
   const [showImageModal, setShowImageModal] = useState(false);
   const [currentImageUri, setCurrentImageUri] = useState<string | undefined>(undefined);
+  const [isDeleting, setIsDeleting] = useState(false);
 
 
-   // Function to fetch invoice data
     const fetchInvoices = useCallback(async () => {
       setIsLoading(true);
       try {
-        console.log("Fetching invoices from backend...");
         let fetchedData = await getInvoices();
-        console.log("Fetched invoices:", fetchedData);
-
-        // Backend service now handles date conversion.
-
-        // Apply client-side filtering (can be moved to backend later)
         let filteredData = fetchedData;
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -111,16 +116,15 @@ export default function InvoicesPage() {
         }
          if (dateRange?.from) {
             const startDate = new Date(dateRange.from);
-            startDate.setHours(0, 0, 0, 0); // Set to start of the day
+            startDate.setHours(0, 0, 0, 0);
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime) >= startDate);
          }
          if (dateRange?.to) {
             const endDate = new Date(dateRange.to);
-            endDate.setHours(23, 59, 59, 999); // Set to end of the day
+            endDate.setHours(23, 59, 59, 999);
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime) <= endDate);
          }
 
-        // Sort before setting state
          if (sortKey) {
              filteredData.sort((a, b) => {
                  const valA = a[sortKey as keyof InvoiceHistoryItem];
@@ -142,9 +146,7 @@ export default function InvoicesPage() {
                  return sortDirection === 'asc' ? comparison : comparison * -1;
              });
          }
-
         setInvoices(filteredData);
-
       } catch (error) {
         console.error("Failed to fetch invoices:", error);
         toast({
@@ -156,13 +158,12 @@ export default function InvoicesPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection]); // Added sortKey, sortDirection
+    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection]);
 
 
-   // Fetch invoice data on mount and when filters/sort change
    useEffect(() => {
      fetchInvoices();
-   }, [fetchInvoices]); // fetchInvoices includes all its own dependencies
+   }, [fetchInvoices]);
 
 
   const handleSort = (key: SortKey) => {
@@ -173,15 +174,10 @@ export default function InvoicesPage() {
       setSortKey(key);
       setSortDirection('asc');
     }
-     // Re-fetch will handle sorting now
-    // fetchInvoices(); // Trigger refetch which includes sorting
   };
 
-   // Memoization is less crucial now as sorting happens in fetchInvoices
    const filteredAndSortedInvoices = useMemo(() => {
-    let result = [...invoices]; // Use the already filtered and sorted data from state
-
-    // Search filtering (applied after fetching/sorting)
+    let result = [...invoices];
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
@@ -190,35 +186,30 @@ export default function InvoicesPage() {
         (item.supplier && item.supplier.toLowerCase().includes(lowerSearchTerm))
       );
     }
-
     return result;
   }, [invoices, searchTerm]);
 
 
-   // Column definition including internal 'id'
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] truncate' },
-      { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true }, // Hide time on mobile
+      { key: 'id', label: 'ID', sortable: true, className: "hidden" },
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[30%] sm:w-[40%] min-w-[120px] sm:min-w-[150px] truncate' },
+      { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
-      { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Shorten, hide on mobile
-      { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true }, // Hide supplier on mobile
-      { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' }, // Shorten label
-      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate' },
-      { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' }, // Hidden column for data URI
-      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
+      { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
+      { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
+      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
+      { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' },
+      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right min-w-[100px]' }
    ];
 
-    // Filter columns for header display based on visibility state
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri'); // Exclude invoiceDataUri from header
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'id' && h.key !== 'errorMessage');
 
-   // Format date for display
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
         if (isNaN(dateObj.getTime())) return 'Invalid Date';
-        // Show shorter format on mobile
         return window.innerWidth < 640
              ? format(dateObj, 'dd/MM/yy')
              : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -242,6 +233,27 @@ export default function InvoicesPage() {
         description: "No image is available for this invoice.",
         variant: "default",
       });
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    setIsDeleting(true);
+    try {
+        await deleteInvoice(invoiceId);
+        toast({
+            title: "Invoice Deleted",
+            description: "The invoice has been successfully deleted.",
+        });
+        fetchInvoices(); // Refresh the list
+    } catch (error) {
+        console.error("Failed to delete invoice:", error);
+        toast({
+            title: "Delete Failed",
+            description: "Could not delete the invoice. Please try again.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsDeleting(false);
     }
   };
 
@@ -287,14 +299,13 @@ export default function InvoicesPage() {
      }
 
      return (
-        <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}> {/* Smaller badge on mobile */}
+        <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
             {status.charAt(0).toUpperCase() + status.slice(1)}
         </Badge>
      );
   };
 
-    // --- CSV Export ---
     const escapeCsvValue = (value: any): string => {
         if (value === null || value === undefined) {
           return '';
@@ -319,7 +330,7 @@ export default function InvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage' // invoiceDataUri is typically not exported
+            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
         ];
         const headers = exportColumns
             .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
@@ -341,7 +352,6 @@ export default function InvoicesPage() {
         URL.revokeObjectURL(url);
         toast({ title: "Export Started", description: "Your invoice data is being downloaded as CSV." });
     };
-    // --- End CSV Export ---
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -353,12 +363,11 @@ export default function InvoicesPage() {
           <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Toolbar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search..." // Shorten placeholder
+                placeholder="Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -366,14 +375,13 @@ export default function InvoicesPage() {
               />
             </div>
             <div className="flex gap-2 flex-wrap justify-start md:justify-end">
-                {/* Date Range Filter */}
                  <Popover>
                    <PopoverTrigger asChild>
                      <Button
                        id="invoiceDate"
                        variant={"outline"}
                        className={cn(
-                         "w-full sm:w-[260px] justify-start text-left font-normal", // Full width on mobile
+                         "w-full sm:w-[260px] justify-start text-left font-normal",
                          !dateRange && "text-muted-foreground"
                        )}
                        aria-label="Select date range for filtering invoices"
@@ -382,13 +390,13 @@ export default function InvoicesPage() {
                        {dateRange?.from ? (
                          dateRange.to ? (
                            <>
-                             {format(dateRange.from, "PP")} - {format(dateRange.to, "PP")} {/* Short format */}
+                             {format(dateRange.from, "PP")} - {format(dateRange.to, "PP")}
                            </>
                          ) : (
                            format(dateRange.from, "PP")
                          )
                        ) : (
-                         <span>Date Range</span> // Shorten label
+                         <span>Date Range</span>
                        )}
                      </Button>
                    </PopoverTrigger>
@@ -399,8 +407,8 @@ export default function InvoicesPage() {
                        defaultMonth={dateRange?.from}
                        selected={dateRange}
                        onSelect={setDateRange}
-                       numberOfMonths={1} // Show only 1 month on mobile
-                       className="sm:block hidden" // Hide default on mobile
+                       numberOfMonths={1}
+                       className="sm:block hidden"
                      />
                        <Calendar
                         initialFocus
@@ -409,7 +417,7 @@ export default function InvoicesPage() {
                         selected={dateRange}
                         onSelect={setDateRange}
                         numberOfMonths={2}
-                        className="hidden sm:block" // Show 2 months on larger screens
+                        className="hidden sm:block"
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -419,13 +427,12 @@ export default function InvoicesPage() {
                    </PopoverContent>
                  </Popover>
 
-              {/* Supplier Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`}> {/* Full width on mobile */}
+                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`}>
                     <Filter className="mr-2 h-4 w-4" />
                     {filterSupplier || 'Supplier'}
-                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -437,7 +444,6 @@ export default function InvoicesPage() {
                   >
                     All Suppliers
                   </DropdownMenuCheckboxItem>
-                  {/* Dynamically populate suppliers from data if needed */}
                   {MOCK_SUPPLIERS.map((supplier) => (
                     <DropdownMenuCheckboxItem
                       key={supplier}
@@ -450,13 +456,12 @@ export default function InvoicesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Status Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`}> {/* Full width on mobile */}
+                   <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`}>
                     <Filter className="mr-2 h-4 w-4" />
                     {filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'Status'}
-                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -475,12 +480,11 @@ export default function InvoicesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Column Visibility Toggle */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility"> {/* Full width on mobile */}
+                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility">
                     <Eye className="mr-2 h-4 w-4" /> View
-                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -507,16 +511,14 @@ export default function InvoicesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-               {/* Export Button */}
-               <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial"> {/* Full width on mobile */}
+               <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial">
                  <Download className="mr-2 h-4 w-4" /> Export CSV
                </Button>
             </div>
           </div>
 
-          {/* Invoices Table - Wrapped in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Set a minimum width for horizontal scroll */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   {visibleColumnHeaders.map((header) => (
@@ -525,13 +527,13 @@ export default function InvoicesPage() {
                       className={cn(
                           header.className,
                           header.sortable && "cursor-pointer hover:bg-muted/50",
-                          header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', // Hide columns based on flag
-                          'px-2 sm:px-4 py-2' // Reduce padding
+                          header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
+                          'px-2 sm:px-4 py-2'
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
-                      <div className="flex items-center gap-1 whitespace-nowrap"> {/* Prevent wrapping */}
+                      <div className="flex items-center gap-1 whitespace-nowrap">
                          {header.label}
                          {header.sortable && sortKey === header.key && (
                             <span className="text-xs" aria-hidden="true">
@@ -562,20 +564,19 @@ export default function InvoicesPage() {
                 ) : (
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                       {/* Render cells based on visibility state and mobileHidden */}
                        {visibleColumns.fileName && (
-                          <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">
+                          <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
                             {item.invoiceDataUri ? (
                               <Button
                                 variant="link"
-                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline"
+                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
                                 onClick={() => handleViewImage(item.invoiceDataUri)}
                                 title={`View image for ${item.fileName}`}
                               >
                                 {item.fileName}
                               </Button>
                             ) : (
-                              item.fileName
+                              <span className="truncate">{item.fileName}</span>
                             )}
                           </TableCell>
                        )}
@@ -588,7 +589,7 @@ export default function InvoicesPage() {
                        {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || '-'}</TableCell>}
                        {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || '-'}</TableCell>}
                        {visibleColumns.totalAmount && (
-                         <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap"> {/* Prevent wrapping */}
+                         <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
                             {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
                          </TableCell>
                        )}
@@ -599,23 +600,47 @@ export default function InvoicesPage() {
                        )}
                         {visibleColumns.actions && (
                          <TableCell className="text-right px-2 sm:px-4 py-2">
-                           {item.status === 'error' && item.errorMessage && (
-                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title={item.errorMessage} aria-label="View error details"> {/* Smaller icon button */}
-                               <AlertCircle className="h-4 w-4" />
-                             </Button>
-                           )}
-                           {item.invoiceDataUri && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-primary hover:text-primary/80 h-7 w-7 ml-1"
-                                onClick={() => handleViewImage(item.invoiceDataUri)}
-                                title={`View image for ${item.fileName}`}
-                                aria-label={`View image for ${item.fileName}`}
-                              >
-                                <ImageIcon className="h-4 w-4" />
-                              </Button>
-                           )}
+                            <div className="flex items-center justify-end gap-1">
+                                {item.invoiceDataUri && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-primary hover:text-primary/80 h-7 w-7"
+                                    onClick={() => handleViewImage(item.invoiceDataUri)}
+                                    title={`View image for ${item.fileName}`}
+                                    aria-label={`View image for ${item.fileName}`}
+                                  >
+                                    <ImageIcon className="h-4 w-4" />
+                                  </Button>
+                               )}
+                                {item.status === 'error' && item.errorMessage && (
+                                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title={item.errorMessage} aria-label="View error details">
+                                   <AlertCircle className="h-4 w-4" />
+                                 </Button>
+                               )}
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title="Delete Invoice" aria-label="Delete Invoice">
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContentComponent>
+                                        <AlertDialogHeaderComponent>
+                                            <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
+                                            <AlertDialogDescriptionComponent>
+                                                This action cannot be undone. This will permanently delete the invoice "{item.fileName}".
+                                            </AlertDialogDescriptionComponent>
+                                        </AlertDialogHeaderComponent>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleDeleteInvoice(item.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                                Yes, Delete Invoice
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContentComponent>
+                                </AlertDialog>
+                            </div>
                          </TableCell>
                         )}
                     </TableRow>
@@ -624,11 +649,9 @@ export default function InvoicesPage() {
               </TableBody>
             </Table>
           </div>
-          {/* TODO: Add Pagination if needed */}
         </CardContent>
       </Card>
 
-      {/* Image Modal */}
       <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
         <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
@@ -637,11 +660,11 @@ export default function InvoicesPage() {
           </DialogHeader>
           <div className="mt-4 overflow-auto max-h-[70vh]">
             {currentImageUri && (
-              <Image
+              <NextImage
                 src={currentImageUri}
                 alt="Scanned Invoice"
-                width={800} // Adjust as needed, or use layout="responsive"
-                height={1100} // Adjust as needed
+                width={800}
+                height={1100}
                 className="rounded-md object-contain"
                 data-ai-hint="invoice document"
               />
