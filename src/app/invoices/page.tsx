@@ -20,8 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye } from 'lucide-react'; // Added Eye
+import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye, List, Grid } from 'lucide-react'; // Added List, Grid
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -30,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices, deleteInvoice, updateInvoice } from '@/services/backend'; // Added updateInvoice
+import { InvoiceHistoryItem, getInvoices, deleteInvoice, updateInvoice } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -46,9 +46,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
-import { Label } from '@/components/ui/label'; // For edit form
-import { Textarea } from '@/components/ui/textarea'; // For error message editing
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // For status editing
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+// Removed Select imports as status is no longer editable
 
 
 // Helper function to safely format numbers
@@ -74,10 +74,11 @@ const formatNumber = (
 };
 
 
-const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply']; // TODO: Fetch dynamically
+const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
 
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
+type ViewMode = 'list' | 'grid'; // Added ViewMode type
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
@@ -106,10 +107,10 @@ export default function InvoicesPage() {
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // State for editing invoice details in modal
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list'); // Added viewMode state
 
 
     const fetchInvoices = useCallback(async () => {
@@ -121,9 +122,14 @@ export default function InvoicesPage() {
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoices.get(invoice.id);
             if (existing) {
-                if (!existing.invoiceDataUri && invoice.invoiceDataUri) {
+                // Prefer the record that has an image URI if the other doesn't
+                if (invoice.invoiceDataUri && !existing.invoiceDataUri) {
                     uniqueInvoices.set(invoice.id, invoice);
-                } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()) { // Compare as numbers
+                } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
+                    // Keep the existing one as it has the image
+                }
+                // If both have or don't have image, prefer the newer one
+                else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()) {
                      uniqueInvoices.set(invoice.id, invoice);
                 }
             } else {
@@ -216,7 +222,7 @@ export default function InvoicesPage() {
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'viewDetails'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' }, // Sticky left
+      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
       { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
@@ -250,8 +256,8 @@ export default function InvoicesPage() {
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
     setSelectedInvoiceDetails(invoice);
-    setEditedInvoiceData({ ...invoice }); // Initialize edit form
-    setIsEditingDetails(false); // Start in view mode
+    setEditedInvoiceData({ ...invoice });
+    setIsEditingDetails(false);
     setShowDetailsModal(true);
   };
 
@@ -278,7 +284,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | InvoiceHistoryItem['status']) => {
+  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number ) => { // Status removed
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -286,13 +292,12 @@ export default function InvoicesPage() {
     if (!selectedInvoiceDetails || !selectedInvoiceDetails.id) return;
     setIsSavingDetails(true);
     try {
-        // Construct the updated invoice object
         const updatedInvoice: Partial<InvoiceHistoryItem> = {
             fileName: editedInvoiceData.fileName || selectedInvoiceDetails.fileName,
             invoiceNumber: editedInvoiceData.invoiceNumber || undefined,
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
-            status: editedInvoiceData.status || selectedInvoiceDetails.status,
+            // status: editedInvoiceData.status || selectedInvoiceDetails.status, // Status no longer editable
             errorMessage: editedInvoiceData.errorMessage || undefined,
         };
 
@@ -301,10 +306,9 @@ export default function InvoicesPage() {
             title: "Invoice Updated",
             description: "Invoice details saved successfully.",
         });
-        setIsEditingDetails(false); // Switch back to view mode
-        fetchInvoices(); // Reload invoices to show updated data
-        // Update selectedInvoiceDetails with new data for modal display
-        setSelectedInvoiceDetails(prev => prev ? { ...prev, ...updatedInvoice, uploadTime: prev.uploadTime, invoiceDataUri: prev.invoiceDataUri } : null);
+        setIsEditingDetails(false);
+        fetchInvoices();
+        setSelectedInvoiceDetails(prev => prev ? { ...prev, ...updatedInvoice, uploadTime: prev.uploadTime, invoiceDataUri: prev.invoiceDataUri, status: prev.status } : null);
     } catch (error) {
         console.error("Failed to save invoice details:", error);
         toast({
@@ -417,9 +421,31 @@ export default function InvoicesPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-            <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
+            </CardTitle>
+            <div className="flex items-center gap-2">
+                <Button
+                    variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    onClick={() => setViewMode('list')}
+                    aria-label="List view"
+                    title="List view"
+                >
+                    <List className="h-5 w-5" />
+                </Button>
+                <Button
+                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    onClick={() => setViewMode('grid')}
+                    aria-label="Grid view"
+                    title="Grid view"
+                >
+                    <Grid className="h-5 w-5" />
+                </Button>
+            </div>
+          </div>
           <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -468,7 +494,7 @@ export default function InvoicesPage() {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden" // Corrected: sm:block hidden to show on small screens, then hidden (no effect unless other class overrides)
+                       className="sm:block hidden"
                      />
                        <Calendar
                         initialFocus
@@ -477,7 +503,7 @@ export default function InvoicesPage() {
                         selected={dateRange}
                         onSelect={setDateRange}
                         numberOfMonths={2}
-                        className="hidden sm:block" // Show on sm and up
+                        className="hidden sm:block"
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -540,36 +566,38 @@ export default function InvoicesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility">
-                    <Eye className="mr-2 h-4 w-4" /> View
-                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'viewDetails').map((header) => (
+             {viewMode === 'list' && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility">
+                      <Eye className="mr-2 h-4 w-4" /> View
+                      <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'viewDetails').map((header) => (
+                      <DropdownMenuCheckboxItem
+                        key={header.key}
+                        className="capitalize"
+                        checked={visibleColumns[header.key]}
+                        onCheckedChange={() => toggleColumnVisibility(header.key)}
+                      >
+                        {header.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
                     <DropdownMenuCheckboxItem
-                      key={header.key}
-                      className="capitalize"
-                      checked={visibleColumns[header.key]}
-                      onCheckedChange={() => toggleColumnVisibility(header.key)}
-                    >
-                      {header.label}
+                        key="errorMessage"
+                        className="capitalize"
+                        checked={visibleColumns.errorMessage}
+                        onCheckedChange={() => toggleColumnVisibility('errorMessage')}
+                      >
+                        {columnDefinitions.find(h => h.key === 'errorMessage')?.label || 'Error Message'}
                     </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuCheckboxItem
-                      key="errorMessage"
-                      className="capitalize"
-                      checked={visibleColumns.errorMessage}
-                      onCheckedChange={() => toggleColumnVisibility('errorMessage')}
-                    >
-                      {columnDefinitions.find(h => h.key === 'errorMessage')?.label || 'Error Message'}
-                  </DropdownMenuCheckboxItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
                <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial">
                  <Download className="mr-2 h-4 w-4" /> Export CSV
@@ -577,104 +605,159 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
-              <TableHeader>
-                <TableRow>
-                  {visibleColumnHeaders.map((header) => (
-                    <TableHead
-                      key={header.key}
-                      className={cn(
-                          header.className,
-                          header.sortable && "cursor-pointer hover:bg-muted/50",
-                          header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                          'px-2 sm:px-4 py-2',
-                          header.key === 'viewDetails' && 'sticky left-0 bg-card z-10'
-                      )}
-                      onClick={() => header.sortable && handleSort(header.key as SortKey)}
-                      aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
-                    >
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                         {header.label}
-                         {header.sortable && sortKey === header.key && (
-                            <span className="text-xs" aria-hidden="true">
-                               {sortDirection === 'asc' ? '▲' : '▼'}
-                            </span>
-                         )}
-                      </div>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+          {viewMode === 'list' ? (
+            <div className="overflow-x-auto relative">
+              <Table className="min-w-[600px]">
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                      <div className="flex justify-center items-center">
-                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                         <span className="ml-2">Loading invoices...</span>
-                      </div>
-                    </TableCell>
+                    {visibleColumnHeaders.map((header) => (
+                      <TableHead
+                        key={header.key}
+                        className={cn(
+                            header.className,
+                            header.sortable && "cursor-pointer hover:bg-muted/50",
+                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
+                            'px-2 sm:px-4 py-2',
+                            header.key === 'viewDetails' && 'sticky left-0 bg-card z-10'
+                        )}
+                        onClick={() => header.sortable && handleSort(header.key as SortKey)}
+                        aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+                      >
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                           {header.label}
+                           {header.sortable && sortKey === header.key && (
+                              <span className="text-xs" aria-hidden="true">
+                                 {sortDirection === 'asc' ? '▲' : '▼'}
+                              </span>
+                           )}
+                        </div>
+                      </TableHead>
+                    ))}
                   </TableRow>
-                ) : filteredAndSortedInvoices.length === 0 ? (
-                  <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                       No invoices found matching your criteria.
-                     </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAndSortedInvoices.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                        {visibleColumns.viewDetails && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
-                               <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   className="text-primary hover:text-primary/80 h-7 w-7"
-                                   onClick={() => handleViewDetails(item)}
-                                   title={`View details for ${item.fileName}`}
-                                   aria-label={`View details for ${item.fileName}`}
-                               >
-                                   <Info className="h-4 w-4" />
-                               </Button>
-                           </TableCell>
-                       )}
-                       {visibleColumns.fileName && (
-                          <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
-                             <Button
-                                variant="link"
-                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
-                                onClick={() => handleViewDetails(item)}
-                                title={`View details for ${item.fileName}`}
-                              >
-                                {item.fileName}
-                            </Button>
-                          </TableCell>
-                       )}
-                       {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
-                       {visibleColumns.status && (
-                         <TableCell className="px-2 sm:px-4 py-2">
-                            {renderStatusBadge(item.status)}
-                         </TableCell>
-                       )}
-                       {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || '-'}</TableCell>}
-                       {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || '-'}</TableCell>}
-                       {visibleColumns.totalAmount && (
-                         <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
-                            {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
-                         </TableCell>
-                       )}
-                       {visibleColumns.errorMessage && (
-                         <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
-                             {item.status === 'error' ? item.errorMessage : '-'}
-                         </TableCell>
-                       )}
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
+                        <div className="flex justify-center items-center">
+                           <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                           <span className="ml-2">Loading invoices...</span>
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : filteredAndSortedInvoices.length === 0 ? (
+                    <TableRow>
+                       <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
+                         No invoices found matching your criteria.
+                       </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAndSortedInvoices.map((item) => (
+                      <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                          {visibleColumns.viewDetails && (
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
+                                 <Button
+                                     variant="ghost"
+                                     size="icon"
+                                     className="text-primary hover:text-primary/80 h-7 w-7"
+                                     onClick={() => handleViewDetails(item)}
+                                     title={`View details for ${item.fileName}`}
+                                     aria-label={`View details for ${item.fileName}`}
+                                 >
+                                     <Info className="h-4 w-4" />
+                                 </Button>
+                             </TableCell>
+                         )}
+                         {visibleColumns.fileName && (
+                            <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
+                               <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
+                                  onClick={() => handleViewDetails(item)}
+                                  title={`View details for ${item.fileName}`}
+                                >
+                                  {item.fileName}
+                              </Button>
+                            </TableCell>
+                         )}
+                         {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
+                         {visibleColumns.status && (
+                           <TableCell className="px-2 sm:px-4 py-2">
+                              {renderStatusBadge(item.status)}
+                           </TableCell>
+                         )}
+                         {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || '-'}</TableCell>}
+                         {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || '-'}</TableCell>}
+                         {visibleColumns.totalAmount && (
+                           <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
+                              {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
+                           </TableCell>
+                         )}
+                         {visibleColumns.errorMessage && (
+                           <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
+                               {item.status === 'error' ? item.errorMessage : '-'}
+                           </TableCell>
+                         )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            // Grid View
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {isLoading ? (
+                 Array.from({ length: 8 }).map((_, index) => (
+                    <Card key={index} className="animate-pulse">
+                        <CardHeader className="h-32 bg-muted rounded-t-lg" />
+                        <CardContent className="p-4 space-y-2">
+                            <div className="h-4 bg-muted rounded w-3/4" />
+                            <div className="h-3 bg-muted rounded w-1/2" />
+                            <div className="h-3 bg-muted rounded w-1/4" />
+                        </CardContent>
+                    </Card>
+                 ))
+              ) : filteredAndSortedInvoices.length === 0 ? (
+                <p className="col-span-full text-center text-muted-foreground py-10">No invoices found.</p>
+              ) : (
+                filteredAndSortedInvoices.map((item) => (
+                  <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleViewDetails(item)}>
+                    <CardHeader className="p-0 relative aspect-[4/3]">
+                      {item.invoiceDataUri ? (
+                        <NextImage
+                          src={item.invoiceDataUri}
+                          alt={`Preview of ${item.fileName}`}
+                          layout="fill"
+                          objectFit="cover"
+                          className="rounded-t-lg"
+                          data-ai-hint="invoice document preview"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
+                          <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                        </div>
+                      )}
+                       <div className="absolute top-2 right-2">
+                          {renderStatusBadge(item.status)}
+                       </div>
+                    </CardHeader>
+                    <CardContent className="p-3 flex-grow">
+                      <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
+                      <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
+                       {item.supplier && <p className="text-xs text-muted-foreground">Supplier: {item.supplier}</p>}
+                       {item.totalAmount !== undefined && <p className="text-xs font-medium">Total: ₪{formatNumber(item.totalAmount, { useGrouping: true })}</p>}
+                    </CardContent>
+                     <CardFooter className="p-3 border-t">
+                        <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
+                            <Info className="mr-1.5 h-3.5 w-3.5"/> View Details
+                        </Button>
+                     </CardFooter>
+                  </Card>
+                ))
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -706,6 +789,7 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
+                    {/* Status is no longer editable here
                     <div>
                         <Label htmlFor="editStatus">Status</Label>
                          <Select
@@ -724,7 +808,8 @@ export default function InvoicesPage() {
                             </SelectContent>
                         </Select>
                     </div>
-                    {editedInvoiceData.status === 'error' && (
+                    */}
+                    {selectedInvoiceDetails.status === 'error' && ( // Show error message editing only if original status is error
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
@@ -814,5 +899,3 @@ export default function InvoicesPage() {
   );
 }
 
-
-    
