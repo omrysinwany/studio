@@ -1,16 +1,15 @@
-
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
 
 /**
- * Represents a product extracted from a document.
+ * Represents a product extracted from a document or POS system.
  */
 export interface Product {
   /**
-   * Optional unique identifier for the product in the inventory.
+   * Unique identifier for the product in the inventory. Generated if not provided.
    */
-  id?: string;
+  id: string;
   /**
    * The catalog number of the product.
    */
@@ -72,17 +71,26 @@ interface StoredPosSettings {
 }
 
 // --- LocalStorage Helper Functions ---
-const getStoredData = <T>(key: string, initialData?: T[]): T[] => {
+const getStoredData = <T extends {id: string}>(key: string, initialData?: T[]): T[] => {
   if (typeof window === 'undefined') {
     return initialData || [];
   }
   try {
     const stored = localStorage.getItem(key);
     if (stored) {
-      return JSON.parse(stored);
+      // Ensure each item has an ID
+      const parsedData = JSON.parse(stored) as T[];
+      return parsedData.map((item, index) => ({
+          ...item,
+          id: item.id || `${key}-${Date.now()}-${index}` // Assign generated ID if missing
+      }));
     } else if (initialData) {
-      localStorage.setItem(key, JSON.stringify(initialData));
-      return initialData;
+       const dataWithIds = initialData.map((item, index) => ({
+            ...item,
+            id: item.id || `${key}-initial-${Date.now()}-${index}`
+       }));
+      localStorage.setItem(key, JSON.stringify(dataWithIds));
+      return dataWithIds;
     }
     return []; // Return empty array if no initial data and nothing stored
   } catch (error) {
@@ -231,10 +239,12 @@ export async function saveProducts(
            console.log("Skipping adding product with no catalog number or description:", newProduct);
            return;
        }
-      console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description}`);
-      const productToAdd: Product = {
+       // Generate a new unique ID if one wasn't provided or found
+       const newId = newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+       console.log(`Adding new product: ${newProduct.catalogNumber || newProduct.description} with ID ${newId}`);
+       const productToAdd: Product = {
         ...newProduct,
-        id: newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Use provided ID or generate new
+        id: newId,
         quantity: quantityToAdd,
         unitPrice: unitPrice, // Use the determined unit price
         lineTotal: lineTotal,
@@ -248,8 +258,11 @@ export async function saveProducts(
 
    // Add a record to the invoice history ONLY if the source is an upload/manual edit
    if (source === 'upload') {
+        // Generate a unique ID for the invoice record
+        const newInvoiceId = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        console.log(`Adding new invoice record with ID: ${newInvoiceId}`);
        const newInvoiceRecord: InvoiceHistoryItem = {
-           id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+           id: newInvoiceId,
            fileName: fileName,
            uploadTime: new Date().toISOString(), // Store as ISO string
            status: 'completed',
@@ -273,7 +286,7 @@ export async function saveProducts(
 
 /**
  * Asynchronously retrieves the list of all products using localStorage.
- *
+ * Ensures each product has an ID.
  * @returns A promise that resolves to an array of Product objects.
  */
 export async function getProductsService(): Promise<Product[]> {
@@ -287,6 +300,8 @@ export async function getProductsService(): Promise<Product[]> {
       const unitPrice = Number(item.unitPrice) || 0;
       return {
         ...item,
+        // Ensure ID exists, just in case getStoredData logic changes
+        id: item.id || `prod-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
       };
   });
@@ -296,7 +311,7 @@ export async function getProductsService(): Promise<Product[]> {
 
 /**
  * Asynchronously retrieves a single product by its ID using localStorage.
- *
+ * Ensures the returned product has an ID.
  * @param productId The ID of the product to retrieve.
  * @returns A promise that resolves to the Product object or null if not found.
  */
@@ -311,25 +326,68 @@ export async function getProductById(productId: string): Promise<Product | null>
         const unitPrice = Number(product.unitPrice) || 0;
         return {
            ...product,
+           id: product.id || productId, // Ensure ID is present
            lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
         };
    }
    return null; // Return null if product not found
 }
 
+
+/**
+ * Asynchronously updates an existing product in localStorage.
+ * Finds the product by ID and replaces it with the updated data.
+ * @param productId The ID of the product to update.
+ * @param updatedData Partial product data containing the fields to update.
+ * @returns A promise that resolves when the update is complete.
+ * @throws Error if the product with the given ID is not found.
+ */
+export async function updateProduct(productId: string, updatedData: Partial<Product>): Promise<void> {
+  console.log(`updateProduct called for ID: ${productId}`, updatedData);
+  await new Promise(resolve => setTimeout(resolve, 100)); // Simulate delay
+
+  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  const productIndex = currentInventory.findIndex(p => p.id === productId);
+
+  if (productIndex === -1) {
+    console.error(`Product with ID ${productId} not found for update.`);
+    throw new Error(`Product with ID ${productId} not found.`);
+  }
+
+  // Merge existing product with updated data
+  const updatedProduct = {
+    ...currentInventory[productIndex],
+    ...updatedData,
+    id: productId, // Ensure ID remains the same
+  };
+
+   // Recalculate lineTotal if quantity or unitPrice was part of the update
+   if (updatedData.quantity !== undefined || updatedData.unitPrice !== undefined) {
+       const quantity = Number(updatedProduct.quantity) || 0;
+       const unitPrice = Number(updatedProduct.unitPrice) || 0;
+       updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
+   }
+
+  currentInventory[productIndex] = updatedProduct;
+
+  saveStoredData(INVENTORY_STORAGE_KEY, currentInventory);
+  console.log(`Product ${productId} updated successfully.`);
+}
+
+
 /**
  * Asynchronously retrieves the list of all processed invoices using localStorage.
- * Parses date strings back into Date objects.
- *
+ * Parses date strings back into Date objects and ensures each invoice has an ID.
  * @returns A promise that resolves to an array of InvoiceHistoryItem objects.
  */
 export async function getInvoices(): Promise<InvoiceHistoryItem[]> {
   console.log("getInvoices called");
   await new Promise(resolve => setTimeout(resolve, 50));
   const invoicesRaw = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
-  // Convert stored date strings back to Date objects
+  // Convert stored date strings back to Date objects and ensure ID
   const invoices = invoicesRaw.map(inv => ({
     ...inv,
+    id: inv.id || `inv-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Ensure ID exists
     uploadTime: new Date(inv.uploadTime) // Parse string back to Date
   }));
   console.log("Returning invoices from localStorage:", invoices);

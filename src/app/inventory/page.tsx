@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -45,10 +44,8 @@ const ITEMS_PER_PAGE = 10; // Number of items per page
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-// Helper function to safely format numbers
-// - decimals: Number of decimal places (default 2)
-// - useGrouping: Whether to use thousand separators (default false for inputs, true for display)
-const formatNumber = (
+// Helper function to safely format numbers for display
+const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
@@ -76,14 +73,15 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [searchTerm, setSearchTerm] = useState('');
+  // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
-    id: false, // Keep ID internal if not needed for display but useful for export/keys
+    id: false,
     description: true,
-    catalogNumber: true,
+    catalogNumber: false, // Hide catalog # by default
     quantity: true,
-    unitPrice: false, // Hide unit price by default on mobile
-    lineTotal: true, // Keep line total visible
-    actions: true,
+    unitPrice: true,
+    lineTotal: false, // Hide line total by default
+    actions: true, // Keep actions visible
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('description');
@@ -104,7 +102,12 @@ export default function InventoryPage() {
         console.log("Fetching inventory data...");
         const data = await getProductsService(); // Use corrected function name
         console.log("Fetched inventory data:", data);
-        setInventory(data); // Use data directly as IDs should be handled by backend service
+        // Ensure lineTotal is calculated correctly when fetching
+        const inventoryWithCorrectTotals = data.map(item => ({
+             ...item,
+             lineTotal: parseFloat(((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)).toFixed(2))
+        }));
+        setInventory(inventoryWithCorrectTotals);
       } catch (error) {
         console.error("Failed to fetch inventory:", error);
         toast({
@@ -198,10 +201,10 @@ export default function InventoryPage() {
          const unitPrice = Number(item.unitPrice) || 0;
          return {
             ...item,
-            // Ensure internal data remains numeric
-            quantity: parseFloat(quantity.toFixed(2)), // Ensure 2 decimals for quantity
-            unitPrice: parseFloat(unitPrice.toFixed(2)), // Ensure 2 decimals for unit price
-            lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+            // Ensure internal data remains numeric, but recalculate lineTotal
+            quantity: parseFloat(quantity.toFixed(2)),
+            unitPrice: parseFloat(unitPrice.toFixed(2)),
+            lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Recalculate here
          };
      });
 
@@ -227,15 +230,15 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // Column definition including internal 'id'
+    // Column definition including internal 'id' - Moved Actions to the beginning
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-left' }, // Actions first, text-left
         { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
         { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]' },
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: true }, // Hide unit price on mobile
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default
         { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]' }, // Shorten label
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
     ];
 
     // Filter columns for header display based on visibility state AND mobileHidden flag
@@ -250,7 +253,7 @@ export default function InventoryPage() {
         // Format numbers to two decimal places if applicable
         if (typeof value === 'number') {
             // Use the helper function for consistent formatting (no grouping for CSV)
-            return formatNumber(value, { decimals: 2, useGrouping: false });
+            return formatDisplayNumber(value, { decimals: 2, useGrouping: false });
         }
         let stringValue = String(value);
         // If the value contains a comma, double quote, or newline, enclose it in double quotes
@@ -506,24 +509,8 @@ export default function InventoryPage() {
                    paginatedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                        {/* Render cells based on visibility state and mobileHidden */}
-                        {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
-                        {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
-                        {visibleColumns.quantity && (
-                          <TableCell className="text-right px-2 sm:px-4 py-2">
-                             {/* Use formatNumber helper for quantity display with grouping */}
-                            <span>{formatNumber(item.quantity, { decimals: 2, useGrouping: true })}</span>
-                            {item.quantity === 0 && (
-                              <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
-                            )}
-                            {item.quantity > 0 && item.quantity <= 10 && (
-                              <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleColumns.unitPrice && <TableCell className={cn('text-right px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
-                        {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
-                       {visibleColumns.actions && (
-                         <TableCell className="text-right px-2 sm:px-4 py-2">
+                        {visibleColumns.actions && (
+                         <TableCell className="text-left px-2 sm:px-4 py-2"> {/* Changed to text-left */}
                            <Button
                              variant="ghost"
                              size="sm"
@@ -536,6 +523,22 @@ export default function InventoryPage() {
                            </Button>
                          </TableCell>
                         )}
+                        {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
+                        {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
+                        {visibleColumns.quantity && (
+                          <TableCell className="text-right px-2 sm:px-4 py-2">
+                             {/* Use formatDisplayNumber helper for quantity display as integer with grouping */}
+                            <span>{formatDisplayNumber(item.quantity, { decimals: 0, useGrouping: true })}</span>
+                            {item.quantity === 0 && (
+                              <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
+                            )}
+                            {item.quantity > 0 && item.quantity <= 10 && (
+                              <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
+                            )}
+                          </TableCell>
+                        )}
+                        {visibleColumns.unitPrice && <TableCell className={cn('text-right px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
+                        {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
                      </TableRow>
                    ))
                  )}
