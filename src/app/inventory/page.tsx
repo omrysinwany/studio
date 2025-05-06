@@ -220,6 +220,13 @@ export default function InventoryPage() {
         if (value === null || value === undefined) {
           return '';
         }
+        // Format numbers to two decimal places if applicable
+        if (typeof value === 'number') {
+             // Basic check if it's likely a price/total
+             if (value.toString().includes('.')) {
+                  return value.toFixed(2);
+             }
+        }
         let stringValue = String(value);
         // If the value contains a comma, double quote, or newline, enclose it in double quotes
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
@@ -535,3 +542,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+

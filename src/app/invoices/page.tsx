@@ -265,6 +265,13 @@ export default function InvoicesPage() {
                 return 'Invalid Date';
             }
          }
+         // Format numbers to two decimal places if applicable
+         if (typeof value === 'number') {
+              // Basic check if it's likely a price/total
+              if (value.toString().includes('.')) {
+                   return value.toFixed(2);
+              }
+         }
         let stringValue = String(value);
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
           stringValue = stringValue.replace(/"/g, '""');
@@ -564,3 +571,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

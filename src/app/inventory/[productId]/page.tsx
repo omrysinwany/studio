@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -99,7 +100,7 @@ export default function ProductDetailPage() {
     if (value === undefined || value === null || value === '') return null;
     const IconComponent = icon;
     const displayValue = isCurrency && typeof value === 'number'
-      ? `₪${value.toFixed(2)}`
+      ? `₪${value.toFixed(2)}` // Format to 2 decimal places
       : value;
     return (
       <div className="flex items-start space-x-3">
@@ -208,3 +209,4 @@ export default function ProductDetailPage() {
     </div>
   );
 }
+

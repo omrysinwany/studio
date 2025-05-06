@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -51,7 +52,7 @@ const MOCK_PROCESSING_VOLUME = [
 ];
 
 const chartConfig = {
-  value: { label: 'Value ($)', color: 'hsl(var(--chart-1))' },
+  value: { label: 'Value (₪)', color: 'hsl(var(--chart-1))' }, // Changed to ILS
   count: { label: 'Count', color: 'hsl(var(--chart-2))' },
   Widgets: { label: 'Widgets', color: 'hsl(var(--chart-1))' },
   Gadgets: { label: 'Gadgets', color: 'hsl(var(--chart-2))' },
@@ -195,7 +196,7 @@ export default function ReportsPage() {
                  <DollarSign className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">${kpis.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                 <div className="text-2xl font-bold">₪{kpis.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div> {/* Changed to ILS */}
                  <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
                    {Math.abs(kpis.valueChangePercent)}% from last period
@@ -246,17 +247,19 @@ export default function ReportsPage() {
                 <CardContent>
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                           <ResponsiveContainer>
                                 <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
-                                     <ChartTooltip
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${value/1000}k`} /> {/* Changed to ILS */}
+                                     <RechartsTooltip
                                         cursor={false}
-                                        content={<ChartTooltipContent indicator="line" labelKey="date" nameKey="value" hideLabel />}
-                                        formatter={(value) => `$${(value as number).toFixed(2)}`}
+                                        content={<ChartTooltipContent indicator="line" />}
+                                        formatter={(value: number) => `₪${value.toFixed(2)}`} // Format tooltip value
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
                                 </LineChart>
+                           </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
                        <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
@@ -273,16 +276,18 @@ export default function ReportsPage() {
                  <CardContent>
                       {barChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                           <ResponsiveContainer>
                                 <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     <ChartTooltip
+                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                      />
                                     <Bar dataKey="count" fill="var(--color-count)" radius={4} />
                                 </BarChart>
+                           </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
                         <p className="text-center text-muted-foreground py-10">No data available for this period.</p>
@@ -299,11 +304,12 @@ export default function ReportsPage() {
                  <CardContent className="flex items-center justify-center pb-8">
                      {pieChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[300px]">
+                           <ResponsiveContainer>
                                 <PieChart>
-                                    <ChartTooltip
+                                    <RechartsTooltip
                                         cursor={false}
-                                        content={<ChartTooltipContent hideLabel indicator="dot" nameKey="name" />}
-                                        formatter={(value, name) => `${name}: $${(value as number).toFixed(2)}`}
+                                        content={<ChartTooltipContent hideLabel indicator="dot" />}
+                                        formatter={(value: number, name) => `${name}: ₪${value.toFixed(2)}`} // Format tooltip value
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -321,7 +327,7 @@ export default function ReportsPage() {
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                          ))}
                                      </Pie>
-                                     <ChartLegend
+                                     <RechartsLegend
                                          content={<ChartLegendContent nameKey="name" />}
                                          verticalAlign="bottom"
                                          align="center"
@@ -329,6 +335,7 @@ export default function ReportsPage() {
                                          wrapperStyle={{ paddingTop: 20 }}
                                      />
                                  </PieChart>
+                           </ResponsiveContainer>
                          </ChartContainer>
                      ) : (
                          <p className="text-center text-muted-foreground py-10">No category data available for this period.</p>
@@ -346,3 +353,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+

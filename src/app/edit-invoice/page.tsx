@@ -159,9 +159,12 @@ function EditInvoiceContent() {
                }
           }
 
-          // Ensure the changed field is stored correctly (especially if it was a string input)
+          // Ensure the changed field is stored correctly (especially if it was a string input for numbers)
           if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
-              updatedProduct[field] = parseFloat(String(value)) || 0;
+              // For display purposes, keep the string value if it's being edited,
+              // otherwise parse it. This is tricky, usually handleBlur is better.
+              // For simplicity here, we'll just parse. Consider libraries like react-number-format for better UX.
+               updatedProduct[field] = parseFloat(String(value)) || 0;
           }
 
 
@@ -371,18 +374,19 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.quantity}
+                        value={product.quantity} // Keep as number for display formatting
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} // Pass string for controlled input
                         className="w-20 text-right"
-                         min="0"
-                         aria-label={`Quantity for ${product.description}`}
+                        min="0"
+                        step="0.01" // Allow decimals if needed, adjust if quantity is always integer
+                        aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.unitPrice}
-                         onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} // Pass string
+                        value={product.unitPrice.toFixed(2)} // Format to 2 decimal places for display
+                        onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} // Pass string
                         className="w-24 text-right"
                         step="0.01"
                         min="0"
@@ -392,8 +396,8 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.lineTotal}
-                         onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} // Pass string
+                        value={product.lineTotal.toFixed(2)} // Format to 2 decimal places for display
+                        onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} // Pass string
                         className="w-24 text-right"
                         step="0.01"
                          min="0"
@@ -457,3 +461,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+
