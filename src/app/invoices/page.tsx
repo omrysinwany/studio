@@ -32,17 +32,17 @@ import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices, deleteInvoice } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'; // Added DialogFooter
 import NextImage from 'next/image';
 import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent, // Alias to avoid name clash
-  AlertDialogDescription as AlertDialogDescriptionComponent, // Alias
-  AlertDialogFooter,
-  AlertDialogHeader as AlertDialogHeaderComponent, // Alias
-  AlertDialogTitle as AlertDialogTitleComponent, // Alias
+  AlertDialogContent as AlertDialogContentComponent,
+  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogFooter as AlertDialogFooterComponent, // Renamed to avoid conflict if DialogFooter was also named AlertDialogFooter
+  AlertDialogHeader as AlertDialogHeaderComponent,
+  AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
@@ -81,7 +81,7 @@ export default function InvoicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'viewDetails', boolean>>({
-    viewDetails: true, // New column for view details icon
+    viewDetails: true,
     id: false,
     fileName: true,
     uploadTime: false,
@@ -91,7 +91,6 @@ export default function InvoicesPage() {
     totalAmount: true,
     errorMessage: false,
     invoiceDataUri: false,
-    // actions: true, // Replaced by viewDetails and delete inside modal
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -109,10 +108,29 @@ export default function InvoicesPage() {
       setIsLoading(true);
       try {
         let fetchedData = await getInvoices();
-        // Remove duplicate invoice entries logic from saveProducts
-        // If duplicates still appear, it might be due to how IDs are handled or if fetchInvoices is called multiple times with old data.
-        // For now, assuming getInvoices returns unique items based on ID.
-        let filteredData = fetchedData;
+        
+        let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
+        fetchedData.forEach(invoice => {
+            // If an invoice with the same ID already exists, prioritize the one with an image URI
+            const existing = uniqueInvoices.get(invoice.id);
+            if (existing) {
+                if (!existing.invoiceDataUri && invoice.invoiceDataUri) {
+                    uniqueInvoices.set(invoice.id, invoice);
+                } else if (existing.invoiceDataUri && !invoice.invoiceDataUri) {
+                    // keep existing
+                } else {
+                    // if both have or don't have URI, keep the one with more details or later upload
+                     if (new Date(invoice.uploadTime) > new Date(existing.uploadTime)) {
+                        uniqueInvoices.set(invoice.id, invoice);
+                     }
+                }
+            } else {
+                uniqueInvoices.set(invoice.id, invoice);
+            }
+        });
+        
+        let filteredData = Array.from(uniqueInvoices.values());
+
 
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -197,9 +215,9 @@ export default function InvoicesPage() {
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'viewDetails'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2' }, // Icon column
+      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2' },
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[30%] sm:w-[35%] min-w-[80px] sm:min-w-[100px] truncate' }, // Adjusted width
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[25%] sm:w-[30%] min-w-[80px] sm:min-w-[100px] truncate' }, // Reduced width
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
@@ -207,7 +225,6 @@ export default function InvoicesPage() {
       { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
       { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' },
-      // { key: 'actions', label: 'Actions', sortable: false, className: 'text-right min-w-[100px]' } // Removed 'actions' column
    ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'id' && h.key !== 'errorMessage');
@@ -243,8 +260,8 @@ export default function InvoicesPage() {
             title: "Invoice Deleted",
             description: "The invoice has been successfully deleted.",
         });
-        fetchInvoices(); // Refresh the list
-        setShowDetailsModal(false); // Close modal after deletion
+        fetchInvoices(); 
+        setShowDetailsModal(false); 
         setSelectedInvoiceDetails(null);
     } catch (error) {
         console.error("Failed to delete invoice:", error);
@@ -529,7 +546,8 @@ export default function InvoicesPage() {
                           header.className,
                           header.sortable && "cursor-pointer hover:bg-muted/50",
                           header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                          'px-2 sm:px-4 py-2'
+                          'px-2 sm:px-4 py-2',
+                          header.key === 'viewDetails' && 'sticky left-0 bg-card z-10'
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -566,7 +584,7 @@ export default function InvoicesPage() {
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                         {visibleColumns.viewDetails && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
                                <Button
                                    variant="ghost"
                                    size="icon"
@@ -668,13 +686,13 @@ export default function InvoicesPage() {
                                  This action cannot be undone. This will permanently delete the invoice "{selectedInvoiceDetails.fileName}".
                              </AlertDialogDescriptionComponent>
                          </AlertDialogHeaderComponent>
-                         <AlertDialogFooter>
+                         <AlertDialogFooterComponent>
                              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                              <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                  Yes, Delete Invoice
                              </AlertDialogAction>
-                         </AlertDialogFooter>
+                         </AlertDialogFooterComponent>
                      </AlertDialogContentComponent>
                  </AlertDialog>
               </DialogFooter>
@@ -686,5 +704,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-
-
