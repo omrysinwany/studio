@@ -96,7 +96,7 @@ function EditInvoiceContent() {
                 parsedData = JSON.parse(storedData);
             } catch (jsonParseError) {
                  console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-                 localStorage.removeItem(key);
+                 localStorage.removeItem(key); // Clear invalid data
                  throw new Error("Invalid JSON structure received from storage.");
             }
 
@@ -116,7 +116,7 @@ function EditInvoiceContent() {
 
             } else {
               console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-              localStorage.removeItem(key);
+              localStorage.removeItem(key); // Clear invalid data
               throw new Error("Invalid data structure received after parsing.");
             }
         } catch (error: any) {
@@ -128,9 +128,7 @@ function EditInvoiceContent() {
               description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
               variant: "destructive",
             });
-             if (error.message && !error.message.startsWith("Scan results not found")) {
-                 if (key) localStorage.removeItem(key);
-             }
+             if (key) localStorage.removeItem(key); // Clear data on any processing error except 'not found'
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
