@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save } from 'lucide-react'; // Added Edit, Save
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye } from 'lucide-react'; // Added Eye
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -123,7 +123,7 @@ export default function InvoicesPage() {
             if (existing) {
                 if (!existing.invoiceDataUri && invoice.invoiceDataUri) {
                     uniqueInvoices.set(invoice.id, invoice);
-                } else if (new Date(invoice.uploadTime) > new Date(existing.uploadTime)) {
+                } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()) { // Compare as numbers
                      uniqueInvoices.set(invoice.id, invoice);
                 }
             } else {
@@ -641,7 +641,14 @@ export default function InvoicesPage() {
                        )}
                        {visibleColumns.fileName && (
                           <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
-                            {item.fileName}
+                             <Button
+                                variant="link"
+                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
+                                onClick={() => handleViewDetails(item)}
+                                title={`View details for ${item.fileName}`}
+                              >
+                                {item.fileName}
+                            </Button>
                           </TableCell>
                        )}
                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
@@ -807,3 +814,5 @@ export default function InvoicesPage() {
   );
 }
 
+
+    
