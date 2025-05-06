@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -81,7 +80,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'viewDetails', boolean>>({
+    viewDetails: true, // New column for view details icon
     id: false,
     fileName: true,
     uploadTime: false,
@@ -91,7 +91,7 @@ export default function InvoicesPage() {
     totalAmount: true,
     errorMessage: false,
     invoiceDataUri: false,
-    actions: true,
+    // actions: true, // Replaced by viewDetails and delete inside modal
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -109,7 +109,11 @@ export default function InvoicesPage() {
       setIsLoading(true);
       try {
         let fetchedData = await getInvoices();
+        // Remove duplicate invoice entries logic from saveProducts
+        // If duplicates still appear, it might be due to how IDs are handled or if fetchInvoices is called multiple times with old data.
+        // For now, assuming getInvoices returns unique items based on ID.
         let filteredData = fetchedData;
+
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
         }
@@ -192,9 +196,10 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm]);
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'viewDetails'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2' }, // Icon column
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
+      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[30%] sm:w-[35%] min-w-[80px] sm:min-w-[100px] truncate' }, // Adjusted width
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
@@ -202,7 +207,7 @@ export default function InvoicesPage() {
       { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
       { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' },
-      { key: 'actions', label: 'Actions', sortable: false, className: 'text-right min-w-[100px]' }
+      // { key: 'actions', label: 'Actions', sortable: false, className: 'text-right min-w-[100px]' } // Removed 'actions' column
    ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'id' && h.key !== 'errorMessage');
@@ -221,7 +226,7 @@ export default function InvoicesPage() {
      }
    };
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'viewDetails') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
@@ -239,6 +244,8 @@ export default function InvoicesPage() {
             description: "The invoice has been successfully deleted.",
         });
         fetchInvoices(); // Refresh the list
+        setShowDetailsModal(false); // Close modal after deletion
+        setSelectedInvoiceDetails(null);
     } catch (error) {
         console.error("Failed to delete invoice:", error);
         toast({
@@ -484,7 +491,7 @@ export default function InvoicesPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'viewDetails').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -558,16 +565,23 @@ export default function InvoicesPage() {
                 ) : (
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                        {visibleColumns.viewDetails && (
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
+                               <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   className="text-primary hover:text-primary/80 h-7 w-7"
+                                   onClick={() => handleViewDetails(item)}
+                                   title={`View details for ${item.fileName}`}
+                                   aria-label={`View details for ${item.fileName}`}
+                               >
+                                   <Info className="h-4 w-4" />
+                               </Button>
+                           </TableCell>
+                       )}
                        {visibleColumns.fileName && (
                           <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'fileName')?.className)}>
-                            <Button
-                                variant="link"
-                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
-                                onClick={() => handleViewDetails(item)}
-                                title={`View details for ${item.fileName}`}
-                              >
-                                {item.fileName}
-                            </Button>
+                            {item.fileName}
                           </TableCell>
                        )}
                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
@@ -588,49 +602,6 @@ export default function InvoicesPage() {
                              {item.status === 'error' ? item.errorMessage : '-'}
                          </TableCell>
                        )}
-                        {visibleColumns.actions && (
-                         <TableCell className="text-right px-2 sm:px-4 py-2">
-                            <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-primary hover:text-primary/80 h-7 w-7"
-                                  onClick={() => handleViewDetails(item)}
-                                  title={`View details for ${item.fileName}`}
-                                  aria-label={`View details for ${item.fileName}`}
-                                >
-                                  <Info className="h-4 w-4" />
-                                </Button>
-                                {item.status === 'error' && item.errorMessage && (
-                                 <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title={item.errorMessage} aria-label="View error details">
-                                   <AlertCircle className="h-4 w-4" />
-                                 </Button>
-                               )}
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" title="Delete Invoice" aria-label="Delete Invoice">
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContentComponent>
-                                        <AlertDialogHeaderComponent>
-                                            <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
-                                            <AlertDialogDescriptionComponent>
-                                                This action cannot be undone. This will permanently delete the invoice "{item.fileName}".
-                                            </AlertDialogDescriptionComponent>
-                                        </AlertDialogHeaderComponent>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handleDeleteInvoice(item.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                                Yes, Delete Invoice
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContentComponent>
-                                </AlertDialog>
-                            </div>
-                         </TableCell>
-                        )}
                     </TableRow>
                   ))
                 )}
@@ -683,6 +654,30 @@ export default function InvoicesPage() {
                   <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
                 )}
               </div>
+              <DialogFooter className="mt-4">
+                 <AlertDialog>
+                     <AlertDialogTrigger asChild>
+                         <Button variant="destructive" disabled={isDeleting}>
+                             <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
+                         </Button>
+                     </AlertDialogTrigger>
+                     <AlertDialogContentComponent>
+                         <AlertDialogHeaderComponent>
+                             <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
+                             <AlertDialogDescriptionComponent>
+                                 This action cannot be undone. This will permanently delete the invoice "{selectedInvoiceDetails.fileName}".
+                             </AlertDialogDescriptionComponent>
+                         </AlertDialogHeaderComponent>
+                         <AlertDialogFooter>
+                             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                             <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                 Yes, Delete Invoice
+                             </AlertDialogAction>
+                         </AlertDialogFooter>
+                     </AlertDialogContentComponent>
+                 </AlertDialog>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
