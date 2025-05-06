@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -7,23 +8,22 @@ import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
-import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice'; // Import output type
-import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
-import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Removed saveProducts from here
+import { scanInvoice } from '@/ai/flows/scan-invoice';
+import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
+import { useRouter } from 'next/navigation';
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
+import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { Badge } from '@/components/ui/badge'; // Import Badge
-import { format } from 'date-fns'; // Import format for date display
-import { cn } from '@/lib/utils'; // Import cn for conditional classes
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
-const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_'; // Key for storing image URI
+const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_';
 
-// Helper function to safely format numbers
 const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -52,7 +52,7 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadHistory, setUploadHistory] = useState<InvoiceHistoryItem[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true); // State for loading history
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -60,14 +60,12 @@ export default function UploadPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
 
-  // Function to fetch upload history
   const fetchHistory = useCallback(async () => {
      setIsLoadingHistory(true);
      try {
-        const history = await getInvoices(); // Use backend service function
-        // Sort by date descending
+        const history = await getInvoicesService(); // Use getInvoicesService
         const sortedHistory = history.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
-        setUploadHistory(sortedHistory.slice(0, 10)); // Keep only the latest 10
+        setUploadHistory(sortedHistory.slice(0, 10));
      } catch (error) {
        console.error("Failed to load upload history:", error);
        toast({
@@ -75,13 +73,12 @@ export default function UploadPage() {
          description: "Could not load recent uploads.",
          variant: "destructive",
        });
-       setUploadHistory([]); // Clear history on error
+       setUploadHistory([]);
      } finally {
        setIsLoadingHistory(false);
      }
   }, [toast]);
 
-  // Load history on mount
    useEffect(() => {
      fetchHistory();
    }, [fetchHistory]);
@@ -139,27 +136,28 @@ export default function UploadPage() {
          setUploadProgress(100);
          setIsUploading(false);
          setIsProcessing(true);
+         const tempInvoiceId = `temp-inv-${Date.now()}`; // Create a temporary ID for the invoice
 
          try {
+             console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
              const scanResult: ScanInvoiceOutput = await scanInvoice({ invoiceDataUri: base64data });
-             console.log('AI Scan Result:', scanResult);
-             
-             // Store scan result and image URI in localStorage
+             console.log('[UploadPage] AI Scan Result:', scanResult);
+
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
              const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
 
-             localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Store only product data
-             localStorage.setItem(imageUriKey, base64data); // Store image URI separately
+             localStorage.setItem(dataKey, JSON.stringify(scanResult));
+             localStorage.setItem(imageUriKey, base64data);
 
              toast({
                title: 'Scan Complete',
                description: `${selectedFile.name} scanned. Review and save on the next page.`,
              });
-             // Pass both keys to the edit page
-             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
+             // Pass tempInvoiceId to edit page
+             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriKey}&fileName=${encodeURIComponent(selectedFile.name)}&tempId=${tempInvoiceId}`);
 
          } catch (aiError: any) {
-             console.error('AI processing failed:', aiError);
+             console.error('[UploadPage] AI processing failed:', aiError);
              toast({
                 title: 'Processing Error',
                 description: (aiError as Error).message || 'Could not process the document.',
@@ -171,14 +169,13 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              // Fetch history to show any *previously completed* uploads, not the current one yet.
-              // The current one will appear in history only after saving on the edit page.
-              await fetchHistory();
+              // Do not fetch history here; it will be fetched after saving on edit page
+              // await fetchHistory();
           }
       };
 
        reader.onerror = async (error) => {
-         console.error('Error reading file:', error);
+         console.error('[UploadPage] Error reading file:', error);
          clearInterval(progressInterval);
          setIsUploading(false);
          toast({
@@ -186,11 +183,11 @@ export default function UploadPage() {
            description: 'Could not read the selected file.',
            variant: 'destructive',
          });
-         await fetchHistory();
+         await fetchHistory(); // Fetch history on error
        };
 
     } catch (error) {
-       console.error('Upload failed:', error);
+       console.error('[UploadPage] Upload failed:', error);
        clearInterval(progressInterval);
        setIsUploading(false);
        toast({
@@ -198,12 +195,11 @@ export default function UploadPage() {
          description: 'An unexpected error occurred. Please try again.',
          variant: 'destructive',
        });
-       await fetchHistory();
+       await fetchHistory(); // Fetch history on error
      }
   };
 
 
-  // Format date for display
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
      try {

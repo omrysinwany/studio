@@ -1,3 +1,4 @@
+
 import type { Product, InvoiceHistoryItem } from '@/services/backend';
 
 // Function to calculate the total inventory value
@@ -10,9 +11,9 @@ export const calculateTotalItems = (inventory: Product[]): number => {
     return inventory.reduce((acc, product) => acc + (product.quantity || 0), 0);
 };
 
-// Function to identify low stock items (quantity <= 10)
+// Function to identify low stock items (quantity <= minStockLevel or default 10 if not set)
 export const getLowStockItems = (inventory: Product[]): Product[] => {
-    return inventory.filter(product => product.quantity !== undefined && product.quantity <= 10);
+    return inventory.filter(product => product.quantity !== undefined && product.quantity <= (product.minStockLevel ?? 10));
 };
 
 // Mock function (replace with actual logic when available) to calculate Gross Profit Margin

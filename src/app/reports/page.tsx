@@ -1,24 +1,24 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { BarChart as BarChartIcon, LineChart as LineChartIcon, PieChart as PieChartIcon, Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Users, ShoppingCart, Repeat } from 'lucide-react'; // Added more icons
+import { BarChart as BarChartIcon, LineChart as LineChartIcon, PieChart as PieChartIcon, Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Users, ShoppingCart, Repeat } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getProductsService, Product, InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import backend functions
-import { calculateInventoryValue, calculateTotalItems, getLowStockItems, calculateGrossProfitMargin, calculateInventoryTurnoverRate, calculateAverageOrderValue } from '@/lib/kpi-calculations'; // Import helper functions
+import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
+import { calculateInventoryValue, calculateTotalItems, getLowStockItems, calculateGrossProfitMargin, calculateInventoryTurnoverRate, calculateAverageOrderValue } from '@/lib/kpi-calculations';
 
-// Helper function to safely format numbers
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
@@ -43,17 +43,6 @@ const formatNumber = (
 };
 
 
-// Mock Data - REMOVE MOCK DATA
-// REMOVE const MOCK_KPIS_INITIAL =
-// REMOVE const MOCK_VALUE_OVER_TIME =
-// REMOVE const MOCK_CATEGORY_VALUE_DISTRIBUTION =
-// REMOVE const MOCK_PROCESSING_VOLUME =
-
-// REMOVE New Mock Data for additional charts
-// REMOVE const MOCK_SALES_BY_CATEGORY =
-// REMOVE const MOCK_TOP_SELLING_PRODUCTS =
-// REMOVE const MOCK_STOCK_ALERTS =
-
 const chartConfig = {
   value: { label: 'Value (₪)', color: 'hsl(var(--chart-1))' },
   count: { label: 'Count', color: 'hsl(var(--chart-2))' },
@@ -63,7 +52,6 @@ const chartConfig = {
   Gadgets: { label: 'Gadgets', color: 'hsl(var(--chart-2))' },
   Components: { label: 'Components', color: 'hsl(var(--chart-3))' },
   Other: { label: 'Other', color: 'hsl(var(--chart-4))' },
-  // Add entries for new chart data if needed, e.g., product names for top selling
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 const PIE_COLORS = [
@@ -74,101 +62,161 @@ const PIE_COLORS = [
     'hsl(var(--chart-5))',
 ];
 
-export default function ReportsPage() {
-  const [kpis, setKpis] = useState<any | null>(null); // Update type to any to avoid errors
-  const [valueOverTime, setValueOverTime] = useState<any>([]);
-  const [categoryDistribution, setCategoryDistribution] = useState<any>([]);
-  const [processingVolume, setProcessingVolume] = useState<any>([]);
-  const [salesByCategory, setSalesByCategory] = useState<any>([]);
-  const [topSellingProducts, setTopSellingProducts] = useState<any>([]);
-  const [stockAlerts, setStockAlerts] = useState<any>([]);
+interface StockAlert {
+  name: string;
+  catalogNumber: string;
+  quantity: number;
+  status: 'Low Stock' | 'Out of Stock' | 'Over Stock';
+  minStock?: number;
+  maxStock?: number;
+}
 
-  const [inventory, setInventory] = useState<Product[]>([]); // inventory state
+
+export default function ReportsPage() {
+  const [kpis, setKpis] = useState<any | null>(null);
+  const [valueOverTime, setValueOverTime] = useState<any[]>([]); // Ensure array type
+  const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]); // Ensure array type
+  const [processingVolume, setProcessingVolume] = useState<any[]>([]); // Ensure array type
+  const [salesByCategory, setSalesByCategory] = useState<any[]>([]); // Ensure array type
+  const [topSellingProducts, setTopSellingProducts] = useState<any[]>([]); // Ensure array type
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]); // Ensure array type
+
+  const [inventory, setInventory] = useState<Product[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1),
+    from: subMonths(new Date(), 1), // Default to last month
     to: new Date(),
   });
   const { toast } = useToast();
 
-    // Fetch inventory data
     useEffect(() => {
-        const fetchInventory = async () => {
+        const fetchInitialData = async () => {
             setIsLoading(true);
             try {
-                const data = await getProductsService();
-                setInventory(data);
+                const [inventoryData, invoicesData] = await Promise.all([
+                    getProductsService(),
+                    getInvoicesService()
+                ]);
+                setInventory(inventoryData);
+                setInvoices(invoicesData);
             } catch (error) {
-                console.error("Failed to fetch inventory:", error);
+                console.error("Failed to fetch initial data:", error);
                 toast({
-                    title: "Error Fetching Inventory",
-                    description: "Could not load inventory data. Please try again later.",
+                    title: "Error Fetching Data",
+                    description: "Could not load inventory or invoice data.",
                     variant: "destructive",
                 });
                 setInventory([]);
+                setInvoices([]);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchInventory();
+        fetchInitialData();
     }, [toast]);
 
    useEffect(() => {
-     const fetchReports = async () => {
-       setIsLoading(true);
-       try {
-         console.log('Fetching reports for date range:', dateRange);
-         await new Promise(resolve => setTimeout(resolve, 1200));
+     const generateReports = () => {
+       if (isLoading || inventory.length === 0) return; // Don't generate if loading or no inventory
 
-        // -- Calculate KPIs from actual inventory data --
-        const totalValue = inventory ? calculateInventoryValue(inventory) : 0;
-        const totalItems = inventory ? calculateTotalItems(inventory) : 0;
-        const lowStockItems = inventory ? getLowStockItems(inventory).length : 0; // number of low stock items
-        const grossProfitMargin = 35.2; // TODO: Replace with actual calculation
-        const inventoryTurnoverRate = 4.5; // TODO: Replace with actual calculation
-        const averageOrderValue = 185.50; // TODO: Replace with actual calculation
+       // Filter invoices based on dateRange
+       const filteredInvoices = invoices.filter(invoice => {
+         const invoiceDate = new Date(invoice.uploadTime);
+         if (dateRange?.from && invoiceDate < dateRange.from) return false;
+         if (dateRange?.to && invoiceDate > dateRange.to) return false;
+         return true;
+       });
 
-           setKpis({
-             totalValue,
-             totalItems,
-             lowStockItems,
-             grossProfitMargin,
-             inventoryTurnoverRate,
-             averageOrderValue,
-             valueChangePercent: 5.2,
+
+       const totalValue = calculateInventoryValue(inventory);
+       const totalItemsCount = calculateTotalItems(inventory);
+       const lowStockItems = getLowStockItems(inventory).length;
+
+       // Placeholder - need actual revenue and COGS data
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Simulate revenue
+       const mockCogs = mockTotalRevenue * 0.65; // Simulate COGS
+       const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue / 2); // Avg inventory
+       const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
+
+       setKpis({
+         totalValue,
+         totalItems: totalItemsCount,
+         lowStockItems,
+         grossProfitMargin,
+         inventoryTurnoverRate,
+         averageOrderValue,
+         valueChangePercent: Math.random() * 10 - 5, // Random change for mock
+       });
+
+       // Mock Value Over Time (replace with actual logic)
+       const votData = [];
+       let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const endDate = dateRange?.to || new Date();
+       while (currentDate <= endDate) {
+           votData.push({
+               date: format(currentDate, "MMM dd"),
+               value: totalValue * (0.8 + Math.random() * 0.4) // Simulate fluctuations
            });
-
-          // -- TODO: Replace MOCK data with real data from backend --
-          setValueOverTime([]); // Replace with real sales data
-          setCategoryDistribution([]); // Replace with actual category data
-          setProcessingVolume([]); // Replace with actual volume
-          setSalesByCategory([]); // Replace with real sales by category
-          setTopSellingProducts([]); // Replace with real data
-          setStockAlerts([]); // Replace with real stock alerts
-
-       } catch (error) {
-         console.error("Failed to fetch report data:", error);
-          toast({
-            title: "Error Fetching Reports",
-            description: "Could not load report data. Please try again later.",
-            variant: "destructive",
-          });
-          setKpis(null);
-          setValueOverTime([]);
-          setCategoryDistribution([]);
-          setProcessingVolume([]);
-         setSalesByCategory([]);
-         setTopSellingProducts([]);
-         setStockAlerts([]);
-       } finally {
-         setIsLoading(false);
+           currentDate.setDate(currentDate.getDate() + 7); // Weekly data points
        }
+       setValueOverTime(votData);
+
+
+       // Category Distribution (Mock - needs product categories)
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other'];
+       const catDistData = categories.map(cat => ({
+           name: cat,
+           value: Math.floor(Math.random() * 5000) + 1000
+       }));
+       setCategoryDistribution(catDistData);
+
+
+       // Processing Volume (Based on filtered invoices)
+       const procVolData = [];
+       currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       while (currentDate <= endDate) {
+           const monthStr = format(currentDate, "MMM yyyy");
+           const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yyyy") === monthStr).length;
+           if(!procVolData.find(d => d.period === monthStr)) { // Avoid duplicates if iterating too fast
+             procVolData.push({ period: monthStr, count });
+           }
+           currentDate.setMonth(currentDate.getMonth() + 1);
+       }
+       setProcessingVolume(procVolData);
+
+
+       // Sales by Category (Mock - needs product categories & sales data)
+       setSalesByCategory(categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 })));
+
+       // Top Selling Products (Mock - needs sales data per product)
+        const topProducts = inventory.slice(0, 5).map(p => ({
+            name: p.shortName || p.description.slice(0,20),
+            quantitySold: Math.floor(Math.random() * 100) + 10,
+            totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * 100) + 10)
+        })).sort((a,b) => b.totalValue - a.totalValue);
+       setTopSellingProducts(topProducts);
+
+       // Stock Alerts
+       const alerts: StockAlert[] = inventory.reduce((acc, p) => {
+           if (p.quantity === 0) {
+               acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Out of Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+           } else if (p.minStockLevel !== undefined && p.quantity <= p.minStockLevel) {
+               acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Low Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+           } else if (p.maxStockLevel !== undefined && p.quantity > p.maxStockLevel) {
+                acc.push({ name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Over Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+           }
+           return acc;
+       }, [] as StockAlert[]);
+       setStockAlerts(alerts);
+
      };
 
-     fetchReports();
-   }, [dateRange, toast, inventory]);
+     generateReports();
+   }, [dateRange, toast, inventory, invoices, isLoading]); // Re-run if these change
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -176,7 +224,7 @@ export default function ReportsPage() {
    const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
-   if (isLoading) {
+   if (isLoading && !inventory.length && !invoices.length) { // Show loader only on initial full load
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -240,10 +288,8 @@ export default function ReportsPage() {
         </Popover>
       </div>
 
-      {/* KPIs - Prioritized: Total Value, Total Items, Gross Profit Margin, Inventory Turnover */}
        {kpis && (
            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-             {/* Total Value */}
              <Card className="xl:col-span-2">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Inventory Value</CardTitle>
@@ -257,7 +303,6 @@ export default function ReportsPage() {
                  </p>
                </CardContent>
              </Card>
-             {/* Total Items */}
              <Card>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-sm font-medium">Total Items in Stock</CardTitle>
@@ -268,7 +313,6 @@ export default function ReportsPage() {
                  <p className="text-xs text-muted-foreground">Unique SKUs</p>
                </CardContent>
              </Card>
-            {/* Gross Profit Margin */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Gross Profit Margin</CardTitle>
@@ -279,7 +323,6 @@ export default function ReportsPage() {
                     <p className="text-xs text-muted-foreground">Estimate</p>
                 </CardContent>
             </Card>
-            {/* Inventory Turnover Rate */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Inventory Turnover</CardTitle>
@@ -290,7 +333,6 @@ export default function ReportsPage() {
                     <p className="text-xs text-muted-foreground">Times per period</p>
                 </CardContent>
             </Card>
-             {/* Average Order Value */}
              <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
@@ -304,9 +346,7 @@ export default function ReportsPage() {
            </div>
        )}
 
-        {/* Charts - Grouped by importance/relevance */}
         <div className="grid gap-6 md:grid-cols-2">
-            {/* Value & Processing - Key operational charts */}
             <Card>
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Inventory Value Over Time</CardTitle>
@@ -329,7 +369,7 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                       <p className="text-center text-muted-foreground py-10">No value trend data.</p>
+                       <p className="text-center text-muted-foreground py-10">No value trend data for selected period.</p>
                     )}
                 </CardContent>
             </Card>
@@ -356,12 +396,11 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
-                        <p className="text-center text-muted-foreground py-10">No processing volume data.</p>
+                        <p className="text-center text-muted-foreground py-10">No processing volume data for selected period.</p>
                      )}
                  </CardContent>
             </Card>
 
-            {/* Sales & Category Performance */}
             <Card>
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Sales by Category</CardTitle>
@@ -388,7 +427,7 @@ export default function ReportsPage() {
                             </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                        <p className="text-center text-muted-foreground py-10">No sales by category data.</p>
+                        <p className="text-center text-muted-foreground py-10">No sales by category data for selected period.</p>
                     )}
                 </CardContent>
             </Card>
@@ -438,7 +477,6 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            {/* Top Products & Stock Alerts - Important for actionable insights */}
             <Card className="md:col-span-2">
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Top Selling Products (by Value)</CardTitle>
@@ -467,7 +505,7 @@ export default function ReportsPage() {
                             </Table>
                         </div>
                     ) : (
-                        <p className="text-center text-muted-foreground py-10">No top selling products data.</p>
+                        <p className="text-center text-muted-foreground py-10">No top selling products data for selected period.</p>
                     )}
                 </CardContent>
             </Card>
@@ -475,7 +513,7 @@ export default function ReportsPage() {
             <Card className="md:col-span-2">
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Stock Alert Dashboard</CardTitle>
-                    <CardDescription>Products requiring attention due to low or zero stock.</CardDescription>
+                    <CardDescription>Products requiring attention based on defined stock levels.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     {stockAlerts.length > 0 ? (
@@ -485,7 +523,9 @@ export default function ReportsPage() {
                                     <TableRow>
                                         <TableHead>Product Name</TableHead>
                                         <TableHead>Catalog #</TableHead>
-                                        <TableHead className="text-right">Quantity</TableHead>
+                                        <TableHead className="text-right">Current Qty</TableHead>
+                                        <TableHead className="text-right">Min Stock</TableHead>
+                                        <TableHead className="text-right">Max Stock</TableHead>
                                         <TableHead className="text-right">Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -495,9 +535,14 @@ export default function ReportsPage() {
                                             <TableCell className="font-medium">{alert.name}</TableCell>
                                             <TableCell>{alert.catalogNumber}</TableCell>
                                             <TableCell className="text-right">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right">{alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right">
-                                                <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : 'secondary'}
-                                                    className={cn(alert.status === 'Low Stock' && 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80')}
+                                                <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
+                                                    className={cn(
+                                                        alert.status === 'Low Stock' && 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80',
+                                                        alert.status === 'Over Stock' && 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80'
+                                                    )}
                                                 >
                                                     <AlertTriangle className="mr-1 h-3 w-3" />
                                                     {alert.status}

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { saveProducts, Product, getProductsService } from '@/services/backend';
+import { saveProductsService, Product, getProductsService } from '@/services/backend';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 
@@ -242,7 +242,7 @@ function EditInvoiceContent() {
           console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
           
           // Pass 'upload' as source and the image URI to create invoice history
-          await saveProducts(finalProductsToSave, fileName, 'upload', imageUri || undefined);
+          await saveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined);
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
@@ -441,7 +441,7 @@ function EditInvoiceContent() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye, List, Grid } from 'lucide-react'; // Added List, Grid
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye, List, Grid } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -29,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices, deleteInvoice as deleteInvoiceService, updateInvoice as updateInvoiceService } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -47,10 +48,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-// Removed Select imports as status is no longer editable
 
 
-// Helper function to safely format numbers
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -77,7 +76,7 @@ const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
 
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'list' | 'grid'; // Added ViewMode type
+type ViewMode = 'list' | 'grid';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
@@ -109,25 +108,22 @@ export default function InvoicesPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Changed default view mode to 'grid'
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
 
     const fetchInvoices = useCallback(async () => {
       setIsLoading(true);
       try {
-        let fetchedData = await getInvoices();
+        let fetchedData = await getInvoicesService(); // Use getInvoicesService
         
         let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoices.get(invoice.id);
             if (existing) {
-                // Prefer the record that has an image URI if the other doesn't
                 if (invoice.invoiceDataUri && !existing.invoiceDataUri) {
                     uniqueInvoices.set(invoice.id, invoice);
                 } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
-                    // Keep the existing one as it has the image
                 }
-                // If both have or don't have image, prefer the newer one
                 else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()) {
                      uniqueInvoices.set(invoice.id, invoice);
                 }
@@ -283,7 +279,7 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number ) => { // Status removed
+  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number ) => {
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -296,7 +292,6 @@ export default function InvoicesPage() {
             invoiceNumber: editedInvoiceData.invoiceNumber || undefined,
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
-            // status: editedInvoiceData.status || selectedInvoiceDetails.status, // Status no longer editable
             errorMessage: editedInvoiceData.errorMessage || undefined,
         };
 
@@ -704,7 +699,6 @@ export default function InvoicesPage() {
               </Table>
             </div>
           ) : (
-            // Grid View
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {isLoading ? (
                  Array.from({ length: 8 }).map((_, index) => (
@@ -788,7 +782,7 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {selectedInvoiceDetails.status === 'error' && ( // Show error message editing only if original status is error
+                    {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
@@ -863,7 +857,7 @@ export default function InvoicesPage() {
                              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                              <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                 Yes, delete all
+                                 Yes, delete invoice
                              </AlertDialogAction>
                          </AlertDialogFooterComponent>
                      </AlertDialogContentComponent>
@@ -877,4 +871,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-

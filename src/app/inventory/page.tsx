@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -21,11 +21,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Removed Barcode and Pencil
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventory as clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventoryService
+import { Product, getProductsService, clearInventoryService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -37,28 +37,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Import AlertDialog
+} from "@/components/ui/alert-dialog";
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
-} from "@/components/ui/popover"; // Import Popover components
+} from "@/components/ui/popover";
 
 
-const ITEMS_PER_PAGE = 10; // Number of items per page
+const ITEMS_PER_PAGE = 10;
 
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-// Helper function to safely format numbers for display (with grouping)
 const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true } = options || {}; // Default: 2 decimals, WITH grouping
+    const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        // Format 0 with specified decimals
         return (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
@@ -66,18 +64,16 @@ const formatDisplayNumber = (
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
 };
 
-// Helper function to format quantity as integer for display (with grouping)
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    // Use formatDisplayNumber with 0 decimals and grouping
     return formatDisplayNumber(value, { decimals: 0, useGrouping: true });
 };
 
@@ -85,48 +81,49 @@ const formatIntegerQuantity = (
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
-    id: false, // Keep ID non-visible by default but available
-    description: false, // Full description hidden by default
-    shortName: true, // Show short name
-    catalogNumber: false, // Catalog number hidden by default
-    barcode: false, // Hide barcode by default
-    quantity: true, // Show quantity
-    unitPrice: true, // Show unit price
-    lineTotal: false, // Line total hidden by default
-    actions: true, // Keep actions visible
+    actions: true,
+    id: false,
+    description: false,
+    shortName: true,
+    catalogNumber: false,
+    barcode: false,
+    quantity: true,
+    unitPrice: true,
+    lineTotal: false,
+    minStockLevel: false, // Hidden by default
+    maxStockLevel: false, // Hidden by default
   });
-  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('shortName'); // Default sort by shortName
+  const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('shortName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [currentPage, setCurrentPage] = useState(1); // State for pagination
+  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname(); // Get pathname
+  const pathname = usePathname();
   const { toast } = useToast();
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
 
 
-   // Function to fetch inventory data
     const fetchInventory = useCallback(async () => {
       setIsLoading(true);
       try {
         console.log("Fetching inventory data...");
-        const data = await getProductsService(); // Use corrected function name
+        const data = await getProductsService();
         console.log("Fetched inventory data:", data);
-        // Ensure lineTotal is calculated correctly when fetching
         const inventoryWithCorrectTotals = data.map(item => {
             const quantity = Number(item.quantity) || 0;
             const unitPrice = Number(item.unitPrice) || 0;
              return {
                  ...item,
-                 quantity: quantity, // Ensure quantity is a number
-                 unitPrice: unitPrice, // Ensure unitPrice is a number
-                 lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Always recalculate
+                 quantity: quantity,
+                 unitPrice: unitPrice,
+                 lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
+                 minStockLevel: item.minStockLevel,
+                 maxStockLevel: item.maxStockLevel,
              };
         });
         setInventory(inventoryWithCorrectTotals);
@@ -141,10 +138,9 @@ export default function InventoryPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [toast]); // Include toast in dependencies
+    }, [toast]);
 
 
-   // Fetch inventory data on mount and when refresh param changes
    useEffect(() => {
      fetchInventory();
 
@@ -152,15 +148,14 @@ export default function InventoryPage() {
        setFilterStockLevel('low');
      }
 
-     // Remove refresh param after fetching to prevent re-fetching if other state changes
      if (shouldRefresh) {
-        const current = new URLSearchParams(Array.from(searchParams.entries())); // Get current params
-        current.delete('refresh'); // Remove the refresh param
+        const current = new URLSearchParams(Array.from(searchParams.entries()));
+        current.delete('refresh');
         const search = current.toString();
         const query = search ? `?${search}` : "";
-        router.replace(`${pathname}${query}`, { scroll: false }); // Update URL without refresh param
+        router.replace(`${pathname}${query}`, { scroll: false });
      }
-   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]); // Added pathname to dependencies
+   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]);
 
 
   const handleSort = (key: SortKey) => {
@@ -171,33 +166,33 @@ export default function InventoryPage() {
        setSortKey(key);
        setSortDirection('asc');
      }
-     setCurrentPage(1); // Reset to first page on sort
+     setCurrentPage(1);
    };
 
 
    const filteredAndSortedInventory = useMemo(() => {
      let result = [...inventory];
 
-     // Filtering
      if (searchTerm) {
        const lowerSearchTerm = searchTerm.toLowerCase();
        result = result.filter(item =>
          (item.description?.toLowerCase() || '').includes(lowerSearchTerm) ||
-         (item.shortName?.toLowerCase() || '').includes(lowerSearchTerm) || // Search shortName too
+         (item.shortName?.toLowerCase() || '').includes(lowerSearchTerm) ||
          (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm) ||
-         (item.barcode?.toLowerCase() || '').includes(lowerSearchTerm) // Search barcode too
+         (item.barcode?.toLowerCase() || '').includes(lowerSearchTerm)
        );
      }
       if (filterStockLevel === 'low') {
-        result = result.filter(item => item.quantity > 0 && item.quantity <= 10);
+        result = result.filter(item => item.quantity > 0 && item.quantity <= (item.minStockLevel || 10));
       } else if (filterStockLevel === 'inStock') {
         result = result.filter(item => item.quantity > 0);
       } else if (filterStockLevel === 'out') {
         result = result.filter(item => item.quantity === 0);
+      } else if (filterStockLevel === 'over') {
+        result = result.filter(item => item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel);
       }
 
 
-     // Sorting
       if (sortKey) {
         result.sort((a, b) => {
           const valA = a[sortKey as keyof Product];
@@ -209,33 +204,29 @@ export default function InventoryPage() {
            } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
            } else {
-              // Handle potential null/undefined values during sorting
-              if (valA == null && valB != null) comparison = -1; // nulls first
-              else if (valA != null && valB == null) comparison = 1; // nulls first
-              else comparison = 0; // both null or undefined
+              if (valA == null && valB != null) comparison = -1;
+              else if (valA != null && valB == null) comparison = 1;
+              else comparison = 0;
            }
 
           return sortDirection === 'asc' ? comparison : comparison * -1;
         });
       }
 
-     // Recalculate lineTotal for display consistency based on current quantity and unitPrice
      result = result.map(item => {
          const quantity = Number(item.quantity) || 0;
          const unitPrice = Number(item.unitPrice) || 0;
          return {
             ...item,
-             quantity: quantity, // Ensure quantity is a number
-             unitPrice: unitPrice, // Ensure unitPrice is a number
-            // Recalculate lineTotal based on current data
-            lineTotal: parseFloat((quantity * unitPrice).toFixed(2)) // Recalculate here
+             quantity: quantity,
+             unitPrice: unitPrice,
+            lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
          };
      });
 
      return result;
       }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
 
-    // Pagination Calculations
     const totalItems = filteredAndSortedInventory.length;
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
     const paginatedInventory = useMemo(() => {
@@ -254,37 +245,32 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // Column definition including internal 'id' - Actions moved to the beginning
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' }, // Actions first, sticky left, centered header
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
         { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' }, // Centered header
+        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' },
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
         { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]', headerClassName: 'text-center' },
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
-        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' }, // Total right, header center
+        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
+        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
     ];
 
-    // Filter columns for header display based on visibility state AND mobileHidden flag
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
 
 
-    // --- CSV Export ---
     const escapeCsvValue = (value: any): string => {
         if (value === null || value === undefined) {
           return '';
         }
-        // Format numbers to two decimal places if applicable
         if (typeof value === 'number') {
-            // Use the helper function for consistent formatting (no grouping for CSV)
             return formatDisplayNumber(value, { decimals: 2, useGrouping: false });
         }
         let stringValue = String(value);
-        // If the value contains a comma, double quote, or newline, enclose it in double quotes
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-          // Escape existing double quotes by doubling them
           stringValue = stringValue.replace(/"/g, '""');
           return `"${stringValue}"`;
         }
@@ -297,13 +283,12 @@ export default function InventoryPage() {
             return;
         }
 
-        // Define columns to export (can be different from visible columns if needed)
         const exportColumns: (keyof Product | 'id')[] = [
-            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal' // Added shortName & barcode
+            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'
         ];
 
         const headers = exportColumns
-            .map(key => columnDefinitions.find(col => col.key === key)?.label || key) // Get labels
+            .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
             .map(escapeCsvValue)
             .join(',');
 
@@ -328,15 +313,13 @@ export default function InventoryPage() {
 
         toast({ title: "Export Started", description: "Your inventory data is being downloaded as CSV." });
     };
-    // --- End CSV Export ---
 
-    // --- Delete All Inventory ---
     const handleDeleteAllInventory = async () => {
         setIsDeleting(true);
         try {
-            await clearInventoryService(); // Call backend service
-            await fetchInventory(); // Refetch data
-            setCurrentPage(1); // Reset to page 1
+            await clearInventoryService();
+            await fetchInventory();
+            setCurrentPage(1);
             toast({
                 title: "Inventory Cleared",
                 description: "All inventory items have been deleted.",
@@ -352,7 +335,6 @@ export default function InventoryPage() {
             setIsDeleting(false);
         }
     };
-    // --- End Delete All Inventory ---
 
 
     if (isLoading) {
@@ -373,29 +355,28 @@ export default function InventoryPage() {
            <CardDescription>Browse, search, and manage your inventory items.</CardDescription>
          </CardHeader>
          <CardContent>
-           {/* Toolbar */}
            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
               <div className="relative w-full md:max-w-xs lg:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search..." // Shorten placeholder
+                  placeholder="Search..."
                   value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} // Reset page on search
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                   className="pl-10"
                   aria-label="Search inventory"
                 />
               </div>
                <div className="flex gap-2 flex-wrap justify-start md:justify-end">
-                 {/* Stock Level Filter */}
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
+                    <Button variant="outline" className="flex-1 md:flex-initial">
                       <Filter className="mr-2 h-4 w-4" />
                        {filterStockLevel === 'low' ? 'Low Stock' :
                         filterStockLevel === 'inStock' ? 'In Stock' :
                         filterStockLevel === 'out' ? 'Out of Stock' :
-                        'Stock'} {/* Shorten Label */}
-                      <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                        filterStockLevel === 'over' ? 'Over Stock' :
+                        'Stock'}
+                      <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -403,7 +384,7 @@ export default function InventoryPage() {
                      <DropdownMenuSeparator />
                      <DropdownMenuCheckboxItem
                          checked={filterStockLevel === 'all'}
-                         onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }} // Reset page on filter
+                         onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}
                        >
                          All
                      </DropdownMenuCheckboxItem>
@@ -417,30 +398,34 @@ export default function InventoryPage() {
                        checked={filterStockLevel === 'low'}
                        onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
                      >
-                       Low Stock (1-10)
+                       Low Stock
                      </DropdownMenuCheckboxItem>
                        <DropdownMenuCheckboxItem
                        checked={filterStockLevel === 'out'}
                        onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
                      >
-                       Out of Stock (0)
+                       Out of Stock
+                     </DropdownMenuCheckboxItem>
+                     <DropdownMenuCheckboxItem
+                       checked={filterStockLevel === 'over'}
+                       onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}
+                     >
+                       Over Stock
                      </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 
 
-                 {/* Column Visibility Toggle */}
                  <DropdownMenu>
                    <DropdownMenuTrigger asChild>
-                     <Button variant="outline" className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
+                     <Button variant="outline" className="flex-1 md:flex-initial">
                        <Eye className="mr-2 h-4 w-4" /> View
-                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" /> {/* Move chevron */}
+                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                      </Button>
                    </DropdownMenuTrigger>
                    <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                     {/* Map over definitions that should be toggleable */}
                      {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
                        <DropdownMenuCheckboxItem
                          key={header.key}
@@ -454,15 +439,13 @@ export default function InventoryPage() {
                    </DropdownMenuContent>
                  </DropdownMenu>
 
-                  {/* Export Button */}
-                  <Button variant="outline" onClick={handleExportInventory} className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
+                  <Button variant="outline" onClick={handleExportInventory} className="flex-1 md:flex-initial">
                     <Download className="mr-2 h-4 w-4" /> Export CSV
                   </Button>
 
-                    {/* Delete All Button */}
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isDeleting} className="flex-1 md:flex-initial"> {/* Take full width on mobile */}
+                            <Button variant="destructive" disabled={isDeleting} className="flex-1 md:flex-initial">
                                 {isDeleting ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : (
@@ -493,28 +476,25 @@ export default function InventoryPage() {
                </div>
            </div>
 
-           {/* Inventory Table - Wrapped in div for overflow */}
            <div className="overflow-x-auto relative">
              <Table>
                <TableHeader>
                  <TableRow>
-                    {/* Use filtered visibleColumnHeaders for rendering */}
                     {visibleColumnHeaders.map((header) => (
                          <TableHead
                             key={header.key}
                             className={cn(
                                 header.className,
-                                header.headerClassName, // Added header specific class
+                                header.headerClassName,
                                 header.sortable && "cursor-pointer hover:bg-muted/50",
-                                // Apply mobileHidden classes conditionally based on screen size
                                 header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                                'px-2 sm:px-4 py-2', // Reduce padding for all cells
-                                header.key === 'actions' && 'sticky left-0 bg-card z-10' // Ensure Actions header is sticky too
+                                'px-2 sm:px-4 py-2',
+                                header.key === 'actions' && 'sticky left-0 bg-card z-10'
                             )}
                             onClick={() => header.sortable && handleSort(header.key as SortKey)}
                             aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                          >
-                             <div className="flex items-center justify-center gap-1"> {/* Center align header content */}
+                             <div className="flex items-center justify-center gap-1">
                                {header.label}
                                 {header.sortable && sortKey === header.key && (
                                     <span className="text-xs" aria-hidden="true">
@@ -529,24 +509,23 @@ export default function InventoryPage() {
                <TableBody>
                  {paginatedInventory.length === 0 ? (
                    <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2"> {/* Reduce padding */}
+                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                        No inventory items found matching your criteria.
                      </TableCell>
                    </TableRow>
                  ) : (
                    paginatedInventory.map((item) => (
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
-                       {/* Render cells based on visibility state and mobileHidden */}
                         {visibleColumns.actions && (
-                         <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}> {/* Sticky cell, centered */}
-                            <div className="flex gap-1 justify-center"> {/* Center align action buttons */}
+                         <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}>
+                            <div className="flex gap-1 justify-center">
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => item.id && router.push(`/inventory/${item.id}`)}
                                     disabled={!item.id}
                                     aria-label={`View details for ${item.shortName || item.description}`}
-                                    className="h-8 w-8 text-primary hover:text-primary/80" // View/Inspect Icon
+                                    className="h-8 w-8 text-primary hover:text-primary/80"
                                 >
                                     <Eye className="h-4 w-4" />
                                 </Button>
@@ -573,18 +552,22 @@ export default function InventoryPage() {
                          {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-center px-2 sm:px-4 py-2">
-                             {/* Use formatIntegerQuantity helper for display */}
                             <span>{formatIntegerQuantity(item.quantity)}</span>
                             {item.quantity === 0 && (
                               <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
                             )}
-                            {item.quantity > 0 && item.quantity <= 10 && (
+                            {item.quantity > 0 && item.quantity <= (item.minStockLevel || 10) && (
                               <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
+                            )}
+                            {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && (
+                               <Badge variant="secondary" className="ml-1 sm:ml-2 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Over</Badge>
                             )}
                           </TableCell>
                         )}
                         {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
                         {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
+                        {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
+                        {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
                      </TableRow>
                    ))
                  )}
@@ -592,7 +575,6 @@ export default function InventoryPage() {
              </Table>
            </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
                 <div className="flex items-center justify-between sm:justify-end space-x-2 py-4">
                      <span className="text-sm text-muted-foreground hidden sm:block">
@@ -604,7 +586,7 @@ export default function InventoryPage() {
                             size="sm"
                             onClick={() => handlePageChange(currentPage - 1)}
                             disabled={currentPage === 1}
-                            className="h-8 px-2" // Smaller buttons for mobile
+                            className="h-8 px-2"
                         >
                             <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Previous</span>
                         </Button>
@@ -616,7 +598,7 @@ export default function InventoryPage() {
                             size="sm"
                             onClick={() => handlePageChange(currentPage + 1)}
                             disabled={currentPage === totalPages}
-                             className="h-8 px-2" // Smaller buttons for mobile
+                             className="h-8 px-2"
                         >
                             <span className="hidden sm:inline">Next</span> <ChevronRight className="h-4 w-4" />
                         </Button>
@@ -628,3 +610,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+

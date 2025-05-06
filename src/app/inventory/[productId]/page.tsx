@@ -5,12 +5,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera } from 'lucide-react'; // Added Pencil, X, Barcode, Camera
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown } from 'lucide-react'; // Added TrendingUp, TrendingDown
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { getProductById, updateProduct, deleteProduct, Product } from '@/services/backend'; // Import deleteProduct
-import { Input } from '@/components/ui/input'; // Import Input for editing
-import { Label } from '@/components/ui/label'; // Import Label for editing
+import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend'; // Import deleteProduct
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,9 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Import AlertDialog
-import { cn } from '@/lib/utils'; // Import cn
-import BarcodeScanner from '@/components/barcode-scanner'; // Import BarcodeScanner component
+} from "@/components/ui/alert-dialog";
+import { cn } from '@/lib/utils';
+import BarcodeScanner from '@/components/barcode-scanner';
 
 
 // Helper function to safely format numbers for display
@@ -31,7 +31,7 @@ const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true } = options || {}; // Default: 2 decimals, WITH grouping
+    const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         return (0).toLocaleString(undefined, {
@@ -41,27 +41,30 @@ const formatDisplayNumber = (
         });
     }
 
-    return value.toLocaleString(undefined, { // Use browser's locale for formatting
+    return value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
 };
 
-// Helper function for input values (no grouping, fixed decimals)
-const formatInputValue = (value: number | undefined | null): string => {
+// Helper function for input values (no grouping, fixed decimals for currency, or integer for quantity)
+const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return '0.00';
+        return fieldType === 'currency' ? '0.00' : '0';
     }
     // Use toFixed for consistent decimal places, but parse as float first to handle potential strings
-    return parseFloat(String(value)).toFixed(2);
+    if (fieldType === 'currency') {
+      return parseFloat(String(value)).toFixed(2);
+    }
+    return parseInt(String(value), 10).toString(); // For quantity and stockLevel, ensure integer
 };
 
 // Helper function to format quantity as integer for display (with grouping)
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    return formatDisplayNumber(value, { decimals: 0, useGrouping: true }); // Use 0 decimals and grouping
+    return formatDisplayNumber(value, { decimals: 0, useGrouping: true });
 };
 
 export default function ProductDetailPage() {
@@ -69,27 +72,26 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [product, setProduct] = useState<Product | null>(null);
-  const [editedProduct, setEditedProduct] = useState<Partial<Product>>({}); // State for edited values
+  const [editedProduct, setEditedProduct] = useState<Partial<Product>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false); // Default to view mode
+  const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
-  const [isScanning, setIsScanning] = useState(false); // State for barcode scanning modal
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const productId = params.productId as string;
 
-   // Fetch product details
    const loadProduct = useCallback(async () => {
     if (!productId) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getProductById(productId);
+      const data = await getProductByIdService(productId);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data }); // Initialize edited state for potential editing later
+        setEditedProduct({ ...data });
       } else {
         setError("Product not found.");
          toast({
@@ -116,36 +118,30 @@ export default function ProductDetailPage() {
      loadProduct();
   }, [loadProduct]);
 
-    // Handle input changes during editing
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string = value; // Keep as string for non-numeric fields initially
-      if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
-          // Ensure value is treated as string before replacing commas
+      let numericValue: number | string = value;
+      if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
-          numericValue = (typeof value === 'string' || typeof value === 'number') ? parseFloat(stringValue.replace(/,/g, '')) : value;
+          numericValue = parseFloat(stringValue.replace(/,/g, ''));
           if (isNaN(numericValue)) {
-             numericValue = 0;
+             numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? (value === '' ? null : 0) : 0; // Allow empty for stock levels -> null
           }
       }
 
+      const updated = { ...prev, [field]: numericValue === null ? undefined : numericValue };
 
-      const updated = { ...prev, [field]: numericValue };
 
-      // Recalculate lineTotal if quantity or unitPrice changes
       if (field === 'quantity' || field === 'unitPrice') {
           const quantity = Number(updated.quantity) || 0;
           const unitPrice = Number(updated.unitPrice) || 0;
           updated.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
       }
-      // Note: We don't auto-calculate unitPrice from lineTotal/quantity here,
-      // user should adjust unitPrice if lineTotal is changed.
 
       return updated;
     });
   };
 
-  // Handle saving changes
   const handleSave = async () => {
     if (!product || !product.id) return;
     setIsSaving(true);
@@ -153,21 +149,22 @@ export default function ProductDetailPage() {
       const productToSave: Partial<Product> = {
         catalogNumber: editedProduct.catalogNumber || product.catalogNumber,
         description: editedProduct.description || product.description,
-        shortName: editedProduct.shortName || product.shortName, // Include shortName
-        barcode: editedProduct.barcode || undefined, // Include barcode, ensure it's undefined if empty
+        shortName: editedProduct.shortName || product.shortName,
+        barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
-        // Ensure lineTotal is recalculated based on potentially edited quantity/unitPrice
-        lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2))
+        lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
+        minStockLevel: editedProduct.minStockLevel === null ? undefined : (Number(editedProduct.minStockLevel) ?? product.minStockLevel),
+        maxStockLevel: editedProduct.maxStockLevel === null ? undefined : (Number(editedProduct.maxStockLevel) ?? product.maxStockLevel),
       };
 
-      await updateProduct(product.id, productToSave); // Call backend update function
+      await updateProductService(product.id, productToSave);
       toast({
         title: "Product Updated",
         description: "Changes saved successfully.",
       });
-      setIsEditing(false); // Switch back to view mode after saving
-      await loadProduct(); // Reload product data to show saved values
+      setIsEditing(false);
+      await loadProduct();
     } catch (err) {
       console.error("Failed to save product:", err);
       toast({
@@ -180,17 +177,16 @@ export default function ProductDetailPage() {
     }
   };
 
-   // Handle Deleting Product
    const handleDelete = async () => {
     if (!product || !product.id) return;
     setIsDeleting(true);
     try {
-      await deleteProduct(product.id); // Call backend delete function
+      await deleteProductService(product.id);
       toast({
         title: "Product Deleted",
         description: `Product "${product.description}" has been deleted.`,
       });
-      router.push('/inventory?refresh=true'); // Go back to inventory list after delete
+      router.push('/inventory?refresh=true');
     } catch (err) {
       console.error("Failed to delete product:", err);
       toast({
@@ -203,18 +199,16 @@ export default function ProductDetailPage() {
     }
   };
 
-  // Handle entering edit mode
   const handleEdit = () => {
     if (product) {
-        setEditedProduct({ ...product }); // Initialize editor with current product data
+        setEditedProduct({ ...product });
         setIsEditing(true);
     }
   };
 
-  // Handle cancelling edit mode
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product }); // Reset edited state to original product data
+        setEditedProduct({ ...product });
         setIsEditing(false);
         toast({
             title: "Edit Cancelled",
@@ -224,20 +218,17 @@ export default function ProductDetailPage() {
     }
   };
 
-  // Handle Back button click
    const handleBack = () => {
-      router.back(); // Go back to the previous page (inventory list)
+      router.back();
    };
 
-   // Handle opening the barcode scanner modal
    const handleScanBarcode = () => {
        setIsScanning(true);
    };
 
-   // Handle barcode detection from the scanner component
    const handleBarcodeDetected = (barcodeValue: string) => {
-       handleInputChange('barcode', barcodeValue); // Update the editedProduct state
-       setIsScanning(false); // Close the scanner modal
+       handleInputChange('barcode', barcodeValue);
+       setIsScanning(false);
        toast({
            title: "Barcode Scanned",
            description: `Barcode set to: ${barcodeValue}`,
@@ -245,22 +236,27 @@ export default function ProductDetailPage() {
    };
 
 
-   // Render individual detail item in VIEW mode
-   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false) => {
+   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined | null, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
      const IconComponent = icon;
-     const displayValue = typeof value === 'number'
-       ? (isCurrency
-             ? `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`
-             : (isQuantity
-                  ? formatIntegerQuantity(value) // Use integer formatter for quantity
-                  : formatDisplayNumber(value, { decimals: 2, useGrouping: true })) // Default number formatting
-         )
-       : (value || (isBarcode ? 'Not set' : '-')); // Show 'Not set' for empty barcode, '-' otherwise
+     let displayValue: string | React.ReactNode = '-';
+
+     if (value !== null && value !== undefined) {
+        if (typeof value === 'number') {
+            if (isCurrency) displayValue = `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`;
+            else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value);
+            else displayValue = formatDisplayNumber(value, { decimals: 2, useGrouping: true });
+        } else {
+            displayValue = value || (isBarcode ? 'Not set' : '-');
+        }
+     } else {
+        displayValue = (isBarcode || isStockLevel) ? 'Not set' : '-';
+     }
+
 
      return (
-       <div className="flex items-start space-x-3 py-2"> {/* Changed items-center to items-start */}
-         <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" /> {/* Added mt-1 */}
-         <div className="flex-grow"> {/* Added flex-grow */}
+       <div className="flex items-start space-x-3 py-2">
+         <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
+         <div className="flex-grow">
            <p className="text-sm font-medium text-muted-foreground">{label}</p>
            <p className="text-base font-semibold">{displayValue}</p>
          </div>
@@ -268,18 +264,18 @@ export default function ProductDetailPage() {
      );
    };
 
-    // Render individual detail item in EDIT mode
-    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false) => {
+    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined | null, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
         const IconComponent = icon;
         const inputType =
-          fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal'
+          fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' || fieldKey === 'minStockLevel' || fieldKey === 'maxStockLevel'
             ? 'number'
             : 'text';
-         // Use formatInputValue for numbers, otherwise use the value directly or empty string
+
          const inputValue =
            inputType === 'number'
-             ? formatInputValue(value as number | undefined)
-             : value || '';
+             ? formatInputValue(value as number | undefined | null, isCurrency ? 'currency' : (isQuantity || isStockLevel ? 'stockLevel' : 'currency')) // Adjust for stockLevel type
+             : (value as string) || '';
+
 
         return (
           <div className="flex items-start space-x-3 py-2">
@@ -292,15 +288,15 @@ export default function ProductDetailPage() {
                     type={inputType}
                     value={inputValue}
                     onChange={(e) => handleInputChange(fieldKey, e.target.value)}
-                    className="mt-1 h-9 flex-grow" // Use flex-grow
-                    step={inputType === 'number' ? (isQuantity ? '1' : '0.01') : undefined} // Integer step for quantity
+                    className="mt-1 h-9 flex-grow"
+                    step={inputType === 'number' ? (isCurrency ? '0.01' : '1') : undefined}
                     min={inputType === 'number' ? '0' : undefined}
-                    // Disable lineTotal input as it's calculated
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
+                    placeholder={isStockLevel ? "Optional" : ""}
                   />
                   {isBarcode && (
                     <Button
-                        type="button" // Important: prevent form submission if wrapped in form
+                        type="button"
                         variant="outline"
                         size="icon"
                         className="mt-1 h-9 w-9 flex-shrink-0"
@@ -352,9 +348,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-        {/* Back, Edit/Save, Cancel, Delete Buttons */}
        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-         {/* Go Back button */}
          <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting}>
            <ArrowLeft className="mr-2 h-4 w-4" /> Back
          </Button>
@@ -371,7 +365,6 @@ export default function ProductDetailPage() {
                  </>
              ) : (
                  <>
-                     {/* Delete Button - Only show in View mode */}
                       <AlertDialog>
                          <AlertDialogTrigger asChild>
                             <Button variant="destructive" disabled={isDeleting}>
@@ -383,7 +376,7 @@ export default function ProductDetailPage() {
                             <AlertDialogHeader>
                             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                             <AlertDialogDescription>
-                               This action cannot be undone. This will permanently delete the product "{product.description}".
+                               This action cannot be undone. This will permanently delete the product "{product.shortName || product.description}".
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -446,12 +439,22 @@ export default function ProductDetailPage() {
                </>
            )}
 
-           {product.quantity <= 10 && !isEditing && ( // Show low stock badge only in view mode
-                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
-                    product.quantity === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                }`}>
+           {product.quantity <= (product.minStockLevel || 10) && product.quantity > 0 && !isEditing && (
+                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
-                    {product.quantity === 0 ? 'Out of Stock' : 'Low Stock'}
+                    Low Stock
+                </span>
+            )}
+            {product.quantity === 0 && !isEditing && (
+                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}>
+                    <AlertTriangle className="mr-1 h-4 w-4" />
+                    Out of Stock
+                </span>
+            )}
+             {product.maxStockLevel !== undefined && product.quantity > product.maxStockLevel && !isEditing && (
+                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`}>
+                    <AlertTriangle className="mr-1 h-4 w-4" />
+                    Over Stock
                 </span>
             )}
         </CardHeader>
@@ -465,6 +468,8 @@ export default function ProductDetailPage() {
                     {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
                     {renderEditItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
                     {renderEditItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
+                    {renderEditItem(TrendingDown, "Min Stock Level", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
+                    {renderEditItem(TrendingUp, "Max Stock Level", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                  </>
              ) : (
                  <>
@@ -472,14 +477,14 @@ export default function ProductDetailPage() {
                     {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
                     {renderViewItem(Tag, "Unit Price", product.unitPrice, true)}
                     {renderViewItem(DollarSign, "Line Total", product.lineTotal, true)}
+                    {renderViewItem(TrendingDown, "Min Stock Level", product.minStockLevel, false, false, false, true)}
+                    {renderViewItem(TrendingUp, "Max Stock Level", product.maxStockLevel, false, false, false, true)}
                  </>
              )}
-             {/* Add other fields as needed, adapting for view/edit mode */}
           </div>
         </CardContent>
       </Card>
 
-      {/* Barcode Scanner Modal */}
       {isScanning && (
         <BarcodeScanner
           onBarcodeDetected={handleBarcodeDetected}
