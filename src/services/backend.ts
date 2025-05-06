@@ -155,12 +155,12 @@ export interface DocumentProcessingResponse {
  * Uses localStorage for persistence.
  * If a product already exists (matched by ID or catalog number), its quantity is increased and lineTotal recalculated.
  * Otherwise, a new product is added.
- * A single invoice history item is created or updated with the final status.
+ * An invoice history item is created or updated ONLY if source is 'upload'.
  *
- * @param products The list of products to save.
+ * @param productsToSave The list of products to save.
  * @param fileName The name of the original file processed.
  * @param source Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
- * @param invoiceDataUri Optional URI of the scanned invoice image.
+ * @param invoiceDataUri Optional URI of the scanned invoice image, used only if source is 'upload'.
  * @param tempId Optional temporary ID used for optimistic UI updates. This ID will be used for the final record if provided.
  * @returns A promise that resolves when the data is successfully saved.
  */
@@ -168,7 +168,7 @@ export async function saveProducts(
     productsToSave: Product[],
     fileName: string,
     source: string = 'upload',
-    invoiceDataUri?: string,
+    invoiceDataUri?: string, // Explicitly pass this for invoice history
     tempId?: string
 ): Promise<void> {
   console.log(`Saving products for file: ${fileName} (source: ${source}, tempId: ${tempId})`, productsToSave);
@@ -245,11 +245,10 @@ export async function saveProducts(
   } catch (error) {
     console.error("Error processing products for inventory:", error);
     productsProcessedSuccessfully = false;
-    // Re-throw to be caught by the caller on the UploadPage
     throw new Error(`Failed to process products for inventory: ${(error as Error).message}`);
   }
 
-
+  // Only create/update invoice history if the source is 'upload'
   if (source === 'upload') {
     const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
     const errorMessage = productsProcessedSuccessfully ? undefined : 'Failed to process some products into inventory.';
@@ -259,45 +258,39 @@ export async function saveProducts(
 
     if (tempId) {
         existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempId);
-        invoiceIdToUse = tempId;
+        invoiceIdToUse = tempId; // Use the tempId if provided (for updating optimistic entry)
     } else {
-        // Generate a new ID if no tempId is provided
         invoiceIdToUse = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
     }
 
     const invoiceRecord: InvoiceHistoryItem = {
         id: invoiceIdToUse,
         fileName: fileName,
-        uploadTime: new Date().toISOString(), // Always use current time for the definitive record
+        uploadTime: new Date().toISOString(),
         status: finalStatus,
         totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-        invoiceDataUri: invoiceDataUri,
+        invoiceDataUri: invoiceDataUri, // Use the passed invoiceDataUri
         errorMessage: errorMessage,
-        // Preserve existing invoiceNumber and supplier if updating an existing optimistic entry
         invoiceNumber: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].invoiceNumber : undefined,
         supplier: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].supplier : undefined,
     };
 
     if (existingInvoiceIndex !== -1) {
-        // Update the existing optimistic/pending invoice record
         currentInvoices[existingInvoiceIndex] = invoiceRecord;
-        console.log(`Updated invoice record with ID: ${invoiceIdToUse}`);
+        console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
     } else {
-        // Add a new invoice record
         currentInvoices = [invoiceRecord, ...currentInvoices];
-        console.log(`Created new invoice record with ID: ${invoiceIdToUse}`);
+        console.log(`Created new invoice record ID: ${invoiceIdToUse}`);
     }
-
     saveStoredData(INVOICES_STORAGE_KEY, currentInvoices);
     console.log('Updated localStorage invoices:', currentInvoices);
   } else {
-    console.log(`Skipping invoice history update for source: ${source}`);
+     console.log(`Skipping invoice history update for source: ${source}`);
   }
 
-  if (!productsProcessedSuccessfully) {
-    // Create a custom error to indicate that the invoice record might have been marked as error
+
+  if (!productsProcessedSuccessfully && source === 'upload') {
     const saveError = new Error('One or more products failed to save to inventory. Invoice record updated with error status.');
-    // Add a flag so the UploadPage knows this error originated from saveProducts and the invoice status is likely handled
     (saveError as any).updatedBySaveProducts = true;
     throw saveError;
   }

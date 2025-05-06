@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -9,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
+import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice'; // Import output type
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
-import { InvoiceHistoryItem, getInvoices, saveProducts } from '@/services/backend'; // Import getInvoices and saveProducts
+import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Removed saveProducts from here
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator'; // Import Separator
@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'; // Import cn for conditional classes
 
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
+const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_'; // Key for storing image URI
 
 // Helper function to safely format numbers
 const formatDisplayNumber = (
@@ -89,7 +90,6 @@ export default function UploadPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Basic validation (can be expanded)
       const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
         toast({
@@ -99,13 +99,13 @@ export default function UploadPage() {
         });
         setSelectedFile(null);
         if (fileInputRef.current) {
-          fileInputRef.current.value = ''; // Reset file input
+          fileInputRef.current.value = '';
         }
         return;
       }
       setSelectedFile(file);
-      setUploadProgress(0); // Reset progress when a new file is selected
-      setIsProcessing(false); // Reset processing state
+      setUploadProgress(0);
+      setIsProcessing(false);
     }
   };
 
@@ -117,33 +117,6 @@ export default function UploadPage() {
     setIsProcessing(false);
     setUploadProgress(0);
 
-    const tempId = `temp-${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
-    let base64dataForOptimistic: string | undefined = undefined;
-
-    // Try to read file for optimistic URI early if it's an image for immediate preview
-    if (selectedFile.type.startsWith('image/')) {
-        const optimisticReader = new FileReader();
-        optimisticReader.onloadend = () => {
-            base64dataForOptimistic = optimisticReader.result as string;
-            // Update optimistic item *after* URI is ready
-            setUploadHistory(prev => prev.map(item =>
-                item.id === tempId ? { ...item, invoiceDataUri: base64dataForOptimistic } : item
-            ));
-        };
-        optimisticReader.readAsDataURL(selectedFile);
-    }
-
-    const optimisticItem: InvoiceHistoryItem = {
-      id: tempId,
-      fileName: selectedFile.name,
-      uploadTime: new Date(),
-      status: 'pending',
-      invoiceDataUri: base64dataForOptimistic, // May be undefined initially for PDFs
-    };
-    setUploadHistory(prev => [optimisticItem, ...prev.filter(item => item.id !== tempId)].slice(0, 10));
-
-
-    // Simulate upload progress
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => {
         const nextProgress = prev + 10;
@@ -163,40 +136,33 @@ export default function UploadPage() {
       reader.onloadend = async () => {
          const base64data = reader.result as string;
 
-         setUploadHistory(prev => prev.map(item => item.id === tempId ? { ...item, status: 'processing', invoiceDataUri: base64data } : item));
          setUploadProgress(100);
          setIsUploading(false);
          setIsProcessing(true);
 
          try {
-             const scanResult = await scanInvoice({ invoiceDataUri: base64data });
+             const scanResult: ScanInvoiceOutput = await scanInvoice({ invoiceDataUri: base64data });
              console.log('AI Scan Result:', scanResult);
              
-             // Call saveProducts with the tempId so it can update the correct optimistic entry
-             // Ensure 'source' is 'upload' to create invoice history
-             await saveProducts(scanResult.products, selectedFile.name, 'upload', base64data, tempId);
-
+             // Store scan result and image URI in localStorage
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
-             localStorage.setItem(dataKey, JSON.stringify(scanResult));
+             const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
+
+             localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Store only product data
+             localStorage.setItem(imageUriKey, base64data); // Store image URI separately
 
              toast({
-               title: 'Processing & Save Complete',
-               description: `${selectedFile.name} processed. Review in edit page.`,
+               title: 'Scan Complete',
+               description: `${selectedFile.name} scanned. Review and save on the next page.`,
              });
-             router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
+             // Pass both keys to the edit page
+             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
 
-         } catch (aiOrSaveError: any) {
-             console.error('AI processing or saveProducts failed:', aiOrSaveError);
-             // If error was flagged by saveProducts, it means the invoice history was likely updated already.
-             if (!aiOrSaveError.updatedBySaveProducts) {
-                setUploadHistory(prev => prev.map(item =>
-                    item.id === tempId ? { ...item, status: 'error', errorMessage: (aiOrSaveError as Error).message || 'Processing failed before save', invoiceDataUri: base64data } : item
-                ));
-             }
-             // Always show a toast, but the message might be more generic if updatedBySaveProducts is true
+         } catch (aiError: any) {
+             console.error('AI processing failed:', aiError);
              toast({
                 title: 'Processing Error',
-                description: (aiOrSaveError as Error).message || 'Could not process or save the document.',
+                description: (aiError as Error).message || 'Could not process the document.',
                 variant: 'destructive',
              });
           } finally {
@@ -205,7 +171,8 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
-              // Crucial: Fetch history AFTER all operations to get the definitive record from backend
+              // Fetch history to show any *previously completed* uploads, not the current one yet.
+              // The current one will appear in history only after saving on the edit page.
               await fetchHistory();
           }
       };
@@ -214,9 +181,6 @@ export default function UploadPage() {
          console.error('Error reading file:', error);
          clearInterval(progressInterval);
          setIsUploading(false);
-         setUploadHistory(prev => prev.map(item =>
-            item.id === tempId ? { ...item, status: 'error', errorMessage: 'Failed to read file' } : item
-         ));
          toast({
            title: 'Upload Failed',
            description: 'Could not read the selected file.',
@@ -229,9 +193,6 @@ export default function UploadPage() {
        console.error('Upload failed:', error);
        clearInterval(progressInterval);
        setIsUploading(false);
-       setUploadHistory(prev => prev.map(item =>
-          item.id === tempId ? { ...item, status: 'error', errorMessage: 'Unexpected upload error' } : item
-       ));
        toast({
          title: 'Upload Failed',
          description: 'An unexpected error occurred. Please try again.',

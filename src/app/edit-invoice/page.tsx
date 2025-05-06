@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -21,6 +20,7 @@ interface EditableProduct extends Product {
 
 // Define prefix for temporary data keys in localStorage
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
+const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_'; // Key for storing image URI
 
 // Helper function to safely format numbers
 const formatNumber = (
@@ -65,6 +65,7 @@ function EditInvoiceContent() {
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null); // State for loading errors
   const [dataKey, setDataKey] = useState<string | null>(null); // Store data key in state
+  const [imageUriKey, setImageUriKey] = useState<string | null>(null); // Store image URI key
 
   // State for barcode prompt
   const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
@@ -72,15 +73,17 @@ function EditInvoiceContent() {
 
   useEffect(() => {
     const key = searchParams.get('key');
+    const imgKey = searchParams.get('imageKey'); // Get image URI key
     const nameParam = searchParams.get('fileName');
-    setDataKey(key); // Store key in state
+    setDataKey(key); 
+    setImageUriKey(imgKey); // Store image URI key
 
-    let hasAttemptedLoad = false; // Track if we tried to load data
+    let hasAttemptedLoad = false; 
 
     if (nameParam) {
       setFileName(decodeURIComponent(nameParam));
     } else {
-        setFileName('Unknown Document'); // Default filename if not provided
+        setFileName('Unknown Document'); 
     }
 
     if (key) {
@@ -97,15 +100,16 @@ function EditInvoiceContent() {
                 parsedData = JSON.parse(storedData);
             } catch (jsonParseError) {
                  console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-                 localStorage.removeItem(key); // Clear invalid data
+                 if (key) localStorage.removeItem(key); 
+                 if (imgKey) localStorage.removeItem(imgKey);
                  throw new Error("Invalid JSON structure received from storage.");
             }
 
             if (parsedData && Array.isArray(parsedData.products)) {
               const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
                 ...p,
-                id: p.id || `${Date.now()}-${index}`, // Ensure ID exists, use original if present
-                _originalId: p.id, // Store original ID for comparison later
+                id: p.id || `${Date.now()}-${index}`, 
+                _originalId: p.id, 
                 quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
                 lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
                  unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
@@ -117,7 +121,8 @@ function EditInvoiceContent() {
 
             } else {
               console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-              localStorage.removeItem(key); // Clear invalid data
+              if (key) localStorage.removeItem(key);
+              if (imgKey) localStorage.removeItem(imgKey);
               throw new Error("Invalid data structure received after parsing.");
             }
         } catch (error: any) {
@@ -129,7 +134,8 @@ function EditInvoiceContent() {
               description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
               variant: "destructive",
             });
-             if (key) localStorage.removeItem(key); // Clear data on any processing error
+             if (key) localStorage.removeItem(key); 
+             if (imgKey) localStorage.removeItem(imgKey); // Also clear image URI key on error
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
@@ -146,27 +152,18 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-
-     return () => {
-         // Optional: Cleanup logic if needed
-         // If navigating away *without saving*, clear the temp data
-         // Note: This might clear data if user refreshes, consider if this is desired.
-         // if (dataKey && !isSaving) { // Avoid clearing if save is in progress
-         //     localStorage.removeItem(dataKey);
-         // }
-     };
-
-  }, [searchParams, toast, initialDataLoaded]); // Removed router and isSaving from dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, toast, initialDataLoaded]); 
 
 
   const handleInputChange = (id: string, field: keyof Product, value: string | number) => {
     setProducts(prevProducts =>
       prevProducts.map(product => {
         if (product.id === id) {
-          let numericValue: number | string = value; // Keep as string for non-numeric fields initially
+          let numericValue: number | string = value; 
           if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal') {
               const stringValue = String(value);
-              numericValue = parseFloat(stringValue.replace(/,/g, '')); // Remove commas before parsing
+              numericValue = parseFloat(stringValue.replace(/,/g, '')); 
               if (isNaN(numericValue)) {
                  numericValue = 0;
               }
@@ -175,9 +172,9 @@ function EditInvoiceContent() {
 
           const updatedProduct = { ...product, [field]: numericValue };
 
-          const quantity = updatedProduct.quantity || 0; // Ensure quantity is a number for calculation
-          const unitPrice = updatedProduct.unitPrice || 0; // Ensure unitPrice is a number for calculation
-          const lineTotal = updatedProduct.lineTotal || 0; // Ensure lineTotal is a number for calculation
+          const quantity = updatedProduct.quantity || 0; 
+          const unitPrice = updatedProduct.unitPrice || 0; 
+          const lineTotal = updatedProduct.lineTotal || 0; 
 
 
           if (field === 'quantity' || field === 'unitPrice') {
@@ -206,7 +203,7 @@ function EditInvoiceContent() {
       quantity: 0,
       unitPrice: 0,
       lineTotal: 0,
-      barcode: undefined, // Start with undefined barcode
+      barcode: undefined, 
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
   };
@@ -223,16 +220,23 @@ function EditInvoiceContent() {
 
   // Function to proceed with the actual saving after barcode prompt (if needed)
   const proceedWithSave = async (finalProductsToSave: Product[]) => {
-      setIsSaving(true); // Set saving state here
+      setIsSaving(true); 
       try {
-          console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName);
-          // Change source to 'manual-edit' or similar to prevent invoice history creation
-          await saveProducts(finalProductsToSave, fileName, 'manual-edit');
+          const imageUri = imageUriKey ? localStorage.getItem(imageUriKey) : null;
+          console.log("Proceeding to save final products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
+          
+          // Pass 'upload' as source and the image URI to create invoice history
+          await saveProducts(finalProductsToSave, fileName, 'upload', imageUri || undefined);
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
               console.log(`Removed temp data with key: ${dataKey}`);
           }
+          if (imageUriKey) {
+              localStorage.removeItem(imageUriKey);
+              console.log(`Removed temp image URI with key: ${imageUriKey}`);
+          }
+
 
           toast({
               title: "Products Saved",
@@ -248,14 +252,14 @@ function EditInvoiceContent() {
               variant: "destructive",
           });
       } finally {
-          setIsSaving(false); // Clear saving state here
+          setIsSaving(false); 
       }
   };
 
 
   // Main save handler - checks for new products first
   const handleSave = async () => {
-     setIsSaving(true); // Indicate checking process starts
+     setIsSaving(true); 
 
      try {
          const currentInventory = await getProductsService();
@@ -266,27 +270,23 @@ function EditInvoiceContent() {
              if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
          });
 
-         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest); // Clean up internal flags
+         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest); 
 
          const newProductsWithoutBarcode = productsFromEdit.filter(p => {
-             // Check if exists in inventory by barcode, id, or catalog number
              const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
              const existsById = p.id && inventoryMap.has(`id:${p.id}`);
              const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
-
-             // It's "new" if it doesn't exist by any identifier AND doesn't have a barcode entered during edit
              return !existsByBarcode && !existsById && !existsByCatalog && !p.barcode;
-         }).map(p => ({ ...p, _isNewForPrompt: true })); // Mark for prompting
+         }).map(p => ({ ...p, _isNewForPrompt: true })); 
 
 
          if (newProductsWithoutBarcode.length > 0) {
              console.log("New products without barcode found:", newProductsWithoutBarcode);
-             setPromptingForBarcodes(newProductsWithoutBarcode); // Trigger the dialog
-             setIsSaving(false); // Stop "saving" state, wait for prompt result
+             setPromptingForBarcodes(newProductsWithoutBarcode); 
+             setIsSaving(false); 
          } else {
-             // No new products needing barcodes, proceed directly to save
              console.log("No new products require barcode prompt. Proceeding to save.");
-             await proceedWithSave(productsFromEdit); // Pass the cleaned products
+             await proceedWithSave(productsFromEdit); 
          }
 
      } catch (error) {
@@ -296,42 +296,33 @@ function EditInvoiceContent() {
              description: "Could not check inventory to identify new products. Please try again.",
              variant: "destructive",
          });
-         setIsSaving(false); // Reset saving state on error
+         setIsSaving(false); 
      }
   };
 
  // Callback for when the barcode prompt dialog is closed/completed
- const handleBarcodePromptComplete = (updatedProducts: Product[] | null) => {
-     if (updatedProducts) {
-         // User provided barcodes (or skipped some), merge updates and proceed to save
-         console.log("Barcode prompt completed. Updated products:", updatedProducts);
-         // Merge the updates from the dialog back into the main products state
-         const finalProducts = products.map(p => {
-             // Find if this product was in the prompt list (by checking _isNewForPrompt flag)
-             const wasPrompted = p._isNewForPrompt;
-             if (!wasPrompted) {
-                 // If it wasn't prompted, keep it as is (it either wasn't new or already had a barcode)
-                 return p;
+ const handleBarcodePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
+     if (updatedProductsFromPrompt) {
+         console.log("Barcode prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
+         
+         // Merge updates from the dialog back into the main products list.
+         // We need to ensure that products *not* in the prompt (because they were skipped or already had barcodes)
+         // are still included in the final save.
+         const finalProductsToSave = products.map(originalProduct => {
+             const productFromPrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
+             if (productFromPrompt) {
+                 // This product was in the prompt and might have an updated barcode
+                 return { ...originalProduct, barcode: productFromPrompt.barcode, _isNewForPrompt: false };
              }
-             // If it was prompted, find its updated version from the dialog results
-             const updatedVersion = updatedProducts.find(up => up.id === p.id);
-             // If an updated version exists (meaning user didn't skip it in the dialog), use its barcode
-             if (updatedVersion) {
-                 return { ...p, barcode: updatedVersion.barcode, _isNewForPrompt: false };
-             } else {
-                 // If no updated version exists (meaning user skipped it), keep barcode as undefined/null
-                 return { ...p, barcode: undefined, _isNewForPrompt: false };
-             }
-         });
+             // This product was not in the prompt (e.g., already had a barcode, or was skipped *before* prompt)
+             // or it was in the prompt but the user chose to "skip" it in the dialog (by not providing barcode)
+             return { ...originalProduct, _isNewForPrompt: false }; // Keep its existing barcode or lack thereof
+         }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest); // Clean internal flags
 
 
-          setProducts(finalProducts); // Update state locally
-
-         // Prepare for final save (remove internal flags)
-         const productsToSave = finalProducts.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
-         proceedWithSave(productsToSave);
+         setProducts(finalProductsToSave); 
+         proceedWithSave(finalProductsToSave);
      } else {
-         // User cancelled the prompt
          console.log("Barcode prompt cancelled.");
          toast({
              title: "Save Cancelled",
@@ -339,7 +330,7 @@ function EditInvoiceContent() {
              variant: "default",
          });
      }
-     setPromptingForBarcodes(null); // Close the dialog state
+     setPromptingForBarcodes(null); 
  };
 
 
@@ -347,6 +338,10 @@ function EditInvoiceContent() {
         if (dataKey) {
             localStorage.removeItem(dataKey);
             console.log(`Cleared temp data with key ${dataKey} on explicit back navigation.`);
+        }
+        if (imageUriKey) {
+            localStorage.removeItem(imageUriKey);
+            console.log(`Cleared temp image URI with key ${imageUriKey} on explicit back navigation.`);
         }
         router.push('/upload');
     };
@@ -429,9 +424,8 @@ function EditInvoiceContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -447,9 +441,9 @@ function EditInvoiceContent() {
                   <TableRow key={product.id}>
                     <TableCell className="px-2 sm:px-4 py-2">
                       <Input
-                        value={product.catalogNumber || ''} // Handle potential null/undefined
+                        value={product.catalogNumber || ''} 
                         onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
-                        className="min-w-[100px] h-9" // Adjust height
+                        className="min-w-[100px] h-9" 
                         aria-label={`Catalog number for ${product.description}`}
                       />
                     </TableCell>
@@ -457,7 +451,7 @@ function EditInvoiceContent() {
                       <Input
                         value={product.description || ''}
                         onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
-                        className="min-w-[150px] sm:min-w-[200px] h-9" // Adjust height
+                        className="min-w-[150px] sm:min-w-[200px] h-9" 
                         aria-label={`Description for catalog number ${product.catalogNumber}`}
                       />
                     </TableCell>
@@ -466,9 +460,9 @@ function EditInvoiceContent() {
                         type="number"
                         value={formatInputValue(product.quantity)}
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
-                        className="w-20 sm:w-24 text-right h-9" // Adjust height and width
+                        className="w-20 sm:w-24 text-right h-9" 
                         min="0"
-                        step="any" // Allow decimals for quantity if needed, or "1" for integers
+                        step="any" 
                         aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
@@ -477,7 +471,7 @@ function EditInvoiceContent() {
                         type="number"
                         value={formatInputValue(product.unitPrice)}
                         onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
-                        className="w-24 sm:w-28 text-right h-9" // Adjust height and width
+                        className="w-24 sm:w-28 text-right h-9" 
                         step="0.01"
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
@@ -488,7 +482,7 @@ function EditInvoiceContent() {
                         type="number"
                         value={formatInputValue(product.lineTotal)}
                         onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
-                        className="w-24 sm:w-28 text-right h-9" // Adjust height and width
+                        className="w-24 sm:w-28 text-right h-9" 
                         step="0.01"
                          min="0"
                          aria-label={`Line total for ${product.description}`}
@@ -499,7 +493,7 @@ function EditInvoiceContent() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleRemoveRow(product.id)}
-                        className="text-destructive hover:text-destructive/80 h-8 w-8" // Adjust size
+                        className="text-destructive hover:text-destructive/80 h-8 w-8" 
                          aria-label={`Remove row for ${product.description}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -510,7 +504,7 @@ function EditInvoiceContent() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3"> {/* Stack buttons on mobile */}
+          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3"> 
              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
              </Button>
