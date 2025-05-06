@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -261,8 +262,8 @@ export default function InventoryPage() {
         { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
         { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Added barcode column
-        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default
+        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]' }, // Shorten label, center align
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default, center align
         { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]' }, // Shorten label
     ];
 
@@ -571,7 +572,7 @@ export default function InventoryPage() {
                         {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                          {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
-                          <TableCell className="text-right px-2 sm:px-4 py-2">
+                          <TableCell className="text-center px-2 sm:px-4 py-2">
                              {/* Use formatIntegerQuantity helper for display */}
                             <span>{formatIntegerQuantity(item.quantity)}</span>
                             {item.quantity === 0 && (
@@ -582,7 +583,7 @@ export default function InventoryPage() {
                             )}
                           </TableCell>
                         )}
-                        {visibleColumns.unitPrice && <TableCell className={cn('text-right px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
+                        {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
                         {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
                      </TableRow>
                    ))
@@ -627,3 +628,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
