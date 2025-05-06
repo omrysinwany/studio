@@ -29,7 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices, deleteInvoice, updateInvoice } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoices, deleteInvoice as deleteInvoiceService, updateInvoice as updateInvoiceService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -263,7 +263,7 @@ export default function InvoicesPage() {
   const handleDeleteInvoice = async (invoiceId: string) => {
     setIsDeleting(true);
     try {
-        await deleteInvoice(invoiceId);
+        await deleteInvoiceService(invoiceId);
         toast({
             title: "Invoice Deleted",
             description: "The invoice has been successfully deleted.",
@@ -300,7 +300,7 @@ export default function InvoicesPage() {
             errorMessage: editedInvoiceData.errorMessage || undefined,
         };
 
-        await updateInvoice(selectedInvoiceDetails.id, updatedInvoice);
+        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
         toast({
             title: "Invoice Updated",
             description: "Invoice details saved successfully.",
@@ -730,7 +730,7 @@ export default function InvoicesPage() {
                           layout="fill"
                           objectFit="cover"
                           className="rounded-t-lg"
-                          data-ai-hint="invoice document preview"
+                          data-ai-hint="invoice document"
                         />
                       ) : (
                         <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
@@ -788,26 +788,6 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {/* Status is no longer editable here
-                    <div>
-                        <Label htmlFor="editStatus">Status</Label>
-                         <Select
-                            value={editedInvoiceData.status || ''}
-                            onValueChange={(value) => handleEditDetailsInputChange('status', value as InvoiceHistoryItem['status'])}
-                            disabled={isSavingDetails}
-                        >
-                            <SelectTrigger id="editStatus">
-                                <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="processing">Processing</SelectItem>
-                                <SelectItem value="completed">Completed</SelectItem>
-                                <SelectItem value="error">Error</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    */}
                     {selectedInvoiceDetails.status === 'error' && ( // Show error message editing only if original status is error
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
@@ -883,7 +863,7 @@ export default function InvoicesPage() {
                              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                              <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                 Yes, Delete Invoice
+                                 Yes, delete all
                              </AlertDialogAction>
                          </AlertDialogFooterComponent>
                      </AlertDialogContentComponent>
@@ -897,3 +877,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

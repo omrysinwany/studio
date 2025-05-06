@@ -21,11 +21,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Barcode, Pencil } from 'lucide-react'; // Added Barcode and Pencil
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'; // Removed Barcode and Pencil
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventory as clearInventoryService, deleteProduct } from '@/services/backend'; // Corrected import and added clearInventory, deleteProduct
+import { Product, getProductsService, clearInventory as clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventoryService
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -86,7 +86,6 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
-  const [isDeletingSingle, setIsDeletingSingle] = useState<string | null>(null); // State for single product delete
   const [searchTerm, setSearchTerm] = useState('');
   // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
@@ -257,7 +256,7 @@ export default function InventoryPage() {
 
     // Column definition including internal 'id' - Actions moved to the beginning
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4' }, // Actions first, sticky left, centered header
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' }, // Actions first, sticky left, centered header
         { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
         { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true, headerClassName: 'text-center' },
         { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' }, // Centered header
@@ -354,29 +353,6 @@ export default function InventoryPage() {
         }
     };
     // --- End Delete All Inventory ---
-
-    // --- Delete Single Product (Example integration if needed) ---
-    const handleDeleteSingleProduct = async (productId: string) => {
-        if (!productId) return;
-        setIsDeletingSingle(productId);
-        try {
-          await deleteProduct(productId);
-          toast({
-            title: "Product Deleted",
-            description: "The product has been removed from inventory.",
-          });
-          fetchInventory(); // Refresh the list
-        } catch (error) {
-          console.error(`Failed to delete product ${productId}:`, error);
-          toast({
-            title: "Delete Failed",
-            description: "Could not remove the product.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsDeletingSingle(null);
-        }
-      };
 
 
     if (isLoading) {
@@ -652,6 +628,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
-
-    
