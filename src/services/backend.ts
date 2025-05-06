@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -51,6 +50,7 @@ export interface InvoiceHistoryItem {
   supplier?: string; // Extracted supplier
   totalAmount?: number; // Extracted total amount
   errorMessage?: string;
+  invoiceDataUri?: string; // URI of the scanned invoice image
 }
 
 // --- Storage Keys ---
@@ -68,8 +68,8 @@ const initialMockInventory: Product[] = [
 ];
 
 const initialMockInvoices: InvoiceHistoryItem[] = [
-  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1).toISOString(), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75 },
-  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3).toISOString(), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00 },
+  { id: 'inv1', fileName: 'invoice_acme_corp.pdf', uploadTime: new Date(Date.now() - 86400000 * 1).toISOString(), status: 'completed', invoiceNumber: 'INV-1001', supplier: 'Acme Corp', totalAmount: 1250.75, invoiceDataUri: 'https://picsum.photos/600/800?random=1' },
+  { id: 'inv2', fileName: 'delivery_note_beta_inc.jpg', uploadTime: new Date(Date.now() - 86400000 * 3).toISOString(), status: 'completed', invoiceNumber: 'DN-0523', supplier: 'Beta Inc', totalAmount: 800.00, invoiceDataUri: 'https://picsum.photos/600/800?random=2' },
   { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5).toISOString(), status: 'error', errorMessage: 'Failed to extract totals' },
 ];
 
@@ -198,12 +198,14 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
  * @param products The list of products to save.
  * @param fileName The name of the original file processed.
  * @param source - Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
+ * @param invoiceDataUri - Optional URI of the scanned invoice image.
  * @returns A promise that resolves when the data is successfully saved.
  */
 export async function saveProducts(
     products: Product[],
     fileName: string,
-    source: string = 'upload' // Add source parameter
+    source: string = 'upload', // Add source parameter
+    invoiceDataUri?: string // Add invoiceDataUri parameter
 ): Promise<void> {
   console.log(`Saving products for file: ${fileName} (source: ${source})`, products);
   await new Promise(resolve => setTimeout(resolve, 100)); // Short delay
@@ -292,6 +294,7 @@ export async function saveProducts(
            uploadTime: new Date().toISOString(), // Store as ISO string
            status: 'completed',
            totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
+           invoiceDataUri: invoiceDataUri, // Store the image URI
        };
        const updatedInvoices = [newInvoiceRecord, ...currentInvoices];
        saveStoredData(INVOICES_STORAGE_KEY, updatedInvoices);

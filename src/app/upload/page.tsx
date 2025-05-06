@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice'; // Import the AI flow
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoices } from '@/services/backend'; // Import getInvoices for history
+import { InvoiceHistoryItem, getInvoices, saveProducts } from '@/services/backend'; // Import getInvoices and saveProducts
 
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
@@ -131,27 +131,27 @@ export default function UploadPage() {
              const result = await scanInvoice({ invoiceDataUri: base64data });
              console.log('AI Scan Result:', result);
 
-             // Update visual status to completed (backend save will handle permanent record)
-             // The backend save function will create the actual history item now
-             // updateVisualStatus(tempId, 'completed'); // Remove this optimistic update
-
-             toast({
-               title: 'Processing Complete',
-               description: `${selectedFile.name} processed. Please review and save.`,
-             });
-
              // Store result in localStorage and navigate with a key
              const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}`;
              try {
-                localStorage.setItem(dataKey, JSON.stringify(result));
+                // Save products (and invoice history) using the backend service
+                // The AI result (result.products) and the base64data (invoiceDataUri) are passed here
+                await saveProducts(result.products, selectedFile.name, 'upload', base64data);
+
+                localStorage.setItem(dataKey, JSON.stringify(result)); // Still store for editing if needed
+                 toast({
+                   title: 'Processing & Save Complete',
+                   description: `${selectedFile.name} processed and saved. Review in inventory/invoices.`,
+                 });
+
                  // Navigate to edit page with the key and filename
                  router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}`);
-             } catch (storageError) {
-                 console.error("Failed to save scan results to localStorage:", storageError);
-                 updateVisualStatus(tempId, 'error', 'Failed to prepare data for editing.');
+             } catch (storageOrSaveError) {
+                 console.error("Failed to save products or store scan results:", storageOrSaveError);
+                 updateVisualStatus(tempId, 'error', 'Failed to save data or prepare for editing.');
                  toast({
-                     title: 'Error Preparing Data',
-                     description: 'Could not store scan results for editing. Please try again.',
+                     title: 'Error Saving Data',
+                     description: 'Could not save products or store scan results for editing. Please try again.',
                      variant: 'destructive',
                  });
                  await fetchHistory(); // Refresh history

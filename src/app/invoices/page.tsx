@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download } from 'lucide-react'; // Added Eye, Download
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Loader, AlertCircle, Eye, Download, Image as ImageIcon } from 'lucide-react'; // Added Eye, Download, ImageIcon
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -31,6 +31,9 @@ import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import Image from 'next/image'; // Import next/image
+
 
 // Helper function to safely format numbers
 const formatNumber = (
@@ -74,6 +77,7 @@ export default function InvoicesPage() {
     supplier: true,
     totalAmount: true,
     errorMessage: false, // Keep hidden by default
+    invoiceDataUri: false, // Hidden by default, used for image view
     actions: true,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -83,6 +87,8 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
   const { toast } = useToast();
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [currentImageUri, setCurrentImageUri] = useState<string | undefined>(undefined);
 
 
    // Function to fetch invoice data
@@ -199,11 +205,12 @@ export default function InvoicesPage() {
       { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true }, // Hide supplier on mobile
       { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' }, // Shorten label
       { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate' },
+      { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' }, // Hidden column for data URI
       { key: 'actions', label: 'Actions', sortable: false, className: 'text-right' }
    ];
 
     // Filter columns for header display based on visibility state
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri'); // Exclude invoiceDataUri from header
 
    // Format date for display
    const formatDate = (date: Date | string | undefined) => {
@@ -224,6 +231,19 @@ export default function InvoicesPage() {
    const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
+
+   const handleViewImage = (imageUri: string | undefined) => {
+    if (imageUri) {
+      setCurrentImageUri(imageUri);
+      setShowImageModal(true);
+    } else {
+      toast({
+        title: "No Image",
+        description: "No image is available for this invoice.",
+        variant: "default",
+      });
+    }
+  };
 
 
   if (isLoading) {
@@ -299,7 +319,7 @@ export default function InvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage' // invoiceDataUri is typically not exported
         ];
         const headers = exportColumns
             .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
@@ -466,7 +486,7 @@ export default function InvoicesPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id' && h.key !== 'errorMessage').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -543,7 +563,22 @@ export default function InvoicesPage() {
                   filteredAndSortedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                        {/* Render cells based on visibility state and mobileHidden */}
-                       {visibleColumns.fileName && <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">{item.fileName}</TableCell>}
+                       {visibleColumns.fileName && (
+                          <TableCell className="font-medium truncate max-w-[120px] sm:max-w-xs px-2 sm:px-4 py-2">
+                            {item.invoiceDataUri ? (
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline"
+                                onClick={() => handleViewImage(item.invoiceDataUri)}
+                                title={`View image for ${item.fileName}`}
+                              >
+                                {item.fileName}
+                              </Button>
+                            ) : (
+                              item.fileName
+                            )}
+                          </TableCell>
+                       )}
                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
                        {visibleColumns.status && (
                          <TableCell className="px-2 sm:px-4 py-2">
@@ -569,7 +604,18 @@ export default function InvoicesPage() {
                                <AlertCircle className="h-4 w-4" />
                              </Button>
                            )}
-                           {/* <Button variant="ghost" size="sm" className="h-7 px-1.5">Details</Button> */}
+                           {item.invoiceDataUri && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-primary hover:text-primary/80 h-7 w-7 ml-1"
+                                onClick={() => handleViewImage(item.invoiceDataUri)}
+                                title={`View image for ${item.fileName}`}
+                                aria-label={`View image for ${item.fileName}`}
+                              >
+                                <ImageIcon className="h-4 w-4" />
+                              </Button>
+                           )}
                          </TableCell>
                         )}
                     </TableRow>
@@ -581,6 +627,29 @@ export default function InvoicesPage() {
           {/* TODO: Add Pagination if needed */}
         </CardContent>
       </Card>
+
+      {/* Image Modal */}
+      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Invoice Image</DialogTitle>
+            <DialogDescription>Viewing scanned document.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 overflow-auto max-h-[70vh]">
+            {currentImageUri && (
+              <Image
+                src={currentImageUri}
+                alt="Scanned Invoice"
+                width={800} // Adjust as needed, or use layout="responsive"
+                height={1100} // Adjust as needed
+                className="rounded-md object-contain"
+                data-ai-hint="invoice document"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
