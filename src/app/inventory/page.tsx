@@ -21,11 +21,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Barcode } from 'lucide-react'; // Added Barcode
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Barcode, Pencil } from 'lucide-react'; // Added Barcode and Pencil
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventory as clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventory
+import { Product, getProductsService, clearInventory as clearInventoryService, deleteProduct } from '@/services/backend'; // Corrected import and added clearInventory, deleteProduct
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -86,17 +86,18 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
+  const [isDeletingSingle, setIsDeletingSingle] = useState<string | null>(null); // State for single product delete
   const [searchTerm, setSearchTerm] = useState('');
   // Updated default visible columns
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
-    id: false,
-    description: false,
+    id: false, // Keep ID non-visible by default but available
+    description: false, // Full description hidden by default
     shortName: true, // Show short name
-    catalogNumber: false,
-    barcode: false, // Hide barcode by default initially
+    catalogNumber: false, // Catalog number hidden by default
+    barcode: false, // Hide barcode by default
     quantity: true, // Show quantity
     unitPrice: true, // Show unit price
-    lineTotal: false,
+    lineTotal: false, // Line total hidden by default
     actions: true, // Keep actions visible
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
@@ -254,17 +255,17 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    // Column definition including internal 'id' - Moved Actions to the beginning
-    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-left sticky left-0 bg-card z-10 px-2 sm:px-4' }, // Actions first, sticky left
-        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]' }, // Added shortName column
-        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true }, // Hide full desc by default
-        { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
-        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
-        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Added barcode column
-        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]' }, // Shorten label, center align
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false }, // Show unit price by default, center align
-        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]' }, // Shorten label
+    // Column definition including internal 'id' - Actions moved to the beginning
+    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
+        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4' }, // Actions first, sticky left, centered header
+        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
+        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' }, // Centered header
+        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]', headerClassName: 'text-center' },
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
+        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' }, // Total right, header center
     ];
 
     // Filter columns for header display based on visibility state AND mobileHidden flag
@@ -353,6 +354,29 @@ export default function InventoryPage() {
         }
     };
     // --- End Delete All Inventory ---
+
+    // --- Delete Single Product (Example integration if needed) ---
+    const handleDeleteSingleProduct = async (productId: string) => {
+        if (!productId) return;
+        setIsDeletingSingle(productId);
+        try {
+          await deleteProduct(productId);
+          toast({
+            title: "Product Deleted",
+            description: "The product has been removed from inventory.",
+          });
+          fetchInventory(); // Refresh the list
+        } catch (error) {
+          console.error(`Failed to delete product ${productId}:`, error);
+          toast({
+            title: "Delete Failed",
+            description: "Could not remove the product.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsDeletingSingle(null);
+        }
+      };
 
 
     if (isLoading) {
@@ -479,8 +503,8 @@ export default function InventoryPage() {
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeleteAllInventory} className={cn(buttonVariants({ variant: "destructive" }))}>
+                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                 {isDeleting ? (
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 ) : null}
@@ -504,6 +528,7 @@ export default function InventoryPage() {
                             key={header.key}
                             className={cn(
                                 header.className,
+                                header.headerClassName, // Added header specific class
                                 header.sortable && "cursor-pointer hover:bg-muted/50",
                                 // Apply mobileHidden classes conditionally based on screen size
                                 header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
@@ -513,7 +538,7 @@ export default function InventoryPage() {
                             onClick={() => header.sortable && handleSort(header.key as SortKey)}
                             aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                          >
-                             <div className="flex items-center gap-1">
+                             <div className="flex items-center justify-center gap-1"> {/* Center align header content */}
                                {header.label}
                                 {header.sortable && sortKey === header.key && (
                                     <span className="text-xs" aria-hidden="true">
@@ -537,8 +562,8 @@ export default function InventoryPage() {
                      <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                        {/* Render cells based on visibility state and mobileHidden */}
                         {visibleColumns.actions && (
-                         <TableCell className={cn('text-left sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}> {/* Sticky cell */}
-                            <div className="flex gap-1">
+                         <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}> {/* Sticky cell, centered */}
+                            <div className="flex gap-1 justify-center"> {/* Center align action buttons */}
                                 <Button
                                     variant="ghost"
                                     size="icon"
@@ -549,7 +574,6 @@ export default function InventoryPage() {
                                 >
                                     <Eye className="h-4 w-4" />
                                 </Button>
-                                {/* Delete button moved to Product Detail Page */}
                             </div>
                          </TableCell>
                         )}
@@ -629,3 +653,5 @@ export default function InventoryPage() {
   );
 }
 
+
+    
