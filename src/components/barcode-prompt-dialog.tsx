@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback } from 'react';
@@ -10,6 +11,7 @@ import { Camera, Save, SkipForward, X } from 'lucide-react';
 import BarcodeScanner from '@/components/barcode-scanner'; // Import the scanner component
 import type { Product } from '@/services/backend'; // Import Product type
 import { toast } from '@/hooks/use-toast'; // Import toast for feedback
+import { cn } from '@/lib/utils'; // Import cn for conditional styling
 
 interface BarcodePromptDialogProps {
   products: Product[]; // Products needing barcode assignment
@@ -58,66 +60,65 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   };
 
   // Function to skip adding barcode for a specific product by removing it from the prompt list
-  const handleSkipProduct = (productId: string) => {
-     console.log(`Skipping barcode entry for product ID: ${productId} by removing from prompt.`);
+  const handleSkipProduct = useCallback((productId: string) => {
      const skippedProduct = promptedProducts.find(p => p.id === productId);
-     setPromptedProducts(prev => prev.filter(p => p.id !== productId));
-     toast({
-         title: "Product Skipped",
-         description: `Barcode assignment skipped for "${skippedProduct?.shortName || skippedProduct?.description || 'Product'}".`,
-         variant: "default",
-     });
-     // Note: The product itself isn't deleted, just removed from this assignment step.
-     // The handleSave function will return the remaining promptedProducts.
-     // If the list becomes empty after skipping, the dialog behavior depends on how handleSave is called.
-  };
+     if (skippedProduct) {
+         console.log(`Skipping barcode entry for product ID: ${productId}`);
+         // Correctly update the state by filtering out the skipped product
+         setPromptedProducts(prev => prev.filter(p => p.id !== productId));
+         toast({
+             title: "Product Skipped",
+             description: `Barcode assignment skipped for "${skippedProduct.shortName || skippedProduct.description || 'Product'}".`,
+             variant: "default",
+         });
+     } else {
+         console.warn(`Could not find product with ID ${productId} to skip.`);
+     }
+  }, [promptedProducts, toast]); // Add promptedProducts and toast to dependency array
 
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      {/* Adjust content styling for better mobile experience */}
-      {/* Added max-h and flex structure */}
-      <DialogContent className="sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[80vh] flex flex-col p-4 sm:p-6">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[80vh] flex flex-col p-0 sm:p-0"> {/* Remove padding */}
+        <DialogHeader className="p-4 sm:p-6 border-b"> {/* Add padding back */}
           <DialogTitle>Assign Barcodes (Optional)</DialogTitle>
           <DialogDescription>
             Assign barcodes to new products. You can scan, enter manually, or skip. Click "Confirm &amp; Save" when done.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Wrap product list in ScrollArea - ensure it grows */}
-        {/* Use ScrollArea for the list */}
-        <ScrollArea className="flex-grow -mx-4 sm:-mx-6 border-t border-b"> {/* Add borders for visual separation */}
-          <div className="space-y-4 px-4 sm:px-6 py-4"> {/* Add padding back inside ScrollArea */}
+        <ScrollArea className="flex-grow border-b"> {/* Scroll area takes remaining space */}
+          <div className={cn("space-y-4 p-4 sm:p-6", promptedProducts.length === 0 && "flex justify-center items-center h-full")}> {/* Padding inside scroll area, center content if empty */}
              {promptedProducts.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No new products remaining to assign barcodes.</p>
              ) : (
                 promptedProducts.map((product) => (
-                  <div key={product.id} className="space-y-2 border-b pb-4 last:border-b-0"> {/* Removed padding here, added in parent */}
+                  <div key={product.id} className="space-y-2 border-b pb-4 last:border-b-0">
                     <Label htmlFor={`barcode-${product.id}`} className="font-medium">
                       {product.shortName || product.description}
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity}
                     </p>
-                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap"> {/* Wrap on small screens */}
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       <Input
                         id={`barcode-${product.id}`}
                         value={product.barcode || ''}
                         onChange={(e) => handleBarcodeChange(product.id, e.target.value)}
                         placeholder="Enter or scan barcode"
-                        className="flex-grow min-w-[150px]" // Allow input to grow
+                        className="flex-grow min-w-[150px]"
+                        aria-label={`Barcode for ${product.shortName || product.description}`}
                       />
-                      <div className="flex gap-1 shrink-0"> {/* Keep buttons together */}
+                      <div className="flex gap-1 shrink-0">
                           <Button
                             type="button"
                             variant="outline"
                             size="icon"
                             onClick={() => handleScanClick(product.id)}
-                            className="h-9 w-9" // Standard icon button size
+                            className="h-9 w-9"
+                            aria-label={`Scan barcode for ${product.shortName || product.description}`}
                           >
                             <Camera className="h-4 w-4" />
-                            <span className="sr-only">Scan Barcode</span>
                           </Button>
                            {/* Skip Button per product */}
                            <Button
@@ -125,10 +126,11 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                              variant="ghost"
                              size="sm"
                              onClick={() => handleSkipProduct(product.id)} // Attach handler
-                             className="text-xs text-muted-foreground h-9 px-2" // Align height
-                             title="Skip barcode for this item"
+                             className="text-xs text-muted-foreground h-9 px-2"
+                             title={`Skip barcode for ${product.shortName || product.description}`}
+                             aria-label={`Skip barcode for ${product.shortName || product.description}`}
                            >
-                             <SkipForward className="h-4 w-4 sm:mr-1" /> {/* Icon only on mobile */}
+                             <SkipForward className="h-4 w-4 sm:mr-1" />
                              <span className="hidden sm:inline">Skip</span>
                            </Button>
                        </div>
@@ -139,12 +141,10 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
           </div>
         </ScrollArea>
 
-        {/* Ensure footer is fixed at the bottom */}
-        <DialogFooter className="mt-auto pt-4 flex-col sm:flex-row gap-2"> {/* Flex column on mobile, removed border-t as ScrollArea has it */}
+        <DialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2"> {/* Add padding back */}
           <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
             <X className="mr-2 h-4 w-4" /> Cancel Save
           </Button>
-          {/* Save button allows saving even without barcodes assigned */}
           <Button onClick={handleSave} className="w-full sm:w-auto">
             <Save className="mr-2 h-4 w-4" /> Confirm &amp; Save
           </Button>
@@ -163,3 +163,5 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
 };
 
 export default BarcodePromptDialog;
+      
+    
