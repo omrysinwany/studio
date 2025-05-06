@@ -5,12 +5,14 @@
 
 import type { IPosSystemAdapter, PosConnectionConfig, SyncResult } from './pos-adapter.interface';
 import { caspitAdapter } from './caspit-adapter';
+import { hashavshevetAdapter } from './hashavshevet-adapter'; // Import the new adapter
 // Import other adapters here as they are created
 // import { retalixAdapter } from './retalix-adapter';
 
 // List of available adapters
 const availableAdapters: Record<string, IPosSystemAdapter> = {
   [caspitAdapter.systemId]: caspitAdapter,
+  [hashavshevetAdapter.systemId]: hashavshevetAdapter, // Register Hashavshevet adapter
   // [retalixAdapter.systemId]: retalixAdapter,
 };
 

@@ -18,6 +18,25 @@ import { Separator } from '@/components/ui/separator'; // Import Separator
 
 type PosSystemInfo = { systemId: string; systemName: string };
 
+// Define field structures for different systems
+// In a real app, this could come from adapter.getSettingsSchema() if implemented
+const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[]> = {
+  caspit: [
+    { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
+    { key: 'pwd', label: 'Caspit Password', type: 'password', tooltip: 'Your Caspit login password.' },
+    { key: 'osekMorshe', label: 'Business ID (Osek Morshe)', type: 'text', tooltip: 'Your Caspit business identifier (עוסק מורשה).' },
+  ],
+  hashavshevet: [
+     // Add fields specific to Hashavshevet based on its API documentation
+     { key: 'apiKey', label: 'Hashavshevet API Key', type: 'password', tooltip: 'Your unique API key for Hashavshevet.' },
+     { key: 'apiSecret', label: 'Hashavshevet API Secret (Optional)', type: 'password', tooltip: 'Your API Secret, if required by Hashavshevet.' },
+     { key: 'companyId', label: 'Hashavshevet Company ID', type: 'text', tooltip: 'Your specific company identifier in Hashavshevet.' },
+     { key: 'endpointUrl', label: 'Hashavshevet API URL (Optional)', type: 'text', tooltip: 'Override the default API URL if needed.' },
+  ],
+  // Add other systems here
+};
+
+
 export default function PosIntegrationSettingsPage() {
   const [availableSystems, setAvailableSystems] = useState<PosSystemInfo[]>([]);
   const [selectedSystemId, setSelectedSystemId] = useState<string>('');
@@ -60,7 +79,15 @@ export default function PosIntegrationSettingsPage() {
 
   const handleSystemChange = (systemId: string) => {
     setSelectedSystemId(systemId);
-    setConfigValues({}); // Reset config when system changes
+    // Load default/empty config for the selected system, or previously saved config if available
+    // This logic can be enhanced if we store settings per-system separately
+    getPosSettings().then(savedSettings => {
+        if (savedSettings && savedSettings.systemId === systemId) {
+            setConfigValues(savedSettings.config || {});
+        } else {
+            setConfigValues({}); // Reset to empty if different system or no settings
+        }
+    });
     setTestResult(null); // Reset test result
     setSyncResults([]); // Reset sync results
   };
@@ -76,7 +103,7 @@ export default function PosIntegrationSettingsPage() {
      setIsTesting(true);
      setTestResult(null);
      let result: { success: boolean; message: string } | null = null; // To store the result from action
-     console.log("[POS Page] Testing connection with config:", configValues); // Log config being sent
+     console.log(`[POS Page] Testing connection for ${selectedSystemId} with config:`, configValues); // Log config being sent
      try {
        // Directly call the manager function which calls the adapter/action
         // We now expect the action to return the success status and a message
@@ -110,6 +137,7 @@ export default function PosIntegrationSettingsPage() {
     if (!selectedSystemId) return;
     setIsSaving(true);
     try {
+      // Only save settings for the currently selected system
       await savePosSettings(selectedSystemId, configValues);
       toast({
         title: "Settings Saved",
@@ -203,15 +231,12 @@ export default function PosIntegrationSettingsPage() {
   const renderConfigFields = () => {
     if (!selectedSystemId) return null;
 
-    // Basic fields required by Caspit demo adapter
-    // In a real app, use adapter.getSettingsSchema() if implemented
-    const fields: { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[] = [
-      { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
-      { key: 'pwd', label: 'Caspit Password', type: 'password', tooltip: 'Your Caspit login password.' },
-      { key: 'osekMorshe', label: 'Business ID (Osek Morshe)', type: 'text', tooltip: 'Your Caspit business identifier (עוסק מורשה).' },
-      // { key: 'apiKey', label: 'API Key', type: 'password', tooltip: 'Your unique API key provided by the POS system.' },
-      // Add more fields based on specific adapter needs
-    ];
+    // Get the fields definition for the selected system
+    const fields = systemConfigFields[selectedSystemId] || [];
+
+    if (fields.length === 0) {
+        return <p className="text-sm text-muted-foreground">No specific configuration needed for this system, or configuration fields not yet defined.</p>;
+    }
 
     return (
         <TooltipProvider>
