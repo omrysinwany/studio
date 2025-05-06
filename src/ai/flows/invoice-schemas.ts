@@ -20,12 +20,14 @@ export const ExtractedProductSchema = z.object({
   purchase_price: z.number().optional().describe('The extracted purchase price (unit price if available).'), // Optional purchase price
   total: z.number().describe('The line total for the product.'), // Assuming prompt forces this to be a number
   description: z.string().optional().describe('Optional description if clearly present.'),
+  short_product_name: z.string().optional().describe("A short, concise name or keyword summary for the product (max 3-4 words)."), // Added short name field
 });
 
 // Final processed product schema (used for saving and editing)
 export const FinalProductSchema = z.object({
   catalogNumber: z.string().describe('The catalog number of the product.'),
   description: z.string().describe('The description of the product.'),
+  shortName: z.string().optional().describe("A short, concise name for the product."), // Added short name field (optional)
   quantity: z.number().describe('The quantity of the product (individual units).'),
   unitPrice: z.number().describe('The calculated unit price (total / quantity or fallback).'), // Calculated or fallback
   lineTotal: z.number().describe('The line total for the product.'),

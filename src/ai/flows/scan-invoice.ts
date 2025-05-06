@@ -53,7 +53,7 @@ const prompt = ai.definePrompt({
                  .describe('Raw extracted product list from the invoice.'),
     })
   },
-  // Updated prompt to prioritize unit quantity
+  // Updated prompt to prioritize unit quantity and request short name
   prompt: `
     Analyze the following image and extract information for ALL distinct products found.
     Provide the extracted data as a JSON **array** (list) of JSON objects.
@@ -69,6 +69,8 @@ const prompt = ai.definePrompt({
 
     For the keys "quantity", "purchase_price", and "total", extract ONLY the numerical value (integers or decimals).
     **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these three keys.
+
+    **NEW**: Also, include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
 
     If a specific piece of information (other than description) for a product is not found, you can omit that key from that product's JSON object.
     Ensure the output is a valid JSON array.
@@ -142,10 +144,15 @@ const scanInvoiceFlow = ai.defineFlow<
                 // Use product_name if available, otherwise fallback to description or catalog number
                 const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
 
+                // Fallback logic for shortName: Use AI's short_product_name, or first 3 words of description, or catalog number
+                const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
+
+
                 // Construct the final product object conforming to FinalProductSchema
                 const finalProduct: z.infer<typeof FinalProductSchema> = {
                     catalogNumber: rawProduct.catalog_number || 'N/A',
                     description: description,
+                    shortName: shortName, // Assign the shortName
                     quantity: quantity, // Use parsed quantity
                     unitPrice: unitPrice, // Use calculated or fallback unit price
                     lineTotal: lineTotal, // Use parsed lineTotal

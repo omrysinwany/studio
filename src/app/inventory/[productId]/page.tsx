@@ -148,6 +148,7 @@ export default function ProductDetailPage() {
       const productToSave: Partial<Product> = {
         catalogNumber: editedProduct.catalogNumber || product.catalogNumber,
         description: editedProduct.description || product.description,
+        shortName: editedProduct.shortName || product.shortName, // Include shortName
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
         // Ensure lineTotal is recalculated based on potentially edited quantity/unitPrice
@@ -249,6 +250,15 @@ export default function ProductDetailPage() {
     // Render individual detail item in EDIT mode
     const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false) => {
         const IconComponent = icon;
+        const inputType =
+          fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal'
+            ? 'number'
+            : 'text';
+         const inputValue =
+           inputType === 'number'
+             ? formatInputValue(value as number | undefined)
+             : value || '';
+
         return (
           <div className="flex items-start space-x-3 py-2">
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
@@ -256,14 +266,12 @@ export default function ProductDetailPage() {
               <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
               <Input
                 id={fieldKey}
-                type={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? 'number' : 'text'}
-                value={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal'
-                          ? formatInputValue(editedProduct[fieldKey] as number | undefined)
-                          : editedProduct[fieldKey] || ''}
+                type={inputType}
+                value={inputValue}
                 onChange={(e) => handleInputChange(fieldKey, e.target.value)}
                 className="mt-1 h-9"
-                step={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? '0.01' : undefined}
-                min={fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' ? '0' : undefined}
+                step={inputType === 'number' ? '0.01' : undefined}
+                min={inputType === 'number' ? '0' : undefined}
                 // Disable lineTotal input as it's calculated
                 disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
               />
@@ -363,14 +371,22 @@ export default function ProductDetailPage() {
         <CardHeader>
            {isEditing ? (
              <>
-                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground">Product Description</Label>
+                <Label htmlFor="shortName" className="text-sm font-medium text-muted-foreground">Product Name</Label>
+                <Input
+                    id="shortName"
+                    value={editedProduct.shortName || ''}
+                    onChange={(e) => handleInputChange('shortName', e.target.value)}
+                    className="text-2xl sm:text-3xl font-bold h-auto p-0 border-0 shadow-none focus-visible:ring-0"
+                    disabled={isSaving || isDeleting}
+                    />
+                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground pt-2">Full Description</Label>
                 <Input
                     id="description"
                     value={editedProduct.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
-                    className="text-2xl sm:text-3xl font-bold h-auto p-0 border-0 shadow-none focus-visible:ring-0"
+                    className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
-                    />
+                  />
                  <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2">Catalog Number</Label>
                  <Input
                     id="catalogNumber"
@@ -382,11 +398,14 @@ export default function ProductDetailPage() {
               </>
            ) : (
                <>
-                 <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">{product.description}</CardTitle>
+                 <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">{product.shortName || product.description}</CardTitle>
                  <CardDescription className="flex items-center gap-2">
                     <Hash className="h-4 w-4 text-muted-foreground"/>
                     {product.catalogNumber}
                  </CardDescription>
+                  {product.shortName && product.description !== product.shortName && (
+                     <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
+                  )}
                </>
            )}
 
@@ -423,5 +442,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
-    

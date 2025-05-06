@@ -20,6 +20,10 @@ export interface Product {
    */
   description: string;
   /**
+   * A short, concise name for the product (e.g., for quick display). Optional.
+   */
+  shortName?: string;
+  /**
    * The quantity of the product.
    */
   quantity: number;
@@ -52,11 +56,11 @@ const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings'; // New key for POS settings
 
 // --- Initial Mock Data ---
 const initialMockInventory: Product[] = [
-   { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
-   { id: 'prod2', catalogNumber: '67890', description: 'Sample Product 2 (Mock)', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
-   { id: 'prod3', catalogNumber: 'ABCDE', description: 'Another Mock Item', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
-   { id: 'prod4', catalogNumber: 'LOW01', description: 'Low Stock Mock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00 },
-   { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
+   { id: 'prod1', catalogNumber: '12345', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, lineTotal: 99.90 },
+   { id: 'prod2', catalogNumber: '67890', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, lineTotal: 99.95 },
+   { id: 'prod3', catalogNumber: 'ABCDE', description: 'Another Mock Item', shortName: 'Another Mock', quantity: 25, unitPrice: 1.50, lineTotal: 37.50 },
+   { id: 'prod4', catalogNumber: 'LOW01', description: 'Low Stock Mock', shortName: 'Low Stock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00 },
+   { id: 'prod5', catalogNumber: 'OUT01', description: 'Out of Stock Mock', shortName: 'Out Stock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00 },
 ];
 
 const initialMockInvoices: InvoiceHistoryItem[] = [
@@ -161,6 +165,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
         id: `new-${Date.now()}-1`,
         catalogNumber: 'EXTRACT-001',
         description: 'Extracted Item A',
+        shortName: 'Extracted A',
         quantity: 2,
         unitPrice: 15.00, // Assuming AI might provide this or it's calculated later
         lineTotal: 30.00,
@@ -169,6 +174,7 @@ export async function uploadDocument(document: File): Promise<DocumentProcessing
          id: `new-${Date.now()}-2`,
         catalogNumber: 'EXTRACT-002',
         description: 'Extracted Item B',
+        shortName: 'Extracted B',
         quantity: 1,
         unitPrice: 50.50, // Assuming AI might provide this or it's calculated later
         lineTotal: 50.50,
@@ -232,6 +238,10 @@ export async function saveProducts(
       // Recalculate lineTotal based on the new quantity and existing unit price
       // Use existingProduct.unitPrice, not the potentially recalculated unitPrice from the new product
       existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
+       // Optionally update description or shortName if the new one is more descriptive?
+       // For now, let's keep the existing description and shortName unless they are empty.
+       existingProduct.description = existingProduct.description || newProduct.description;
+       existingProduct.shortName = existingProduct.shortName || newProduct.shortName;
       console.log(`Product updated:`, existingProduct);
 
     } else {
@@ -251,6 +261,7 @@ export async function saveProducts(
         lineTotal: lineTotal,
         catalogNumber: newProduct.catalogNumber || 'N/A',
         description: newProduct.description || 'No Description',
+        shortName: newProduct.shortName || (newProduct.description || 'No Description').split(' ').slice(0, 3).join(' '), // Generate fallback shortName
       };
       updatedInventory.push(productToAdd);
       console.log(`Product added:`, productToAdd);
@@ -295,19 +306,22 @@ export async function getProductsService(): Promise<Product[]> {
   await new Promise(resolve => setTimeout(resolve, 50)); // Simulate small delay
   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
   console.log("Returning inventory from localStorage:", inventory);
-  // Recalculate lineTotal for consistency before returning
-  const inventoryWithRecalculatedTotals = inventory.map(item => {
+  // Recalculate lineTotal and ensure shortName exists for consistency before returning
+  const inventoryWithDefaults = inventory.map(item => {
       const quantity = Number(item.quantity) || 0;
       const unitPrice = Number(item.unitPrice) || 0;
+      const description = item.description || 'No Description';
       return {
         ...item,
         // Ensure ID exists, just in case getStoredData logic changes
         id: item.id || `prod-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        description: description,
+        shortName: item.shortName || description.split(' ').slice(0, 3).join(' '), // Generate fallback shortName
         lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
       };
   });
-  console.log("Returning inventory with recalculated totals:", inventoryWithRecalculatedTotals);
-  return inventoryWithRecalculatedTotals;
+  console.log("Returning inventory with recalculated totals and shortNames:", inventoryWithDefaults);
+  return inventoryWithDefaults;
 }
 
 /**
@@ -321,13 +335,16 @@ export async function getProductById(productId: string): Promise<Product | null>
    await new Promise(resolve => setTimeout(resolve, 50));
    const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
    const product = inventory.find(p => p.id === productId);
-   // Recalculate lineTotal before returning
+   // Recalculate lineTotal and ensure shortName exists before returning
    if (product) {
         const quantity = Number(product.quantity) || 0;
         const unitPrice = Number(product.unitPrice) || 0;
+        const description = product.description || 'No Description';
         return {
            ...product,
            id: product.id || productId, // Ensure ID is present
+           description: description,
+           shortName: product.shortName || description.split(' ').slice(0, 3).join(' '), // Generate fallback shortName
            lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
         };
    }
@@ -368,6 +385,12 @@ export async function updateProduct(productId: string, updatedData: Partial<Prod
        const unitPrice = Number(updatedProduct.unitPrice) || 0;
        updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
    }
+    // Ensure shortName exists after update
+    if (!updatedProduct.shortName) {
+         const description = updatedProduct.description || 'No Description';
+         updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
+    }
+
 
   currentInventory[productIndex] = updatedProduct;
 

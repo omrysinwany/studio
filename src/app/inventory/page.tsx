@@ -80,10 +80,11 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const [searchTerm, setSearchTerm] = useState('');
-  // Updated default visible columns to Name, Qty, Price
+  // Updated default visible columns to Product (shortName), Qty, Price
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     id: false,
-    description: true, // Show name/description
+    description: false, // Hide full description by default
+    shortName: true, // Show short name
     catalogNumber: false, // Keep hidden by default
     quantity: true, // Show quantity
     unitPrice: true, // Show unit price
@@ -91,7 +92,7 @@ export default function InventoryPage() {
     actions: true, // Keep actions visible
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out'>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('description');
+  const [sortKey, setSortKey] = useState<SortKey>('shortName'); // Default sort by shortName
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1); // State for pagination
   const router = useRouter();
@@ -172,6 +173,7 @@ export default function InventoryPage() {
        const lowerSearchTerm = searchTerm.toLowerCase();
        result = result.filter(item =>
          (item.description?.toLowerCase() || '').includes(lowerSearchTerm) ||
+         (item.shortName?.toLowerCase() || '').includes(lowerSearchTerm) || // Search shortName too
          (item.catalogNumber?.toLowerCase() || '').includes(lowerSearchTerm)
        );
      }
@@ -242,7 +244,8 @@ export default function InventoryPage() {
     // Column definition including internal 'id' - Moved Actions to the beginning
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
         { key: 'actions', label: 'Actions', sortable: false, className: 'text-left sticky left-0 bg-card z-10 px-2 sm:px-4' }, // Actions first, sticky left
-        { key: 'description', label: 'Product Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]' },
+        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]' }, // Added shortName column
+        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true }, // Hide full desc by default
         { key: 'id', label: 'ID', sortable: true }, // Keep ID for potential export
         { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true }, // Hide catalog on mobile
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-right min-w-[60px] sm:min-w-[100px]' }, // Shorten label
@@ -282,7 +285,7 @@ export default function InventoryPage() {
 
         // Define columns to export (can be different from visible columns if needed)
         const exportColumns: (keyof Product | 'id')[] = [
-            'id', 'catalogNumber', 'description', 'quantity', 'unitPrice', 'lineTotal'
+            'id', 'catalogNumber', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal' // Added shortName
         ];
 
         const headers = exportColumns
@@ -536,7 +539,8 @@ export default function InventoryPage() {
                             </div>
                          </TableCell>
                         )}
-                         {visibleColumns.description && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none">{item.description || 'N/A'}</TableCell>}
+                        {visibleColumns.shortName && <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">{item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}</TableCell>}
+                         {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
                         {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
                         {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
