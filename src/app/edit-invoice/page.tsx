@@ -21,6 +21,14 @@ interface EditableProduct extends Product {
 // Define prefix for temporary data keys in localStorage
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 
+// Helper function to safely format numbers to two decimal places
+const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '0.00'; // Or return '-' or 'N/A' based on preference
+    }
+    return value.toFixed(decimals);
+};
+
 function EditInvoiceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -374,20 +382,20 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.quantity} // Keep as number for display formatting
+                        value={formatNumber(product.quantity, 2)} // Format for display
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} // Pass string for controlled input
-                        className="w-20 text-right"
+                        className="w-24 text-right" // Increased width
                         min="0"
-                        step="0.01" // Allow decimals if needed, adjust if quantity is always integer
+                        step="0.01" // Allow decimals
                         aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.unitPrice.toFixed(2)} // Format to 2 decimal places for display
+                        value={formatNumber(product.unitPrice)} // Format for display
                         onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} // Pass string
-                        className="w-24 text-right"
+                        className="w-28 text-right" // Increased width
                         step="0.01"
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
@@ -396,9 +404,9 @@ function EditInvoiceContent() {
                     <TableCell className="text-right">
                       <Input
                         type="number"
-                        value={product.lineTotal.toFixed(2)} // Format to 2 decimal places for display
+                        value={formatNumber(product.lineTotal)} // Format for display
                         onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} // Pass string
-                        className="w-24 text-right"
+                        className="w-28 text-right" // Increased width
                         step="0.01"
                          min="0"
                          aria-label={`Line total for ${product.description}`}
@@ -461,4 +469,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

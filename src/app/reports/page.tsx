@@ -16,6 +16,14 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 // Removed useAuth, useRouter imports
 import { useToast } from '@/hooks/use-toast';
 
+// Helper function to safely format numbers to two decimal places
+const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '0.00'; // Or return '-' or 'N/A' based on preference
+    }
+    return value.toFixed(decimals);
+};
+
 
 // Mock Data - Replace with actual API calls fetching aggregated data
 const MOCK_KPIS = {
@@ -196,10 +204,12 @@ export default function ReportsPage() {
                  <DollarSign className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">₪{kpis.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div> {/* Changed to ILS */}
+                 {/* Use formatNumber for display */}
+                 <div className="text-2xl font-bold">₪{formatNumber(kpis.totalValue)}</div> {/* Changed to ILS */}
                  <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
-                   {Math.abs(kpis.valueChangePercent)}% from last period
+                   {/* Use formatNumber for percentage */}
+                   {formatNumber(Math.abs(kpis.valueChangePercent), 1)}% from last period
                  </p>
                </CardContent>
              </Card>
@@ -247,15 +257,17 @@ export default function ReportsPage() {
                 <CardContent>
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                           <ResponsiveContainer>
+                           <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${value/1000}k`} /> {/* Changed to ILS */}
+                                     {/* Use formatNumber for YAxis tickFormatter */}
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₪${formatNumber(value / 1000, 0)}k`} /> {/* Changed to ILS */}
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        formatter={(value: number) => `₪${value.toFixed(2)}`} // Format tooltip value
+                                        // Use formatNumber for tooltip value
+                                        formatter={(value: number) => `₪${formatNumber(value)}`} // Format tooltip value
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
                                 </LineChart>
@@ -276,7 +288,7 @@ export default function ReportsPage() {
                  <CardContent>
                       {barChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                           <ResponsiveContainer>
+                           <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
@@ -304,12 +316,13 @@ export default function ReportsPage() {
                  <CardContent className="flex items-center justify-center pb-8">
                      {pieChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[300px]">
-                           <ResponsiveContainer>
+                           <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                        formatter={(value: number, name) => `${name}: ₪${value.toFixed(2)}`} // Format tooltip value
+                                        // Use formatNumber for tooltip value
+                                        formatter={(value: number, name) => `${name}: ₪${formatNumber(value)}`} // Format tooltip value
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -353,4 +366,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-

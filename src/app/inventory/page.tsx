@@ -45,6 +45,14 @@ const ITEMS_PER_PAGE = 10; // Number of items per page
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
+// Helper function to safely format numbers to two decimal places
+const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '0.00'; // Or return '-' or 'N/A' based on preference
+    }
+    return value.toFixed(decimals);
+};
+
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,6 +182,9 @@ export default function InventoryPage() {
          const unitPrice = Number(item.unitPrice) || 0;
          return {
             ...item,
+            // Ensure internal data remains numeric
+            quantity: quantity,
+            unitPrice: unitPrice,
             lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
          };
      });
@@ -222,10 +233,8 @@ export default function InventoryPage() {
         }
         // Format numbers to two decimal places if applicable
         if (typeof value === 'number') {
-             // Basic check if it's likely a price/total
-             if (value.toString().includes('.')) {
-                  return value.toFixed(2);
-             }
+            // Use the helper function for consistent formatting
+            return formatNumber(value, 2);
         }
         let stringValue = String(value);
         // If the value contains a comma, double quote, or newline, enclose it in double quotes
@@ -481,7 +490,8 @@ export default function InventoryPage() {
                         {visibleColumns.catalogNumber && <TableCell>{item.catalogNumber || 'N/A'}</TableCell>}
                         {visibleColumns.quantity && (
                           <TableCell className="text-right">
-                            <span>{item.quantity}</span>
+                             {/* Use formatNumber helper for quantity display */}
+                            <span>{formatNumber(item.quantity, 2)}</span>
                             {item.quantity === 0 && (
                               <Badge variant="destructive" className="ml-2">Out</Badge>
                             )}
@@ -490,9 +500,10 @@ export default function InventoryPage() {
                             )}
                           </TableCell>
                         )}
-                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice?.toFixed(2) ?? '0.00'}</TableCell>}
-                        {/* Display the recalculated lineTotal */}
-                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{item.lineTotal?.toFixed(2) ?? '0.00'}</TableCell>}
+                         {/* Use formatNumber helper for unitPrice display */}
+                        {visibleColumns.unitPrice && <TableCell className="text-right">₪{formatNumber(item.unitPrice)}</TableCell>}
+                        {/* Display the recalculated and formatted lineTotal */}
+                        {visibleColumns.lineTotal && <TableCell className="text-right">₪{formatNumber(item.lineTotal)}</TableCell>}
                        {visibleColumns.actions && (
                          <TableCell className="text-right">
                            <Button
@@ -542,4 +553,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-

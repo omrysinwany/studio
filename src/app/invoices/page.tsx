@@ -33,6 +33,13 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoices } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 
+// Helper function to safely format numbers to two decimal places
+const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '0.00'; // Or return '-' or 'N/A' based on preference
+    }
+    return value.toFixed(decimals);
+};
 
 // Assume backend provides suppliers for filtering (or derive from fetched data) - Kept for UI demo
 const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
@@ -267,10 +274,8 @@ export default function InvoicesPage() {
          }
          // Format numbers to two decimal places if applicable
          if (typeof value === 'number') {
-              // Basic check if it's likely a price/total
-              if (value.toString().includes('.')) {
-                   return value.toFixed(2);
-              }
+              // Use the helper function for consistent formatting
+             return formatNumber(value, 2);
          }
         let stringValue = String(value);
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
@@ -539,7 +544,8 @@ export default function InvoicesPage() {
                        {visibleColumns.supplier && <TableCell>{item.supplier || '-'}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right">
-                            {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${item.totalAmount.toFixed(2)}` : '-'}
+                             {/* Use formatNumber helper for totalAmount display */}
+                            {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount)}` : '-'}
                          </TableCell>
                        )}
                        {visibleColumns.errorMessage && (
@@ -571,4 +577,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-

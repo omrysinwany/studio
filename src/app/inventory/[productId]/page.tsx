@@ -12,38 +12,14 @@ import { Separator } from '@/components/ui/separator';
 import { getProductById, Product } from '@/services/backend'; // Import specific product fetch and getProductById
 
 
-// Mock Product Data Interface (should match inventory page) - Using Product from backend now
-// interface InventoryProduct {
-//   id: string;
-//   name: string;
-//   catalogNumber: string;
-//   quantity: number;
-//   unitPrice: number; // Effective unit price
-//   category?: string;
-//   lastUpdated: string;
-//   // Add more potential fields if needed
-//   description?: string;
-//   supplier?: string;
-//   location?: string;
-//   lineTotal?: number;
-// }
+// Helper function to safely format numbers to two decimal places
+const formatNumber = (value: number | undefined | null, decimals: number = 2): string => {
+    if (value === null || value === undefined || isNaN(value)) {
+        return '0.00'; // Or return '-' or 'N/A' based on preference
+    }
+    return value.toFixed(decimals);
+};
 
-// Mock fetching function - Replace with actual API call - Now using getProductById
-// const fetchProductDetails = async (productId: string, token: string | null): Promise<Product | null> => {
-//    // TODO: Replace with actual API call
-//    // const response = await fetch(`/api/inventory/${productId}`, { headers: { 'Authorization': `Bearer ${token}` }});
-//    // if (!response.ok) return null;
-//    // return await response.json();
-//
-//    console.log(`Fetching product with ID: ${productId}`);
-//    await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
-//
-//    // Find product in mock data (for demonstration) - Removed
-//
-//    return null; // Return null if not found
-// };
-
-// Mock data used by the mock fetch function (should match inventory page) - Removed
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -99,8 +75,9 @@ export default function ProductDetailPage() {
   const renderDetailItem = (icon: React.ElementType, label: string, value: string | number | undefined, isCurrency: boolean = false) => {
     if (value === undefined || value === null || value === '') return null;
     const IconComponent = icon;
-    const displayValue = isCurrency && typeof value === 'number'
-      ? `₪${value.toFixed(2)}` // Format to 2 decimal places
+    // Use formatNumber for numeric values
+    const displayValue = typeof value === 'number'
+      ? (isCurrency ? `₪${formatNumber(value)}` : formatNumber(value, 2)) // Specify decimals for quantity
       : value;
     return (
       <div className="flex items-start space-x-3">
@@ -188,7 +165,7 @@ export default function ProductDetailPage() {
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              {renderDetailItem(Hash, "Catalog Number", product.catalogNumber)}
-             {renderDetailItem(Layers, "Quantity", product.quantity)}
+             {renderDetailItem(Layers, "Quantity", product.quantity)} {/* Will be formatted by renderDetailItem */}
              {renderDetailItem(Tag, "Unit Price", product.unitPrice, true)} {/* Use Tag and set isCurrency */}
              {renderDetailItem(Tag, "Line Total", product.lineTotal, true)} {/* Use Tag and set isCurrency */}
              {/* {renderDetailItem(Tag, "Category", product.category)} */}
@@ -209,4 +186,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
