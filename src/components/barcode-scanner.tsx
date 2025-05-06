@@ -47,8 +47,10 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      console.log("Camera stream stopped");
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log(`Camera track stopped: ${track.label}`);
+      });
       streamRef.current = null;
     }
      if (readerRef.current) {
@@ -59,6 +61,8 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
      }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+      videoRef.current.load(); // Explicitly tell the video element to load nothing
+       console.log("Video element srcObject cleared and loaded empty.");
     }
   }, []);
 
@@ -67,14 +71,20 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
     if (isMountedRef.current) {
       // Only set status if mounted, avoid setting idle if there was an error
       setStatus(prev => ['scanning', 'initializing'].includes(prev) ? 'idle' : prev);
+       console.log(`Scanner status set to ${status} after stopping.`);
     }
-  }, [stopStream]);
+  }, [stopStream, status]); // Added status to dependency
 
   // Function to start scanning using zxing
   const startScan = useCallback(async () => {
-     if (status !== 'idle' && status !== 'permission_denied' && status !== 'error' && status !== 'no_devices') return; // Allow retry
+     console.log('startScan called. Current status:', status);
+     if (status !== 'idle' && status !== 'permission_denied' && status !== 'error' && status !== 'no_devices') {
+         console.log('Scan start prevented. Status:', status);
+         return;
+     }
 
      if (!readerRef.current) {
+       console.error("ZXing reader not available.");
        setErrorMessage("Barcode scanning library not available.");
        setStatus('no_library');
        return;
@@ -82,81 +92,109 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
 
      setStatus('initializing');
      setErrorMessage(null);
+     console.log('Scanner status set to initializing.');
 
      try {
-        // List video devices to ensure camera access and selection
+        console.log("Requesting video input devices list...");
         const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
         if (videoInputDevices.length === 0) {
             console.warn("No video input devices found");
             throw new Error("No camera devices found."); // Treat as specific error
         }
-        const firstDeviceId = videoInputDevices[0].deviceId; // Use the first available device
+        console.log("Available video devices:", videoInputDevices);
+        // Prefer back camera ('environment') on mobile if available
+        const rearCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
+        const selectedDeviceId = rearCamera ? rearCamera.deviceId : videoInputDevices[0].deviceId;
+        console.log(`Selected video device ID: ${selectedDeviceId}` + (rearCamera ? ' (Rear camera preferred)' : ' (First available)'));
 
-        if (!isMountedRef.current) return; // Check mount status
+        if (!isMountedRef.current) {
+           console.log("Component unmounted during device selection.");
+           return;
+        }
 
         // Start decoding from the selected video device
         if (videoRef.current) {
-             console.log(`Starting ZXing scan with device: ${firstDeviceId}`);
-             // Start decoding continuously
-             // Simplify constraints initially for better mobile compatibility
-             // Add facingMode later if needed
+             console.log(`Attempting to get user media with deviceId: ${selectedDeviceId}`);
              const constraints: MediaStreamConstraints = {
                  video: {
-                     deviceId: firstDeviceId ? { exact: firstDeviceId } : undefined,
-                     // facingMode: 'environment', // Temporarily remove to test basic functionality
-                     // More complex constraints can sometimes cause issues on mobile
+                     deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+                     // Explicitly add facingMode if possible, helps mobile browsers
+                     facingMode: rearCamera ? 'environment' : 'user',
                  }
              };
              streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
-
+             console.log("User media stream obtained:", streamRef.current);
 
              if (!isMountedRef.current) {
+                 console.log("Component unmounted after getting stream.");
                  stopStream();
                  return;
              }
 
+             console.log("Assigning stream to video element srcObject.");
              videoRef.current.srcObject = streamRef.current;
-             // Ensure video plays inline and muted, add autoPlay
-             videoRef.current.playsInline = true;
-             videoRef.current.muted = true;
-             videoRef.current.autoplay = true; // Ensure autoplay is set
 
-             // Attempt to play the video element
-             try {
-                 await videoRef.current.play();
-                 if (!isMountedRef.current) { // Check again after play() resolves
-                     stopStream();
-                     return;
-                 }
-                 // Video started playing, now start the decoder
-                 setStatus('scanning');
-                 console.log("ZXing scanning started after video played");
-
-                 readerRef.current?.decodeFromStream(streamRef.current!, videoRef.current!, (result, error) => {
-                     if (!isMountedRef.current || status !== 'scanning') return; // Check mount status and if still scanning
-
-                     if (result) {
-                         console.log('ZXing Scan Result:', result.getText());
-                         stopScanningProcess();
-                         onBarcodeDetected(result.getText());
+             // Listen for video metadata loaded to ensure dimensions are known
+             videoRef.current.onloadedmetadata = async () => {
+                 console.log("Video metadata loaded. Video dimensions:", videoRef.current?.videoWidth, "x", videoRef.current?.videoHeight);
+                 // Attempt to play the video element
+                 try {
+                     console.log("Attempting to play video element...");
+                     await videoRef.current?.play();
+                     console.log("Video element play() called successfully.");
+                     if (!isMountedRef.current) { // Check again after play() resolves
+                         console.log("Component unmounted after video play initiated.");
+                         stopStream();
+                         return;
                      }
+                     // Video started playing, now start the decoder
+                     setStatus('scanning');
+                     console.log("Scanner status set to scanning. Starting ZXing decoding...");
 
-                     if (error) {
-                         if (!(error instanceof NotFoundException || error instanceof ChecksumException || error instanceof FormatException)) {
-                             console.error('ZXing scanning error:', error);
+                     readerRef.current?.decodeFromStream(streamRef.current!, videoRef.current!, (result, error) => {
+                         if (!isMountedRef.current || status !== 'scanning') {
+                              // console.log("Decode callback ignored: not mounted or not scanning.");
+                             return;
                          }
+
+                         if (result) {
+                             console.log('ZXing Scan Result:', result.getText());
+                             stopScanningProcess(); // Stop scanning on success
+                             onBarcodeDetected(result.getText());
+                         }
+
+                         if (error) {
+                             // Log only unexpected errors, ignore common 'not found' etc. during scanning
+                             if (!(error instanceof NotFoundException || error instanceof ChecksumException || error instanceof FormatException)) {
+                                 console.error('ZXing scanning error:', error);
+                                 // Optionally update UI with a temporary scan error message?
+                                 // setErrorMessage(`Scan error: ${error.message}`);
+                             } else {
+                                 // console.log('ZXing: No barcode found in frame.'); // Too verbose for console
+                             }
+                         }
+                     });
+                 } catch (playError) {
+                     console.error("Error playing video:", playError);
+                     if (isMountedRef.current) {
+                         setErrorMessage(`Could not start camera video playback: ${playError}`);
+                         setStatus('error');
+                         stopStream();
                      }
-                 });
-             } catch (playError) {
-                 console.error("Error playing video:", playError);
-                 if (isMountedRef.current) {
-                     setErrorMessage("Could not start camera video playback.");
-                     setStatus('error');
-                     stopStream();
                  }
-             }
+             };
+             // Handle cases where metadata doesn't load
+             videoRef.current.onerror = (err) => {
+                 console.error("Video element error:", err);
+                 if (isMountedRef.current) {
+                      setErrorMessage(`Video element failed to load: ${err}`);
+                      setStatus('error');
+                      stopStream();
+                 }
+             };
 
         } else {
+          console.error("Video element reference is missing.");
           throw new Error("Video element reference is missing.");
         }
 
@@ -192,7 +230,8 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                  description: userMessage,
              });
          } else {
-            toast({
+            // General error
+             toast({
                 variant: 'destructive',
                 title: 'Camera Error',
                 description: `Could not access camera or start scan: ${error.message}`,
@@ -205,6 +244,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
   }, [status, onBarcodeDetected, stopScanningProcess, stopStream, toast]); // Include dependencies
 
   const handleCloseDialog = () => {
+    console.log("Closing dialog, stopping scan process...");
     stopScanningProcess();
     onClose();
   };
@@ -217,17 +257,23 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
           <div className="text-center p-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
             <p>Initializing camera...</p>
-            {/* Video element needed but can be hidden initially */}
+            {/* Video element needed but hidden during init */}
             <video ref={videoRef} className="absolute w-px h-px -left-full" playsInline muted autoPlay />
           </div>
         );
       case 'scanning':
         return (
           <>
-            {/* Video element required by zxing, ensure it's visible */}
-            <video ref={videoRef} className="w-full h-auto max-h-[70vh] rounded-md" playsInline muted autoPlay />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-md pointer-events-none">
-              <div className="w-3/4 h-1/2 border-2 border-dashed border-white/80 rounded-lg" />
+            {/* Video element required by zxing, ensure it's visible and has correct attributes */}
+            <video
+                ref={videoRef}
+                className="w-full h-auto max-h-[70vh] rounded-md bg-black" // Added bg-black for empty state
+                playsInline // Important for iOS
+                muted // Important for autoplay
+                autoPlay // Try to autoplay
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-transparent rounded-md pointer-events-none"> {/* Transparent overlay */}
+              <div className="w-3/4 h-1/2 border-2 border-dashed border-white/80 rounded-lg animate-pulse" /> {/* Added pulse animation */}
             </div>
              {errorMessage && ( // Show non-critical errors during scan if needed
                  <Alert variant="destructive" className="mt-4 absolute bottom-4 left-4 right-4 z-10 opacity-80">
@@ -243,7 +289,9 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
             return (
             <div className="text-center p-4 space-y-4">
                 <Alert variant="destructive">
-                    <WifiOff className="h-4 w-4" /> {/* Generic error icon */}
+                    {status === 'permission_denied' ? <VideoOff className="h-4 w-4" /> :
+                     status === 'no_devices' ? <Camera className="h-4 w-4" /> :
+                     <WifiOff className="h-4 w-4" />} {/* Specific icons */}
                     <AlertTitle>
                         {status === 'no_library' ? 'Scanner Unavailable' :
                         status === 'permission_denied' ? 'Permission Denied' :
