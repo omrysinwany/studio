@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, X, Camera, VideoOff, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { BrowserMultiFormatReader } from '@zxing/browser'; // Import browser-specific parts
-import { ChecksumException, FormatException, NotFoundException } from '@zxing/library'; // Import core exceptions
+import { NotFoundException, ChecksumException, FormatException } from '@zxing/library'; // Import core exceptions
 
 interface BarcodeScannerProps {
   onBarcodeDetected: (barcode: string) => void;
@@ -53,8 +53,10 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
       streamRef.current = null;
     }
      if (readerRef.current) {
-        readerRef.current.reset(); // Reset the zxing reader
-        console.log("ZXing reader reset");
+        // The BrowserMultiFormatReader instance itself doesn't have a public reset method.
+        // Stopping the tracks and clearing the video source is the primary way to stop scanning.
+        // readerRef.current.reset(); // REMOVED - This method does not exist on the instance.
+        console.log("ZXing reader stream stopped (no specific reset method called).");
      }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -97,7 +99,16 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
         if (videoRef.current) {
              console.log(`Starting ZXing scan with device: ${firstDeviceId}`);
              // Start decoding continuously
-             streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { deviceId: firstDeviceId } });
+             // Ensure constraints allow Safari to function correctly
+             const constraints: MediaStreamConstraints = {
+                 video: {
+                     deviceId: firstDeviceId,
+                     // Add common Safari/iOS constraints
+                     facingMode: 'environment', // Prefer rear camera
+                 }
+             };
+             streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
+
 
              if (!isMountedRef.current) {
                  stopStream();
@@ -108,35 +119,45 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
              // Safari compatibility: Ensure video plays inline and muted
              videoRef.current.playsInline = true;
              videoRef.current.muted = true;
-             await videoRef.current.play(); // Ensure video starts playing
 
-             if (!isMountedRef.current) {
-                 stopStream();
-                 return;
-             }
+             // Add event listener to ensure video plays before starting decoder
+             videoRef.current.onloadedmetadata = () => {
+                if(videoRef.current && isMountedRef.current) {
+                    videoRef.current.play().then(() => {
+                        if (!isMountedRef.current || status === 'scanning') return; // Double check after play starts
+                        setStatus('scanning');
+                        console.log("ZXing scanning started after video played");
 
-             setStatus('scanning');
-             console.log("ZXing scanning started");
+                        readerRef.current?.decodeFromStream(streamRef.current!, videoRef.current!, (result, error) => {
+                            if (!isMountedRef.current || status !== 'scanning') return; // Check mount status and if still scanning
 
-             readerRef.current.decodeFromStream(streamRef.current, videoRef.current, (result, error) => {
-                 if (!isMountedRef.current || status !== 'scanning') return; // Check mount status and if still scanning
+                            if (result) {
+                                console.log('ZXing Scan Result:', result.getText());
+                                stopScanningProcess();
+                                onBarcodeDetected(result.getText());
+                            }
 
-                 if (result) {
-                     console.log('ZXing Scan Result:', result.getText());
-                     stopScanningProcess();
-                     onBarcodeDetected(result.getText());
-                 }
-
-                 if (error) {
-                    // Ignore common scanning errors (NotFoundException means no barcode found in frame)
-                    // Also ignore ChecksumException and FormatException which can occur during scanning attempts
-                    if (!(error instanceof NotFoundException || error instanceof ChecksumException || error instanceof FormatException)) {
-                       console.error('ZXing scanning error:', error);
-                       // Only show critical errors, ignore 'no barcode' type errors
-                       // setErrorMessage(`Scanning error: ${error.message}`);
-                    }
-                 }
-             });
+                            if (error) {
+                                // Ignore common scanning errors (NotFoundException means no barcode found in frame)
+                                // Also ignore ChecksumException and FormatException which can occur during scanning attempts
+                                if (!(error instanceof NotFoundException || error instanceof ChecksumException || error instanceof FormatException)) {
+                                console.error('ZXing scanning error:', error);
+                                // Only show critical errors, ignore 'no barcode' type errors
+                                // setErrorMessage(`Scanning error: ${error.message}`);
+                                }
+                            }
+                        });
+                    }).catch(playError => {
+                        console.error("Error playing video:", playError);
+                        if(isMountedRef.current) {
+                             setErrorMessage("Could not start camera video playback.");
+                             setStatus('error');
+                             stopStream();
+                        }
+                    });
+                }
+            };
+             videoRef.current.load(); // Trigger loading metadata
 
         } else {
           throw new Error("Video element reference is missing.");
