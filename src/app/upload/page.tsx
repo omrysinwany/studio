@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -133,7 +132,8 @@ export default function UploadPage() {
              console.log('AI Scan Result:', result);
 
              // Update visual status to completed (backend save will handle permanent record)
-             updateVisualStatus(tempId, 'completed');
+             // The backend save function will create the actual history item now
+             // updateVisualStatus(tempId, 'completed'); // Remove this optimistic update
 
              toast({
                title: 'Processing Complete',
@@ -173,6 +173,9 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
+              // Fetch history again after processing attempt completes (success or failure)
+              // to get the actual record created by saveProducts or see the error persist
+              await fetchHistory();
           }
       };
 
@@ -290,7 +293,7 @@ export default function UploadPage() {
            ) : uploadHistory.length === 0 ? (
             <p className="text-center text-muted-foreground py-4">No recent uploads.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto relative"> {/* Added relative positioning */}
                 <Table>
                 <TableHeader>
                     <TableRow>

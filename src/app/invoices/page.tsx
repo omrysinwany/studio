@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -495,8 +494,8 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          {/* Invoices Table */}
-          <div className="overflow-x-auto"> {/* Make table scrollable horizontally */}
+          {/* Invoices Table - Wrapped in div for overflow */}
+          <div className="overflow-x-auto relative">
             <Table className="min-w-[600px]"> {/* Set a minimum width for horizontal scroll */}
               <TableHeader>
                 <TableRow>

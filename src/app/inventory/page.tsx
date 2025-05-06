@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -24,7 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Barcode } from 'lucide-react'; // Added Barcode
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 import { Product, getProductsService, clearInventory as clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventory
 import { Badge } from '@/components/ui/badge';
 import {
@@ -493,7 +492,7 @@ export default function InventoryPage() {
                </div>
            </div>
 
-           {/* Inventory Table */}
+           {/* Inventory Table - Wrapped in div for overflow */}
            <div className="overflow-x-auto relative">
              <Table>
                <TableHeader>

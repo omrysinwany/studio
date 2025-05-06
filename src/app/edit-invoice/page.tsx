@@ -128,7 +128,7 @@ function EditInvoiceContent() {
               description: `Could not load the invoice data for editing. ${error.message ? `Details: ${error.message}` : ''}`,
               variant: "destructive",
             });
-             if (key) localStorage.removeItem(key); // Clear data on any processing error except 'not found'
+             if (key) localStorage.removeItem(key); // Clear data on any processing error
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
@@ -155,7 +155,7 @@ function EditInvoiceContent() {
          // }
      };
 
-  }, [searchParams, router, toast, initialDataLoaded]); // Removed isSaving from dependencies
+  }, [searchParams, toast, initialDataLoaded]); // Removed router and isSaving from dependencies
 
 
   const handleInputChange = (id: string, field: keyof Product, value: string | number) => {
@@ -296,7 +296,7 @@ function EditInvoiceContent() {
          });
          setIsSaving(false); // Reset saving state on error
      }
- };
+  };
 
  // Callback for when the barcode prompt dialog is closed/completed
  const handleBarcodePromptComplete = (updatedProducts: Product[] | null) => {
@@ -415,7 +415,8 @@ function EditInvoiceContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto"> {/* Make table scrollable */}
+          {/* Wrap table in div for overflow */}
+          <div className="overflow-x-auto relative">
             <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
