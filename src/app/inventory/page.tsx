@@ -158,20 +158,25 @@ export default function InventoryPage() {
            } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
            } else {
-              if (valA == null && valB != null) comparison = 1;
-              else if (valA != null && valB == null) comparison = -1;
-              else comparison = 0;
+              // Handle potential null/undefined values during sorting
+              if (valA == null && valB != null) comparison = -1; // nulls first
+              else if (valA != null && valB == null) comparison = 1; // nulls first
+              else comparison = 0; // both null or undefined
            }
 
           return sortDirection === 'asc' ? comparison : comparison * -1;
         });
       }
 
-     // Recalculate lineTotal for display consistency
-     result = result.map(item => ({
-         ...item,
-         lineTotal: parseFloat((item.quantity * item.unitPrice).toFixed(2))
-     }));
+     // Recalculate lineTotal for display consistency based on current quantity and unitPrice
+     result = result.map(item => {
+         const quantity = Number(item.quantity) || 0;
+         const unitPrice = Number(item.unitPrice) || 0;
+         return {
+            ...item,
+            lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+         };
+     });
 
      return result;
       }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
@@ -479,6 +484,7 @@ export default function InventoryPage() {
                           </TableCell>
                         )}
                         {visibleColumns.unitPrice && <TableCell className="text-right">₪{item.unitPrice?.toFixed(2) ?? '0.00'}</TableCell>}
+                        {/* Display the recalculated lineTotal */}
                         {visibleColumns.lineTotal && <TableCell className="text-right">₪{item.lineTotal?.toFixed(2) ?? '0.00'}</TableCell>}
                        {visibleColumns.actions && (
                          <TableCell className="text-right">

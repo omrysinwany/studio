@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
@@ -196,9 +197,11 @@ export async function saveProducts(
   products.forEach(newProduct => {
     const quantityToAdd = parseFloat(String(newProduct.quantity)) || 0;
     const lineTotal = parseFloat(String(newProduct.lineTotal)) || 0;
-    // Unit price calculation might not be relevant if only adding quantity,
-    // but keep it for new products.
-    const unitPrice = quantityToAdd !== 0 ? parseFloat((lineTotal / quantityToAdd).toFixed(2)) : (parseFloat(String(newProduct.unitPrice)) || 0);
+    // Use the provided unitPrice, or calculate if possible and provided one is zero/missing
+    let unitPrice = parseFloat(String(newProduct.unitPrice)) || 0;
+     if (unitPrice === 0 && quantityToAdd !== 0) {
+        unitPrice = parseFloat((lineTotal / quantityToAdd).toFixed(2));
+     }
 
     invoiceTotalAmount += lineTotal;
 
@@ -218,6 +221,7 @@ export async function saveProducts(
       console.log(`Updating quantity for product ${existingProduct.catalogNumber} (ID: ${existingProduct.id}). Adding ${quantityToAdd}.`);
       existingProduct.quantity += quantityToAdd;
       // Recalculate lineTotal based on the new quantity and existing unit price
+      // Use existingProduct.unitPrice, not the potentially recalculated unitPrice from the new product
       existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
       console.log(`Product updated:`, existingProduct);
 
@@ -232,7 +236,7 @@ export async function saveProducts(
         ...newProduct,
         id: newProduct.id || `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // Use provided ID or generate new
         quantity: quantityToAdd,
-        unitPrice: unitPrice,
+        unitPrice: unitPrice, // Use the determined unit price
         lineTotal: lineTotal,
         catalogNumber: newProduct.catalogNumber || 'N/A',
         description: newProduct.description || 'No Description',
@@ -278,10 +282,14 @@ export async function getProductsService(): Promise<Product[]> {
   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
   console.log("Returning inventory from localStorage:", inventory);
   // Recalculate lineTotal for consistency before returning
-  const inventoryWithRecalculatedTotals = inventory.map(item => ({
-      ...item,
-      lineTotal: parseFloat((item.quantity * item.unitPrice).toFixed(2))
-  }));
+  const inventoryWithRecalculatedTotals = inventory.map(item => {
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unitPrice) || 0;
+      return {
+        ...item,
+        lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+      };
+  });
   console.log("Returning inventory with recalculated totals:", inventoryWithRecalculatedTotals);
   return inventoryWithRecalculatedTotals;
 }
@@ -298,10 +306,15 @@ export async function getProductById(productId: string): Promise<Product | null>
    const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
    const product = inventory.find(p => p.id === productId);
    // Recalculate lineTotal before returning
-   return product ? {
-       ...product,
-       lineTotal: parseFloat((product.quantity * product.unitPrice).toFixed(2))
-    } : null; // Return a copy with recalculated total or null
+   if (product) {
+        const quantity = Number(product.quantity) || 0;
+        const unitPrice = Number(product.unitPrice) || 0;
+        return {
+           ...product,
+           lineTotal: parseFloat((quantity * unitPrice).toFixed(2))
+        };
+   }
+   return null; // Return null if product not found
 }
 
 /**
