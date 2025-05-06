@@ -1,43 +1,50 @@
 'use server';
 
-import { getPosSettings } from '@/services/backend';
 import { syncCaspitProductsAction } from '@/actions/caspit-actions'; // Action to fetch products from Caspit
-import type { SyncResult } from '@/services/pos-integration/pos-adapter.interface';
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
 
 /**
- * Server action to manually trigger inventory sync for a specific POS system.
+ * Server action to manually trigger inventory sync for a specific POS system using provided config.
  * Fetches products from the POS and returns them. Saving happens on the client-side
  * because the current backend service uses localStorage.
- * @param systemId The ID of the POS system to sync (e.g., 'caspit').
+ * @param config The POS connection configuration.
+ * @param systemId The ID of the POS system (used to determine which sync action to call).
  * @returns A promise resolving to the SyncResult from the product sync operation.
  */
-export async function syncInventoryAction(systemId: string): Promise<SyncResult> {
+export async function syncInventoryAction(config: PosConnectionConfig, systemId: string): Promise<SyncResult> {
     console.log(`[syncInventoryAction] Starting manual sync for ${systemId}...`);
 
-    // Currently only implemented for Caspit
-    if (systemId !== 'caspit') {
-        return { success: false, message: `Manual sync currently only supports Caspit.` };
+    // Validate config
+    if (!config || Object.keys(config).length === 0) {
+        return { success: false, message: `POS configuration for ${systemId} is missing or empty.` };
     }
 
     try {
-        // 1. Get POS Settings
-        const settings = await getPosSettings();
-        if (!settings || settings.systemId !== systemId || !settings.config) {
-            return { success: false, message: `POS settings for ${systemId} not configured or incomplete.` };
+        let productSyncResult: SyncResult;
+
+        // Determine which action to call based on systemId
+        switch (systemId) {
+            case 'caspit':
+                console.log(`[syncInventoryAction] Calling syncCaspitProductsAction with config...`);
+                productSyncResult = await syncCaspitProductsAction(config);
+                break;
+            // case 'hashavshevet':
+            //     console.log(`[syncInventoryAction] Calling syncHashavshevetProductsAction with config...`);
+            //     productSyncResult = await syncHashavshevetProductsAction(config); // Assuming this exists
+            //     break;
+            default:
+                 return { success: false, message: `Manual sync currently not supported for ${systemId}.` };
         }
 
-        // 2. Call the specific action to fetch products from Caspit
-        // This action handles authentication and API calls to Caspit.
-        const productSyncResult = await syncCaspitProductsAction(settings.config);
 
         console.log(`[syncInventoryAction] Raw product sync result for ${systemId}:`, productSyncResult);
 
         // 3. Return the result (including products if fetched) to the client.
         // The client will handle saving the products using `saveProducts`.
         if (!productSyncResult.success) {
-             console.error(`[syncInventoryAction] Failed to fetch products from Caspit: ${productSyncResult.message}`);
+             console.error(`[syncInventoryAction] Failed to fetch products from ${systemId}: ${productSyncResult.message}`);
         } else {
-             console.log(`[syncInventoryAction] Successfully fetched ${productSyncResult.itemsSynced ?? 0} products from Caspit.`);
+             console.log(`[syncInventoryAction] Successfully fetched ${productSyncResult.itemsSynced ?? 0} products from ${systemId}.`);
         }
 
         return productSyncResult;
