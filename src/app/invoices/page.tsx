@@ -31,7 +31,15 @@ import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter as CustomDialogFooter } from '@/components/ui/dialog';
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+    SheetFooter,
+    SheetClose,
+} from '@/components/ui/sheet'; // Import Sheet components
 import NextImage from 'next/image';
 import {
   AlertDialog,
@@ -106,7 +114,7 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
   const { toast } = useToast();
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showDetailsSheet, setShowDetailsSheet] = useState(false); // Changed from showDetailsModal
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -122,18 +130,15 @@ export default function InvoicesPage() {
         let fetchedData = await getInvoicesService();
         
         let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
-        // Prioritize invoices with invoiceDataUri if duplicates exist by ID
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoices.get(invoice.id);
             if (existing) {
-                // If current has URI and existing doesn't, or current is newer with URI
                 if ((invoice.invoiceDataUri && !existing.invoiceDataUri) || 
                     (invoice.invoiceDataUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
                     uniqueInvoices.set(invoice.id, invoice);
                 } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
-                    // Keep existing if it has URI and current doesn't
+                    // Keep existing
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
-                    // If neither has URI, or both have, pick the newest
                      uniqueInvoices.set(invoice.id, invoice);
                 }
             } else {
@@ -260,10 +265,10 @@ export default function InvoicesPage() {
    };
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-    setSelectedInvoiceDetails(invoice); // Set the full invoice object
+    setSelectedInvoiceDetails(invoice); 
     setEditedInvoiceData({ ...invoice });
     setIsEditingDetails(false);
-    setShowDetailsModal(true);
+    setShowDetailsSheet(true); // Open sheet instead of dialog
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -275,7 +280,7 @@ export default function InvoicesPage() {
             description: "The invoice has been successfully deleted.",
         });
         fetchInvoices(); 
-        setShowDetailsModal(false); 
+        setShowDetailsSheet(false); // Close sheet
         setSelectedInvoiceDetails(null);
     } catch (error) {
         console.error("Failed to delete invoice:", error);
@@ -303,7 +308,6 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            // invoiceDataUri and status are not directly edited here
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -312,15 +316,14 @@ export default function InvoicesPage() {
             description: "Invoice details saved successfully.",
         });
         setIsEditingDetails(false);
-        // Refresh the selected invoice details with potentially updated data
         const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails({
                 ...refreshedInvoice,
-                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri // Preserve original URI from current view
+                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri 
             });
         } else {
-           fetchInvoices(); // Fallback to full refresh
+           fetchInvoices(); 
         }
 
     } catch (error) {
@@ -775,16 +778,17 @@ export default function InvoicesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
-          <DialogHeader className="p-4 sm:p-6 border-b">
-             <DialogTitle>{isEditingDetails ? 'Edit Invoice Details' : 'Invoice Details'}</DialogTitle>
-             <DialogDescription>
+      <Sheet open={showDetailsSheet} onOpenChange={setShowDetailsSheet}>
+        <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
+          <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
+             <SheetTitle>{isEditingDetails ? 'Edit Invoice Details' : 'Invoice Details'}</SheetTitle>
+             <SheetDescription>
                 {isEditingDetails ? `Editing: ${selectedInvoiceDetails?.fileName}` : `Detailed information for: ${selectedInvoiceDetails?.fileName}`}
-             </DialogDescription>
-          </DialogHeader>
+             </SheetDescription>
+          </SheetHeader>
           {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow p-4 sm:p-6">
+            <ScrollArea className="flex-grow">
+              <div className="p-4 sm:p-6 space-y-4">
               {isEditingDetails ? (
                 <div className="space-y-3">
                     <div>
@@ -803,7 +807,7 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {selectedInvoiceDetails.status === 'error' && (
+                    {selectedInvoiceDetails.status === 'error' && editedInvoiceData.status === 'error' && ( // Only show if status is error
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
@@ -827,13 +831,13 @@ export default function InvoicesPage() {
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
-                    <div>
+                    <div className="mt-2">
                       <p className="font-semibold text-destructive">Error Message:</p>
                       <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
                     </div>
                   )}
                   <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[50vh]">
+                  <div className="overflow-auto max-h-[calc(85vh-280px)] sm:max-h-[calc(90vh-300px)]">
                   {isValidImageSrc(selectedInvoiceDetails.invoiceDataUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.invoiceDataUri}
@@ -849,9 +853,10 @@ export default function InvoicesPage() {
                   </div>
                 </>
               )}
+              </div>
             </ScrollArea>
           )}
-          <CustomDialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2">
+          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
                 {isEditingDetails ? (
                     <>
                         <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
@@ -891,11 +896,10 @@ export default function InvoicesPage() {
                         </AlertDialogContentComponent>
                     </AlertDialog>
                  )}
-          </CustomDialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
     </div>
   );
 }
-
