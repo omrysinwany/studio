@@ -14,22 +14,16 @@ import {
     checkProductPricesBeforeSaveService,
     finalizeSaveProductsService,
     ProductPriceDiscrepancy,
-    PriceCheckResult
 } from '@/services/backend';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
-import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog'; // Import the new dialog
+import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
 
 // Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
   _originalId?: string; // Track original ID if fetched from storage
   _isNewForPrompt?: boolean; // Flag for barcode prompting
 }
-
-// Define prefix for temporary data keys in localStorage
-const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
-const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_'; // Key for storing image URI
-
 
 // Function specifically for Input value prop - avoids commas but keeps decimals
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
@@ -51,12 +45,13 @@ function EditInvoiceContent() {
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
   const [fileName, setFileName] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true); // Start true
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
-  const [errorLoading, setErrorLoading] = useState<string | null>(null); // State for loading errors
-  const [dataKey, setDataKey] = useState<string | null>(null); // Store data key in state
-  const [imageUriKey, setImageUriKey] = useState<string | null>(null); // Store image URI key
+  const [errorLoading, setErrorLoading] = useState<string | null>(null);
+  const [dataKey, setDataKey] = useState<string | null>(null);
+  const [imageUriKey, setImageUriKey] = useState<string | null>(null);
+  const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null); // Store temp invoice ID
 
   // State for barcode prompt
   const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
@@ -66,10 +61,13 @@ function EditInvoiceContent() {
 
   useEffect(() => {
     const key = searchParams.get('key');
-    const imgKey = searchParams.get('imageKey'); // Get image URI key
+    const imgKey = searchParams.get('imageKey');
     const nameParam = searchParams.get('fileName');
+    const tempInvIdParam = searchParams.get('tempInvoiceId'); // Get temp invoice ID
+
     setDataKey(key);
-    setImageUriKey(imgKey); // Store image URI key
+    setImageUriKey(imgKey);
+    setTempInvoiceId(tempInvIdParam); // Store temp invoice ID
 
     let hasAttemptedLoad = false;
 
@@ -92,7 +90,7 @@ function EditInvoiceContent() {
               variant: "destructive",
             });
              if (key) localStorage.removeItem(key);
-             if (imgKey) localStorage.removeItem(imgKey); // Also clear image URI key on error
+             if (imgKey) localStorage.removeItem(imgKey);
              setIsLoading(false);
              setInitialDataLoaded(true);
             return;
@@ -239,9 +237,10 @@ function EditInvoiceContent() {
       setIsSaving(true);
       try {
           const imageUri = (imageUriKey && imageUriKey.trim() !== '') ? localStorage.getItem(imageUriKey) : null;
-          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent");
+          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent", "tempInvoiceId:", tempInvoiceId);
 
-          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined);
+          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined, tempInvoiceId || undefined);
+
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
@@ -263,7 +262,7 @@ function EditInvoiceContent() {
           console.error("Failed to finalize save products:", error);
           toast({
               title: "Save Failed",
-              description: "Could not save the product data after all checks. Please try again.",
+              description: `Could not save the product data after all checks. ${ (error as Error).message || 'Please try again.'}`,
               variant: "destructive",
           });
       } finally {
@@ -277,7 +276,8 @@ function EditInvoiceContent() {
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
-        const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit);
+        const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit, tempInvoiceId || undefined);
+
 
         setProductsToSaveDirectly(priceCheckResult.productsToSaveDirectly);
 

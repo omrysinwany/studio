@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -10,12 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
-import { useRouter } from 'next/navigation'; // Use App Router's useRouter
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
-import { InvoiceHistoryItem, getInvoicesService, saveProductsService } from '@/services/backend';
+import { useRouter } from 'next/navigation';
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
+import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend'; // Removed saveProductsService
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
-import { Separator } from '@/components/ui/separator'; // Import Separator
+import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -23,6 +22,8 @@ import { cn } from '@/lib/utils';
 
 const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
 const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_';
+const INVOICES_STORAGE_KEY = 'mockInvoicesData'; // For creating pending invoice record
+
 
 const formatDisplayNumber = (
     value: number | undefined | null,
@@ -138,13 +139,34 @@ export default function UploadPage() {
          setIsProcessing(true);
          
          const timestamp = Date.now();
-         const uniqueId = `${timestamp}_${Math.random().toString(36).substring(2, 9)}`;
-         const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueId}`;
-         const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${uniqueId}`;
+         const uniqueScanId = `${timestamp}_${Math.random().toString(36).substring(2, 9)}`;
+         const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueScanId}`;
+         const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${uniqueScanId}`;
          
+         // Create a PENDING invoice record in localStorage
+         const tempInvoiceId = `pending-inv-${uniqueScanId}`;
+         const pendingInvoice: InvoiceHistoryItem = {
+           id: tempInvoiceId,
+           fileName: selectedFile.name,
+           uploadTime: new Date().toISOString(),
+           status: 'pending',
+           invoiceDataUri: base64data, // Store image URI with pending record
+         };
+
+         try {
+            let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(INVOICES_STORAGE_KEY) || '[]');
+            currentInvoices = [pendingInvoice, ...currentInvoices];
+            localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(currentInvoices));
+            console.log(`[UploadPage] Created PENDING invoice record ID: ${tempInvoiceId}`);
+         } catch (e) {
+            console.error("[UploadPage] Failed to create PENDING invoice record in localStorage:", e);
+            // Proceed without it, but log. finalizeSave might create a new one later.
+         }
+
+
          let scanResult: ScanInvoiceOutput = { products: [] };
          let productDataSaved = false;
-         let imageUriSaved = false; 
+         let imageUriSavedForEdit = false; // Separate flag for image URI for the edit page's temp storage
 
          try {
              console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
@@ -176,34 +198,19 @@ export default function UploadPage() {
 
              if (productDataSaved) {
                  try {
+                    // This image URI is for the edit page temp storage, separate from the one saved with the pending invoice.
                     localStorage.setItem(imageUriKey, base64data);
                     if (localStorage.getItem(imageUriKey) === base64data) {
-                        imageUriSaved = true;
-                        console.log(`[UploadPage] Successfully saved and verified image URI to localStorage with key: ${imageUriKey}`);
+                        imageUriSavedForEdit = true;
+                        console.log(`[UploadPage] Successfully saved and verified image URI (for edit page) to localStorage with key: ${imageUriKey}`);
                     } else {
-                         console.warn(`[UploadPage] Verification of image URI in localStorage failed for key ${imageUriKey}. Image preview may not be available.`);
-                         toast({
-                            title: 'Warning: Image Preview May Be Unavailable',
-                            description: 'Could not reliably save the invoice image for preview. Product data is saved.',
-                            variant: 'default',
-                         });
+                         console.warn(`[UploadPage] Verification of image URI (for edit page) in localStorage failed for key ${imageUriKey}. Image preview may not be available on edit page.`);
                     }
                  } catch (storageError: any) {
                     if (storageError.name === 'QuotaExceededError' || (storageError.message && storageError.message.includes('exceeded the quota'))) {
-                        console.warn(`[UploadPage] localStorage quota exceeded for image URI for file: ${selectedFile.name}. Proceeding without saving image URI.`);
-                        toast({
-                            title: 'Image Too Large for Preview Storage',
-                            description: 'The invoice image is too large to be stored for preview. Product data is saved, but the image might not be visible later.',
-                            variant: 'default',
-                            duration: 7000,
-                        });
+                        console.warn(`[UploadPage] localStorage quota exceeded for image URI (for edit page) for file: ${selectedFile.name}.`);
                     } else {
-                        console.error(`[UploadPage] Error saving image URI to localStorage for file: ${selectedFile.name}`, storageError);
-                         toast({
-                            title: 'Warning: Image Preview Unavailable',
-                            description: 'Could not save the image for preview due to a storage issue. Product data is saved.',
-                            variant: 'default',
-                        });
+                        console.error(`[UploadPage] Error saving image URI (for edit page) to localStorage for file: ${selectedFile.name}`, storageError);
                     }
                  }
              }
@@ -247,7 +254,7 @@ export default function UploadPage() {
              }
           } finally {
              if (productDataSaved) {
-                 router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSaved ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}`);
+                 router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSavedForEdit ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}&tempInvoiceId=${tempInvoiceId}`);
              } else {
                  console.error("[UploadPage] Product data was not saved, aborting navigation to edit page.");
                  localStorage.removeItem(dataKey); 
@@ -259,6 +266,7 @@ export default function UploadPage() {
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
+              fetchHistory(); // Refresh history after upload attempt
           }
       };
 
@@ -289,8 +297,8 @@ export default function UploadPage() {
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
      try {
-        const dateObj = typeof date === 'string' ? new Date(date) : date; // Corrected: use date variable
-        if (isNaN(dateObj.getTime())) return 'Invalid Date'; // Check if date is valid
+        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(dateObj.getTime())) return 'Invalid Date';
         return window.innerWidth < 640
              ? format(dateObj, 'dd/MM/yy')
              : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });

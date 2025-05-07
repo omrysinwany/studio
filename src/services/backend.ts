@@ -175,14 +175,14 @@ export interface DocumentProcessingResponse {
  * Returns lists of products that can be saved directly and those needing price confirmation.
  *
  * @param productsToCheck The list of products from the scan/edit.
- * @param tempId Optional temporary ID used for optimistic UI updates.
+ * @param tempId Optional temporary ID used for optimistic UI updates or linking to pending invoice.
  * @returns A promise resolving to a PriceCheckResult.
  */
 export async function checkProductPricesBeforeSaveService(
     productsToCheck: Product[],
     tempId?: string
 ): Promise<PriceCheckResult> {
-    console.log(`Checking product prices before save. Products to check:`, productsToCheck);
+    console.log(`Checking product prices before save. Products to check:`, productsToCheck, `(tempId: ${tempId})`);
     await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async operation
 
     const currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
@@ -202,12 +202,14 @@ export async function checkProductPricesBeforeSaveService(
         if (scannedProduct.barcode && scannedProduct.barcode.trim() !== '') {
             existingIndex = currentInventory.findIndex(p => p.barcode === scannedProduct.barcode);
         }
+        // Check by actual ID if it exists and is not a placeholder like '-new' or the tempId itself
         if (existingIndex === -1 && scannedProduct.id && !scannedProduct.id.includes('-new') && scannedProduct.id !== tempId) {
             existingIndex = currentInventory.findIndex(p => p.id === scannedProduct.id);
         }
         if (existingIndex === -1 && scannedProduct.catalogNumber && scannedProduct.catalogNumber !== 'N/A') {
             existingIndex = currentInventory.findIndex(p => p.catalogNumber === scannedProduct.catalogNumber);
         }
+
 
         if (existingIndex !== -1) {
             const existingProduct = currentInventory[existingIndex];
@@ -223,11 +225,10 @@ export async function checkProductPricesBeforeSaveService(
                 });
             } else {
                 // No price discrepancy, or new price is 0 (ignore new price then)
-                // This product will be updated (quantity added, existing details kept) by finalizeSaveProducts
                 productsToSaveDirectly.push({
                     ...scannedProduct,
-                    id: existingProduct.id, // Ensure we use the existing ID
-                    unitPrice: existingUnitPrice // Keep the existing unit price if new one was 0 or same
+                    id: existingProduct.id, 
+                    unitPrice: existingUnitPrice 
                 });
             }
         } else {
@@ -249,7 +250,7 @@ export async function checkProductPricesBeforeSaveService(
  * @param fileName The name of the original file processed.
  * @param source Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
  * @param invoiceDataUri Optional URI of the scanned invoice image, used only if source is 'upload'.
- * @param tempId Optional temporary ID used for optimistic UI updates.
+ * @param tempInvoiceId Optional ID of a pending invoice record to update. If not provided, a new invoice record will be created.
  * @returns A promise that resolves when the data is successfully saved.
  */
 export async function finalizeSaveProductsService(
@@ -257,15 +258,15 @@ export async function finalizeSaveProductsService(
     fileName: string,
     source: string = 'upload',
     invoiceDataUri?: string,
-    tempId?: string
+    tempInvoiceId?: string // Renamed from tempId for clarity
 ): Promise<void> {
-    console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempId: ${tempId})`, productsToFinalizeSave);
+    console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId})`, productsToFinalizeSave);
     await new Promise(resolve => setTimeout(resolve, 100));
 
     let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
     let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
 
-    let invoiceTotalAmount = 0;
+    let calculatedInvoiceTotalAmount = 0;
     let productsProcessedSuccessfully = true;
 
     try {
@@ -273,23 +274,23 @@ export async function finalizeSaveProductsService(
 
         productsToFinalizeSave.forEach(productToSave => {
             const quantityToAdd = parseFloat(String(productToSave.quantity)) || 0;
-            // Use the unitPrice from productToSave as it's already confirmed/resolved
             const unitPrice = parseFloat(String(productToSave.unitPrice)) || 0;
-            // Recalculate lineTotal based on confirmed unitPrice and quantity from scan/edit
             const lineTotal = parseFloat((quantityToAdd * unitPrice).toFixed(2));
 
-            invoiceTotalAmount += lineTotal; // Add to invoice total for THIS save operation
+            if (!isNaN(lineTotal)) {
+                calculatedInvoiceTotalAmount += lineTotal;
+            } else {
+                console.warn(`Invalid lineTotal for product: ${productToSave.id || productToSave.catalogNumber}. Skipping for invoice total.`);
+            }
+
 
             let existingIndex = -1;
-            // Match by ID first (if productToSave has an ID that's not a placeholder)
-            if (productToSave.id && !productToSave.id.includes('-new') && productToSave.id !== tempId) {
+            if (productToSave.id && !productToSave.id.includes('-new') && productToSave.id !== tempInvoiceId) {
                 existingIndex = updatedInventory.findIndex(p => p.id === productToSave.id);
             }
-            // If not found by ID, try barcode (if productToSave has one)
             if (existingIndex === -1 && productToSave.barcode && productToSave.barcode.trim() !== '') {
                 existingIndex = updatedInventory.findIndex(p => p.barcode === productToSave.barcode);
             }
-            // If still not found, try catalog number
             if (existingIndex === -1 && productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A') {
                 existingIndex = updatedInventory.findIndex(p => p.catalogNumber === productToSave.catalogNumber);
             }
@@ -297,26 +298,21 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                // CRITICAL: Use the unitPrice from productToSave as it has been confirmed by the user (or was already matching)
                 existingProduct.unitPrice = unitPrice;
-                // Recalculate lineTotal based on NEW total quantity and CONFIRMED unitPrice
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
-
-                // Preserve other existing details unless explicitly provided in productToSave and different
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
                 existingProduct.barcode = productToSave.barcode || existingProduct.barcode;
                 existingProduct.catalogNumber = productToSave.catalogNumber || existingProduct.catalogNumber;
                 existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
-
                 console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice}, LineTotal=${existingProduct.lineTotal}`);
             } else {
                 if (!productToSave.catalogNumber && !productToSave.description && !productToSave.barcode) {
                     console.log("Skipping adding product with no identifier:", productToSave);
                     return;
                 }
-                const newId = (productToSave.id && !productToSave.id.includes('-new') && productToSave.id !== tempId)
+                const newId = (productToSave.id && !productToSave.id.includes('-new') && productToSave.id !== tempInvoiceId)
                     ? productToSave.id
                     : `prod-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
@@ -324,8 +320,8 @@ export async function finalizeSaveProductsService(
                     ...productToSave,
                     id: newId,
                     quantity: quantityToAdd,
-                    unitPrice: unitPrice, // Use the (potentially confirmed) unit price
-                    lineTotal: lineTotal, // Use the recalculated line total
+                    unitPrice: unitPrice,
+                    lineTotal: lineTotal,
                     catalogNumber: productToSave.catalogNumber || 'N/A',
                     description: productToSave.description || 'No Description',
                     barcode: productToSave.barcode,
@@ -343,56 +339,70 @@ export async function finalizeSaveProductsService(
     } catch (error) {
         console.error("Error processing products for inventory:", error);
         productsProcessedSuccessfully = false;
-        // Do not throw error here to allow invoice history saving with 'error' status
     }
 
     if (source === 'upload') {
         const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
         const errorMessage = productsProcessedSuccessfully ? undefined : 'Failed to process some products into inventory.';
-
+        
         let invoiceIdToUse: string;
         let existingInvoiceIndex = -1;
 
-        if (tempId) {
-            existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempId);
+        if (tempInvoiceId) {
+            existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempInvoiceId);
         }
-        invoiceIdToUse = tempId && existingInvoiceIndex !== -1 ? tempId : `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 
-        const invoiceRecord: InvoiceHistoryItem = {
-            id: invoiceIdToUse,
-            fileName: fileName,
-            uploadTime: new Date().toISOString(),
-            status: finalStatus,
-            totalAmount: parseFloat(invoiceTotalAmount.toFixed(2)),
-            invoiceDataUri: invoiceDataUri,
-            errorMessage: errorMessage,
-            invoiceNumber: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].invoiceNumber : undefined,
-            supplier: existingInvoiceIndex !== -1 ? currentInvoices[existingInvoiceIndex].supplier : undefined,
-        };
-
-        if (existingInvoiceIndex !== -1 && tempId) {
-            currentInvoices[existingInvoiceIndex] = invoiceRecord;
+        if (existingInvoiceIndex !== -1 && tempInvoiceId) {
+            invoiceIdToUse = tempInvoiceId;
+            const existingRecord = currentInvoices[existingInvoiceIndex];
+            currentInvoices[existingInvoiceIndex] = {
+                ...existingRecord, // Keep existing fields like invoiceNumber, supplier
+                fileName: fileName, // Update filename
+                uploadTime: new Date().toISOString(), // Update timestamp
+                status: finalStatus,
+                totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
+                invoiceDataUri: invoiceDataUri, // Update image URI
+                errorMessage: errorMessage,
+            };
             console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
         } else {
-            currentInvoices = [invoiceRecord, ...currentInvoices];
+            // If tempInvoiceId wasn't found or not provided, create a new record.
+            invoiceIdToUse = tempInvoiceId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+            const newInvoiceRecord: InvoiceHistoryItem = {
+                id: invoiceIdToUse,
+                fileName: fileName,
+                uploadTime: new Date().toISOString(),
+                status: finalStatus,
+                totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
+                invoiceDataUri: invoiceDataUri,
+                errorMessage: errorMessage,
+                // invoiceNumber and supplier will be undefined for new records unless extracted earlier
+            };
+            currentInvoices = [newInvoiceRecord, ...currentInvoices];
             console.log(`Created new invoice record ID: ${invoiceIdToUse}`);
         }
-        saveStoredData(INVOICES_STORAGE_KEY, currentInvoices);
-        console.log('Updated localStorage invoices:', currentInvoices);
+        
+        try {
+            saveStoredData(INVOICES_STORAGE_KEY, currentInvoices);
+            console.log('Updated localStorage invoices:', currentInvoices);
+        } catch (storageError) {
+            console.error("Critical error saving invoices to localStorage:", storageError);
+            // This is a more critical error, might want to inform the user differently
+            const saveError = new Error(`Failed to save invoice history: ${(storageError as Error).message}`);
+            (saveError as any).updatedBySaveProducts = true; 
+            throw saveError; // Re-throw if saving invoice list fails
+        }
+
 
         if (!productsProcessedSuccessfully) {
             console.warn("[Backend - finalizeSaveProductsService] Product processing error occurred, invoice status set to 'error'.");
+            // Optionally throw if critical, otherwise invoice status 'error' will indicate this
+            // const saveError = new Error('One or more products failed to save to inventory. Invoice record updated with error status.');
+            // (saveError as any).updatedBySaveProducts = true;
+            // throw saveError;
         }
     } else {
         console.log(`Skipping invoice history update for source: ${source}`);
-    }
-
-    if (!productsProcessedSuccessfully && source === 'upload') {
-      const saveError = new Error('One or more products failed to save to inventory. Invoice record updated with error status.');
-      (saveError as any).updatedBySaveProducts = true; // Custom property to identify error source
-      // Decide if this should throw. If thrown, the calling page needs to handle it.
-      // For now, it will allow the process to complete but the invoice will have an error state.
-      // throw saveError;
     }
 }
 
