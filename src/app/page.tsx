@@ -26,7 +26,7 @@ interface KpiData {
   latestDocName?: string;
   inventoryValueTrend?: { name: string; value: number }[];
   inventoryValuePrevious?: number;
-  grossProfit: number; // Added grossProfit
+  grossProfit: number; 
 }
 
 // SparkLine Chart Component
@@ -89,7 +89,7 @@ export default function Home() {
         const totalItems = calculateTotalItems(products);
         const inventoryValue = calculateInventoryValue(products);
         const lowStockItemsCount = getLowStockItems(products).length;
-        const grossProfit = calculateTotalPotentialGrossProfit(products); // Calculate gross profit
+        const grossProfit = calculateTotalPotentialGrossProfit(products); 
 
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -119,7 +119,7 @@ export default function Home() {
           latestDocName: latestDoc?.fileName.length > 15 ? `${latestDoc.fileName.substring(0,12)}...` : latestDoc?.fileName,
           inventoryValueTrend: mockInventoryValueTrend,
           inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
-          grossProfit, // Add grossProfit to KpiData
+          grossProfit, 
         });
 
       } catch (error) {
@@ -179,10 +179,9 @@ export default function Home() {
             break;
         }
     }
-    // For currency, always show 2 decimal places before abbreviation if large, unless it's a round K, M, etc.
-    // For non-currency, use the provided decimals argument.
+
     let numDecimals = isCurrency ? ( (num / si[i].value) % 1 === 0 ? 0 : 2) : decimals;
-    if (si[i].value === 1) numDecimals = isCurrency ? 2 : 0; // Full number for currency below 1K
+    if (si[i].value === 1) numDecimals = isCurrency ? 2 : 0; 
 
     const formattedNum = (num / si[i].value).toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
@@ -216,191 +215,191 @@ export default function Home() {
    }
 
   return (
-    <TooltipProvider>
     <div className="flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
-      <div className="w-full max-w-4xl text-center">
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-           Welcome to InvoTrack
-        </h1>
-        <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in" style={{ animationDelay: '0.1s' }}>
-          {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Streamlining your inventory management.'}
-        </p>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
-          <Button
-            size="lg"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
-            onClick={handleScanClick}
-          >
-            <ScanLine className="mr-2 h-5 w-5" /> Scan Document
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
-             onClick={handleInventoryClick}
-          >
-            <Package className="mr-2 h-5 w-5" /> View Inventory
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
-             onClick={handleReportsClick}
-          >
-            <BarChart2 className="mr-2 h-5 w-5" /> View Reports
-          </Button>
-        </div>
+      <TooltipProvider>
+        <div className="w-full max-w-4xl text-center">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
+            Welcome to InvoTrack
+          </h1>
+          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in" style={{ animationDelay: '0.1s' }}>
+            {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Streamlining your inventory management.'}
+          </p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
+            <Button
+              size="lg"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              onClick={handleScanClick}
+            >
+              <ScanLine className="mr-2 h-5 w-5" /> Scan Document
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              onClick={handleInventoryClick}
+            >
+              <Package className="mr-2 h-5 w-5" /> View Inventory
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              onClick={handleReportsClick}
+            >
+              <BarChart2 className="mr-2 h-5 w-5" /> View Reports
+            </Button>
+          </div>
 
 
-        {kpiError && !isLoadingKpis && (
-          <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>{kpiError}</AlertDescription>
-          </Alert>
-        )}
+          {kpiError && !isLoadingKpis && (
+            <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{kpiError}</AlertDescription>
+            </Alert>
+          )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
-            {/* KPI Card 1: Total Items */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link href="/inventory" className="block hover:no-underline">
-                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Items</CardTitle>
-                      <Package className="h-5 w-5 text-accent" />
-                    </CardHeader>
-                    <CardContent className="pb-4 px-4">
-                      <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
-                      <p className="text-xs text-muted-foreground pt-1">Currently in stock</p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Total number of individual items in your inventory.</p>
-              </TooltipContent>
-            </Tooltip>
-
-            {/* KPI Card 2: Inventory Value */}
-            <Tooltip>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+              {/* KPI Card 1: Total Items */}
+              <Tooltip>
                 <TooltipTrigger asChild>
-                    <Link href="/reports" className="block hover:no-underline">
+                  <Link href="/inventory" className="block hover:no-underline">
                     <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Inventory Value</CardTitle>
-                        <DollarSign className="h-5 w-5 text-accent" />
-                        </CardHeader>
-                        <CardContent className="pt-1 pb-2 px-4">
-                          <div className="text-2xl sm:text-3xl font-bold text-primary flex items-baseline">
-                              {renderKpiValue(kpiData?.inventoryValue, true)}
-                              {kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                                  kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
-                                  <TrendingUp className="h-4 w-4 text-green-500 ml-1.5 shrink-0" /> :
-                                  <TrendingDown className="h-4 w-4 text-red-500 ml-1.5 shrink-0" />
-                              )}
-                          </div>
-                          <div className="mt-1">
-                              <SparkLineChart data={kpiData?.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--accent))" />
-                          </div>
-                        </CardContent>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Items</CardTitle>
+                        <Package className="h-5 w-5 text-accent" />
+                      </CardHeader>
+                      <CardContent className="pb-4 px-4">
+                        <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
+                        <p className="text-xs text-muted-foreground pt-1">Currently in stock</p>
+                      </CardContent>
                     </Card>
-                    </Link>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                    <p>Total monetary value of your current inventory.</p>
-                    {kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                         <p className={cn("text-xs", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-500" : "text-red-500")}>
-                             vs. {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
-                         </p>
-                    )}
+                  <p>Total number of individual items in your inventory.</p>
                 </TooltipContent>
-            </Tooltip>
-            
-            {/* KPI Card 3: Gross Profit */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link href="/reports" className="block hover:no-underline">
-                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Gross Profit</CardTitle>
-                      <HandCoins className="h-5 w-5 text-accent" />
-                    </CardHeader>
-                    <CardContent className="pb-4 px-4">
-                      <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.grossProfit, true)}</div>
-                      <p className="text-xs text-muted-foreground pt-1">Potential from current stock</p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Total potential gross profit if all current inventory is sold at its sale price.</p>
-              </TooltipContent>
-            </Tooltip>
+              </Tooltip>
 
-            {/* KPI Card 4: Docs (30d) */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link href="/invoices" className="block hover:no-underline">
-                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Docs (30d)</CardTitle>
-                      <FileText className="h-5 w-5 text-accent" />
-                    </CardHeader>
-                    <CardContent className="pb-4 px-4">
-                      <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
-                      <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || 'Latest document processed'}>
-                        Last: {renderKpiText(kpiData?.latestDocName)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Number of documents processed in the last 30 days.</p>
-              </TooltipContent>
-            </Tooltip>
-
-            {/* KPI Card 5: Low Stock */}
-            <Tooltip>
+              {/* KPI Card 2: Inventory Value */}
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Link href="/reports" className="block hover:no-underline">
+                      <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Inventory Value</CardTitle>
+                          <DollarSign className="h-5 w-5 text-accent" />
+                          </CardHeader>
+                          <CardContent className="pt-1 pb-2 px-4">
+                            <div className="text-2xl sm:text-3xl font-bold text-primary flex items-baseline">
+                                {renderKpiValue(kpiData?.inventoryValue, true)}
+                                {kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
+                                    kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
+                                    <TrendingUp className="h-4 w-4 text-green-500 ml-1.5 shrink-0" /> :
+                                    <TrendingDown className="h-4 w-4 text-red-500 ml-1.5 shrink-0" />
+                                )}
+                            </div>
+                            <div className="mt-1">
+                                <SparkLineChart data={kpiData?.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--accent))" />
+                            </div>
+                          </CardContent>
+                      </Card>
+                      </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                      <p>Total monetary value of your current inventory.</p>
+                      {kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
+                          <p className={cn("text-xs", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-500" : "text-red-500")}>
+                              vs. {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
+                          </p>
+                      )}
+                  </TooltipContent>
+              </Tooltip>
+              
+              {/* KPI Card 3: Gross Profit */}
+              <Tooltip>
                 <TooltipTrigger asChild>
-                    <Link href="/inventory?filter=low" className="block hover:no-underline">
-                        <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock</CardTitle>
-                            <AlertTriangle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
-                        </CardHeader>
-                        <CardContent className="pb-4 px-4">
-                            <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.lowStockItemsCount, false, true)}</div>
-                             <p className="text-xs text-muted-foreground pt-1">Items needing attention</p>
-                             {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
-                                <Progress 
-                                    value={(kpiData.lowStockItemsCount / kpiData.totalItems) * 100} 
-                                    className="h-2 mt-2 bg-muted/50"
-                                    indicatorClassName={cn(
-                                        "transition-all duration-500 ease-out",
-                                        (kpiData.lowStockItemsCount / kpiData.totalItems) * 100 > 50 ? "bg-destructive" : 
-                                        (kpiData.lowStockItemsCount / kpiData.totalItems) * 100 > 20 ? "bg-yellow-500" : 
-                                        "bg-accent"
-                                    )}
-                                />
-                             )}
-                        </CardContent>
-                        </Card>
-                    </Link>
+                  <Link href="/reports" className="block hover:no-underline">
+                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Gross Profit</CardTitle>
+                        <HandCoins className="h-5 w-5 text-accent" />
+                      </CardHeader>
+                      <CardContent className="pb-4 px-4">
+                        <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.grossProfit, true)}</div>
+                        <p className="text-xs text-muted-foreground pt-1">Potential from current stock</p>
+                      </CardContent>
+                    </Card>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                    <p>Number of items at or below their minimum stock level.</p>
-                    {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
-                        <p className="text-xs">
-                            {((kpiData.lowStockItemsCount / kpiData.totalItems) * 100).toFixed(1)}% of total items are low on stock.
-                        </p>
-                    )}
+                  <p>Total potential gross profit if all current inventory is sold at its sale price.</p>
                 </TooltipContent>
-            </Tooltip>
-         </div>
-      </div>
+              </Tooltip>
+
+              {/* KPI Card 4: Docs (30d) */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/invoices" className="block hover:no-underline">
+                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Docs (30d)</CardTitle>
+                        <FileText className="h-5 w-5 text-accent" />
+                      </CardHeader>
+                      <CardContent className="pb-4 px-4">
+                        <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
+                        <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || 'Latest document processed'}>
+                          Last: {renderKpiText(kpiData?.latestDocName)}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Number of documents processed in the last 30 days.</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* KPI Card 5: Low Stock */}
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Link href="/inventory?filter=low" className="block hover:no-underline">
+                          <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                              <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock</CardTitle>
+                              <AlertTriangle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
+                          </CardHeader>
+                          <CardContent className="pb-4 px-4">
+                              <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.lowStockItemsCount, false, true)}</div>
+                              <p className="text-xs text-muted-foreground pt-1">Items needing attention</p>
+                              {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
+                                  <Progress 
+                                      value={(kpiData.lowStockItemsCount / kpiData.totalItems) * 100} 
+                                      className="h-2 mt-2 bg-muted/50"
+                                      indicatorClassName={cn(
+                                          "transition-all duration-500 ease-out",
+                                          (kpiData.lowStockItemsCount / kpiData.totalItems) * 100 > 50 ? "bg-destructive" : 
+                                          (kpiData.lowStockItemsCount / kpiData.totalItems) * 100 > 20 ? "bg-yellow-500" : 
+                                          "bg-accent"
+                                      )}
+                                  />
+                              )}
+                          </CardContent>
+                          </Card>
+                      </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                      <p>Number of items at or below their minimum stock level.</p>
+                      {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
+                          <p className="text-xs">
+                              {((kpiData.lowStockItemsCount / kpiData.totalItems) * 100).toFixed(1)}% of total items are low on stock.
+                          </p>
+                      )}
+                  </TooltipContent>
+              </Tooltip>
+          </div>
+        </div>
+      </TooltipProvider>
     </div>
-    </TooltipProvider>
   );
 }

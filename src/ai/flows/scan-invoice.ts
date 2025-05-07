@@ -103,40 +103,81 @@ const scanInvoiceFlow = ai.defineFlow<
   name: 'scanInvoiceFlow',
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema
-}, async input => {
+}, async (input, streamingCallback) => {
     let rawOutputFromAI: z.infer<typeof PromptOutputSchema> | null = null;
     let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
     let invoiceNumberForOutput: string | undefined = undefined;
     let supplierForOutput: string | undefined = undefined;
     let totalAmountForOutput: number | undefined = undefined;
 
-    try {
-        const { output } = await prompt(input);
-        
-        // Validate the overall structure from AI using PromptOutputSchema
-        const validationResult = PromptOutputSchema.safeParse(output);
+    const maxRetries = 3;
+    let currentRetry = 0;
+    let delay = 1000; // Initial delay 1 second
 
-        if (!validationResult.success) {
-            console.error('AI output structure validation failed. Received:', output, 'Errors:', validationResult.error.flatten());
-            return {
-                products: [],
-                error: `AI output validation failed: ${validationResult.error.flatten().formErrors.join(', ')}`
-            };
-        }
-        rawOutputFromAI = validationResult.data;
+    while (currentRetry < maxRetries) {
+        try {
+            if (streamingCallback) {
+              streamingCallback({
+                index: currentRetry,
+                content: currentRetry > 0 ? `Retrying AI call (attempt ${currentRetry + 1})...` : 'Calling AI for scan...'
+              });
+            }
+            const { output } = await prompt(input);
+            
+            const validationResult = PromptOutputSchema.safeParse(output);
 
-    } catch (promptError: any) {
-        console.error('Error calling AI prompt:', promptError, "Raw AI output if available (before error):", rawOutputFromAI);
-        
-        let userErrorMessage = `Error calling AI: ${promptError.message || 'Unknown AI error'}`;
-        if (promptError.message && promptError.message.includes("INVALID_ARGUMENT") && promptError.message.includes("Provided data: null")) {
-            userErrorMessage = "The AI model failed to return structured product data. This can happen with unclear images or complex layouts. Please try a clearer image or add products manually.";
-        } else if (promptError.message && promptError.message.includes("Schema validation failed")) {
-             userErrorMessage = `The AI model's response did not match the expected format. Details: ${promptError.message}`;
+            if (!validationResult.success) {
+                console.error('AI output structure validation failed. Received:', output, 'Errors:', validationResult.error.flatten());
+                if (currentRetry < maxRetries - 1 && output === null) { // Retry if output is null and not last attempt
+                    console.log(`AI returned null, retrying... (Attempt ${currentRetry + 1})`);
+                    currentRetry++;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                    continue;
+                }
+                return {
+                    products: [],
+                    error: `AI output validation failed: ${validationResult.error.flatten().formErrors.join(', ')}`
+                };
+            }
+            rawOutputFromAI = validationResult.data;
+            break; // Success, exit retry loop
+
+        } catch (promptError: any) {
+            console.error(`Error calling AI prompt (attempt ${currentRetry + 1}):`, promptError, "Raw AI output if available (before error):", rawOutputFromAI);
+            
+            const isServiceUnavailable = promptError.message?.includes("503") || promptError.message?.toLowerCase().includes("service unavailable") || promptError.message?.toLowerCase().includes("model is overloaded");
+            const isRateLimit = promptError.message?.includes("429") || promptError.message?.toLowerCase().includes("rate limit");
+
+            if ((isServiceUnavailable || isRateLimit) && currentRetry < maxRetries - 1) {
+                currentRetry++;
+                if (streamingCallback) {
+                  streamingCallback({
+                    index: currentRetry,
+                    content: `AI service temporarily unavailable. Retrying in ${delay/1000}s... (Attempt ${currentRetry + 1})`
+                  });
+                }
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            } else {
+                let userErrorMessage = `Error calling AI: ${promptError.message || 'Unknown AI error'}`;
+                if (isServiceUnavailable) {
+                     userErrorMessage = "The AI scanning service is temporarily unavailable due to high demand. Please try again in a few minutes. If the issue persists, you can add products manually.";
+                } else if (promptError.message && (promptError.message.includes("INVALID_ARGUMENT") || promptError.message.includes("Parse Error")) && promptError.message.includes("Provided data: null")) {
+                    userErrorMessage = "The AI model failed to return structured product data. This can happen with unclear images or complex layouts. Please try a clearer image or add products manually.";
+                } else if (promptError.message && promptError.message.includes("Schema validation failed")) {
+                     userErrorMessage = `The AI model's response did not match the expected format. Details: ${promptError.message}`;
+                }
+                return { products: [], error: userErrorMessage };
+            }
         }
-        
-        return { products: [], error: userErrorMessage };
     }
+
+    if (!rawOutputFromAI) {
+        return { products: [], error: "AI processing failed after multiple retries. The AI service might be temporarily unavailable. Please try again later or add products manually." };
+    }
+    
+    if (streamingCallback) streamingCallback({ index: maxRetries, content: 'Processing scanned data...' });
 
     try {
         if (!rawOutputFromAI || !Array.isArray(rawOutputFromAI.products)) {
@@ -184,6 +225,7 @@ const scanInvoiceFlow = ai.defineFlow<
             totalAmountForOutput = rawOutputFromAI.invoice_details.invoice_total_amount;
         }
         
+        if (streamingCallback) streamingCallback({ index: maxRetries +1 , content: 'Scan processing complete!' });
         return { 
             products: productsForOutput,
             invoiceNumber: invoiceNumberForOutput,
