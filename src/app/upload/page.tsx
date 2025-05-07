@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -136,19 +135,18 @@ export default function UploadPage() {
          setUploadProgress(100);
          setIsUploading(false);
          setIsProcessing(true);
-         const tempInvoiceId = `temp-inv-${Date.now()}`; // Create a temporary ID for the invoice
+         
+         const tempInvoiceId = `temp-inv-${Date.now()}`;
+         const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
+         const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
+         let imageUriSaved = false;
+         let scanResult: ScanInvoiceOutput = { products: [] }; // Default to empty products
 
          try {
              console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
-             const scanResult: ScanInvoiceOutput = await scanInvoice({ invoiceDataUri: base64data });
+             scanResult = await scanInvoice({ invoiceDataUri: base64data });
              console.log('[UploadPage] AI Scan Result:', scanResult);
 
-             const dataKey = `${TEMP_DATA_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
-             const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${Date.now()}_${encodeURIComponent(selectedFile.name)}`;
-             let imageUriSaved = false;
-
-             localStorage.setItem(dataKey, JSON.stringify(scanResult));
-             
              try {
                 localStorage.setItem(imageUriKey, base64data);
                 imageUriSaved = true;
@@ -162,34 +160,41 @@ export default function UploadPage() {
                     });
                 } else {
                     console.error(`[UploadPage] Error saving image URI to localStorage for file: ${selectedFile.name}`, storageError);
-                    // Optionally, still proceed or throw a different error
                 }
-                // imageUriKey will effectively be null or point to nothing if it's not set
              }
-
-
              toast({
                title: 'Scan Complete',
                description: `${selectedFile.name} scanned. Review and save on the next page.`,
              });
 
-             // Pass tempInvoiceId to edit page. If imageUriSaved is false, imageKey might be invalid or not set by router.
-             // The edit page should handle cases where imageKey doesn't yield a valid image URI.
-             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSaved ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}&tempId=${tempInvoiceId}`);
-
          } catch (aiError: any) {
              console.error('[UploadPage] AI processing failed:', aiError);
              toast({
                 title: 'Processing Error',
-                description: (aiError as Error).message || 'Could not process the document.',
+                description: (aiError as Error).message || 'Could not process the document. Please check the image or try again.',
                 variant: 'destructive',
              });
+             // scanResult will remain { products: [] }
           } finally {
+             // Always set localStorage for products, even if AI failed (it will be an empty list)
+             localStorage.setItem(dataKey, JSON.stringify(scanResult));
+             
+             // Navigate to edit page regardless of AI success/failure
+             // The edit page will show an empty table if scanResult.products is empty.
+             router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSaved ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}&tempId=${tempInvoiceId}`);
+            
              setIsProcessing(false);
              setSelectedFile(null);
               if (fileInputRef.current) {
                 fileInputRef.current.value = '';
               }
+              // Fetch history after processing is complete (success or failure)
+              // to reflect any invoice record created by saveProducts if applicable,
+              // or just to refresh the list.
+              // Note: saveProducts is called from edit-invoice, so history will update then.
+              // However, if you want to show a 'processing' state in history immediately,
+              // you'd create a temporary history item here. For now, relying on edit page's save.
+              // await fetchHistory(); 
           }
       };
 
@@ -202,7 +207,7 @@ export default function UploadPage() {
            description: 'Could not read the selected file.',
            variant: 'destructive',
          });
-         await fetchHistory(); // Fetch history on error
+         // await fetchHistory(); // Fetch history on error // No, saveProducts handles this from edit page
        };
 
     } catch (error) {
@@ -214,7 +219,7 @@ export default function UploadPage() {
          description: 'An unexpected error occurred. Please try again.',
          variant: 'destructive',
        });
-       await fetchHistory(); // Fetch history on error
+       // await fetchHistory(); // Fetch history on error // No, saveProducts handles this from edit page
      }
   };
 
