@@ -31,7 +31,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `₪${zeroFormatted}` : zeroFormatted;
+        return currency ? `₪${zeroFormatted}` : formatted;
     }
 
     const formatted = value.toLocaleString(undefined, {
@@ -366,9 +366,9 @@ export default function ReportsPage() {
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}> {/* Adjusted left margin */}
+                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-30} textAnchor="end" height={40} />
                                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'} />
                                      <RechartsTooltip
                                         cursor={false}
@@ -393,9 +393,9 @@ export default function ReportsPage() {
                       {processingBarChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}> {/* Adjusted left margin */}
+                                <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-30} textAnchor="end" height={40}/>
                                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
                                      <RechartsTooltip
                                         cursor={false}
@@ -420,10 +420,10 @@ export default function ReportsPage() {
                     {salesByCategoryBarData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] sm:h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}> {/* Adjusted left margin */}
+                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={60} /> {/* Responsive YAxis width */}
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={window.innerWidth < 640 ? 50 : 80} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -449,7 +449,7 @@ export default function ReportsPage() {
                  </CardHeader>
                  <CardContent className="flex items-center justify-center pb-4 sm:pb-8">
                      {pieChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[200px] sm:h-[250px]"> {/* Adjusted height for Pie Chart */}
+                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[200px] sm:h-[250px]">
                            <ResponsiveContainer width="100%" height="100%">
                                 <RechartsPie>
                                     <RechartsTooltip
@@ -463,8 +463,8 @@ export default function ReportsPage() {
                                          nameKey="name"
                                          cx="50%"
                                          cy="50%"
-                                         outerRadius="80%" // Use percentage for outerRadius
-                                         innerRadius="50%" // Use percentage for innerRadius
+                                         outerRadius="80%"
+                                         innerRadius="50%"
                                          paddingAngle={2}
                                          labelLine={false}
                                     >
@@ -477,7 +477,7 @@ export default function ReportsPage() {
                                          verticalAlign="bottom"
                                          align="center"
                                          iconType="circle"
-                                         wrapperStyle={{ paddingTop: 10, fontSize: '10px' }} // Smaller font and padding for legend
+                                         wrapperStyle={{ paddingTop: 10, fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} 
                                      />
                                  </RechartsPie>
                            </ResponsiveContainer>
@@ -488,7 +488,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2"> {/* Full width on medium, spans 2 on large */}
+            <Card className="md:col-span-full lg:col-span-2">
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Top Selling Products (by Value)</CardTitle>
                      <CardDescription>Top 5 products by total sales value in the selected period.</CardDescription>
@@ -521,7 +521,7 @@ export default function ReportsPage() {
                 </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2"> {/* Full width on medium, spans 2 on large */}
+            <Card className="md:col-span-full lg:col-span-2">
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Stock Alert Dashboard</CardTitle>
                     <CardDescription>Products requiring attention based on defined stock levels.</CardDescription>
@@ -579,5 +579,6 @@ export default function ReportsPage() {
     </div>
   );
 }
+
 
 
