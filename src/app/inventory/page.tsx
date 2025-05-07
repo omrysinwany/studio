@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -86,16 +85,16 @@ export default function InventoryPage() {
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     actions: true,
     id: false,
-    description: false,
+    description: false, // Default false
     shortName: true,
-    catalogNumber: false,
+    catalogNumber: false, // Default false
     barcode: false,
     quantity: true,
-    unitPrice: true,
-    salePrice: true, // Show salePrice by default
+    unitPrice: false, // Default false
+    salePrice: true,
     lineTotal: false,
-    minStockLevel: false,
-    maxStockLevel: false,
+    minStockLevel: false, // Default false
+    maxStockLevel: false, // Default false
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -185,7 +184,7 @@ export default function InventoryPage() {
        );
      }
       if (filterStockLevel === 'low') {
-        result = result.filter(item => item.quantity > 0 && item.quantity <= (item.minStockLevel || 10));
+        result = result.filter(item => item.quantity > 0 && item.quantity <= (item.minStockLevel ?? 10));
       } else if (filterStockLevel === 'inStock') {
         result = result.filter(item => item.quantity > 0);
       } else if (filterStockLevel === 'out') {
@@ -250,16 +249,16 @@ export default function InventoryPage() {
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
         { key: 'actions', label: 'View', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
-        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' },
-        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell', headerClassName: 'text-center hidden md:table-cell' },
+        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center', mobileHidden: true },
+        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] hidden sm:table-cell', headerClassName: 'text-center hidden sm:table-cell' },
         { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]', headerClassName: 'text-center' },
+        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px]', headerClassName: 'text-center' },
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
         { key: 'salePrice', label: 'Sale Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
-        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
-        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
-        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
+        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
@@ -349,282 +348,284 @@ export default function InventoryPage() {
    }
 
   return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader>
-           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-              <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Inventory Overview
-           </CardTitle>
-           <CardDescription>Browse, search, and manage your inventory items.</CardDescription>
-         </CardHeader>
-         <CardContent>
-           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
-              <div className="relative w-full md:max-w-xs lg:max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                  className="pl-10"
-                  aria-label="Search inventory"
-                />
-              </div>
-               <div className="flex gap-2 flex-wrap justify-start md:justify-end">
-                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="flex-1 md:flex-initial">
-                      <Filter className="mr-2 h-4 w-4" />
-                       {filterStockLevel === 'low' ? 'Low Stock' :
-                        filterStockLevel === 'inStock' ? 'In Stock' :
-                        filterStockLevel === 'out' ? 'Out of Stock' :
-                        filterStockLevel === 'over' ? 'Over Stock' :
-                        'Stock'}
-                      <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                     <DropdownMenuLabel>Filter by Stock Level</DropdownMenuLabel>
-                     <DropdownMenuSeparator />
-                     <DropdownMenuCheckboxItem
-                         checked={filterStockLevel === 'all'}
-                         onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}
-                       >
-                         All
-                     </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem
-                          checked={filterStockLevel === 'inStock'}
-                          onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
-                        >
-                          In Stock
-                      </DropdownMenuCheckboxItem>
-                     <DropdownMenuCheckboxItem
-                       checked={filterStockLevel === 'low'}
-                       onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
-                     >
-                       Low Stock
-                     </DropdownMenuCheckboxItem>
-                       <DropdownMenuCheckboxItem
-                       checked={filterStockLevel === 'out'}
-                       onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
-                     >
-                       Out of Stock
-                     </DropdownMenuCheckboxItem>
-                     <DropdownMenuCheckboxItem
-                       checked={filterStockLevel === 'over'}
-                       onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}
-                     >
-                       Over Stock
-                     </DropdownMenuCheckboxItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+      <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
+        <CardHeader>
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+            <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Inventory Overview
+          </CardTitle>
+          <CardDescription>Browse, search, and manage your inventory items.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
+            <div className="relative w-full md:max-w-xs lg:max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                className="pl-10"
+                aria-label="Search inventory"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap justify-start md:justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex-1 md:flex-initial">
+                    <Filter className="mr-2 h-4 w-4" />
+                    {filterStockLevel === 'low' ? 'Low Stock' :
+                      filterStockLevel === 'inStock' ? 'In Stock' :
+                      filterStockLevel === 'out' ? 'Out of Stock' :
+                      filterStockLevel === 'over' ? 'Over Stock' :
+                      'Stock'}
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Filter by Stock Level</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={filterStockLevel === 'all'}
+                    onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}
+                  >
+                    All
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filterStockLevel === 'inStock'}
+                    onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
+                  >
+                    In Stock
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filterStockLevel === 'low'}
+                    onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
+                  >
+                    Low Stock
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filterStockLevel === 'out'}
+                    onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
+                  >
+                    Out of Stock
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={filterStockLevel === 'over'}
+                    onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}
+                  >
+                    Over Stock
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex-1 md:flex-initial">
+                    <Eye className="mr-2 h-4 w-4" /> View
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
+                    <DropdownMenuCheckboxItem
+                      key={header.key}
+                      className="capitalize"
+                      checked={visibleColumns[header.key]}
+                      onCheckedChange={() => toggleColumnVisibility(header.key)}
+                    >
+                      {header.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
-                 <DropdownMenu>
-                   <DropdownMenuTrigger asChild>
-                     <Button variant="outline" className="flex-1 md:flex-initial">
-                       <Eye className="mr-2 h-4 w-4" /> View
-                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
-                     </Button>
-                   </DropdownMenuTrigger>
-                   <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                     {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
-                       <DropdownMenuCheckboxItem
-                         key={header.key}
-                         className="capitalize"
-                         checked={visibleColumns[header.key]}
-                         onCheckedChange={() => toggleColumnVisibility(header.key)}
-                       >
-                         {header.label}
-                       </DropdownMenuCheckboxItem>
-                     ))}
-                   </DropdownMenuContent>
-                 </DropdownMenu>
-               </div>
-           </div>
-
-           <div className="overflow-x-auto relative">
-             <Table>
-               <TableHeader>
-                 <TableRow>
-                    {visibleColumnHeaders.map((header) => (
-                         <TableHead
-                            key={header.key}
-                            className={cn(
-                                header.className,
-                                header.headerClassName,
-                                header.sortable && "cursor-pointer hover:bg-muted/50",
-                                header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                                'px-2 sm:px-4 py-2',
-                                header.key === 'actions' && 'sticky left-0 bg-card z-10'
-                            )}
-                            onClick={() => header.sortable && handleSort(header.key as SortKey)}
-                            aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
-                         >
-                             <div className="flex items-center justify-center gap-1">
-                               {header.label}
-                                {header.sortable && sortKey === header.key && (
-                                    <span className="text-xs" aria-hidden="true">
-                                      {sortDirection === 'asc' ? '▲' : '▼'}
-                                    </span>
-                                )}
-                             </div>
-                          </TableHead>
-                    ))}
-                 </TableRow>
-               </TableHeader>
-               <TableBody>
-                 {paginatedInventory.length === 0 ? (
-                   <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                       No inventory items found matching your criteria.
-                     </TableCell>
-                   </TableRow>
-                 ) : (
-                   paginatedInventory.map((item) => (
-                     <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
-                        {visibleColumns.actions && (
-                         <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}>
-                            <div className="flex gap-1 justify-center">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => item.id && router.push(`/inventory/${item.id}`)}
-                                    disabled={!item.id}
-                                    aria-label={`View details for ${item.shortName || item.description}`}
-                                    className="h-8 w-8 text-primary hover:text-primary/80"
-                                >
-                                    <Eye className="h-4 w-4" />
-                                </Button>
-                            </div>
-                         </TableCell>
+          <div className="overflow-x-auto relative">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {visibleColumnHeaders.map((header) => (
+                    <TableHead
+                      key={header.key}
+                      className={cn(
+                        header.className,
+                        header.headerClassName,
+                        header.sortable && "cursor-pointer hover:bg-muted/50",
+                        header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
+                        'px-2 sm:px-4 py-2 text-center'
+                      )}
+                      onClick={() => header.sortable && handleSort(header.key as SortKey)}
+                      aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        {header.label}
+                        {header.sortable && sortKey === header.key && (
+                          <span className="text-xs" aria-hidden="true">
+                            {sortDirection === 'asc' ? '▲' : '▼'}
+                          </span>
                         )}
-                        {visibleColumns.shortName && (
-                            <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
-                                            {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
-                                        <p className="font-semibold">Description:</p>
-                                        <p>{item.description || 'No description available.'}</p>
-                                        <p className="font-semibold mt-2">Catalog #:</p>
-                                        <p>{item.catalogNumber || 'N/A'}</p>
-                                        {item.barcode && (
-                                            <>
-                                                <p className="font-semibold mt-2">Barcode:</p>
-                                                <p>{item.barcode}</p>
-                                            </>
-                                        )}
-                                        {item.salePrice !== undefined && (
-                                            <>
-                                                <p className="font-semibold mt-2">Sale Price:</p>
-                                                <p>₪{formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}</p>
-                                            </>
-                                        )}
-                                    </PopoverContent>
-                                </Popover>
-                            </TableCell>
-                        )}
-                         {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
-                        {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
-                        {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
-                         {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
-                        {visibleColumns.quantity && (
-                          <TableCell className="text-center px-2 sm:px-4 py-2">
-                            <span>{formatIntegerQuantity(item.quantity)}</span>
-                            {item.quantity === 0 && (
-                              <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
-                            )}
-                            {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && (
-                              <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
-                            )}
-                            {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && (
-                               <Badge variant="secondary" className="ml-1 sm:ml-2 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Over</Badge>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
-                        {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? `₪${formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}` : '-'}</TableCell>}
-                        {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
-                        {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
-                        {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
-                     </TableRow>
-                   ))
-                 )}
-               </TableBody>
-             </Table>
-           </div>
-
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between sm:justify-end space-x-2 py-4">
-                     <span className="text-sm text-muted-foreground hidden sm:block">
-                        Page {currentPage} of {totalPages} ({totalItems} items)
-                    </span>
-                     <div className="flex space-x-1">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePageChange(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className="h-8 px-2"
-                        >
-                            <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Previous</span>
-                        </Button>
-                        <span className="text-sm text-muted-foreground sm:hidden px-2 flex items-center">
-                            {currentPage}/{totalPages}
-                        </span>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePageChange(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                             className="h-8 px-2"
-                        >
-                            <span className="hidden sm:inline">Next</span> <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
-            )}
-         </CardContent>
-         <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
-              <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
-                <Download className="mr-2 h-4 w-4" /> Export CSV
-              </Button>
-              <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                      <Button variant="destructive" disabled={isDeleting} className="w-full sm:w-auto">
-                          {isDeleting ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                              <Trash2 className="mr-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedInventory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
+                      No inventory items found matching your criteria.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedInventory.map((item) => (
+                    <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
+                      {visibleColumns.actions && (
+                        <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}>
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => item.id && router.push(`/inventory/${item.id}`)}
+                              disabled={!item.id}
+                              aria-label={`View details for ${item.shortName || item.description}`}
+                              className="h-8 w-8 text-primary hover:text-primary/80"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.shortName && (
+                        <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
+                                {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
+                              <p className="font-semibold">Description:</p>
+                              <p>{item.description || 'No description available.'}</p>
+                              {item.catalogNumber && item.catalogNumber !== "N/A" && (
+                                <>
+                                  <p className="font-semibold mt-2">Catalog #:</p>
+                                  <p>{item.catalogNumber}</p>
+                                </>
+                              )}
+                              {item.barcode && (
+                                <>
+                                  <p className="font-semibold mt-2">Barcode:</p>
+                                  <p>{item.barcode}</p>
+                                </>
+                              )}
+                              {item.salePrice !== undefined && (
+                                <>
+                                  <p className="font-semibold mt-2">Sale Price:</p>
+                                  <p>₪{formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}</p>
+                                </>
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                        </TableCell>
+                      )}
+                      {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
+                      {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
+                      {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
+                      {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
+                      {visibleColumns.quantity && (
+                        <TableCell className="text-center px-2 sm:px-4 py-2">
+                          <span>{formatIntegerQuantity(item.quantity)}</span>
+                          {item.quantity === 0 && (
+                            <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
                           )}
-                          Delete All
-                      </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                      <AlertDialogHeader>
-                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                          This action cannot be undone. This will permanently delete all inventory items.
-                      </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                          {isDeleting ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Yes, delete all
-                      </AlertDialogAction>
-                      </AlertDialogFooter>
-                  </AlertDialogContent>
-              </AlertDialog>
-         </CardFooter>
-       </Card>
+                          {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && (
+                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
+                          )}
+                          {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && (
+                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Over</Badge>
+                          )}
+                        </TableCell>
+                      )}
+                      {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
+                      {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? `₪${formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}` : '-'}</TableCell>}
+                      {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
+                      {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
+                      {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between sm:justify-end space-x-2 py-4">
+              <span className="text-sm text-muted-foreground hidden sm:block">
+                Page {currentPage} of {totalPages} ({totalItems} items)
+              </span>
+              <div className="flex space-x-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="h-8 px-2"
+                >
+                  <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Previous</span>
+                </Button>
+                <span className="text-sm text-muted-foreground sm:hidden px-2 flex items-center">
+                  {currentPage}/{totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-2"
+                >
+                  <span className="hidden sm:inline">Next</span> <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
+          <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
+            <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={isDeleting} className="w-full sm:w-auto">
+                {isDeleting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Delete All
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete all inventory items.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                  {isDeleting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  Yes, delete all
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardFooter>
+      </Card>
     </div>
   );
 }
