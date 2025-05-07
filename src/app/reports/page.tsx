@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText, HandCoins } from 'lucide-react'; // Added HandCoins
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, PieChart as RechartsPie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -17,7 +16,15 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { calculateInventoryValue, calculateTotalItems, getLowStockItems, calculateGrossProfitMargin, calculateInventoryTurnoverRate, calculateAverageOrderValue } from '@/lib/kpi-calculations';
+import { 
+    calculateInventoryValue, 
+    calculateTotalItems, 
+    getLowStockItems, 
+    calculateGrossProfitMargin, 
+    calculateInventoryTurnoverRate, 
+    calculateAverageOrderValue,
+    calculateTotalPotentialGrossProfit // Added calculateTotalPotentialGrossProfit
+} from '@/lib/kpi-calculations';
 
 const formatNumber = (
     value: number | undefined | null,
@@ -141,6 +148,7 @@ export default function ReportsPage() {
        const totalValue = calculateInventoryValue(inventory);
        const totalItemsCount = calculateTotalItems(inventory);
        const lowStockItemsCount = getLowStockItems(inventory).length;
+       const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory); // Calculate gross profit
 
 
        const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Mock factor
@@ -156,6 +164,7 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
+         totalPotentialGrossProfit, // Add to KPIs
          valueChangePercent: Math.random() * 10 - 5, // Mock value change
        });
 
@@ -219,7 +228,7 @@ export default function ReportsPage() {
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
                 quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, // Mock sold quantity
-                totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) // Mock total value
+                totalValue: (p.salePrice || p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) // Use salePrice if available for mock total value
             }))
             .sort((a,b) => b.totalValue - a.totalValue) // Sort by total value
             .slice(0, 5); // Top 5
@@ -310,7 +319,7 @@ export default function ReportsPage() {
       </div>
 
        {kpis && (
-           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
              <Card className="xl:col-span-2 scale-fade-in">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Total Inventory Value</CardTitle>
@@ -324,7 +333,7 @@ export default function ReportsPage() {
                  </p>
                </CardContent>
              </Card>
-             <Card className="scale-fade-in" style={{animationDelay: '0.1s'}}>
+             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.05s'}}>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Total Items in Stock</CardTitle>
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -334,7 +343,17 @@ export default function ReportsPage() {
                  <p className="text-[10px] sm:text-xs text-muted-foreground">Unique SKUs</p>
                </CardContent>
              </Card>
-            <Card className="scale-fade-in" style={{animationDelay: '0.2s'}}>
+            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.1s'}}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                    <CardTitle className="text-xs sm:text-sm font-medium">Total Gross Profit</CardTitle>
+                    <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="pb-2 sm:pb-4">
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalPotentialGrossProfit, { currency: true })}</div>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">Potential from stock</p>
+                </CardContent>
+            </Card>
+            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.15s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Gross Profit Margin</CardTitle>
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -344,7 +363,7 @@ export default function ReportsPage() {
                     <p className="text-[10px] sm:text-xs text-muted-foreground">Estimate</p>
                 </CardContent>
             </Card>
-            <Card className="scale-fade-in" style={{animationDelay: '0.3s'}}>
+            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.2s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Inventory Turnover</CardTitle>
                     <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -354,7 +373,7 @@ export default function ReportsPage() {
                     <p className="text-[10px] sm:text-xs text-muted-foreground">Times per period</p>
                 </CardContent>
             </Card>
-             <Card className="scale-fade-in" style={{animationDelay: '0.4s'}}>
+             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.25s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Avg. Order Value</CardTitle>
                     <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
