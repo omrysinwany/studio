@@ -106,13 +106,13 @@ const scanInvoiceFlow = ai.defineFlow<
         } else {
             console.error('AI did not return the expected { products: [...] } structure or validation failed. Received:', output, 'Errors:', validationResult.error);
             // Fallback to empty products if structure is wrong or validation fails
-            return { products: [] };
+            return { products: [], error: "AI output validation failed. The structure of the data from the AI was not as expected." };
         }
 
-    } catch (promptError) {
+    } catch (promptError: any) {
         console.error('Error calling AI prompt:', promptError);
         // Return empty products on prompt error
-        return { products: [] };
+        return { products: [], error: `Error calling AI: ${promptError.message || 'Unknown AI error'}` };
     }
 
     // Process the raw data: calculate unitPrice and map to final schema
@@ -120,7 +120,7 @@ const scanInvoiceFlow = ai.defineFlow<
         // Ensure rawOutput and rawOutput.products are valid before mapping
         if (!rawOutput || !Array.isArray(rawOutput.products)) {
             console.error('Invalid rawOutput structure before processing:', rawOutput);
-            return { products: [] };
+            return { products: [], error: "Internal error: Invalid raw data structure from AI." };
         }
 
         const processedProducts = rawOutput.products
@@ -152,7 +152,7 @@ const scanInvoiceFlow = ai.defineFlow<
 
                 // Construct the final product object conforming to FinalProductSchema
                 const finalProduct: z.infer<typeof FinalProductSchema> = {
-                    catalogNumber: rawProduct.catalog_number || 'N/A',
+                    catalogNumber: rawProduct.catalogNumber || 'N/A',
                     barcode: rawProduct.barcode, // Include the barcode (optional)
                     description: description,
                     shortName: shortName, // Assign the shortName
@@ -167,9 +167,10 @@ const scanInvoiceFlow = ai.defineFlow<
 
         return { products: processedProducts };
 
-    } catch (processingError) {
+    } catch (processingError: any) {
          console.error('Error processing AI output:', processingError, 'Raw Output:', rawOutput);
          // Return empty products if processing fails
-         return { products: [] };
+         return { products: [], error: `Error processing AI data: ${(processingError as Error).message || 'Unknown processing error'}` };
     }
 });
+

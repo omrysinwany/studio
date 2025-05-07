@@ -40,4 +40,6 @@ export const FinalProductSchema = z.object({
 export const ScanInvoiceOutputSchema = z.object({
   products: z.array(FinalProductSchema) // Use the final, processed schema here
     .describe('The list of products extracted and processed from the invoice.'),
+  error: z.string().optional().describe('An error message if the scan or processing failed.'),
 });
+

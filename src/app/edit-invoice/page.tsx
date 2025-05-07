@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -15,6 +16,7 @@ import {
     finalizeSaveProductsService,
     ProductPriceDiscrepancy,
 } from '@/services/backend';
+import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas'; // Import ScanInvoiceOutput type
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
@@ -49,6 +51,7 @@ function EditInvoiceContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
+  const [scanProcessError, setScanProcessError] = useState<string | null>(null); // For scan-specific errors
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [imageUriKey, setImageUriKey] = useState<string | null>(null);
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null); // Store temp invoice ID
@@ -61,12 +64,10 @@ function EditInvoiceContent() {
 
   useEffect(() => {
     const key = searchParams.get('key');
-    const imgKey = searchParams.get('imageKey');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId'); // Get temp invoice ID
 
     setDataKey(key);
-    setImageUriKey(imgKey);
     setTempInvoiceId(tempInvIdParam); // Store temp invoice ID
 
     let hasAttemptedLoad = false;
@@ -90,19 +91,17 @@ function EditInvoiceContent() {
               variant: "destructive",
             });
              if (key) localStorage.removeItem(key);
-             if (imgKey) localStorage.removeItem(imgKey);
              setIsLoading(false);
              setInitialDataLoaded(true);
             return;
         }
 
-        let parsedData;
+        let parsedData: ScanInvoiceOutput;
         try {
             parsedData = JSON.parse(storedData);
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
              if (key) localStorage.removeItem(key);
-             if (imgKey) localStorage.removeItem(imgKey);
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -114,6 +113,11 @@ function EditInvoiceContent() {
              setInitialDataLoaded(true);
             return;
         }
+
+        if (parsedData.error) {
+            setScanProcessError(parsedData.error);
+        }
+
 
         if (parsedData && Array.isArray(parsedData.products)) {
           const productsWithIds = parsedData.products.map((p: Product, index: number) => ({
@@ -129,12 +133,11 @@ function EditInvoiceContent() {
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
           setProducts(productsWithIds);
-           setErrorLoading(null);
+           setErrorLoading(null); // Clear generic loading error if products (even empty) are processed
 
-        } else {
+        } else if (!parsedData.error) { // If no scan error but structure is bad
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
           if (key) localStorage.removeItem(key);
-          if (imgKey) localStorage.removeItem(imgKey);
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -142,8 +145,6 @@ function EditInvoiceContent() {
                variant: "destructive",
            });
           setProducts([]);
-           setIsLoading(false);
-           setInitialDataLoaded(true);
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
@@ -236,20 +237,17 @@ function EditInvoiceContent() {
   const proceedWithFinalSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true);
       try {
-          const imageUri = (imageUriKey && imageUriKey.trim() !== '') ? localStorage.getItem(imageUriKey) : null;
-          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "with image URI from key:", imageUriKey, "Value:", imageUri ? "Present" : "Absent", "tempInvoiceId:", tempInvoiceId);
+          // imageUriKey is no longer used to fetch from localStorage here, as image is not saved with final products.
+          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId);
 
-          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', imageUri || undefined, tempInvoiceId || undefined);
+          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', undefined, tempInvoiceId || undefined);
 
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
               console.log(`Removed temp data with key: ${dataKey}`);
           }
-          if (imageUriKey && imageUriKey.trim() !== '') {
-              localStorage.removeItem(imageUriKey);
-              console.log(`Removed temp image URI with key: ${imageUriKey}`);
-          }
+          // No longer removing imageUriKey from localStorage here as it's not passed to finalizeSaveProductsService
 
 
           toast({
@@ -396,9 +394,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             localStorage.removeItem(dataKey);
             console.log(`Cleared temp data with key ${dataKey} on explicit back navigation.`);
         }
+        // imageUriKey is no longer used for saving, but keep clearing it if it was set
         if (imageUriKey && imageUriKey.trim() !== '') {
             localStorage.removeItem(imageUriKey);
-            console.log(`Cleared temp image URI with key ${imageUriKey} on explicit back navigation.`);
+            console.log(`Cleared temp image URI key ${imageUriKey} on explicit back navigation.`);
         }
         router.push('/upload');
     };
@@ -429,10 +428,12 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     if (initialDataLoaded && products.length === 0 && !errorLoading) {
          return (
              <div className="container mx-auto p-4 md:p-8 space-y-4">
-                 <Alert variant="default">
-                     <AlertTitle>No Products Found</AlertTitle>
+                 <Alert variant={scanProcessError ? "destructive" : "default"}>
+                     <AlertTitle>{scanProcessError ? "Scan Process Error" : "No Products Found"}</AlertTitle>
                      <AlertDescription>
-                         The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.
+                         {scanProcessError
+                            ? `The document scan encountered an issue: ${scanProcessError}. You can try adding rows manually or go back and upload again.`
+                            : "The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again."}
                      </AlertDescription>
                  </Alert>
                  <Card className="shadow-md">
@@ -645,3 +646,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+

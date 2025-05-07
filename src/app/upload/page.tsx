@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -9,20 +10,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
-import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend'; // Removed saveProductsService
+import { useRouter } from 'next/navigation'; // Use App Router's useRouter
+import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
+import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
-import { Separator } from '@/components/ui/separator';
+import { Separator } from '@/components/ui/separator'; // Import Separator
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 
-const TEMP_DATA_KEY_PREFIX = 'invoTrackTempData_';
-const TEMP_IMAGE_URI_KEY_PREFIX = 'invoTrackTempImageUri_';
+const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_'; // Changed prefix for clarity
 const INVOICES_STORAGE_KEY = 'mockInvoicesData'; // For creating pending invoice record
+
+const MAX_LOCAL_STORAGE_SIZE_BYTES = 4.5 * 1024 * 1024; // 4.5MB as a rough estimate for localStorage capacity
 
 
 const formatDisplayNumber = (
@@ -137,12 +139,11 @@ export default function UploadPage() {
          setUploadProgress(100);
          setIsUploading(false);
          setIsProcessing(true);
-         
+
          const timestamp = Date.now();
          const uniqueScanId = `${timestamp}_${Math.random().toString(36).substring(2, 9)}`;
          const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueScanId}`;
-         const imageUriKey = `${TEMP_IMAGE_URI_KEY_PREFIX}${uniqueScanId}`;
-         
+
          // Create a PENDING invoice record in localStorage
          const tempInvoiceId = `pending-inv-${uniqueScanId}`;
          const pendingInvoice: InvoiceHistoryItem = {
@@ -150,7 +151,7 @@ export default function UploadPage() {
            fileName: selectedFile.name,
            uploadTime: new Date().toISOString(),
            status: 'pending',
-           invoiceDataUri: base64data, // Store image URI with pending record
+           invoiceDataUri: undefined, // Image URI not stored with pending record initially
          };
 
          try {
@@ -158,25 +159,46 @@ export default function UploadPage() {
             currentInvoices = [pendingInvoice, ...currentInvoices];
             localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(currentInvoices));
             console.log(`[UploadPage] Created PENDING invoice record ID: ${tempInvoiceId}`);
-         } catch (e) {
+         } catch (e: any) {
             console.error("[UploadPage] Failed to create PENDING invoice record in localStorage:", e);
-            // Proceed without it, but log. finalizeSave might create a new one later.
+            if (e.name === 'QuotaExceededError' || (e.message && e.message.includes('exceeded the quota'))) {
+                 toast({
+                    title: 'Storage Full',
+                    description: 'Cannot save new invoice record. LocalStorage might be full. Please clear some history or inventory.',
+                    variant: 'destructive',
+                    duration: 7000,
+                });
+            }
          }
 
 
          let scanResult: ScanInvoiceOutput = { products: [] };
-         let productDataSaved = false;
-         let imageUriSavedForEdit = false; // Separate flag for image URI for the edit page's temp storage
+         let scanDataSavedForEdit = false;
 
          try {
              console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
              scanResult = await scanInvoice({ invoiceDataUri: base64data });
              console.log('[UploadPage] AI Scan Result:', scanResult);
 
+            if (scanResult.error) {
+                toast({
+                    title: 'Scan Error',
+                    description: `Could not extract products: ${scanResult.error}`,
+                    variant: 'destructive',
+                    duration: 7000,
+                });
+            }
+
+
              try {
-                 localStorage.setItem(dataKey, JSON.stringify(scanResult));
-                 if (localStorage.getItem(dataKey) === JSON.stringify(scanResult)) {
-                    productDataSaved = true;
+                 // Estimate size of scanResult.products before storing image
+                const scanResultString = JSON.stringify(scanResult);
+                if (scanResultString.length > MAX_LOCAL_STORAGE_SIZE_BYTES) {
+                     throw new Error("Scan results too large for localStorage. Image preview will not be available for editing.");
+                }
+                 localStorage.setItem(dataKey, scanResultString);
+                 if (localStorage.getItem(dataKey) === scanResultString) {
+                    scanDataSavedForEdit = true;
                     console.log(`[UploadPage] Successfully saved and verified scan results to localStorage with key: ${dataKey}`);
                  } else {
                     throw new Error("Verification of scan results in localStorage failed.");
@@ -185,40 +207,24 @@ export default function UploadPage() {
                  console.error(`[UploadPage] Error saving or verifying scan results to localStorage for key ${dataKey}:`, storageError);
                  toast({
                      title: 'Critical Error: Cannot Save Scan Data',
-                     description: 'Could not save processed scan results. LocalStorage might be full or unresponsive. Please try clearing some space or reducing file size and try again.',
+                     description: `Could not save processed scan results. ${storageError.message || 'LocalStorage might be full or unresponsive.'} Please try clearing some space or reducing file size and try again.`,
                      variant: 'destructive',
-                     duration: 10000, 
+                     duration: 10000,
                  });
                  setIsProcessing(false);
                  setSelectedFile(null);
                  if (fileInputRef.current) fileInputRef.current.value = '';
-                 localStorage.removeItem(dataKey); 
-                 return; 
+                 localStorage.removeItem(dataKey);
+                 return;
              }
 
-             if (productDataSaved) {
-                 try {
-                    // This image URI is for the edit page temp storage, separate from the one saved with the pending invoice.
-                    localStorage.setItem(imageUriKey, base64data);
-                    if (localStorage.getItem(imageUriKey) === base64data) {
-                        imageUriSavedForEdit = true;
-                        console.log(`[UploadPage] Successfully saved and verified image URI (for edit page) to localStorage with key: ${imageUriKey}`);
-                    } else {
-                         console.warn(`[UploadPage] Verification of image URI (for edit page) in localStorage failed for key ${imageUriKey}. Image preview may not be available on edit page.`);
-                    }
-                 } catch (storageError: any) {
-                    if (storageError.name === 'QuotaExceededError' || (storageError.message && storageError.message.includes('exceeded the quota'))) {
-                        console.warn(`[UploadPage] localStorage quota exceeded for image URI (for edit page) for file: ${selectedFile.name}.`);
-                    } else {
-                        console.error(`[UploadPage] Error saving image URI (for edit page) to localStorage for file: ${selectedFile.name}`, storageError);
-                    }
-                 }
+             // Only show "Scan Complete" if there wasn't a scan error from the AI flow
+             if (!scanResult.error) {
+                 toast({
+                   title: 'Scan Complete',
+                   description: `${selectedFile.name} scanned. Review and save on the next page.`,
+                 });
              }
-
-             toast({
-               title: 'Scan Complete',
-               description: `${selectedFile.name} scanned. Review and save on the next page.`,
-             });
 
          } catch (aiError: any) {
              console.error('[UploadPage] AI processing failed:', aiError);
@@ -227,17 +233,19 @@ export default function UploadPage() {
                 description: (aiError as Error).message || 'Could not process the document. Please check the image or try again.',
                 variant: 'destructive',
              });
-             if (!productDataSaved) { 
+             // Ensure scanResult (even if empty or with error) is saved if scanDataSavedForEdit is false
+             if (!scanDataSavedForEdit) {
                 try {
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); 
-                     if (localStorage.getItem(dataKey) === JSON.stringify(scanResult)) {
-                        productDataSaved = true; 
-                        console.log(`[UploadPage] Saved empty scan results after AI error with key: ${dataKey}`);
+                    const errorResultString = JSON.stringify({ products: [], error: `AI Processing Error: ${(aiError as Error).message || 'Unknown'}` });
+                    localStorage.setItem(dataKey, errorResultString);
+                     if (localStorage.getItem(dataKey) === errorResultString) {
+                        scanDataSavedForEdit = true;
+                        console.log(`[UploadPage] Saved error scan results after AI error with key: ${dataKey}`);
                     } else {
-                        throw new Error("Verification of empty scan results in localStorage failed after AI error.");
+                        throw new Error("Verification of error scan results in localStorage failed after AI error.");
                     }
                 } catch (storageError: any) {
-                    console.error(`[UploadPage] Critical Error: Error saving empty scan results to localStorage after AI error for key ${dataKey}:`, storageError);
+                    console.error(`[UploadPage] Critical Error: Error saving error scan results to localStorage after AI error for key ${dataKey}:`, storageError);
                      toast({
                          title: 'Critical Error',
                          description: 'Could not save scan results after AI processing error. Please try again.',
@@ -247,20 +255,18 @@ export default function UploadPage() {
                      setIsProcessing(false);
                      setSelectedFile(null);
                      if (fileInputRef.current) fileInputRef.current.value = '';
-                     localStorage.removeItem(dataKey); 
-                     localStorage.removeItem(imageUriKey); 
-                     return; 
+                     localStorage.removeItem(dataKey);
+                     return;
                 }
              }
           } finally {
-             if (productDataSaved) {
-                 router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSavedForEdit ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}&tempInvoiceId=${tempInvoiceId}`);
+             if (scanDataSavedForEdit) {
+                 router.push(`/edit-invoice?key=${dataKey}&fileName=${encodeURIComponent(selectedFile.name)}&tempInvoiceId=${tempInvoiceId}`);
              } else {
-                 console.error("[UploadPage] Product data was not saved, aborting navigation to edit page.");
-                 localStorage.removeItem(dataKey); 
-                 localStorage.removeItem(imageUriKey); 
+                 console.error("[UploadPage] Scan data was not saved for edit, aborting navigation.");
+                 localStorage.removeItem(dataKey);
              }
-            
+
              setIsProcessing(false);
              setSelectedFile(null);
               if (fileInputRef.current) {
