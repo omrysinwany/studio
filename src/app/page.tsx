@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle } from "lucide-react"; // Removed TrendingUp, TrendingDown as they are used in sparkline
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ import { getProductsService, InvoiceHistoryItem, getInvoicesService } from '@/se
 import { calculateInventoryValue, calculateTotalItems, getLowStockItems } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip } from 'recharts'; // Added Recharts components for sparkline
 
 
 interface KpiData {
@@ -20,7 +21,43 @@ interface KpiData {
   docsProcessedLast30Days: number;
   lowStockItems: number;
   latestDocName?: string;
+  inventoryValueTrend?: { name: string; value: number }[]; // Added for sparkline
 }
+
+// Sparkline Chart Component
+const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
+  if (!data || data.length === 0) {
+    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">No trend data</div>;
+  }
+  return (
+    <ResponsiveContainer width="100%" height={40}>
+      <LineChart data={data}>
+        <RechartsTooltip
+          contentStyle={{
+            background: "hsl(var(--background))",
+            borderColor: "hsl(var(--border))",
+            borderRadius: "0.5rem",
+            fontSize: "0.75rem",
+            padding: "0.25rem 0.5rem",
+          }}
+          formatter={(value: number, name: string) => {
+             if (name === 'value') return [`₪${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, "Value"];
+             return [value.toLocaleString(), name];
+          }}
+          labelFormatter={() => ''} // Hide label (date) in tooltip for sparkline
+        />
+        <Line
+          type="monotone"
+          dataKey={dataKey}
+          stroke={strokeColor}
+          strokeWidth={2}
+          dot={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+};
+
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
@@ -59,12 +96,22 @@ export default function Home() {
           ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
           : null;
 
+        // Mock trend data for inventory value sparkline
+        const mockInventoryValueTrend = [
+          { name: 'Day 1', value: inventoryValue * 0.95 },
+          { name: 'Day 2', value: inventoryValue * 0.98 },
+          { name: 'Day 3', value: inventoryValue * 0.96 },
+          { name: 'Day 4', value: inventoryValue * 1.02 },
+          { name: 'Day 5', value: inventoryValue },
+        ];
+
         setKpiData({
           totalItems,
           inventoryValue,
           docsProcessedLast30Days,
           lowStockItems: lowStockItemsCount,
-          latestDocName: latestDoc?.fileName.length > 15 ? `${latestDoc.fileName.substring(0,12)}...` : latestDoc?.fileName
+          latestDocName: latestDoc?.fileName.length > 15 ? `${latestDoc.fileName.substring(0,12)}...` : latestDoc?.fileName,
+          inventoryValueTrend: mockInventoryValueTrend,
         });
 
       } catch (error) {
@@ -96,7 +143,10 @@ export default function Home() {
     router.push('/reports');
   };
 
-  const formatLargeNumber = (num: number, decimals = 1): string => {
+  const formatLargeNumber = (num: number | undefined, decimals = 1): string => {
+    if (num === undefined || num === null || isNaN(num)) {
+      return '-';
+    }
     if (Math.abs(num) < 1000) {
         return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
@@ -123,12 +173,21 @@ export default function Home() {
       return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
     }
     if (kpiError) return <span className="text-destructive text-sm">-</span>;
-    if (value === undefined || value === null) return '-';
+    if (value === undefined || value === null || isNaN(value)) return '-';
     
     const prefix = isCurrency ? '₪' : '';
-    if (value >= 10000 && !isInteger) { // Shorten if large and not explicitly integer
+    // Always show full number if less than 10,000 for currency, or if explicitly integer
+    if (isCurrency && Math.abs(value) < 10000 || isInteger && Math.abs(value) < 1000 ) {
+         return prefix + value.toLocaleString(undefined, { 
+            minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
+            maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0) 
+        });
+    }
+    // Use formatLargeNumber for larger numbers that are not explicitly integers
+     if (!isInteger && Math.abs(value) >= 1000) {
         return prefix + formatLargeNumber(value, isCurrency ? 2 : 1);
     }
+
 
     const options: Intl.NumberFormatOptions = {
       minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
@@ -146,7 +205,7 @@ export default function Home() {
   };
 
 
-   if (authLoading && !kpiData) { // Show main loader if auth is still loading and no kpiData yet
+   if (authLoading && !kpiData) { 
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -162,7 +221,7 @@ export default function Home() {
           Welcome to InvoTrack
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8">
-          {user ? `Hello, ${user.username}! Streamlining your inventory management.` : 'Streamlining your inventory management.'}
+          {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Streamlining your inventory management.'}
         </p>
 
         {kpiError && !isLoadingKpis && (
@@ -188,13 +247,15 @@ export default function Home() {
 
             <Link href="/reports" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
-               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
                  <CardTitle className="text-xs sm:text-sm font-medium">Inventory Value</CardTitle>
                  <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span>
                </CardHeader>
-               <CardContent>
+               <CardContent className="pt-1"> {/* Adjusted padding for sparkline */}
                  <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.inventoryValue, true)}</div>
-                 <p className="text-[10px] sm:text-xs text-muted-foreground">Current total value</p>
+                 <div className="mt-1">
+                    <SparkLineChart data={kpiData?.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
+                 </div>
                </CardContent>
              </Card>
             </Link>
