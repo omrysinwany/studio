@@ -27,9 +27,8 @@ interface EditableProduct extends Product {
   _isNewForPrompt?: boolean;
 }
 
-const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
+const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity'): string => {
      if (value === null || value === undefined || isNaN(value)) {
-        if (fieldType === 'stockLevel') return '';
         return fieldType === 'currency' ? '0.00' : '0';
     }
     if (fieldType === 'currency') {
@@ -127,8 +126,8 @@ function EditInvoiceContent() {
                         ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
                         : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
             salePrice: p.salePrice ?? undefined,
-            minStockLevel: p.minStockLevel ?? undefined,
-            maxStockLevel: p.maxStockLevel ?? undefined,
+            minStockLevel: p.minStockLevel ?? undefined, // Keep backend model, but not for editing here
+            maxStockLevel: p.maxStockLevel ?? undefined, // Keep backend model, but not for editing here
           }));
           setProducts(productsWithIds);
            setErrorLoading(null);
@@ -167,14 +166,14 @@ function EditInvoiceContent() {
       prevProducts.map(product => {
         if (product.id === id) {
           let numericValue: number | string | undefined = value;
-          if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
+          if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal') {
               const stringValue = String(value);
-              if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
+              if (stringValue.trim() === '' && field === 'salePrice') {
                   numericValue = undefined;
               } else {
                 numericValue = parseFloat(stringValue.replace(/,/g, ''));
                 if (isNaN(numericValue as number)) {
-                   numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
+                   numericValue = field === 'salePrice' ? undefined : 0;
                 }
               }
           }
@@ -215,8 +214,7 @@ function EditInvoiceContent() {
       salePrice: undefined,
       lineTotal: 0,
       barcode: undefined,
-      minStockLevel: undefined,
-      maxStockLevel: undefined,
+      // minStockLevel and maxStockLevel are not added to new rows here
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
   };
@@ -299,17 +297,15 @@ const checkForNewProductsAndDetails = async (productsForDetailCheck: Product[]) 
 
         const newProductsNeedingDetails = productsForDetailCheck.filter(p => {
             const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
-            // A new product either has no ID, or its ID is not in the current inventory
             return !isExistingProduct;
         }).map(p => ({ ...p, _isNewForPrompt: true }));
 
 
         if (newProductsNeedingDetails.length > 0) {
             setPromptingForBarcodesAndSalePrice(newProductsNeedingDetails);
-            setProductsToSaveDirectly(productsForDetailCheck); // Store all products that passed price check
+            setProductsToSaveDirectly(productsForDetailCheck); 
             setIsSaving(false);
         } else {
-            // No new products, or all existing products are fine, proceed with final save
             await proceedWithFinalSave(productsForDetailCheck);
         }
     } catch (error) {
@@ -346,11 +342,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
      if (updatedProductsFromPrompt) {
          console.log("Barcode and Sale Price prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
          
-         // Merge the updates from the prompt (barcode, salePrice) into the productsToSaveDirectly list
          const finalProductsToSave = productsToSaveDirectly.map(originalProduct => {
              const productFromPrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
              if (productFromPrompt) {
-                 // If this product was in the prompt, use its updated barcode and salePrice
                  return { 
                      ...originalProduct, 
                      barcode: productFromPrompt.barcode, 
@@ -358,12 +352,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      _isNewForPrompt: false 
                  };
              }
-             // If it wasn't in the prompt (e.g., an existing product that didn't need details), keep it as is
              return { ...originalProduct, _isNewForPrompt: false };
          }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
 
-         setProducts(finalProductsToSave); // Update the local state for display if needed, though it will navigate away
+         setProducts(finalProductsToSave);
          proceedWithFinalSave(finalProductsToSave);
      } else {
          console.log("Barcode and Sale Price prompt cancelled.");
@@ -508,7 +501,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[700px]">
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -517,8 +510,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Sale Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -584,30 +575,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         step="0.01"
                          min="0"
                          aria-label={`Line total for ${product.description}`}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right px-2 sm:px-4 py-2">
-                      <Input
-                        type="number"
-                        value={formatInputValue(product.minStockLevel, 'stockLevel')}
-                        onChange={(e) => handleInputChange(product.id, 'minStockLevel', e.target.value)}
-                        className="w-20 sm:w-24 text-right h-9"
-                        min="0"
-                        step="1"
-                        placeholder="Optional"
-                        aria-label={`Min stock for ${product.description}`}
-                      />
-                    </TableCell>
-                     <TableCell className="text-right px-2 sm:px-4 py-2">
-                      <Input
-                        type="number"
-                        value={formatInputValue(product.maxStockLevel, 'stockLevel')}
-                        onChange={(e) => handleInputChange(product.id, 'maxStockLevel', e.target.value)}
-                        className="w-20 sm:w-24 text-right h-9"
-                        min="0"
-                        step="1"
-                        placeholder="Optional"
-                        aria-label={`Max stock for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
