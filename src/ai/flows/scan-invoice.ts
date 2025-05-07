@@ -1,4 +1,3 @@
-
 // src/ai/flows/scan-invoice.ts
 'use server';
 /**
@@ -43,8 +42,9 @@ const prompt = ai.definePrompt({
     }),
   },
   output: {
+    // Output schema from AI matches the extraction request
     schema: z.object({
-        products: z.array(ExtractedProductSchema)
+        products: z.array(ExtractedProductSchema) // Use the Zod schema defined in invoice-schemas.ts
                  .describe('Raw extracted product list from the invoice.'),
     })
   },
@@ -86,25 +86,48 @@ const scanInvoiceFlow = ai.defineFlow<
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema
 }, async input => {
-    let rawOutputFromAI: any = null; // To store the direct output from AI
+    let rawOutputFromAI: any = null;
     try {
         const { output } = await prompt(input);
         rawOutputFromAI = output; // Store the raw output for logging
 
+        // Defensive check: If AI returns null or not an object, handle it.
+        // This scenario should ideally be caught by Genkit's schema validation during the prompt call itself,
+        // leading to the catch block. This check is an additional safeguard.
+        if (output === null || typeof output !== 'object' || !('products' in output)) {
+            console.error('AI returned null or an invalid structure (missing "products" key). Received:', output);
+            return {
+                products: [],
+                error: "AI output was null or malformed. Expected an object with a 'products' array."
+            };
+        }
+        
+        // Zod validation for the structure of 'output.products'
         const validationResult = z.object({ products: z.array(ExtractedProductSchema).nullable() }).safeParse(output);
 
         if (validationResult.success) {
-             // Handle cases where 'products' might be null even if the object structure is valid
-            const productsArray = validationResult.data.products ?? [];
-            rawOutputFromAI = { products: productsArray }; // Ensure rawOutput always has a products array
+            const productsArray = validationResult.data.products ?? []; // Handle null products array if schema allows
+            rawOutputFromAI = { products: productsArray }; 
         } else {
-            console.error('AI did not return the expected { products: [...] } structure or validation failed. Received:', output, 'Errors:', validationResult.error);
-            return { products: [], error: "AI output validation failed. The structure of the data from the AI was not as expected." };
+            console.error('AI output structure validation failed after prompt success. Received:', output, 'Errors:', validationResult.error.flatten());
+            return {
+                products: [],
+                error: `AI output validation failed: ${validationResult.error.flatten().formErrors.join(', ')}`
+            };
         }
 
     } catch (promptError: any) {
-        console.error('Error calling AI prompt:', promptError, "Raw AI output if available:", rawOutputFromAI);
-        return { products: [], error: `Error calling AI: ${promptError.message || 'Unknown AI error'}` };
+        console.error('Error calling AI prompt:', promptError, "Raw AI output if available (before error):", rawOutputFromAI);
+        
+        let userErrorMessage = `Error calling AI: ${promptError.message || 'Unknown AI error'}`;
+        // Check for the specific schema validation error where the AI returned null
+        if (promptError.message && promptError.message.includes("INVALID_ARGUMENT") && promptError.message.includes("Provided data: null")) {
+            userErrorMessage = "The AI model failed to return structured product data. This can happen with unclear images or complex layouts. Please try a clearer image or add products manually.";
+        } else if (promptError.message && promptError.message.includes("Schema validation failed")) {
+             userErrorMessage = `The AI model's response did not match the expected format. Details: ${promptError.message}`;
+        }
+        
+        return { products: [], error: userErrorMessage };
     }
 
     try {
@@ -119,11 +142,16 @@ const scanInvoiceFlow = ai.defineFlow<
                 const lineTotal = rawProduct.total ?? 0;
                 const purchasePrice = rawProduct.purchase_price ?? 0;
 
-                const calculatedUnitPrice = quantity !== 0 && lineTotal !== 0
-                               ? parseFloat((lineTotal / quantity).toFixed(2))
-                               : 0;
+                // Recalculate unitPrice based on lineTotal and quantity, if possible.
+                // Otherwise, use the purchase_price if available.
+                let unitPrice = 0;
+                if (quantity !== 0 && lineTotal !== 0) {
+                    unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
+                } else if (purchasePrice !== 0) {
+                    unitPrice = purchasePrice;
+                }
 
-                const unitPrice = calculatedUnitPrice !== 0 ? calculatedUnitPrice : purchasePrice;
+
                 const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
 
@@ -133,7 +161,7 @@ const scanInvoiceFlow = ai.defineFlow<
                     description: description,
                     shortName: shortName,
                     quantity: quantity,
-                    unitPrice: unitPrice,
+                    unitPrice: unitPrice, // Use the recalculated/prioritized unit price
                     lineTotal: lineTotal,
                 };
                 return finalProduct;
