@@ -1,7 +1,16 @@
+
 'use client';
 
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+  SheetClose,
+} from "@/components/ui/sheet"; // Changed from Dialog to Sheet
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, Check, X, ChevronsUpDown } from 'lucide-react';
@@ -24,6 +33,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
       return acc;
     }, {} as Record<string, PriceDecision>)
   );
+  const [isOpen, setIsOpen] = useState(true); // Control sheet visibility
 
   const handleDecisionChange = (productId: string, decision: PriceDecision) => {
     setPriceDecisions(prev => ({ ...prev, [productId]: decision }));
@@ -35,14 +45,22 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
       return {
         ...d, // Original scanned/edited product details (quantity, catalogNumber, etc.)
         unitPrice: decision === 'update_new' ? d.newUnitPrice : d.existingUnitPrice,
-        // Line total will be recalculated in finalizeSaveProducts based on confirmed unit price and quantity
       };
     });
+    setIsOpen(false);
     onComplete(resolvedProducts);
   };
 
   const handleCancel = () => {
+    setIsOpen(false);
     onComplete(null);
+  };
+  
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      onComplete(null); // Call onComplete with null if sheet is closed externally
+    }
   };
 
   const handleUpdateAllToNew = () => {
@@ -60,19 +78,19 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
   const formatCurrency = (value: number) => `₪${value.toFixed(2)}`;
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-lg md:max-w-xl max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-4 sm:p-6 border-b">
-          <DialogTitle className="flex items-center">
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
+        <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
+          <SheetTitle className="flex items-center text-lg sm:text-xl">
             <AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />
             Confirm Unit Price Changes
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription className="text-xs sm:text-sm">
             Some products have different unit prices than what's currently in your inventory. Please review and confirm.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="p-4 sm:p-6 border-b flex flex-col sm:flex-row gap-2">
+        <div className="p-3 sm:p-4 border-b flex flex-col sm:flex-row gap-2">
             <Button onClick={handleUpdateAllToNew} variant="outline" size="sm" className="w-full sm:w-auto">
                 <ChevronsUpDown className="mr-2 h-4 w-4"/> Update All to New Price
             </Button>
@@ -82,7 +100,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
         </div>
 
         <ScrollArea className="flex-grow">
-          <div className="space-y-4 p-4 sm:p-6">
+          <div className="space-y-3 p-3 sm:p-4">
             {discrepancies.map((d) => (
               <div key={d.id} className="p-3 border rounded-md shadow-sm bg-card">
                 <p className="font-medium text-sm">{d.shortName || d.description}</p>
@@ -104,11 +122,11 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="keep_old" id={`keep_old_${d.id}`} />
-                    <Label htmlFor={`keep_old_${d.id}`} className="text-xs font-normal">Keep Old Price ({formatCurrency(d.existingUnitPrice)})</Label>
+                    <Label htmlFor={`keep_old_${d.id}`} className="text-xs font-normal cursor-pointer">Keep Old Price ({formatCurrency(d.existingUnitPrice)})</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="update_new" id={`update_new_${d.id}`} />
-                    <Label htmlFor={`update_new_${d.id}`} className="text-xs font-normal">Update to New Price ({formatCurrency(d.newUnitPrice)})</Label>
+                    <Label htmlFor={`update_new_${d.id}`} className="text-xs font-normal cursor-pointer">Update to New Price ({formatCurrency(d.newUnitPrice)})</Label>
                   </div>
                 </RadioGroup>
               </div>
@@ -116,16 +134,18 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
           </div>
         </ScrollArea>
 
-        <DialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
-            <X className="mr-2 h-4 w-4" /> Cancel Save
-          </Button>
-          <Button onClick={handleConfirm} className="w-full sm:w-auto">
+        <SheetFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0">
+          <SheetClose asChild>
+             <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+                <X className="mr-2 h-4 w-4" /> Cancel Save
+             </Button>
+          </SheetClose>
+          <Button onClick={handleConfirm} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
             <Check className="mr-2 h-4 w-4" /> Confirm Prices & Save
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 };
 
