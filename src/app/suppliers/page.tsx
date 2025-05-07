@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks, PieChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import {
   Sheet,
   SheetContent,
@@ -22,17 +22,17 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, Cell, Pie, PieChart as RechartsPie } from 'recharts';
 import { Separator } from '@/components/ui/separator';
 
 const ITEMS_PER_PAGE = 10;
 
-type SortKey = keyof SupplierSummary | 'contact' | '';
+type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | ''; // Removed 'totalSpent'
 type SortDirection = 'asc' | 'desc';
 
 const formatCurrency = (value: number | undefined | null): string => {
   if (value === undefined || value === null || isNaN(value)) return '₪0.00';
-  return `₪${value.toFixed(2)}`;
+  return `₪${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const formatDate = (date: Date | string | undefined, f: string = 'PP') => {
@@ -91,18 +91,23 @@ interface MonthlySpendingData {
   total: number;
 }
 
+const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
+
+
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('totalSpent');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>('name'); // Default sort by name
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
   const [selectedSupplierInvoices, setSelectedSupplierInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [monthlySpendingData, setMonthlySpendingData] = useState<MonthlySpendingData[]>([]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [categorySpendingData, setCategorySpendingData] = useState<{ name: string; value: number }[]>([]);
+
 
   const { toast } = useToast();
   const router = useRouter();
@@ -150,8 +155,8 @@ export default function SuppliersPage() {
 
     if (sortKey) {
       result.sort((a, b) => {
-        const valA = a[sortKey as keyof SupplierSummary];
-        const valB = b[sortKey as keyof SupplierSummary];
+        const valA = a[sortKey as keyof Pick<SupplierSummary, 'name' | 'invoiceCount'>];
+        const valB = b[sortKey as keyof Pick<SupplierSummary, 'name' | 'invoiceCount'>];
         let comparison = 0;
         if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
@@ -183,18 +188,45 @@ export default function SuppliersPage() {
                                       .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
     setSelectedSupplierInvoices(invoicesForSupplier);
 
-    // Calculate monthly spending
+    // Calculate monthly spending for the last 12 months
+    const last12Months = eachMonthOfInterval({
+        start: subMonths(new Date(), 11),
+        end: new Date()
+    });
+
     const spendingByMonth: Record<string, number> = {};
+    last12Months.forEach(monthDate => {
+        const monthYear = format(monthDate, 'MMM yyyy');
+        spendingByMonth[monthYear] = 0; // Initialize all months in range
+    });
+
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
         const monthYear = formatDate(invoice.uploadTime as string, 'MMM yyyy');
-        spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
+        if(spendingByMonth.hasOwnProperty(monthYear)){ // Only count if within the last 12 months
+            spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
+        }
       }
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Sort by month
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
     setMonthlySpendingData(chartData);
+
+
+    // Calculate spending by product category (mock example - needs actual product data linkage)
+    const spendingByCategory: Record<string, number> = {
+        'Electronics': Math.random() * 5000,
+        'Office Supplies': Math.random() * 3000,
+        'Services': Math.random() * 2000,
+        'Other': Math.random() * 1000,
+    };
+     setCategorySpendingData(
+        Object.entries(spendingByCategory)
+            .map(([name, value]) => ({name, value}))
+            .filter(item => item.value > 0) // Only include categories with spending
+     );
+
 
     setIsSheetOpen(true);
   };
@@ -246,16 +278,13 @@ export default function SuppliersPage() {
                   <TableHead className="text-center cursor-pointer hover:bg-muted/50" onClick={() => handleSort('invoiceCount')}>
                     Orders {sortKey === 'invoiceCount' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
                   </TableHead>
-                  <TableHead className="text-right cursor-pointer hover:bg-muted/50" onClick={() => handleSort('totalSpent')}>
-                    Total Spent {sortKey === 'totalSpent' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
-                  </TableHead>
                    <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedSuppliers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">
+                    <TableCell colSpan={3} className="h-24 text-center"> {/* Adjusted colSpan */}
                       No suppliers found.
                     </TableCell>
                   </TableRow>
@@ -264,7 +293,6 @@ export default function SuppliersPage() {
                     <TableRow key={supplier.name} className="hover:bg-muted/50">
                       <TableCell className="font-medium">{supplier.name}</TableCell>
                       <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(supplier.totalSpent)}</TableCell>
                        <TableCell className="text-center">
                         <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={`View details for ${supplier.name}`}>
                           <Info className="h-4 w-4 text-primary" />
@@ -308,12 +336,22 @@ export default function SuppliersPage() {
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
             <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || 'Supplier Details'}</SheetTitle>
             <SheetDescription>
-              Contact information, spending analysis, and order history.
+              Contact information, spending analysis, and order history for {selectedSupplier?.name}.
             </SheetDescription>
           </SheetHeader>
           {selectedSupplier && (
             <ScrollArea className="flex-grow">
               <div className="p-4 sm:p-6 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center"><DollarSign className="mr-2 h-4 w-4 text-primary" /> Total Spending</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-primary">{formatCurrency(selectedSupplier.totalSpent)}</p>
+                    <p className="text-xs text-muted-foreground">Across {selectedSupplier.invoiceCount} orders</p>
+                  </CardContent>
+                </Card>
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> Contact (Placeholder)</CardTitle>
@@ -324,26 +362,61 @@ export default function SuppliersPage() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> Monthly Spending</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {monthlySpendingData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                          <YAxis fontSize={10} tickFormatter={(value) => `₪${value/1000}k`} tickLine={false} axisLine={false}/>
-                          <RechartsTooltip formatter={(value: number) => [formatCurrency(value), "Total Spent"]}/>
-                          <Legend wrapperStyle={{fontSize: "12px"}}/>
-                          <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Spending"/>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">No spending data available for this supplier.</p>
-                    )}
-                  </CardContent>
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> Monthly Spending (Last 12 Months)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
+                        <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
+                            <YAxis fontSize={10} tickFormatter={(value) => `₪${value/1000}k`} tickLine={false} axisLine={false}/>
+                            <RechartsTooltip formatter={(value: number) => [formatCurrency(value), "Total Spent"]}/>
+                            <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Spending"/>
+                            </BarChart>
+                        </ResponsiveContainer>
+                        ) : (
+                        <p className="text-sm text-muted-foreground text-center py-4">No spending data available for the last 12 months.</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                 <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base flex items-center"><PieChart className="mr-2 h-4 w-4 text-primary" /> Spending by Category (Example)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex items-center justify-center">
+                         {categorySpendingData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={200}>
+                                <RechartsPie>
+                                    <RechartsPie data={categorySpendingData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} labelLine={false}
+                                        label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                                            const RADIAN = Math.PI / 180;
+                                            const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                                            return (percent * 100) > 5 ? (
+                                                <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10px">
+                                                    {`${(percent * 100).toFixed(0)}%`}
+                                                </text>
+                                            ) : null;
+                                        }}
+                                    >
+                                    {categorySpendingData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                    ))}
+                                    </RechartsPie>
+                                    <RechartsTooltip formatter={(value: number, name: string) => [formatCurrency(value), name]} />
+                                    <Legend layout="vertical" align="right" verticalAlign="middle" iconSize={10} wrapperStyle={{fontSize: "12px", lineHeight: "1.5"}}/>
+                                </RechartsPie>
+                            </ResponsiveContainer>
+                         ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">No category spending data available.</p>
+                         )}
+                    </CardContent>
                 </Card>
                 
                 <Card>
