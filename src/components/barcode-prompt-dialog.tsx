@@ -7,23 +7,43 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Camera, Save, SkipForward, X, DollarSign, CheckCircle } from 'lucide-react';
+import { Camera, Save, X, CheckCircle, Percent } from 'lucide-react';
 import BarcodeScanner from '@/components/barcode-scanner';
 import type { Product } from '@/services/backend';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface BarcodePromptDialogProps {
   products: Product[];
   onComplete: (updatedProducts: Product[] | null) => void;
 }
 
+type SalePriceMethod = 'manual' | 'percentage';
+
 const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onComplete }) => {
   const [promptedProducts, setPromptedProducts] = useState<Product[]>(
-    products.map(p => ({ ...p, barcode: p.barcode || '', salePrice: p.salePrice === undefined ? undefined : p.salePrice }))
+    products.map(p => ({
+      ...p,
+      barcode: p.barcode || '',
+      salePrice: p.salePrice === undefined ? undefined : p.salePrice,
+    }))
   );
   const [currentScanningProductId, setCurrentScanningProductId] = useState<string | null>(null);
   const [locallyConfirmedProducts, setLocallyConfirmedProducts] = useState<Product[]>([]);
+  const [salePriceMethods, setSalePriceMethods] = useState<Record<string, SalePriceMethod>>(
+    products.reduce((acc, p) => {
+      acc[p.id] = 'manual';
+      return acc;
+    }, {} as Record<string, SalePriceMethod>)
+  );
+  const [profitPercentages, setProfitPercentages] = useState<Record<string, string>>(
+     products.reduce((acc, p) => {
+      acc[p.id] = ''; // Initialize with empty string for percentage input
+      return acc;
+    }, {} as Record<string, string>)
+  );
+
 
   const handleInputChange = (productId: string, field: keyof Product, value: string) => {
     setPromptedProducts(prev =>
@@ -31,7 +51,8 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
         if (p.id === productId) {
           if (field === 'salePrice') {
             const numericValue = parseFloat(value);
-            return { ...p, [field]: isNaN(numericValue) || numericValue <= 0 ? undefined : numericValue };
+            // For manual input, allow empty to represent undefined for now, will validate on confirm
+            return { ...p, [field]: value.trim() === '' ? undefined : (isNaN(numericValue) || numericValue < 0 ? undefined : numericValue) };
           }
           return { ...p, [field]: value.trim() };
         }
@@ -39,6 +60,45 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
       })
     );
   };
+
+  const handleProfitPercentageChange = (productId: string, value: string) => {
+    setProfitPercentages(prev => ({ ...prev, [productId]: value }));
+    const percentage = parseFloat(value);
+    const product = promptedProducts.find(p => p.id === productId);
+    if (product && product.unitPrice && !isNaN(percentage) && percentage >= 0) {
+      const calculatedSalePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
+      setPromptedProducts(prev =>
+        prev.map(p => (p.id === productId ? { ...p, salePrice: calculatedSalePrice } : p))
+      );
+    } else if (product && value.trim() === '') { // Clear sale price if percentage is cleared
+        setPromptedProducts(prev =>
+            prev.map(p => (p.id === productId ? { ...p, salePrice: undefined } : p))
+        );
+    }
+  };
+
+  const handleSalePriceMethodChange = (productId: string, method: SalePriceMethod) => {
+    setSalePriceMethods(prev => ({ ...prev, [productId]: method }));
+    if (method === 'manual') {
+      // Optionally clear percentage or reset salePrice if switching to manual
+      // setProfitPercentages(prev => ({ ...prev, [productId]: '' }));
+      // setPromptedProducts(prev => prev.map(p => p.id === productId ? {...p, salePrice: undefined} : p));
+    } else {
+        // If switching to percentage, recalculate based on current percentage if any
+        const product = promptedProducts.find(p => p.id === productId);
+        const percentageStr = profitPercentages[productId];
+        if(product && product.unitPrice && percentageStr){
+            const percentage = parseFloat(percentageStr);
+             if (!isNaN(percentage) && percentage >= 0) {
+                const calculatedSalePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
+                setPromptedProducts(prev =>
+                    prev.map(p => (p.id === productId ? { ...p, salePrice: calculatedSalePrice } : p))
+                );
+            }
+        }
+    }
+  };
+
 
   const handleScanClick = (productId: string) => {
     setCurrentScanningProductId(productId);
@@ -60,7 +120,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
   };
 
   const handleSaveAll = () => {
-    const productsToValidate = [...promptedProducts]; // Products still in the list
+    const productsToValidate = [...promptedProducts];
     const productsWithMissingSalePrice = productsToValidate.filter(
       p => p.salePrice === undefined || p.salePrice === null || isNaN(Number(p.salePrice)) || Number(p.salePrice) <= 0
     );
@@ -68,13 +128,12 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
     if (productsWithMissingSalePrice.length > 0) {
       toast({
         title: "Missing Sale Price",
-        description: `Please enter a valid sale price for all remaining new products: ${productsWithMissingSalePrice.map(p=> p.shortName || p.catalogNumber).join(', ')}. Or confirm/skip them individually.`,
+        description: `Please enter a valid sale price for all remaining new products: ${productsWithMissingSalePrice.map(p=> p.shortName || p.catalogNumber).join(', ')}. Or confirm them individually.`,
         variant: "destructive",
         duration: 7000,
       });
       return;
     }
-    // Combine locally confirmed products with any remaining (now validated) products
     onComplete([...locallyConfirmedProducts, ...productsToValidate]);
   };
 
@@ -82,21 +141,6 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
     onComplete(null);
   };
 
-  const handleSkipProduct = useCallback((productId: string) => {
-     const skippedProduct = promptedProducts.find(p => p.id === productId);
-     if (skippedProduct) {
-         setPromptedProducts(prev => prev.filter(p => p.id !== productId));
-         // Also add to locally confirmed if we want to save it "as is" without barcode/sale price
-         // For now, skipping means it won't be part of the final list passed to onComplete
-         // unless it was already locally confirmed. If skipping should mean "save as is", logic needs adjustment.
-         // Current logic: skip means it's not processed further in this dialog.
-         toast({
-             title: "Product Skipped",
-             description: `Input for "${skippedProduct.shortName || skippedProduct.description || 'Product'}" skipped. It will not be saved with new barcode/sale price details from this dialog.`,
-             variant: "default",
-         });
-     }
-  }, [promptedProducts]);
 
   const handleConfirmProduct = useCallback((productId: string) => {
     const productToConfirm = promptedProducts.find(p => p.id === productId);
@@ -146,7 +190,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                    {product.shortName || product.description}
                  </Label>
                  <p className="text-xs text-muted-foreground">
-                   Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity}
+                   Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity} | Cost: ₪{product.unitPrice.toFixed(2)}
                  </p>
                  
                  <div>
@@ -172,40 +216,84 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                      </Button>
                      </div>
                  </div>
+                
+                <div className="space-y-2">
+                    <Label className="text-sm">Sale Price Method <span className="text-destructive">*</span></Label>
+                    <RadioGroup
+                        value={salePriceMethods[product.id]}
+                        onValueChange={(value) => handleSalePriceMethodChange(product.id, value as SalePriceMethod)}
+                        className="flex gap-4"
+                    >
+                        <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="manual" id={`manual-${product.id}`} />
+                        <Label htmlFor={`manual-${product.id}`} className="text-xs font-normal">Manual Price</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="percentage" id={`percentage-${product.id}`} />
+                        <Label htmlFor={`percentage-${product.id}`} className="text-xs font-normal">Profit %</Label>
+                        </div>
+                    </RadioGroup>
+                </div>
 
-                 <div>
-                     <Label htmlFor={`salePrice-${product.id}`} className="text-sm">
-                         Sale Price (₪) <span className="text-destructive">*</span>
-                     </Label>
-                     <div className="relative mt-1">
-                          <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                         <Input
-                             id={`salePrice-${product.id}`}
-                             type="number"
-                             value={product.salePrice === undefined ? '' : String(product.salePrice)}
-                             onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
-                             placeholder="Enter sale price"
-                             className="pl-7"
-                             min="0.01"
-                             step="0.01"
-                             aria-label={`Sale price for ${product.shortName || product.description}`}
-                             required
-                         />
-                     </div>
-                 </div>
-                  <div className="flex items-center gap-2 mt-2">
-                      <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSkipProduct(product.id)}
-                          className="text-xs text-muted-foreground h-8 px-2 flex-1"
-                          title={`Skip inputs for ${product.shortName || product.description}`}
-                          aria-label={`Skip inputs for ${product.shortName || product.description}`}
-                          >
-                          <SkipForward className="h-4 w-4 mr-1" />
-                          Skip This
-                      </Button>
+                {salePriceMethods[product.id] === 'manual' && (
+                    <div>
+                        <Label htmlFor={`salePrice-${product.id}`} className="text-sm">
+                            Sale Price (₪) <span className="text-destructive">*</span>
+                        </Label>
+                        <div className="relative mt-1">
+                            <Input
+                                id={`salePrice-${product.id}`}
+                                type="number"
+                                value={product.salePrice === undefined ? '' : String(product.salePrice)}
+                                onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
+                                placeholder="Enter sale price"
+                                min="0.01"
+                                step="0.01"
+                                className="pl-3" // No icon, so pl-3 is fine
+                                aria-label={`Sale price for ${product.shortName || product.description}`}
+                                required
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {salePriceMethods[product.id] === 'percentage' && (
+                  <div className="grid grid-cols-2 gap-2 items-end">
+                    <div>
+                        <Label htmlFor={`profitPercentage-${product.id}`} className="text-sm">
+                            Profit Margin (%) <span className="text-destructive">*</span>
+                        </Label>
+                         <div className="relative mt-1">
+                            <Input
+                                id={`profitPercentage-${product.id}`}
+                                type="number"
+                                value={profitPercentages[product.id]}
+                                onChange={(e) => handleProfitPercentageChange(product.id, e.target.value)}
+                                placeholder="e.g., 25"
+                                min="0"
+                                step="0.1"
+                                className="pl-3"
+                                aria-label={`Profit percentage for ${product.shortName || product.description}`}
+                                required
+                            />
+                            <Percent className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        </div>
+                    </div>
+                     <div>
+                        <Label className="text-sm">Calculated Sale Price (₪)</Label>
+                        <Input
+                            type="text"
+                            value={product.salePrice === undefined ? 'N/A' : `₪${product.salePrice.toFixed(2)}`}
+                            readOnly
+                            disabled
+                            className="mt-1 bg-muted/50 pl-3"
+                            aria-label={`Calculated sale price for ${product.shortName || product.description}`}
+                        />
+                    </div>
+                  </div>
+                )}
+
+                  <div className="flex items-center gap-2 mt-3">
                       <Button
                           type="button"
                           variant="default"
@@ -216,7 +304,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
                           aria-label={`Confirm details for ${product.shortName || product.description}`}
                           >
                           <CheckCircle className="h-4 w-4 mr-1" />
-                          Confirm This
+                          Confirm This Product
                       </Button>
                   </div>
                </div>
@@ -245,3 +333,4 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
 };
 
 export default BarcodePromptDialog;
+
