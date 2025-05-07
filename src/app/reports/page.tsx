@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -31,7 +30,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `₪${zeroFormatted}` : formatted;
+        return currency ? `₪${zeroFormatted}` : zeroFormatted;
     }
 
     const formatted = value.toLocaleString(undefined, {
@@ -138,10 +137,10 @@ export default function ReportsPage() {
        const lowStockItemsCount = getLowStockItems(inventory).length;
 
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Placeholder
-       const mockCogs = mockTotalRevenue * 0.65; // Placeholder
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; 
+       const mockCogs = mockTotalRevenue * 0.65; 
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); // Avoid division by zero
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); 
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
@@ -151,16 +150,17 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         valueChangePercent: Math.random() * 10 - 5, // Placeholder
+         valueChangePercent: Math.random() * 10 - 5, 
        });
 
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30))); // Max 30 points
+       const numPoints = window.innerWidth < 640 ? 15 : 30; // Fewer points for mobile
+       const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints))); 
        
        while (currentDate <= endDate) {
-           const monthStr = format(currentDate, "MMM yy");
+           const monthStr = format(currentDate, "MMM dd"); // More granular for line chart
            const monthValue = inventory.slice(0, Math.floor(Math.random() * inventory.length)).reduce((sum, p) => sum + (p.lineTotal || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
                date: monthStr,
@@ -171,7 +171,7 @@ export default function ReportsPage() {
        setValueOverTime(votData);
 
 
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; // Mock categories
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; 
         const catDistData = categories.map(cat => {
             const categoryProducts = inventory.filter(p => (p.description.toLowerCase().includes(cat.slice(0,4).toLowerCase())) || (cat === 'Other' && !categories.slice(0,-1).some(c => p.description.toLowerCase().includes(c.slice(0,4).toLowerCase()))));
             return {
@@ -183,23 +183,26 @@ export default function ReportsPage() {
 
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const procVolNumPoints = window.innerWidth < 640 ? 6 : 12; // Fewer points for bar chart on mobile
+       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); // Approx months
+
         while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yy");
            const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yy") === monthStr).length;
            if(!procVolData.find(d => d.period === monthStr)) {
              procVolData.push({ period: monthStr, count });
            }
-           currentDate.setMonth(currentDate.getMonth() + 1); // Increment by month
+           currentDate.setMonth(currentDate.getMonth() + procVolStep);
        }
        setProcessingVolume(procVolData);
 
-       setSalesByCategory(categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 }))); // Placeholder sales
+       setSalesByCategory(categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 })));
 
         const topProducts = inventory
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, // Mock sales based on stock
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, 
                 totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1)
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
@@ -357,18 +360,28 @@ export default function ReportsPage() {
            </div>
        )}
 
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2"> {/* Adjusted grid for better mobile stacking */}
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
             <Card>
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Inventory Value Over Time</CardTitle>
                 </CardHeader>
-                <CardContent className="pl-0 pr-2 pb-4">
+                <CardContent className="pl-0 pr-1 pb-4">
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: 0, bottom: 30 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-30} textAnchor="end" height={40} />
+                                     <XAxis 
+                                        dataKey="date" 
+                                        stroke="hsl(var(--muted-foreground))" 
+                                        fontSize={10} 
+                                        tickLine={false} 
+                                        axisLine={false} 
+                                        angle={-45} 
+                                        textAnchor="end" 
+                                        height={50} 
+                                        interval="preserveStartEnd"
+                                     />
                                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'} />
                                      <RechartsTooltip
                                         cursor={false}
@@ -389,13 +402,23 @@ export default function ReportsPage() {
                  <CardHeader className="pb-4">
                      <CardTitle className="text-lg">Documents Processed Volume</CardTitle>
                  </CardHeader>
-                 <CardContent className="pl-0 pr-2 pb-4">
+                 <CardContent className="pl-0 pr-1 pb-4">
                       {processingBarChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                                <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 30 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} angle={-30} textAnchor="end" height={40}/>
+                                    <XAxis 
+                                        dataKey="period" 
+                                        stroke="hsl(var(--muted-foreground))" 
+                                        fontSize={10} 
+                                        tickLine={false} 
+                                        axisLine={false} 
+                                        angle={-45} 
+                                        textAnchor="end" 
+                                        height={50}
+                                        interval="preserveStartEnd"
+                                    />
                                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
                                      <RechartsTooltip
                                         cursor={false}
@@ -416,14 +439,14 @@ export default function ReportsPage() {
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Sales by Category</CardTitle>
                 </CardHeader>
-                <CardContent className="pl-0 pr-2 pb-4">
+                <CardContent className="pl-0 pr-1 pb-4">
                     {salesByCategoryBarData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] sm:h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
+                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={window.innerWidth < 640 ? 50 : 80} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={window.innerWidth < 640 ? 50 : 80} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -579,6 +602,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-
-
