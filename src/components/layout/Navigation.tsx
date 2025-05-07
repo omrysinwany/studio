@@ -1,10 +1,9 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation'; // Use App Router's navigation
-import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon, Plug } from 'lucide-react'; // Added Plug
-import { Button } from '@/components/ui/button'; // Import buttonVariants
+import { ScanLine, Package, BarChart2, LogIn, UserPlus, LogOut, Settings, Home, FileText, Menu, Palette, Sun, Moon, Plug, Briefcase } from 'lucide-react'; // Added Plug, Briefcase
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -17,10 +16,10 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"; // Removed AvatarImage as it's not used
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'; // Import Sheet components and SheetTitle
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import React, { useState } from 'react';
-import { useTheme } from 'next-themes'; // Import useTheme
+import { useTheme } from 'next-themes';
 
 
 const navItems = [
@@ -28,6 +27,7 @@ const navItems = [
   { href: '/upload', label: 'Upload', icon: ScanLine },
   { href: '/inventory', label: 'Inventory', icon: Package },
   { href: '/invoices', label: 'Invoices', icon: FileText },
+  { href: '/suppliers', label: 'Suppliers', icon: Briefcase }, // Added Suppliers link
   { href: '/reports', label: 'Reports', icon: BarChart2 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -72,7 +72,7 @@ export default function Navigation() {
               href={item.href}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-in-out",
-                pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings'))
+                pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
@@ -148,22 +148,21 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">
+                   <Link href="/login" passHref legacyBehavior>
+                     <Button variant="ghost" size="sm" as="a"> {/* Ghost button for login */}
                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                          <LogIn className="mr-1 h-4 w-4" /> Login
                        </span>
-                    </Link>
-                  </Button>
-                   <Button size="sm" asChild>
-                     <Link href="/register">
-                       {/* The Link component must have exactly one child when used with asChild */}
+                     </Button>
+                   </Link>
+                   <Link href="/register" passHref legacyBehavior>
+                    <Button size="sm" as="a">
                        <span className="flex items-center">
                          <UserPlus className="mr-1 h-4 w-4" /> Register
                        </span>
-                     </Link>
-                   </Button>
+                     </Button>
+                   </Link>
                 </>
               )}
           </div>
@@ -189,7 +188,7 @@ export default function Navigation() {
                         {navItems.map((item) => (
                           <Button
                              key={item.href}
-                             variant={pathname === item.href || (item.href === '/settings' && pathname.startsWith('/settings')) ? 'secondary' : 'ghost'}
+                             variant={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost'}
                              className="w-full justify-start gap-2 text-base py-3 mb-1"
                              onClick={() => handleMobileNavClick(item.href)}
                           >
@@ -244,7 +243,7 @@ export default function Navigation() {
                                   <Palette className="h-5 w-5" /> Theme: <span className="ml-auto capitalize font-medium">{theme}</span>
                                </Button>
                              </DropdownMenuTrigger>
-                                 <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
+                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjusted width */}
                                    <DropdownMenuLabel>Theme</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
                                    <DropdownMenuRadioGroup value={theme} onValueChange={(newTheme) => { setTheme(newTheme); }}>
@@ -270,4 +269,3 @@ export default function Navigation() {
     </header>
   );
 }
-
