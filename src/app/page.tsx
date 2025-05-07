@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -8,7 +9,7 @@ import { Package, FileText, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDo
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, Product, getInvoicesService, InvoiceHistoryItem } from '@/services/backend';
+import { getProductsService, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
 import { calculateInventoryValue, calculateTotalItems, getLowStockItems } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -135,7 +136,7 @@ export default function Home() {
           Welcome to InvoTrack
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8">
-          {user ? `Hello, ${user.username}! Your inventory, simplified.` : 'Your inventory, simplified.'}
+          {user ? `Hello, ${user.username}! Streamlining your inventory management.` : 'Streamlining your inventory management.'}
         </p>
 
         {kpiError && !isLoadingKpis && (
@@ -145,6 +146,7 @@ export default function Home() {
           </Alert>
         )}
 
+        {/* Apply grid layout to KPI cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 md:mb-12">
            <Link href="/inventory" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
