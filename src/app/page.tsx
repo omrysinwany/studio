@@ -147,7 +147,7 @@ export default function Home() {
         )}
 
         {/* Apply grid layout to KPI cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 md:mb-12">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 md:mb-12">
            <Link href="/inventory" className="block hover:no-underline">
              <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -233,3 +233,4 @@ export default function Home() {
     </div>
   );
 }
+
