@@ -1,72 +1,37 @@
+
 'use client';
 
-import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface'; // Import POS types
+import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
 
-/**
- * Represents a product extracted from a document or POS system.
- */
 export interface Product {
-  /**
-   * Unique identifier for the product in the inventory. Generated if not provided.
-   */
   id: string;
-  /**
-   * The catalog number of the product.
-   */
   catalogNumber: string;
-  /**
-   * The description of the product.
-   */
   description: string;
-  /**
-   * A short, concise name for the product (e.g., for quick display). Optional.
-   */
   shortName?: string;
-   /**
-   * The barcode (EAN/UPC) of the product. Optional.
-   */
   barcode?: string;
-  /**
-   * The quantity of the product.
-   */
   quantity: number;
-  /**
-   * The unit price of the product. Calculated as lineTotal / quantity if possible.
-   */
   unitPrice: number;
-  /**
-   * The line total for the product.
-   */
   lineTotal: number;
-  /**
-   * The minimum desired stock level for this product. Optional.
-   */
   minStockLevel?: number;
-  /**
-   * The maximum desired stock level for this product. Optional.
-   */
   maxStockLevel?: number;
 }
 
-// Define the structure for invoice history items
 export interface InvoiceHistoryItem {
-  id: string; // Could be the same ID as upload history or a separate one
+  id: string;
   fileName: string;
-  uploadTime: Date | string; // Allow string for JSON parsing
+  uploadTime: Date | string;
   status: 'pending' | 'processing' | 'completed' | 'error';
-  invoiceNumber?: string; // Extracted invoice number
-  supplier?: string; // Extracted supplier
-  totalAmount?: number; // Extracted total amount
+  invoiceNumber?: string;
+  supplier?: string;
+  totalAmount?: number;
   errorMessage?: string;
-  invoiceDataUri?: string; // URI of the scanned invoice image
+  invoiceDataUri?: string;
 }
 
-// --- Storage Keys ---
 const INVENTORY_STORAGE_KEY = 'mockInventoryData';
 const INVOICES_STORAGE_KEY = 'mockInvoicesData';
 const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings';
 
-// --- Initial Mock Data ---
 const initialMockInventory: Product[] = [
    { id: 'prod1', catalogNumber: '12345', barcode: '7290012345011', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, lineTotal: 99.90, minStockLevel: 5, maxStockLevel: 20 },
    { id: 'prod2', catalogNumber: '67890', barcode: '7290067890012', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, lineTotal: 99.95, minStockLevel: 2, maxStockLevel: 10 },
@@ -81,7 +46,6 @@ const initialMockInvoices: InvoiceHistoryItem[] = [
   { id: 'inv3', fileName: 'receipt_gamma_ltd.png', uploadTime: new Date(Date.now() - 86400000 * 5).toISOString(), status: 'error', errorMessage: 'Failed to extract totals', invoiceDataUri: 'https://picsum.photos/600/800?random=3' },
 ];
 
-// Interface for stored POS settings
 interface StoredPosSettings {
     systemId: string;
     config: PosConnectionConfig;
@@ -99,7 +63,6 @@ export interface PriceCheckResult {
 }
 
 
-// --- LocalStorage Helper Functions ---
 const getStoredData = <T extends {id?: string}>(key: string, initialData?: T[]): T[] => {
   if (typeof window === 'undefined') {
     return initialData || [];
@@ -155,35 +118,25 @@ const saveStoredData = <T>(key: string, data: T): void => {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
     console.error(`Error writing ${key} to localStorage:`, error);
+    // Potentially re-throw or handle quota exceeded specifically if needed by callers
+    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.includes('exceeded the quota'))) {
+        throw error; // Re-throw quota error to be handled by caller
+    }
   }
 };
 
 
-/**
- * Represents the response from the document processing API.
- */
 export interface DocumentProcessingResponse {
-  /**
-   * The list of products extracted from the document.
-   */
   products: Product[];
 }
 
 
-/**
- * Checks products against existing inventory for unit price discrepancies.
- * Returns lists of products that can be saved directly and those needing price confirmation.
- *
- * @param productsToCheck The list of products from the scan/edit.
- * @param tempId Optional temporary ID used for optimistic UI updates or linking to pending invoice.
- * @returns A promise resolving to a PriceCheckResult.
- */
 export async function checkProductPricesBeforeSaveService(
     productsToCheck: Product[],
     tempId?: string
 ): Promise<PriceCheckResult> {
     console.log(`Checking product prices before save. Products to check:`, productsToCheck, `(tempId: ${tempId})`);
-    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async operation
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     const currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
     const productsToSaveDirectly: Product[] = [];
@@ -202,7 +155,6 @@ export async function checkProductPricesBeforeSaveService(
         if (scannedProduct.barcode && scannedProduct.barcode.trim() !== '') {
             existingIndex = currentInventory.findIndex(p => p.barcode === scannedProduct.barcode);
         }
-        // Check by actual ID if it exists and is not a placeholder like '-new' or the tempId itself
         if (existingIndex === -1 && scannedProduct.id && !scannedProduct.id.includes('-new') && scannedProduct.id !== tempId) {
             existingIndex = currentInventory.findIndex(p => p.id === scannedProduct.id);
         }
@@ -215,24 +167,22 @@ export async function checkProductPricesBeforeSaveService(
             const existingProduct = currentInventory[existingIndex];
             const existingUnitPrice = existingProduct.unitPrice;
 
-            if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) { // Compare with tolerance
+            if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 console.log(`Price discrepancy found for product ID ${existingProduct.id}. Existing: ${existingUnitPrice}, New: ${unitPriceFromScan}`);
                 priceDiscrepancies.push({
-                    ...scannedProduct, // Keep all scanned product details
-                    id: existingProduct.id, // Use existing product ID for matching
+                    ...scannedProduct,
+                    id: existingProduct.id,
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                 });
             } else {
-                // No price discrepancy, or new price is 0 (ignore new price then)
                 productsToSaveDirectly.push({
                     ...scannedProduct,
-                    id: existingProduct.id, 
-                    unitPrice: existingUnitPrice 
+                    id: existingProduct.id,
+                    unitPrice: existingUnitPrice
                 });
             }
         } else {
-            // New product, can be saved directly
             productsToSaveDirectly.push(scannedProduct);
         }
     });
@@ -242,23 +192,12 @@ export async function checkProductPricesBeforeSaveService(
 }
 
 
-/**
- * Finalizes saving products to inventory and updates/creates invoice history.
- * This function assumes all price discrepancy decisions have been made.
- *
- * @param productsToFinalizeSave The list of products to save, with unit prices confirmed.
- * @param fileName The name of the original file processed.
- * @param source Optional source identifier (e.g., 'upload', 'caspit_sync'). Defaults to 'upload'.
- * @param invoiceDataUri Optional URI of the scanned invoice image, used only if source is 'upload'.
- * @param tempInvoiceId Optional ID of a pending invoice record to update. If not provided, a new invoice record will be created.
- * @returns A promise that resolves when the data is successfully saved.
- */
 export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
     fileName: string,
     source: string = 'upload',
-    invoiceDataUri?: string,
-    tempInvoiceId?: string // Renamed from tempId for clarity
+    retrievedInvoiceDataUri?: string, // Changed parameter name
+    tempInvoiceId?: string
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId})`, productsToFinalizeSave);
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -298,15 +237,10 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                existingProduct.unitPrice = unitPrice;
+                // Do not update unit price or other details if product exists, only quantity
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
-                existingProduct.description = productToSave.description || existingProduct.description;
-                existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
-                existingProduct.barcode = productToSave.barcode || existingProduct.barcode;
-                existingProduct.catalogNumber = productToSave.catalogNumber || existingProduct.catalogNumber;
-                existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
-                existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
-                console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice}, LineTotal=${existingProduct.lineTotal}`);
+                // Keep existing description, shortName, barcode, catalogNumber, min/max stock
+                console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice} (unchanged), LineTotal=${existingProduct.lineTotal}`);
             } else {
                 if (!productToSave.catalogNumber && !productToSave.description && !productToSave.barcode) {
                     console.log("Skipping adding product with no identifier:", productToSave);
@@ -356,17 +290,16 @@ export async function finalizeSaveProductsService(
             invoiceIdToUse = tempInvoiceId;
             const existingRecord = currentInvoices[existingInvoiceIndex];
             currentInvoices[existingInvoiceIndex] = {
-                ...existingRecord, // Keep existing fields like invoiceNumber, supplier
-                fileName: fileName, // Update filename
-                uploadTime: new Date().toISOString(), // Update timestamp
+                ...existingRecord,
+                fileName: fileName,
+                uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: invoiceDataUri, // Update image URI
+                invoiceDataUri: retrievedInvoiceDataUri, // Use the passed URI
                 errorMessage: errorMessage,
             };
             console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
         } else {
-            // If tempInvoiceId wasn't found or not provided, create a new record.
             invoiceIdToUse = tempInvoiceId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
             const newInvoiceRecord: InvoiceHistoryItem = {
                 id: invoiceIdToUse,
@@ -374,9 +307,8 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: invoiceDataUri,
+                invoiceDataUri: retrievedInvoiceDataUri, // Use the passed URI
                 errorMessage: errorMessage,
-                // invoiceNumber and supplier will be undefined for new records unless extracted earlier
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices];
             console.log(`Created new invoice record ID: ${invoiceIdToUse}`);
@@ -387,19 +319,13 @@ export async function finalizeSaveProductsService(
             console.log('Updated localStorage invoices:', currentInvoices);
         } catch (storageError) {
             console.error("Critical error saving invoices to localStorage:", storageError);
-            // This is a more critical error, might want to inform the user differently
             const saveError = new Error(`Failed to save invoice history: ${(storageError as Error).message}`);
             (saveError as any).updatedBySaveProducts = true; 
-            throw saveError; // Re-throw if saving invoice list fails
+            throw saveError;
         }
-
 
         if (!productsProcessedSuccessfully) {
             console.warn("[Backend - finalizeSaveProductsService] Product processing error occurred, invoice status set to 'error'.");
-            // Optionally throw if critical, otherwise invoice status 'error' will indicate this
-            // const saveError = new Error('One or more products failed to save to inventory. Invoice record updated with error status.');
-            // (saveError as any).updatedBySaveProducts = true;
-            // throw saveError;
         }
     } else {
         console.log(`Skipping invoice history update for source: ${source}`);
@@ -407,11 +333,6 @@ export async function finalizeSaveProductsService(
 }
 
 
-/**
- * Asynchronously retrieves the list of all products using localStorage.
- * Ensures each product has an ID.
- * @returns A promise that resolves to an array of Product objects.
- */
 export async function getProductsService(): Promise<Product[]> {
   console.log("getProductsService called");
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -435,12 +356,6 @@ export async function getProductsService(): Promise<Product[]> {
   return inventoryWithDefaults;
 }
 
-/**
- * Asynchronously retrieves a single product by its ID using localStorage.
- * Ensures the returned product has an ID.
- * @param productId The ID of the product to retrieve.
- * @returns A promise that resolves to the Product object or null if not found.
- */
 export async function getProductByIdService(productId: string): Promise<Product | null> {
    console.log(`getProductByIdService called for ID: ${productId}`);
    await new Promise(resolve => setTimeout(resolve, 50));
@@ -465,14 +380,6 @@ export async function getProductByIdService(productId: string): Promise<Product 
 }
 
 
-/**
- * Asynchronously updates an existing product in localStorage.
- * Finds the product by ID and replaces it with the updated data.
- * @param productId The ID of the product to update.
- * @param updatedData Partial product data containing the fields to update.
- * @returns A promise that resolves when the update is complete.
- * @throws Error if the product with the given ID is not found.
- */
 export async function updateProductService(productId: string, updatedData: Partial<Product>): Promise<void> {
   console.log(`updateProductService called for ID: ${productId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -491,20 +398,16 @@ export async function updateProductService(productId: string, updatedData: Parti
     id: productId,
   };
 
-   // Recalculate lineTotal if quantity or unitPrice changed
    if (updatedData.quantity !== undefined || updatedData.unitPrice !== undefined) {
        const quantity = Number(updatedProduct.quantity) || 0;
        const unitPrice = Number(updatedProduct.unitPrice) || 0;
        updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
    }
-    // Ensure shortName is set
     if (!updatedProduct.shortName) {
          const description = updatedProduct.description || 'No Description';
          updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
     }
-    // Ensure barcode is undefined if empty string, otherwise use value
     updatedProduct.barcode = updatedProduct.barcode || undefined;
-    // Handle min/max stock levels (allow setting to undefined or number)
     updatedProduct.minStockLevel = updatedData.minStockLevel === null ? undefined : (Number.isFinite(updatedData.minStockLevel) ? Number(updatedData.minStockLevel) : currentInventory[productIndex].minStockLevel);
     updatedProduct.maxStockLevel = updatedData.maxStockLevel === null ? undefined : (Number.isFinite(updatedData.maxStockLevel) ? Number(updatedData.maxStockLevel) : currentInventory[productIndex].maxStockLevel);
 
@@ -515,12 +418,6 @@ export async function updateProductService(productId: string, updatedData: Parti
   console.log(`Product ${productId} updated successfully.`);
 }
 
-/**
- * Asynchronously deletes a product from localStorage by its ID.
- * @param productId The ID of the product to delete.
- * @returns A promise that resolves when the deletion is complete.
- * @throws Error if the product with the given ID is not found.
- */
 export async function deleteProductService(productId: string): Promise<void> {
   console.log(`deleteProductService called for ID: ${productId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -539,11 +436,6 @@ export async function deleteProductService(productId: string): Promise<void> {
 }
 
 
-/**
- * Asynchronously retrieves the list of all processed invoices using localStorage.
- * Parses date strings back into Date objects and ensures each invoice has an ID.
- * @returns A promise that resolves to an array of InvoiceHistoryItem objects.
- */
 export async function getInvoicesService(): Promise<InvoiceHistoryItem[]> {
   console.log("getInvoicesService called");
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -551,20 +443,12 @@ export async function getInvoicesService(): Promise<InvoiceHistoryItem[]> {
   const invoices = invoicesRaw.map(inv => ({
     ...inv,
     id: inv.id || `inv-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-    uploadTime: new Date(inv.uploadTime) // Ensure uploadTime is a Date object
+    uploadTime: new Date(inv.uploadTime)
   }));
   console.log("Returning invoices from localStorage:", invoices);
   return invoices;
 }
 
-/**
- * Asynchronously updates an existing invoice in localStorage.
- * Finds the invoice by ID and replaces it with the updated data.
- * @param invoiceId The ID of the invoice to update.
- * @param updatedData Partial invoice data containing the fields to update.
- * @returns A promise that resolves when the update is complete.
- * @throws Error if the invoice with the given ID is not found.
- */
 export async function updateInvoiceService(invoiceId: string, updatedData: Partial<InvoiceHistoryItem>): Promise<void> {
   console.log(`updateInvoiceService called for ID: ${invoiceId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -577,15 +461,14 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     throw new Error(`Invoice with ID ${invoiceId} not found.`);
   }
 
-  // Preserve existing uploadTime and invoiceDataUri if not explicitly provided in updatedData
   const originalInvoice = currentInvoices[invoiceIndex];
   const finalUpdatedData: InvoiceHistoryItem = {
-    ...originalInvoice, // Start with all original fields
-    ...updatedData,    // Override with new data
-    id: invoiceId,      // Ensure ID is not changed
-    uploadTime: originalInvoice.uploadTime, // Keep original uploadTime (should be Date object)
-    invoiceDataUri: updatedData.invoiceDataUri === null ? undefined : (updatedData.invoiceDataUri ?? originalInvoice.invoiceDataUri), // Allow clearing or updating URI
-    status: originalInvoice.status, // Status should not be directly editable here
+    ...originalInvoice,
+    ...updatedData,
+    id: invoiceId,
+    uploadTime: originalInvoice.uploadTime, // Keep original uploadTime
+    invoiceDataUri: updatedData.invoiceDataUri === null ? undefined : (updatedData.invoiceDataUri ?? originalInvoice.invoiceDataUri),
+    status: originalInvoice.status,
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;
@@ -595,12 +478,6 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
 }
 
 
-/**
- * Asynchronously deletes an invoice from localStorage by its ID.
- * @param invoiceId The ID of the invoice to delete.
- * @returns A promise that resolves when the deletion is complete.
- * @throws Error if the invoice with the given ID is not found.
- */
 export async function deleteInvoiceService(invoiceId: string): Promise<void> {
   console.log(`deleteInvoiceService called for ID: ${invoiceId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -619,10 +496,6 @@ export async function deleteInvoiceService(invoiceId: string): Promise<void> {
 }
 
 
-/**
- * Asynchronously clears all inventory data from localStorage.
- * @returns A promise that resolves when the inventory is cleared.
- */
 export async function clearInventoryService(): Promise<void> {
     console.log("clearInventoryService called");
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -631,14 +504,6 @@ export async function clearInventoryService(): Promise<void> {
 }
 
 
-// --- POS Integration Settings ---
-
-/**
- * Asynchronously saves the POS system connection settings.
- * @param systemId - The ID of the POS system (e.g., 'caspit').
- * @param config - The connection configuration.
- * @returns A promise that resolves when settings are saved.
- */
 export async function savePosSettingsService(systemId: string, config: PosConnectionConfig): Promise<void> {
     console.log(`[Backend] Saving POS settings for ${systemId}`, config);
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -647,15 +512,10 @@ export async function savePosSettingsService(systemId: string, config: PosConnec
     console.log("[Backend] POS settings saved to localStorage.");
 }
 
-/**
- * Asynchronously retrieves the saved POS system connection settings.
- * This function is intended for client-side use only.
- * @returns A promise that resolves to the stored settings object or null if none exist.
- */
 export async function getPosSettingsService(): Promise<StoredPosSettings | null> {
   if (typeof window === 'undefined') {
     console.warn("[Backend] getPosSettingsService called from server-side. Returning null.");
-    return null; // Cannot access localStorage on server
+    return null;
   }
   console.log("[Backend] Retrieving POS settings (client-side).");
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -664,10 +524,6 @@ export async function getPosSettingsService(): Promise<StoredPosSettings | null>
   return settings;
 }
 
-/**
- * Asynchronously clears the saved POS system connection settings.
- * @returns A promise that resolves when settings are cleared.
- */
 export async function clearPosSettingsService(): Promise<void> {
     console.log("[Backend] Clearing POS settings.");
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -678,9 +534,6 @@ export async function clearPosSettingsService(): Promise<void> {
         console.warn("[Backend] localStorage not available. POS settings not cleared.");
     }
 }
-
-
-// --- Auth ---
 
 export interface User {
   id: string;
@@ -693,13 +546,6 @@ export interface AuthResponse {
   user: User;
 }
 
-// Auth functions remain as they interact with localStorage directly in AuthContext
-/**
- * Asynchronously registers a new user.
- *
- * @param userData The user registration data.
- * @returns A promise that resolves with the authentication response.
- */
 export async function registerService(userData: any): Promise<AuthResponse> {
   console.log("Registering user:", userData.username);
   await new Promise(resolve => setTimeout(resolve, 500));
@@ -714,12 +560,6 @@ export async function registerService(userData: any): Promise<AuthResponse> {
   };
 }
 
-/**
- * Asynchronously logs in an existing user.
- *
- * @param credentials The user login credentials.
- * @returns A promise that resolves with the authentication response.
- */
 export async function loginService(credentials: any): Promise<AuthResponse> {
   console.log("Logging in user:", credentials.username);
   await new Promise(resolve => setTimeout(resolve, 500));

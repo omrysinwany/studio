@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, Eye, List, Grid } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter as CustomDialogFooter } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import {
   AlertDialog,
@@ -48,6 +48,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 const formatNumber = (
@@ -114,17 +115,21 @@ export default function InvoicesPage() {
     const fetchInvoices = useCallback(async () => {
       setIsLoading(true);
       try {
-        let fetchedData = await getInvoicesService(); // Use getInvoicesService
+        let fetchedData = await getInvoicesService();
         
         let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
+        // Prioritize invoices with invoiceDataUri if duplicates exist by ID
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoices.get(invoice.id);
             if (existing) {
-                if (invoice.invoiceDataUri && !existing.invoiceDataUri) {
+                // If current has URI and existing doesn't, or current is newer with URI
+                if ((invoice.invoiceDataUri && !existing.invoiceDataUri) || 
+                    (invoice.invoiceDataUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
                     uniqueInvoices.set(invoice.id, invoice);
                 } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
-                }
-                else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()) {
+                    // Keep existing if it has URI and current doesn't
+                } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
+                    // If neither has URI, or both have, pick the newest
                      uniqueInvoices.set(invoice.id, invoice);
                 }
             } else {
@@ -133,6 +138,7 @@ export default function InvoicesPage() {
         });
         
         let filteredData = Array.from(uniqueInvoices.values());
+
 
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -250,7 +256,7 @@ export default function InvoicesPage() {
    };
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-    setSelectedInvoiceDetails(invoice);
+    setSelectedInvoiceDetails(invoice); // Set the full invoice object
     setEditedInvoiceData({ ...invoice });
     setIsEditingDetails(false);
     setShowDetailsModal(true);
@@ -293,6 +299,7 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
+            // invoiceDataUri is not directly edited here, it's part of the selectedInvoiceDetails
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -301,8 +308,18 @@ export default function InvoicesPage() {
             description: "Invoice details saved successfully.",
         });
         setIsEditingDetails(false);
-        fetchInvoices();
-        setSelectedInvoiceDetails(prev => prev ? { ...prev, ...updatedInvoice, uploadTime: prev.uploadTime, invoiceDataUri: prev.invoiceDataUri, status: prev.status } : null);
+        // Refresh the selected invoice details with potentially updated data
+        // Keep the existing invoiceDataUri from the original selectedInvoiceDetails
+        const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
+        if (refreshedInvoice) {
+            setSelectedInvoiceDetails({
+                ...refreshedInvoice,
+                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri // Preserve original URI
+            });
+        } else {
+           fetchInvoices(); // Fallback to full refresh
+        }
+
     } catch (error) {
         console.error("Failed to save invoice details:", error);
         toast({
@@ -755,15 +772,16 @@ export default function InvoicesPage() {
       </Card>
 
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-4 sm:p-6 border-b">
              <DialogTitle>{isEditingDetails ? 'Edit Invoice Details' : 'Invoice Details'}</DialogTitle>
              <DialogDescription>
                 {isEditingDetails ? `Editing: ${selectedInvoiceDetails?.fileName}` : `Detailed information for: ${selectedInvoiceDetails?.fileName}`}
              </DialogDescription>
           </DialogHeader>
           {selectedInvoiceDetails && (
-            <div className="mt-4 space-y-4">
+            <ScrollArea className="flex-grow">
+              <div className="p-4 sm:p-6 space-y-4">
               {isEditingDetails ? (
                 <div className="space-y-3">
                     <div>
@@ -828,7 +846,10 @@ export default function InvoicesPage() {
                   </div>
                 </>
               )}
-              <DialogFooter className="mt-4 flex-col sm:flex-row gap-2">
+              </div>
+            </ScrollArea>
+          )}
+          <CustomDialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2">
                 {isEditingDetails ? (
                     <>
                         <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
@@ -838,38 +859,41 @@ export default function InvoicesPage() {
                         </Button>
                     </>
                 ) : (
+                   selectedInvoiceDetails && (
                     <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
                         <Edit className="mr-2 h-4 w-4" /> Edit Details
                     </Button>
+                   )
                 )}
-                 <AlertDialog>
-                     <AlertDialogTrigger asChild>
-                         <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
-                             <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
-                         </Button>
-                     </AlertDialogTrigger>
-                     <AlertDialogContentComponent>
-                         <AlertDialogHeaderComponent>
-                             <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
-                             <AlertDialogDescriptionComponent>
-                                 This action cannot be undone. This will permanently delete the invoice "{selectedInvoiceDetails.fileName}".
-                             </AlertDialogDescriptionComponent>
-                         </AlertDialogHeaderComponent>
-                         <AlertDialogFooterComponent>
-                             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                             <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                 Yes, delete invoice
-                             </AlertDialogAction>
-                         </AlertDialogFooterComponent>
-                     </AlertDialogContentComponent>
-                 </AlertDialog>
-              </DialogFooter>
-            </div>
-          )}
+                 {selectedInvoiceDetails && (
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContentComponent>
+                            <AlertDialogHeaderComponent>
+                                <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
+                                <AlertDialogDescriptionComponent>
+                                    This action cannot be undone. This will permanently delete the invoice "{selectedInvoiceDetails.fileName}".
+                                </AlertDialogDescriptionComponent>
+                            </AlertDialogHeaderComponent>
+                            <AlertDialogFooterComponent>
+                                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Yes, delete invoice
+                                </AlertDialogAction>
+                            </AlertDialogFooterComponent>
+                        </AlertDialogContentComponent>
+                    </AlertDialog>
+                 )}
+          </CustomDialogFooter>
         </DialogContent>
       </Dialog>
 
     </div>
   );
 }
+

@@ -16,27 +16,25 @@ import {
     finalizeSaveProductsService,
     ProductPriceDiscrepancy,
 } from '@/services/backend';
-import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas'; // Import ScanInvoiceOutput type
+import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
 
-// Define the structure for edited product data, making fields potentially editable
 interface EditableProduct extends Product {
-  _originalId?: string; // Track original ID if fetched from storage
-  _isNewForPrompt?: boolean; // Flag for barcode prompting
+  _originalId?: string;
+  _isNewForPrompt?: boolean;
 }
 
-// Function specifically for Input value prop - avoids commas but keeps decimals
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
      if (value === null || value === undefined || isNaN(value)) {
-        if (fieldType === 'stockLevel') return ''; // Allow empty for stock levels
+        if (fieldType === 'stockLevel') return '';
         return fieldType === 'currency' ? '0.00' : '0';
     }
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return parseInt(String(value), 10).toString(); // For quantity and stockLevel, ensure integer
+    return parseInt(String(value), 10).toString();
 };
 
 
@@ -51,12 +49,11 @@ function EditInvoiceContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
-  const [scanProcessError, setScanProcessError] = useState<string | null>(null); // For scan-specific errors
+  const [scanProcessError, setScanProcessError] = useState<string | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
-  const [imageUriKey, setImageUriKey] = useState<string | null>(null);
-  const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null); // Store temp invoice ID
+  const [imageUriStorageKey, setImageUriStorageKey] = useState<string | null>(null); // State for image URI key
+  const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
 
-  // State for barcode prompt
   const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   const [productsToSaveDirectly, setProductsToSaveDirectly] = useState<Product[]>([]);
@@ -65,10 +62,12 @@ function EditInvoiceContent() {
   useEffect(() => {
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
-    const tempInvIdParam = searchParams.get('tempInvoiceId'); // Get temp invoice ID
+    const tempInvIdParam = searchParams.get('tempInvoiceId');
+    const imageKeyParam = searchParams.get('imageUriKey'); // Get image URI key
 
     setDataKey(key);
-    setTempInvoiceId(tempInvIdParam); // Store temp invoice ID
+    setTempInvoiceId(tempInvIdParam);
+    setImageUriStorageKey(imageKeyParam); // Store image URI key
 
     let hasAttemptedLoad = false;
 
@@ -91,6 +90,7 @@ function EditInvoiceContent() {
               variant: "destructive",
             });
              if (key) localStorage.removeItem(key);
+             if (imageKeyParam) localStorage.removeItem(imageKeyParam); // Clean up image URI if data key is missing
              setIsLoading(false);
              setInitialDataLoaded(true);
             return;
@@ -102,6 +102,7 @@ function EditInvoiceContent() {
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
              if (key) localStorage.removeItem(key);
+             if (imageKeyParam) localStorage.removeItem(imageKeyParam);
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -133,11 +134,12 @@ function EditInvoiceContent() {
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
           setProducts(productsWithIds);
-           setErrorLoading(null); // Clear generic loading error if products (even empty) are processed
+           setErrorLoading(null);
 
-        } else if (!parsedData.error) { // If no scan error but structure is bad
+        } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
           if (key) localStorage.removeItem(key);
+          if (imageKeyParam) localStorage.removeItem(imageKeyParam);
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -161,7 +163,6 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, toast, initialDataLoaded]);
 
 
@@ -173,7 +174,7 @@ function EditInvoiceContent() {
           if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
               const stringValue = String(value);
               if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel')) {
-                  numericValue = undefined; // Allow empty string to become undefined for optional fields
+                  numericValue = undefined;
               } else {
                 numericValue = parseFloat(stringValue.replace(/,/g, ''));
                 if (isNaN(numericValue as number)) {
@@ -233,21 +234,34 @@ function EditInvoiceContent() {
   };
 
 
-  // Function to proceed with the actual saving after barcode prompt AND price confirmation
   const proceedWithFinalSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true);
       try {
-          // imageUriKey is no longer used to fetch from localStorage here, as image is not saved with final products.
-          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId);
+          let retrievedInvoiceDataUri: string | undefined = undefined;
+          if (imageUriStorageKey) {
+              retrievedInvoiceDataUri = localStorage.getItem(imageUriStorageKey) || undefined;
+              if (retrievedInvoiceDataUri) {
+                console.log(`[EditInvoice] Retrieved image URI from localStorage for key: ${imageUriStorageKey}`);
+              } else {
+                console.warn(`[EditInvoice] No image URI found in localStorage for key: ${imageUriStorageKey}`);
+              }
+          } else {
+            console.log("[EditInvoice] No image URI key provided, image will not be saved with invoice history.");
+          }
 
-          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', undefined, tempInvoiceId || undefined);
+          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with image URI (if any):", retrievedInvoiceDataUri ? "Present" : "Absent");
+
+          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', retrievedInvoiceDataUri, tempInvoiceId || undefined);
 
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
-              console.log(`Removed temp data with key: ${dataKey}`);
+              console.log(`Removed temp scan data with key: ${dataKey}`);
           }
-          // No longer removing imageUriKey from localStorage here as it's not passed to finalizeSaveProductsService
+          if (imageUriStorageKey) {
+              localStorage.removeItem(imageUriStorageKey);
+              console.log(`Removed temp image URI with key: ${imageUriStorageKey}`);
+          }
 
 
           toast({
@@ -269,7 +283,6 @@ function EditInvoiceContent() {
   };
 
 
- // Main save handler - checks for price discrepancies first, then new products for barcodes
  const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -281,9 +294,8 @@ function EditInvoiceContent() {
 
         if (priceCheckResult.priceDiscrepancies.length > 0) {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
-            setIsSaving(false); // Stop saving, user needs to confirm prices
+            setIsSaving(false);
         } else {
-            // No price discrepancies, proceed to barcode check
             await checkForBarcodesAndSave(priceCheckResult.productsToSaveDirectly);
         }
     } catch (error) {
@@ -297,36 +309,28 @@ function EditInvoiceContent() {
     }
 };
 
-// Handles barcode check after price discrepancies are resolved (or if there were none)
 const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
     try {
         const currentInventory = await getProductsService();
         const inventoryMap = new Map<string, Product>();
         currentInventory.forEach(p => {
             if (p.barcode) inventoryMap.set(`barcode:${p.barcode}`, p);
-            if (p.id) inventoryMap.set(`id:${p.id}`, p); // Match by existing ID too
+            if (p.id) inventoryMap.set(`id:${p.id}`, p);
             if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
         });
 
         const newProductsWithoutBarcode = productsForBarcodeCheck.filter(p => {
             const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
-            // Check if it's a genuinely new product (not just an existing one being updated)
-            // A product is new if it doesn't have an ID that matches an existing inventory ID,
-            // and also doesn't match by catalog number (if no barcode yet).
             const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
             const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
-
             return !isExistingProduct && !existsByBarcode && !existsByCatalog && !p.barcode;
         }).map(p => ({ ...p, _isNewForPrompt: true }));
 
 
         if (newProductsWithoutBarcode.length > 0) {
             setPromptingForBarcodes(newProductsWithoutBarcode);
-            // productsToSaveDirectly are those from price check. If we prompt for barcodes,
-            // we need to merge these with the ones that didn't need price check.
-            // This state will be used if barcode prompt is confirmed.
             setProductsToSaveDirectly(productsForBarcodeCheck);
-            setIsSaving(false); // Stop saving, user needs to enter barcodes
+            setIsSaving(false);
         } else {
             await proceedWithFinalSave(productsForBarcodeCheck);
         }
@@ -342,11 +346,9 @@ const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
 };
 
 
-// Callback for when the unit price confirmation dialog is closed/completed
 const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => {
     if (resolvedProducts) {
-        // Merge resolved products with those that didn't have discrepancies
-        const allProductsReadyForBarcodeCheck = [...productsToSaveDirectly, ...resolvedProducts];
+        const allProductsReadyForBarcodeCheck = [...productsToSaveDirectly.filter(p => !resolvedProducts.find(rp => rp.id === p.id)), ...resolvedProducts];
         checkForBarcodesAndSave(allProductsReadyForBarcodeCheck);
     } else {
         toast({
@@ -355,27 +357,23 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             variant: "default",
         });
     }
-    setPriceDiscrepancies(null); // Close the dialog
+    setPriceDiscrepancies(null);
 };
 
 
- // Callback for when the barcode prompt dialog is closed/completed
  const handleBarcodePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
      if (updatedProductsFromPrompt) {
          console.log("Barcode prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
-         // `productsToSaveDirectly` here contains ALL products (those without price issues + those whose prices were resolved)
-         // that were passed to the barcode prompt stage.
-         // We need to update the barcodes on these products.
          const finalProductsWithBarcodes = productsToSaveDirectly.map(originalProduct => {
              const productFromBarcodePrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
-             if (productFromBarcodePrompt) { // This means it was one of the new products shown in barcode prompt
+             if (productFromBarcodePrompt) {
                  return { ...originalProduct, barcode: productFromBarcodePrompt.barcode, _isNewForPrompt: false };
              }
-             return { ...originalProduct, _isNewForPrompt: false }; // Existing product, or new product that was skipped in barcode prompt
+             return { ...originalProduct, _isNewForPrompt: false };
          }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
 
-         setProducts(finalProductsWithBarcodes); // Update local state if needed, though main save is next
+         setProducts(finalProductsWithBarcodes);
          proceedWithFinalSave(finalProductsWithBarcodes);
      } else {
          console.log("Barcode prompt cancelled.");
@@ -392,12 +390,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     const handleGoBack = () => {
         if (dataKey) {
             localStorage.removeItem(dataKey);
-            console.log(`Cleared temp data with key ${dataKey} on explicit back navigation.`);
+            console.log(`Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
         }
-        // imageUriKey is no longer used for saving, but keep clearing it if it was set
-        if (imageUriKey && imageUriKey.trim() !== '') {
-            localStorage.removeItem(imageUriKey);
-            console.log(`Cleared temp image URI key ${imageUriKey} on explicit back navigation.`);
+        if (imageUriStorageKey) {
+            localStorage.removeItem(imageUriStorageKey);
+            console.log(`Cleared temp image URI with key ${imageUriStorageKey} on explicit back navigation.`);
         }
         router.push('/upload');
     };
@@ -425,15 +422,13 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         );
     }
 
-    if (initialDataLoaded && products.length === 0 && !errorLoading) {
+    if (initialDataLoaded && products.length === 0 && !errorLoading && !scanProcessError) {
          return (
              <div className="container mx-auto p-4 md:p-8 space-y-4">
-                 <Alert variant={scanProcessError ? "destructive" : "default"}>
-                     <AlertTitle>{scanProcessError ? "Scan Process Error" : "No Products Found"}</AlertTitle>
+                 <Alert variant="default">
+                     <AlertTitle>No Products Found</AlertTitle>
                      <AlertDescription>
-                         {scanProcessError
-                            ? `The document scan encountered an issue: ${scanProcessError}. You can try adding rows manually or go back and upload again.`
-                            : "The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again."}
+                        The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.
                      </AlertDescription>
                  </Alert>
                  <Card className="shadow-md">
@@ -471,6 +466,50 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
          );
     }
 
+     if (scanProcessError) {
+        return (
+            <div className="container mx-auto p-4 md:p-8 space-y-4">
+                <Alert variant="destructive">
+                    <AlertTitle>Scan Process Error</AlertTitle>
+                    <AlertDescription>
+                        {`The document scan encountered an issue: ${scanProcessError}. You can try adding rows manually or go back and upload again.`}
+                    </AlertDescription>
+                </Alert>
+                 <Card className="shadow-md">
+                     <CardHeader>
+                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
+                         <CardDescription>
+                            File: <span className="font-medium">{fileName || 'Unknown Document'}</span>
+                         </CardDescription>
+                     </CardHeader>
+                      <CardContent>
+                           <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                             <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
+                               <PlusCircle className="mr-2 h-4 w-4" /> Add Row
+                             </Button>
+                             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                              {isSaving ? (
+                                 <>
+                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                                 </>
+                              ) : (
+                                 <>
+                                   <Save className="mr-2 h-4 w-4" /> Save Changes
+                                 </>
+                               )}
+                             </Button>
+                         </div>
+                           <div className="mt-6">
+                               <Button variant="outline" onClick={handleGoBack}>
+                                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
+                               </Button>
+                           </div>
+                      </CardContent>
+                 </Card>
+            </div>
+        );
+    }
+
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
@@ -482,9 +521,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -613,7 +651,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardContent>
       </Card>
 
-      {/* Barcode Prompt Dialog */}
       {promptingForBarcodes && (
         <BarcodePromptDialog
           products={promptingForBarcodes}
@@ -621,7 +658,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         />
       )}
 
-      {/* Unit Price Confirmation Dialog */}
       {priceDiscrepancies && (
         <UnitPriceConfirmationDialog
           discrepancies={priceDiscrepancies}
@@ -632,8 +668,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
   );
 }
 
-
-// Wrap the component with Suspense for useSearchParams
 export default function EditInvoicePage() {
   return (
     <Suspense fallback={
