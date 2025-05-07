@@ -86,8 +86,6 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
           }
         }
       }
-      // If switching to manual, you might want to clear the percentage or set salePrice to undefined to force manual entry
-      // For now, let's keep the salePrice as is, user can edit it.
       return { ...prev, [productId]: currentEdit };
     });
   };
@@ -128,7 +126,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
       title: "Product Details Confirmed",
       description: `Details for product ID ${productId.slice(-6)} are set.`,
     });
-  }, [editStates]);
+  }, [editStates]); // editStates dependency is important here
 
   const unconfirmedProducts = useMemo(() => {
     return editableProducts.filter(p => !editStates[p.id]?.isConfirmed);
@@ -145,10 +143,10 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
 
     editableProducts.forEach(p => {
       const state = editStates[p.id];
-      if (!state.isConfirmed) { // Only validate unconfirmed products
+      if (!state.isConfirmed) { 
         if (!validateProductDetails(p.id)) {
           allValid = false;
-          return; // Stop this iteration, but continue checking others
+          return; 
         }
       }
       productsToReturn.push({
@@ -172,7 +170,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
 
   const handleCancel = () => onComplete(null);
   
-  const handleRemoveProduct = (productId: string) => {
+  const handleRemoveProductFromDialog = (productId: string) => {
     setEditableProducts(prev => prev.filter(p => p.id !== productId));
     setEditStates(prev => {
         const newStates = {...prev};
@@ -180,7 +178,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
         return newStates;
     });
     toast({
-        title: "Product Removed",
+        title: "Product Skipped",
         description: "Product removed from this assignment session.",
     });
   };
@@ -206,11 +204,11 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                 <p className="text-sm text-muted-foreground">Click "Save All &amp; Continue" to finalize.</p>
             </div>
         ) : (
-        <ScrollArea className="flex-grow border-b">
-          <div className="p-3 sm:p-4 space-y-4">
+        <ScrollArea className="flex-grow border-b flex-shrink min-h-0"> {/* Added flex-shrink and min-h-0 */}
+          <div className="p-3 sm:p-4 space-y-4" data-testid="new-products-scroll-area">
             {editableProducts.map((product) => {
               const state = editStates[product.id];
-              if (!state || state.isConfirmed) return null; // Don't render confirmed items here
+              if (!state) return null; // Should not happen if initialized correctly
 
               return (
                 <Card key={product.id} className={cn("transition-all duration-300", state.isConfirmed ? "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" : "bg-card")}>
@@ -224,14 +222,16 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                             Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity} | Cost: ₪{product.unitPrice.toFixed(2)}
                             </p>
                         </div>
-                         <Button variant="ghost" size="icon" onClick={() => handleRemoveProduct(product.id)} className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0">
+                         <Button variant="ghost" size="icon" onClick={() => handleRemoveProductFromDialog(product.id)} className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0">
                             <Trash2 className="h-4 w-4"/>
                             <span className="sr-only">Remove Product</span>
                         </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-3 sm:p-4 pt-0 space-y-3">
+                  <CardContent className="p-3 sm:p-4 pt-0 space-y-4"> {/* Increased spacing from space-y-3 */}
                     <Separator className="my-2"/>
+                    {!state.isConfirmed ? (
+                    <>
                     <div>
                       <Label htmlFor={`barcode-${product.id}`} className="text-xs sm:text-sm">Barcode (Optional)</Label>
                       <div className="flex items-center gap-2 mt-1">
@@ -277,14 +277,14 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                     {state.salePriceMethod === 'manual' && (
                       <div>
                         <Label htmlFor={`salePrice-${product.id}`} className="text-xs sm:text-sm">
-                          Sale Price (₪) <span className="text-destructive">*</span>
+                          Sale Price <span className="text-destructive">*</span>
                         </Label>
                         <Input
                           id={`salePrice-${product.id}`}
                           type="number"
                           value={state.salePrice === undefined ? '' : String(state.salePrice)}
                           onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
-                          placeholder="Required"
+                          placeholder="Required (e.g. 25.99)"
                           min="0.01"
                           step="0.01"
                           className="h-9 text-sm mt-1"
@@ -309,7 +309,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                               placeholder="e.g., 25"
                               min="0"
                               step="0.1"
-                              className="h-9 text-sm pl-3 pr-7" // Added pr-7 for icon
+                              className="h-9 text-sm pl-3 pr-7" 
                               aria-label={`Profit percentage for ${product.shortName || product.description}`}
                               required
                             />
@@ -317,7 +317,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                           </div>
                         </div>
                         <div>
-                          <Label className="text-xs sm:text-sm">Calculated Sale Price (₪)</Label>
+                          <Label className="text-xs sm:text-sm">Calculated Sale Price</Label>
                           <Input
                             type="text"
                             value={state.salePrice === undefined ? 'N/A' : `₪${state.salePrice.toFixed(2)}`}
@@ -329,19 +329,25 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
                         </div>
                       </div>
                     )}
-                     <div className="pt-2">
+                     <div className="pt-2"> {/* Added padding-top */}
                         <Button
                             type="button"
-                            variant={state.isConfirmed ? "secondary" : "default"}
+                            variant="default"
                             size="sm"
                             onClick={() => handleConfirmProduct(product.id)}
-                            className={cn("w-full text-xs sm:text-sm h-9", state.isConfirmed && "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700")}
-                            disabled={state.isConfirmed}
+                            className="w-full text-xs sm:text-sm h-9"
                         >
                             <CheckCircle className="mr-1.5 h-4 w-4" />
-                            {state.isConfirmed ? "Details Confirmed" : "Confirm Details for This Product"}
+                            Confirm Details for This Product
                         </Button>
                      </div>
+                     </>
+                    ) : (
+                        <div className="flex items-center justify-center text-green-600 dark:text-green-400 py-4">
+                            <CheckCircle className="mr-2 h-5 w-5" />
+                            <p className="text-sm font-medium">Details Confirmed</p>
+                        </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -360,7 +366,9 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: ini
             disabled={editableProducts.length === 0 && confirmedProductsCount === 0}
           >
             <Save className="mr-1.5 h-4 w-4" />
-            {unconfirmedProducts.length > 0 ? `Save Confirmed & Remaining (${unconfirmedProducts.length})` : `Save All Confirmed (${confirmedProductsCount})`}
+            {unconfirmedProducts.length > 0 && editableProducts.length > 0 ? `Save Confirmed & Remaining (${unconfirmedProducts.length})` : 
+             editableProducts.length > 0 && unconfirmedProducts.length === 0 ? `Save All Confirmed (${confirmedProductsCount})` :
+             `Save All & Continue`}
           </Button>
         </DialogFooter>
       </DialogContent>
