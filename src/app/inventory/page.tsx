@@ -25,7 +25,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Down
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventoryService
+import { Product, getProductsService, clearInventoryService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -93,8 +93,8 @@ export default function InventoryPage() {
     quantity: true,
     unitPrice: true,
     lineTotal: false,
-    minStockLevel: true,
-    maxStockLevel: true,
+    minStockLevel: false, // Hidden by default
+    maxStockLevel: false, // Hidden by default
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -618,3 +618,6 @@ export default function InventoryPage() {
     </div>
   );
 }
+
+
+    
