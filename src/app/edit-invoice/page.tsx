@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -22,13 +23,10 @@ import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-di
 
 
 interface EditableProduct extends Product {
-  _originalId?: string; // To track original ID if it changes (e.g. for new items)
-  // _isNewForPrompt?: boolean; // Not needed with the new dialog logic
+  _originalId?: string;
 }
 
-// Helper to format numbers for input fields
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
-     // For optional fields like salePrice, minStock, maxStock, allow empty string if value is undefined/null
      if ((fieldType === 'currency' || fieldType === 'stockLevel') && (value === undefined || value === null)) {
         return '';
     }
@@ -38,8 +36,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    // For quantity, ensure it's an integer for display, but allow float for calculation if needed
-    return String(value); // Allow floats for quantity input, parse on change
+    return String(value);
 };
 
 
@@ -55,13 +52,17 @@ function EditInvoiceContent() {
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [scanProcessError, setScanProcessError] = useState<string | null>(null);
+  
+  // Store keys from query params for later cleanup
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
+  const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
+  const [compressedImageKey, setCompressedImageKey] = useState<string | null>(null);
+
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   
-  // This state will hold products that have passed price checks and are ready for barcode/sale price prompt OR final save.
   const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
 
 
@@ -69,9 +70,13 @@ function EditInvoiceContent() {
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
+    const originalPreviewKeyParam = searchParams.get('originalImagePreviewKey');
+    const compressedKeyParam = searchParams.get('compressedImageKey');
 
     setDataKey(key);
     setTempInvoiceId(tempInvIdParam);
+    setOriginalImagePreviewKey(originalPreviewKeyParam);
+    setCompressedImageKey(compressedKeyParam);
 
     let hasAttemptedLoad = false;
 
@@ -93,7 +98,9 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-             if (key) localStorage.removeItem(key);
+             if (key) localStorage.removeItem(key); // Early cleanup of dataKey if data is missing
+             if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
+             if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
              setIsLoading(false);
              setInitialDataLoaded(true);
             return;
@@ -105,6 +112,8 @@ function EditInvoiceContent() {
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
              if (key) localStorage.removeItem(key);
+             if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
+             if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -142,6 +151,8 @@ function EditInvoiceContent() {
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
           if (key) localStorage.removeItem(key);
+          if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
+          if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -173,11 +184,10 @@ function EditInvoiceContent() {
       prevProducts.map(product => {
         if (product.id === id) {
           let numericValue: number | string | undefined = value;
-          // Handle numeric fields allowing undefined/null for optional ones like salePrice, minStockLevel, maxStockLevel
           if (['quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
               const stringValue = String(value);
               if (stringValue.trim() === '' && ['salePrice', 'minStockLevel', 'maxStockLevel'].includes(field)) {
-                  numericValue = undefined; // Set to undefined for empty optional fields
+                  numericValue = undefined;
               } else {
                 numericValue = parseFloat(stringValue.replace(/,/g, ''));
                 if (isNaN(numericValue as number)) {
@@ -188,7 +198,6 @@ function EditInvoiceContent() {
 
           const updatedProduct = { ...product, [field]: numericValue };
 
-          // Recalculate lineTotal or unitPrice if relevant fields change
           const quantity = Number(updatedProduct.quantity) || 0;
           const unitPrice = Number(updatedProduct.unitPrice) || 0;
           const lineTotal = Number(updatedProduct.lineTotal) || 0;
@@ -198,10 +207,10 @@ function EditInvoiceContent() {
           } else if (field === 'lineTotal') {
                if (quantity !== 0) {
                    updatedProduct.unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
-               } else if (lineTotal !== 0) { // If quantity is 0 but line total is not, something is off, but avoid NaN for unitPrice
-                    updatedProduct.unitPrice = 0; // Or handle as an error/warning
+               } else if (lineTotal !== 0) {
+                    updatedProduct.unitPrice = 0; // Or handle as an error, as unit price can't be determined
                } else {
-                    updatedProduct.unitPrice = 0;
+                    updatedProduct.unitPrice = 0; // If both are zero
                }
           }
           return updatedProduct;
@@ -242,19 +251,30 @@ function EditInvoiceContent() {
       setIsSaving(true);
       try {
           const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => rest);
-          console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId);
-          
-          await finalizeSaveProductsService(productsForService, fileName, 'upload', tempInvoiceId || undefined);
+          let imageUriForFinalSave: string | undefined = undefined;
+          if (compressedImageKey) {
+              imageUriForFinalSave = localStorage.getItem(compressedImageKey) || undefined;
+              if (!imageUriForFinalSave) {
+                console.warn(`[EditInvoice] Compressed image URI not found in localStorage for key ${compressedImageKey}. Final invoice record might not have an image if direct data was too large.`);
+              }
+          }
 
+          console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri (from compressedKey):", imageUriForFinalSave ? 'Exists' : 'Does not exist');
+          
+          await finalizeSaveProductsService(productsForService, fileName, 'upload', imageUriForFinalSave, tempInvoiceId || undefined);
+
+          // Clear temporary localStorage items
           if (dataKey) {
               localStorage.removeItem(dataKey);
-              console.log(`Removed temp scan data with key: ${dataKey}`);
+              console.log(`[EditInvoice] Removed temp scan data with key: ${dataKey}`);
           }
-          // Also remove imageUriKey if it exists
-          const imageUriKey = searchParams.get('imageUriKey');
-          if (imageUriKey) {
-            localStorage.removeItem(imageUriKey);
-            console.log(`Removed temp image URI with key: ${imageUriKey}`);
+          if (originalImagePreviewKey) {
+            localStorage.removeItem(originalImagePreviewKey);
+            console.log(`[EditInvoice] Removed temp original image preview URI with key: ${originalImagePreviewKey}`);
+          }
+          if (compressedImageKey) {
+            localStorage.removeItem(compressedImageKey);
+            console.log(`[EditInvoice] Removed temp compressed image URI with key: ${compressedImageKey}`);
           }
 
 
@@ -285,13 +305,12 @@ function EditInvoiceContent() {
         const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit, tempInvoiceId || undefined);
         console.log("Price check result:", priceCheckResult);
 
-        setProductsForNextStep(priceCheckResult.productsToSaveDirectly); // Store products that passed price check or are new
+        setProductsForNextStep(priceCheckResult.productsToSaveDirectly);
 
         if (priceCheckResult.priceDiscrepancies.length > 0) {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
-            setIsSaving(false); // Stop saving process to show confirmation dialog
+            setIsSaving(false);
         } else {
-            // No price discrepancies, proceed to check for new product details
             await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
         }
     } catch (error) {
@@ -305,10 +324,8 @@ function EditInvoiceContent() {
     }
 };
 
-// This function is called after price discrepancies are resolved (if any), or directly if none.
-// It takes products that have passed price checks (or are new/unchanged) and checks for new items needing details.
 const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Product[]) => {
-    setIsSaving(true); // Resume saving state if it was paused
+    setIsSaving(true);
     try {
         const currentInventory = await getProductsService();
         const inventoryMap = new Map<string, Product>();
@@ -318,17 +335,15 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
         const newProductsNeedingDetails = productsReadyForDetailCheck.filter(p => {
             const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
-            // Product is new if it's not existing OR if its id suggests it's a new row from the edit page
             return !isExistingProduct || (p.id && p.id.includes('-new'));
         });
 
         if (newProductsNeedingDetails.length > 0) {
             console.log("New products needing details:", newProductsNeedingDetails);
-            setProductsForNextStep(productsReadyForDetailCheck); // Keep all products ready for the next step
+            setProductsForNextStep(productsReadyForDetailCheck);
             setPromptingForNewProductDetails(newProductsNeedingDetails);
-            setIsSaving(false); // Pause saving to show the new product details dialog
+            setIsSaving(false);
         } else {
-            // No new products needing details, proceed to final save
             console.log("No new products, proceeding to final save with:", productsReadyForDetailCheck);
             await proceedWithFinalSave(productsReadyForDetailCheck);
         }
@@ -345,10 +360,8 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
 
 const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => {
-    setPriceDiscrepancies(null); // Close price confirmation dialog
+    setPriceDiscrepancies(null);
     if (resolvedProducts) {
-        // Products that were in discrepancy now have their unitPrice resolved.
-        // Merge them back with products that had no discrepancy.
         const allProductsAfterPriceCheck = productsForNextStep.map(originalProduct => {
             const resolvedVersion = resolvedProducts.find(rp => rp.id === originalProduct.id);
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
@@ -357,45 +370,41 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         console.log("Products after price confirmation, ready for detail check:", allProductsAfterPriceCheck);
         checkForNewProductsAndDetails(allProductsAfterPriceCheck);
     } else {
-        // User cancelled price confirmation
         toast({
             title: "Save Cancelled",
             description: "Price confirmation was cancelled. No changes were saved.",
             variant: "default",
         });
-        setIsSaving(false); // Ensure saving is stopped
+        setIsSaving(false);
     }
 };
 
 
  const handleNewProductDetailsComplete = (updatedNewProducts: Product[] | null) => {
-     setPromptingForNewProductDetails(null); // Close the new product details dialog
+     setPromptingForNewProductDetails(null);
      if (updatedNewProducts) {
-         // updatedNewProducts contains ONLY the new products, now with barcode/salePrice.
-         // We need to merge these updates back into the full list of products that were ready for this step.
          const finalProductsToSave = productsForNextStep.map(originalProduct => {
              const updatedVersion = updatedNewProducts.find(unp => unp.id === originalProduct.id);
-             if (updatedVersion) { // If this was one of the new products
+             if (updatedVersion) {
                  return {
-                     ...originalProduct, // Keep original quantity, unitPrice (which was already checked/resolved)
+                     ...originalProduct,
                      barcode: updatedVersion.barcode,
                      salePrice: updatedVersion.salePrice,
                  };
              }
-             return originalProduct; // This was an existing product, not needing new details
+             return originalProduct;
          });
 
          console.log("Final products to save after new product details prompt:", finalProductsToSave);
          proceedWithFinalSave(finalProductsToSave);
      } else {
-         // User cancelled the new product details prompt
          console.log("New product detail entry was cancelled.");
          toast({
              title: "Save Process Incomplete",
              description: "New product detail entry was cancelled. Changes were not fully saved.",
              variant: "default",
          });
-          setIsSaving(false); // Ensure saving is stopped
+          setIsSaving(false);
      }
  };
 
@@ -403,12 +412,15 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     const handleGoBack = () => {
         if (dataKey) {
             localStorage.removeItem(dataKey);
-            console.log(`Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
+            console.log(`[EditInvoice] Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
         }
-        const imageUriKey = searchParams.get('imageUriKey');
-        if (imageUriKey) {
-          localStorage.removeItem(imageUriKey);
-          console.log(`Cleared temp image URI with key: ${imageUriKey}`);
+        if (originalImagePreviewKey) {
+          localStorage.removeItem(originalImagePreviewKey);
+          console.log(`[EditInvoice] Cleared temp original image preview URI with key: ${originalImagePreviewKey}`);
+        }
+        if (compressedImageKey) {
+            localStorage.removeItem(compressedImageKey);
+            console.log(`[EditInvoice] Cleared temp compressed image URI with key: ${compressedImageKey}`);
         }
         router.push('/upload');
     };
@@ -545,8 +557,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Sale Price (₪)</TableHead>
-                  {/* <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead> */}
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
@@ -577,7 +587,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
                         className="w-20 sm:w-24 text-right h-9"
                         min="0"
-                        step="any" // Allow decimals for quantity if needed, or "1" for integers
+                        step="any"
                         aria-label={`Quantity for ${product.description}`}
                       />
                     </TableCell>
@@ -604,30 +614,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                             aria-label={`Sale price for ${product.description}`}
                         />
                     </TableCell>
-                    {/* <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <Input
-                            type="number"
-                            value={formatInputValue(product.minStockLevel, 'stockLevel')}
-                            onChange={(e) => handleInputChange(product.id, 'minStockLevel', e.target.value)}
-                            className="w-20 sm:w-24 text-right h-9"
-                            min="0"
-                            step="1"
-                            placeholder="Optional"
-                            aria-label={`Min stock for ${product.description}`}
-                        />
-                    </TableCell>
-                    <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <Input
-                            type="number"
-                            value={formatInputValue(product.maxStockLevel, 'stockLevel')}
-                            onChange={(e) => handleInputChange(product.id, 'maxStockLevel', e.target.value)}
-                            className="w-20 sm:w-24 text-right h-9"
-                            min="0"
-                            step="1"
-                            placeholder="Optional"
-                            aria-label={`Max stock for ${product.description}`}
-                        />
-                    </TableCell> */}
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
                         type="number"
