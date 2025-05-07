@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -365,10 +366,10 @@ export default function ReportsPage() {
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}> {/* Adjusted left margin */}
+                                <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}> {/* Adjusted left margin */}
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'} />
+                                     <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'} />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
@@ -394,8 +395,8 @@ export default function ReportsPage() {
                            <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}> {/* Adjusted left margin */}
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
+                                    <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
@@ -421,8 +422,8 @@ export default function ReportsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}> {/* Adjusted left margin */}
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={8} sm:fontSize={10} tickLine={false} axisLine={false} width={60} sm:width={80} /> {/* Responsive YAxis width */}
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={60} /> {/* Responsive YAxis width */}
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -578,3 +579,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+
