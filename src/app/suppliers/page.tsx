@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import {
   Sheet,
   SheetContent,
@@ -22,13 +22,31 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Separator } from '@/components/ui/separator';
 
 const ITEMS_PER_PAGE = 10;
 
-type SortKey = keyof SupplierSummary | 'contact' | ''; // Added 'contact' for sorting
+type SortKey = keyof SupplierSummary | 'contact' | '';
 type SortDirection = 'asc' | 'desc';
 
-const formatCurrency = (value: number) => `₪${value.toFixed(2)}`;
+const formatCurrency = (value: number | undefined | null): string => {
+  if (value === undefined || value === null || isNaN(value)) return '₪0.00';
+  return `₪${value.toFixed(2)}`;
+};
+
+const formatDate = (date: Date | string | undefined, f: string = 'PP') => {
+  if (!date) return 'N/A';
+  try {
+    const dateObj = typeof date === 'string' ? parseISO(date) : date;
+    if (isNaN(dateObj.getTime())) return 'Invalid Date';
+    return format(dateObj, f);
+  } catch (e) {
+    console.error("Error formatting date:", e, "Input:", date);
+    return 'Invalid Date';
+  }
+};
+
 
 const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
@@ -39,7 +57,7 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
         case 'completed':
             variant = 'secondary';
             className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-            icon = <Info className="mr-1 h-3 w-3" />; // Using Info for completed
+            icon = <Info className="mr-1 h-3 w-3" />;
             break;
         case 'processing':
             variant = 'secondary';
@@ -49,11 +67,11 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
         case 'pending':
             variant = 'secondary';
             className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
-            icon = <Info className="mr-1 h-3 w-3" />; // Using Info for pending
+            icon = <Info className="mr-1 h-3 w-3" />;
             break;
         case 'error':
             variant = 'destructive';
-            icon = <Info className="mr-1 h-3 w-3" />; // Using Info for error
+            icon = <Info className="mr-1 h-3 w-3" />;
             break;
         default:
             variant = 'outline';
@@ -68,6 +86,10 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
     );
 };
 
+interface MonthlySpendingData {
+  month: string;
+  total: number;
+}
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
@@ -79,6 +101,7 @@ export default function SuppliersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
   const [selectedSupplierInvoices, setSelectedSupplierInvoices] = useState<InvoiceHistoryItem[]>([]);
+  const [monthlySpendingData, setMonthlySpendingData] = useState<MonthlySpendingData[]>([]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
   const { toast } = useToast();
@@ -93,7 +116,7 @@ export default function SuppliersPage() {
           getInvoicesService()
         ]);
         setSuppliers(summaries);
-        setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: new Date(inv.uploadTime)})));
+        setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
       } catch (error) {
         console.error("Failed to fetch supplier data:", error);
         toast({
@@ -157,24 +180,28 @@ export default function SuppliersPage() {
   const handleViewSupplierDetails = (supplier: SupplierSummary) => {
     setSelectedSupplier(supplier);
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplier === supplier.name)
-                                      .sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
+                                      .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
     setSelectedSupplierInvoices(invoicesForSupplier);
+
+    // Calculate monthly spending
+    const spendingByMonth: Record<string, number> = {};
+    invoicesForSupplier.forEach(invoice => {
+      if (invoice.totalAmount && invoice.status === 'completed') {
+        const monthYear = formatDate(invoice.uploadTime as string, 'MMM yyyy');
+        spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
+      }
+    });
+    const chartData = Object.entries(spendingByMonth)
+      .map(([month, total]) => ({ month, total }))
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Sort by month
+    setMonthlySpendingData(chartData);
+
     setIsSheetOpen(true);
   };
   
   const navigateToInvoiceDetails = (invoiceId: string) => {
-    // Find the specific invoice in allInvoices to pass its data or key
-    const invoice = allInvoices.find(inv => inv.id === invoiceId);
-    if (invoice) {
-      // For now, let's assume InvoicesPage can handle an invoice ID or key via query param
-      // This part needs to align with how InvoicesPage expects to load a specific invoice detail.
-      // If InvoicesPage uses localStorage for viewing, you might need to store selected invoice detail temporarily
-      // and redirect. This example uses a query param.
-      router.push(`/invoices?viewInvoiceId=${invoiceId}`); // Example query param
-      setIsSheetOpen(false); // Close supplier sheet
-    } else {
-      toast({ title: "Error", description: "Could not find invoice details.", variant: "destructive" });
-    }
+    router.push(`/invoices?viewInvoiceId=${invoiceId}`);
+    setIsSheetOpen(false);
   };
 
 
@@ -207,7 +234,6 @@ export default function SuppliersPage() {
                 aria-label="Search suppliers"
               />
             </div>
-            {/* Future: Add filter/sort dropdowns here if needed */}
           </div>
 
           <div className="overflow-x-auto relative">
@@ -278,19 +304,19 @@ export default function SuppliersPage() {
       </Card>
 
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+        <SheetContent side="right" className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl flex flex-col p-0">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
             <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || 'Supplier Details'}</SheetTitle>
             <SheetDescription>
-              Contact information and order history.
+              Contact information, spending analysis, and order history.
             </SheetDescription>
           </SheetHeader>
           {selectedSupplier && (
             <ScrollArea className="flex-grow">
-              <div className="p-4 sm:p-6 space-y-4">
+              <div className="p-4 sm:p-6 space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4" /> Contact (Placeholder)</CardTitle>
+                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> Contact (Placeholder)</CardTitle>
                   </CardHeader>
                   <CardContent className="text-sm space-y-1">
                     <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> N/A</p>
@@ -300,37 +326,54 @@ export default function SuppliersPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center"><FileText className="mr-2 h-4 w-4" />Recent Invoices ({selectedSupplierInvoices.length})</CardTitle>
+                    <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> Monthly Spending</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {monthlySpendingData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis fontSize={10} tickFormatter={(value) => `₪${value/1000}k`} tickLine={false} axisLine={false}/>
+                          <RechartsTooltip formatter={(value: number) => [formatCurrency(value), "Total Spent"]}/>
+                          <Legend wrapperStyle={{fontSize: "12px"}}/>
+                          <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Spending"/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">No spending data available for this supplier.</p>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center"><ListChecks className="mr-2 h-4 w-4 text-primary" /> Activity Timeline (Recent Invoices)</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {selectedSupplierInvoices.length > 0 ? (
-                      <div className="max-h-80 overflow-y-auto_ pr-2"> {/* Added max-height and overflow for this specific table */}
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs px-2 py-1">File Name</TableHead>
-                              <TableHead className="text-xs px-2 py-1">Date</TableHead>
-                              <TableHead className="text-xs px-2 py-1 text-right">Total</TableHead>
-                               <TableHead className="text-xs px-2 py-1 text-center">Status</TableHead>
-                               <TableHead className="text-xs px-2 py-1 text-center">View</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {selectedSupplierInvoices.slice(0, 15).map(invoice => ( // Show recent 15
-                              <TableRow key={invoice.id}>
-                                <TableCell className="text-xs px-2 py-1 truncate max-w-[100px]">{invoice.fileName}</TableCell>
-                                <TableCell className="text-xs px-2 py-1">{format(new Date(invoice.uploadTime), 'PP')}</TableCell>
-                                <TableCell className="text-xs px-2 py-1 text-right">{invoice.totalAmount !== undefined ? formatCurrency(invoice.totalAmount) : 'N/A'}</TableCell>
-                                 <TableCell className="text-xs px-2 py-1 text-center">{renderStatusBadge(invoice.status)}</TableCell>
-                                 <TableCell className="text-xs px-2 py-1 text-center">
-                                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => navigateToInvoiceDetails(invoice.id)}>
-                                     <ExternalLink className="h-3.5 w-3.5 text-primary"/>
-                                   </Button>
-                                 </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                      <div className="space-y-3 max-h-96 overflow-y-auto_ pr-2">
+                        {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => ( // Display top 10 recent
+                          <React.Fragment key={invoice.id}>
+                            <div className="flex items-start space-x-3">
+                              <div className="flex flex-col items-center">
+                                <div className={cn("mt-1 h-3 w-3 rounded-full", invoice.status === 'completed' ? 'bg-green-500' : invoice.status === 'error' ? 'bg-destructive' : 'bg-yellow-500')} />
+                                {index < selectedSupplierInvoices.slice(0, 10).length - 1 && <div className="h-full w-px bg-border" />}
+                              </div>
+                              <div className="pb-3 flex-1">
+                                <p className="text-xs text-muted-foreground">{formatDate(invoice.uploadTime as string, 'PPp')}</p>
+                                <p className="text-sm font-medium">
+                                  <Button variant="link" className="p-0 h-auto text-sm" onClick={() => navigateToInvoiceDetails(invoice.id)}>
+                                    {invoice.fileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
+                                  </Button>
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Total: {formatCurrency(invoice.totalAmount)} - Status: {renderStatusBadge(invoice.status)}
+                                </p>
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        ))}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground text-center py-4">No invoices found for this supplier.</p>
