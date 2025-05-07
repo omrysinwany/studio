@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -89,21 +89,22 @@ export default function Home() {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const recentInvoices = invoices.filter(
-          (invoice) => new Date(invoice.uploadTime) >= thirtyDaysAgo
+          (invoice) => new Date(invoice.uploadTime).getTime() >= thirtyDaysAgo.getTime()
         );
         const docsProcessedLast30Days = recentInvoices.length;
         
         const latestDoc = invoices.length > 0 
           ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
           : null;
-
+        
+        // Mock inventory value trend data - replace with actual data fetching if available
         const mockInventoryValueTrend = [
-          { name: 'Day 1', value: inventoryValue * 0.95 },
-          { name: 'Day 2', value: inventoryValue * 0.98 },
-          { name: 'Day 3', value: inventoryValue * 0.96 },
-          { name: 'Day 4', value: inventoryValue * 1.02 },
-          { name: 'Day 5', value: inventoryValue },
-        ];
+          { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
+          { name: 'Day 2', value: inventoryValue * 0.98 + Math.random() * 1000 - 500 },
+          { name: 'Day 3', value: inventoryValue * 0.96 + Math.random() * 1000 - 500 },
+          { name: 'Day 4', value: inventoryValue * 1.02 + Math.random() * 1000 - 500 },
+          { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
+        ].map(d => ({...d, value: Math.max(0, d.value)})); // Ensure value is not negative
 
         setKpiData({
           totalItems,
@@ -167,7 +168,7 @@ export default function Home() {
     const formattedNum = (num / si[i].value).toFixed(decimals).replace(rx, "$1");
     return formattedNum + si[i].symbol;
   };
-
+  
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
     if (isLoadingKpis) {
       return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
@@ -176,19 +177,26 @@ export default function Home() {
     if (value === undefined || value === null || isNaN(value)) return '-';
     
     const prefix = isCurrency ? '₪' : '';
-    if (isCurrency && Math.abs(value) < 10000 || isInteger && Math.abs(value) < 1000 ) {
+    // For currency, always show 2 decimal places if less than 10000, or if it's an integer.
+    // For non-currency integers, show 0 decimal places.
+    // For large numbers (>=1000 non-integer, or >=10000 currency), use formatLargeNumber.
+    if ((isCurrency && Math.abs(value) < 10000) || (isInteger && Math.abs(value) < 1000)) {
          return prefix + value.toLocaleString(undefined, { 
             minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
             maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0) 
         });
     }
-     if (!isInteger && Math.abs(value) >= 1000) {
-        return prefix + formatLargeNumber(value, isCurrency ? 2 : 0);
+     if (!isInteger && Math.abs(value) >= 1000) { // Applied to non-currency, non-integer large numbers
+        return prefix + formatLargeNumber(value, 0); // Use formatLargeNumber for non-currency large numbers
+    }
+    if (isCurrency && Math.abs(value) >= 10000) { // Applied to currency large numbers
+        return prefix + formatLargeNumber(value, 2); // Use formatLargeNumber with 2 decimals for currency
     }
 
+
     const options: Intl.NumberFormatOptions = {
-      minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
-      maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 1),
+      minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0), // ensure 2 decimals for currency, 0 for integers
+      maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 1), // allow 1 decimal for general numbers if not integer/currency
     };
     return prefix + value.toLocaleString(undefined, options);
   };
@@ -220,11 +228,11 @@ export default function Home() {
         <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in" style={{ animationDelay: '0.1s' }}>
           {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Streamlining your inventory management.'}
         </p>
-
-         <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 md:mb-12">
+        
+        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
           <Button
             size="lg"
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base scale-fade-in delay-100"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
             onClick={handleScanClick}
           >
             <ScanLine className="mr-2 h-5 w-5" /> Scan New Document
@@ -232,7 +240,7 @@ export default function Home() {
           <Button
             variant="outline"
             size="lg"
-            className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-shadow duration-300 text-base scale-fade-in delay-200"
+            className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
              onClick={handleInventoryClick}
           >
             <Package className="mr-2 h-5 w-5" /> View Inventory
@@ -240,7 +248,7 @@ export default function Home() {
           <Button
             variant="secondary"
             size="lg"
-            className="w-full sm:w-auto bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base scale-fade-in delay-300"
+            className="w-full sm:w-auto bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
              onClick={handleReportsClick}
           >
             <BarChart2 className="mr-2 h-5 w-5" /> View Reports
@@ -255,9 +263,9 @@ export default function Home() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
            <Link href="/inventory" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left scale-fade-in" style={{ animationDelay: '0.2s' }}>
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Total Items</CardTitle>
                  <Package className="h-4 w-4 text-muted-foreground" />
@@ -270,7 +278,7 @@ export default function Home() {
            </Link>
 
             <Link href="/reports" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left scale-fade-in" style={{ animationDelay: '0.3s' }}>
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
                  <CardTitle className="text-xs sm:text-sm font-medium">Inventory Value</CardTitle>
                  <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span>
@@ -285,7 +293,7 @@ export default function Home() {
             </Link>
 
             <Link href="/invoices" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left scale-fade-in" style={{ animationDelay: '0.4s' }}>
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Docs (30d)</CardTitle>
                  <FileText className="h-4 w-4 text-muted-foreground" />
@@ -300,7 +308,7 @@ export default function Home() {
             </Link>
 
              <Link href="/inventory?filter=low" className="block hover:no-underline">
-                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left scale-fade-in" style={{ animationDelay: '0.5s' }}>
+                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                      <CardTitle className="text-xs sm:text-sm font-medium">Low Stock</CardTitle>
                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -316,3 +324,4 @@ export default function Home() {
     </div>
   );
 }
+
