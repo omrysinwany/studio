@@ -1,11 +1,10 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, Palette, Sun, Moon, Settings as SettingsIcon } from "lucide-react"; // Added Palette, Sun, Moon, SettingsIcon
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -16,6 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTheme } from "next-themes"; // Import useTheme
 
 
 interface KpiData {
@@ -67,6 +67,7 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
@@ -220,7 +221,7 @@ export default function Home() {
 
   return (
     <TooltipProvider>
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
+    <div className="flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <div className="w-full max-w-4xl text-center">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 text-primary scale-fade-in">
           Welcome to InvoTrack
@@ -232,7 +233,7 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
           <Button
             size="lg"
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5"
             onClick={handleScanClick}
           >
             <ScanLine className="mr-2 h-5 w-5" /> Scan New Document
@@ -240,7 +241,7 @@ export default function Home() {
           <Button
             variant="outline"
             size="lg"
-            className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base"
+            className="w-full sm:w-auto border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5"
              onClick={handleInventoryClick}
           >
             <Package className="mr-2 h-5 w-5" /> View Inventory
@@ -248,7 +249,7 @@ export default function Home() {
           <Button
             variant="secondary"
             size="lg"
-            className="w-full sm:w-auto bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base"
+            className="w-full sm:w-auto bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5"
              onClick={handleReportsClick}
           >
             <BarChart2 className="mr-2 h-5 w-5" /> View Reports
@@ -263,11 +264,12 @@ export default function Home() {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+            {/* KPI Card 1: Total Items */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link href="/inventory" className="block hover:no-underline">
-                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50">
+                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium text-muted-foreground">Total Items</CardTitle>
                       <Package className="h-5 w-5 text-accent" />
@@ -284,10 +286,11 @@ export default function Home() {
               </TooltipContent>
             </Tooltip>
 
+            {/* KPI Card 2: Inventory Value */}
             <Tooltip>
                 <TooltipTrigger asChild>
                     <Link href="/reports" className="block hover:no-underline">
-                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50">
+                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Inventory Value</CardTitle>
                         <DollarSign className="h-5 w-5 text-accent" />
@@ -319,10 +322,11 @@ export default function Home() {
                 </TooltipContent>
             </Tooltip>
 
+            {/* KPI Card 3: Docs (30d) */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link href="/invoices" className="block hover:no-underline">
-                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50">
+                  <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium text-muted-foreground">Docs (30d)</CardTitle>
                       <FileText className="h-5 w-5 text-accent" />
@@ -341,10 +345,11 @@ export default function Home() {
               </TooltipContent>
             </Tooltip>
 
+            {/* KPI Card 4: Low Stock */}
             <Tooltip>
                 <TooltipTrigger asChild>
                     <Link href="/inventory?filter=low" className="block hover:no-underline">
-                        <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50">
+                        <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock</CardTitle>
                             <AlertTriangle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
@@ -383,3 +388,4 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
