@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -11,7 +12,7 @@ import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
 import { useRouter } from 'next/navigation'; // Use App Router's useRouter
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react'; // Added Info icon
-import { InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoicesService, saveProductsService } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator'; // Import Separator
@@ -62,7 +63,7 @@ export default function UploadPage() {
   const fetchHistory = useCallback(async () => {
      setIsLoadingHistory(true);
      try {
-        const history = await getInvoicesService(); // Use getInvoicesService
+        const history = await getInvoicesService();
         const sortedHistory = history.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
         setUploadHistory(sortedHistory.slice(0, 10));
      } catch (error) {
@@ -143,52 +144,64 @@ export default function UploadPage() {
          
          let scanResult: ScanInvoiceOutput = { products: [] };
          let productDataSaved = false;
-         let imageUriSaved = false;
+         let imageUriSaved = false; 
 
          try {
              console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
              scanResult = await scanInvoice({ invoiceDataUri: base64data });
              console.log('[UploadPage] AI Scan Result:', scanResult);
 
-             // Attempt to save product data (scan results) first
              try {
                  localStorage.setItem(dataKey, JSON.stringify(scanResult));
-                 productDataSaved = true;
-                 console.log(`[UploadPage] Successfully saved scan results to localStorage with key: ${dataKey}`);
+                 if (localStorage.getItem(dataKey) === JSON.stringify(scanResult)) {
+                    productDataSaved = true;
+                    console.log(`[UploadPage] Successfully saved and verified scan results to localStorage with key: ${dataKey}`);
+                 } else {
+                    throw new Error("Verification of scan results in localStorage failed.");
+                 }
              } catch (storageError: any) {
-                 console.error(`[UploadPage] Error saving scan results to localStorage for key ${dataKey}:`, storageError);
+                 console.error(`[UploadPage] Error saving or verifying scan results to localStorage for key ${dataKey}:`, storageError);
                  toast({
-                     title: 'Error Saving Scan Data',
-                     description: 'Could not save the processed scan results. LocalStorage might be full. Please try clearing some space or reducing file size.',
+                     title: 'Critical Error: Cannot Save Scan Data',
+                     description: 'Could not save processed scan results. LocalStorage might be full or unresponsive. Please try clearing some space or reducing file size and try again.',
                      variant: 'destructive',
+                     duration: 10000, 
                  });
-                 // Do not proceed if product data cannot be saved
                  setIsProcessing(false);
                  setSelectedFile(null);
                  if (fileInputRef.current) fileInputRef.current.value = '';
-                 return; // Exit early
+                 localStorage.removeItem(dataKey); 
+                 return; 
              }
 
-             // Attempt to save image URI only if product data was saved
              if (productDataSaved) {
                  try {
                     localStorage.setItem(imageUriKey, base64data);
-                    imageUriSaved = true;
-                    console.log(`[UploadPage] Successfully saved image URI to localStorage with key: ${imageUriKey}`);
+                    if (localStorage.getItem(imageUriKey) === base64data) {
+                        imageUriSaved = true;
+                        console.log(`[UploadPage] Successfully saved and verified image URI to localStorage with key: ${imageUriKey}`);
+                    } else {
+                         console.warn(`[UploadPage] Verification of image URI in localStorage failed for key ${imageUriKey}. Image preview may not be available.`);
+                         toast({
+                            title: 'Warning: Image Preview May Be Unavailable',
+                            description: 'Could not reliably save the invoice image for preview. Product data is saved.',
+                            variant: 'default',
+                         });
+                    }
                  } catch (storageError: any) {
-                    if (storageError.name === 'QuotaExceededError' || storageError.message.includes('exceeded the quota')) {
+                    if (storageError.name === 'QuotaExceededError' || (storageError.message && storageError.message.includes('exceeded the quota'))) {
                         console.warn(`[UploadPage] localStorage quota exceeded for image URI for file: ${selectedFile.name}. Proceeding without saving image URI.`);
                         toast({
-                            title: 'Image Too Large for Preview',
-                            description: 'The invoice image is too large to be stored for preview. Processing will continue with product data only.',
+                            title: 'Image Too Large for Preview Storage',
+                            description: 'The invoice image is too large to be stored for preview. Product data is saved, but the image might not be visible later.',
                             variant: 'default',
+                            duration: 7000,
                         });
                     } else {
                         console.error(`[UploadPage] Error saving image URI to localStorage for file: ${selectedFile.name}`, storageError);
-                        // Non-quota error for image, still proceed with product data
                          toast({
                             title: 'Warning: Image Preview Unavailable',
-                            description: 'Could not save the image for preview due to a storage issue.',
+                            description: 'Could not save the image for preview due to a storage issue. Product data is saved.',
                             variant: 'default',
                         });
                     }
@@ -207,37 +220,38 @@ export default function UploadPage() {
                 description: (aiError as Error).message || 'Could not process the document. Please check the image or try again.',
                 variant: 'destructive',
              });
-             // scanResult will remain { products: [] }
-             // Even if AI fails, try to save the empty product list so the edit page can load
-             if (!productDataSaved) { // If productData wasn't saved during an AI error scenario
+             if (!productDataSaved) { 
                 try {
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Save empty products
-                    productDataSaved = true;
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); 
+                     if (localStorage.getItem(dataKey) === JSON.stringify(scanResult)) {
+                        productDataSaved = true; 
+                        console.log(`[UploadPage] Saved empty scan results after AI error with key: ${dataKey}`);
+                    } else {
+                        throw new Error("Verification of empty scan results in localStorage failed after AI error.");
+                    }
                 } catch (storageError: any) {
-                    console.error(`[UploadPage] Error saving empty scan results to localStorage after AI error for key ${dataKey}:`, storageError);
+                    console.error(`[UploadPage] Critical Error: Error saving empty scan results to localStorage after AI error for key ${dataKey}:`, storageError);
                      toast({
                          title: 'Critical Error',
-                         description: 'Could not save scan results after AI error. Please try again.',
+                         description: 'Could not save scan results after AI processing error. Please try again.',
                          variant: 'destructive',
+                         duration: 10000,
                      });
                      setIsProcessing(false);
                      setSelectedFile(null);
                      if (fileInputRef.current) fileInputRef.current.value = '';
-                     localStorage.removeItem(dataKey); // Clean up potentially partial save
-                     localStorage.removeItem(imageUriKey);
-                     return;
+                     localStorage.removeItem(dataKey); 
+                     localStorage.removeItem(imageUriKey); 
+                     return; 
                 }
              }
           } finally {
-             // Navigate to edit page ONLY if productDataSaved is true
              if (productDataSaved) {
                  router.push(`/edit-invoice?key=${dataKey}&imageKey=${imageUriSaved ? imageUriKey : ''}&fileName=${encodeURIComponent(selectedFile.name)}`);
              } else {
-                 // This case should ideally be caught by the early return if productData saving failed.
-                 // But as a fallback, ensure we don't navigate with a missing dataKey.
                  console.error("[UploadPage] Product data was not saved, aborting navigation to edit page.");
-                 localStorage.removeItem(dataKey); // Clean up
-                 localStorage.removeItem(imageUriKey);
+                 localStorage.removeItem(dataKey); 
+                 localStorage.removeItem(imageUriKey); 
              }
             
              setIsProcessing(false);
@@ -275,9 +289,13 @@ export default function UploadPage() {
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
      try {
-        const dateObj = typeof date === 'string' ? new Date(date) : dateObj;
-        return dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+        const dateObj = typeof date === 'string' ? new Date(date) : date; // Corrected: use date variable
+        if (isNaN(dateObj.getTime())) return 'Invalid Date'; // Check if date is valid
+        return window.innerWidth < 640
+             ? format(dateObj, 'dd/MM/yy')
+             : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
+       console.error("Error formatting date:", e, "Input:", date);
        return 'Invalid Date';
      }
    };
@@ -504,4 +522,3 @@ export default function UploadPage() {
     </div>
   );
 }
-
