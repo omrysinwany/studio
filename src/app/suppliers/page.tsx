@@ -6,8 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks, PieChart } from 'lucide-react';
+import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService } from '@/services/backend';
+import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks, Edit, Save, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import {
@@ -22,12 +22,12 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, Cell, Pie, PieChart as RechartsPie } from 'recharts';
-import { Separator } from '@/components/ui/separator';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Label } from '@/components/ui/label';
 
 const ITEMS_PER_PAGE = 10;
 
-type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | ''; // Removed 'totalSpent'
+type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpent' ;
 type SortDirection = 'asc' | 'desc';
 
 const formatCurrency = (value: number | undefined | null): string => {
@@ -91,22 +91,22 @@ interface MonthlySpendingData {
   total: number;
 }
 
-const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
-
-
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('name'); // Default sort by name
+  const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
   const [selectedSupplierInvoices, setSelectedSupplierInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [monthlySpendingData, setMonthlySpendingData] = useState<MonthlySpendingData[]>([]);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [categorySpendingData, setCategorySpendingData] = useState<{ name: string; value: number }[]>([]);
+  
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
+  const [isSavingContact, setIsSavingContact] = useState(false);
 
 
   const { toast } = useToast();
@@ -155,8 +155,8 @@ export default function SuppliersPage() {
 
     if (sortKey) {
       result.sort((a, b) => {
-        const valA = a[sortKey as keyof Pick<SupplierSummary, 'name' | 'invoiceCount'>];
-        const valB = b[sortKey as keyof Pick<SupplierSummary, 'name' | 'invoiceCount'>];
+        const valA = a[sortKey as keyof SupplierSummary];
+        const valB = b[sortKey as keyof SupplierSummary];
         let comparison = 0;
         if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
@@ -184,11 +184,12 @@ export default function SuppliersPage() {
 
   const handleViewSupplierDetails = (supplier: SupplierSummary) => {
     setSelectedSupplier(supplier);
+    setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '' });
+    setIsEditingContact(false);
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplier === supplier.name)
                                       .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
     setSelectedSupplierInvoices(invoicesForSupplier);
 
-    // Calculate monthly spending for the last 12 months
     const last12Months = eachMonthOfInterval({
         start: subMonths(new Date(), 11),
         end: new Date()
@@ -197,13 +198,13 @@ export default function SuppliersPage() {
     const spendingByMonth: Record<string, number> = {};
     last12Months.forEach(monthDate => {
         const monthYear = format(monthDate, 'MMM yyyy');
-        spendingByMonth[monthYear] = 0; // Initialize all months in range
+        spendingByMonth[monthYear] = 0;
     });
 
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
         const monthYear = formatDate(invoice.uploadTime as string, 'MMM yyyy');
-        if(spendingByMonth.hasOwnProperty(monthYear)){ // Only count if within the last 12 months
+        if(spendingByMonth.hasOwnProperty(monthYear)){
             spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
         }
       }
@@ -213,21 +214,6 @@ export default function SuppliersPage() {
       .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
     setMonthlySpendingData(chartData);
 
-
-    // Calculate spending by product category (mock example - needs actual product data linkage)
-    const spendingByCategory: Record<string, number> = {
-        'Electronics': Math.random() * 5000,
-        'Office Supplies': Math.random() * 3000,
-        'Services': Math.random() * 2000,
-        'Other': Math.random() * 1000,
-    };
-     setCategorySpendingData(
-        Object.entries(spendingByCategory)
-            .map(([name, value]) => ({name, value}))
-            .filter(item => item.value > 0) // Only include categories with spending
-     );
-
-
     setIsSheetOpen(true);
   };
   
@@ -236,6 +222,23 @@ export default function SuppliersPage() {
     setIsSheetOpen(false);
   };
 
+  const handleSaveContactInfo = async () => {
+    if (!selectedSupplier) return;
+    setIsSavingContact(true);
+    try {
+      await updateSupplierContactInfoService(selectedSupplier.name, editedContactInfo);
+      // Refresh supplier list or update the selected supplier in state
+      setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, ...editedContactInfo} : s));
+      setSelectedSupplier(prev => prev ? {...prev, ...editedContactInfo} : null);
+      toast({ title: "Contact Info Updated", description: `Contact details for ${selectedSupplier.name} saved.` });
+      setIsEditingContact(false);
+    } catch (error) {
+      console.error("Failed to update contact info:", error);
+      toast({ title: "Update Failed", description: "Could not save contact information.", variant: "destructive" });
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -284,7 +287,7 @@ export default function SuppliersPage() {
               <TableBody>
                 {paginatedSuppliers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center"> {/* Adjusted colSpan */}
+                    <TableCell colSpan={3} className="h-24 text-center">
                       No suppliers found.
                     </TableCell>
                   </TableRow>
@@ -353,12 +356,57 @@ export default function SuppliersPage() {
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> Contact (Placeholder)</CardTitle>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> Contact Information</CardTitle>
+                    {!isEditingContact && (
+                      <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    )}
                   </CardHeader>
-                  <CardContent className="text-sm space-y-1">
-                    <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> N/A</p>
-                    <p className="flex items-center"><Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> N/A</p>
+                  <CardContent className="text-sm space-y-2">
+                    {isEditingContact ? (
+                      <>
+                        <div>
+                          <Label htmlFor="supplierPhone" className="text-xs">Phone</Label>
+                          <Input
+                            id="supplierPhone"
+                            type="tel"
+                            value={editedContactInfo.phone || ''}
+                            onChange={(e) => setEditedContactInfo(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="Enter phone number"
+                            className="h-9 mt-1"
+                            disabled={isSavingContact}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="supplierEmail" className="text-xs">Email</Label>
+                          <Input
+                            id="supplierEmail"
+                            type="email"
+                            value={editedContactInfo.email || ''}
+                            onChange={(e) => setEditedContactInfo(prev => ({ ...prev, email: e.target.value }))}
+                            placeholder="Enter email address"
+                            className="h-9 mt-1"
+                            disabled={isSavingContact}
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                          <Button size="sm" onClick={() => setIsEditingContact(false)} variant="outline" disabled={isSavingContact}>
+                            <X className="mr-1 h-4 w-4" /> Cancel
+                          </Button>
+                          <Button size="sm" onClick={handleSaveContactInfo} disabled={isSavingContact}>
+                            {isSavingContact ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
+                            Save Contact
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.phone || 'N/A'}</p>
+                        <p className="flex items-center"><Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.email || 'N/A'}</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -383,41 +431,6 @@ export default function SuppliersPage() {
                         )}
                     </CardContent>
                 </Card>
-
-                 <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center"><PieChart className="mr-2 h-4 w-4 text-primary" /> Spending by Category (Example)</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex items-center justify-center">
-                         {categorySpendingData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height={200}>
-                                <RechartsPie>
-                                    <RechartsPie data={categorySpendingData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} labelLine={false}
-                                        label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
-                                            const RADIAN = Math.PI / 180;
-                                            const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                                            return (percent * 100) > 5 ? (
-                                                <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10px">
-                                                    {`${(percent * 100).toFixed(0)}%`}
-                                                </text>
-                                            ) : null;
-                                        }}
-                                    >
-                                    {categorySpendingData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                    ))}
-                                    </RechartsPie>
-                                    <RechartsTooltip formatter={(value: number, name: string) => [formatCurrency(value), name]} />
-                                    <Legend layout="vertical" align="right" verticalAlign="middle" iconSize={10} wrapperStyle={{fontSize: "12px", lineHeight: "1.5"}}/>
-                                </RechartsPie>
-                            </ResponsiveContainer>
-                         ) : (
-                            <p className="text-sm text-muted-foreground text-center py-4">No category spending data available.</p>
-                         )}
-                    </CardContent>
-                </Card>
                 
                 <Card>
                   <CardHeader>
@@ -426,7 +439,7 @@ export default function SuppliersPage() {
                   <CardContent>
                     {selectedSupplierInvoices.length > 0 ? (
                       <div className="space-y-3 max-h-96 overflow-y-auto_ pr-2">
-                        {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => ( // Display top 10 recent
+                        {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => ( 
                           <React.Fragment key={invoice.id}>
                             <div className="flex items-start space-x-3">
                               <div className="flex flex-col items-center">
