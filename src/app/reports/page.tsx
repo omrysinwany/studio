@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -310,7 +311,7 @@ export default function ReportsPage() {
 
        {kpis && (
            <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-             <Card className="xl:col-span-2">
+             <Card className="xl:col-span-2 scale-fade-in">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Total Inventory Value</CardTitle>
                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -323,7 +324,7 @@ export default function ReportsPage() {
                  </p>
                </CardContent>
              </Card>
-             <Card>
+             <Card className="scale-fade-in" style={{animationDelay: '0.1s'}}>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">Total Items in Stock</CardTitle>
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -333,7 +334,7 @@ export default function ReportsPage() {
                  <p className="text-[10px] sm:text-xs text-muted-foreground">Unique SKUs</p>
                </CardContent>
              </Card>
-            <Card>
+            <Card className="scale-fade-in" style={{animationDelay: '0.2s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Gross Profit Margin</CardTitle>
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -343,7 +344,7 @@ export default function ReportsPage() {
                     <p className="text-[10px] sm:text-xs text-muted-foreground">Estimate</p>
                 </CardContent>
             </Card>
-            <Card>
+            <Card className="scale-fade-in" style={{animationDelay: '0.3s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Inventory Turnover</CardTitle>
                     <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -353,7 +354,7 @@ export default function ReportsPage() {
                     <p className="text-[10px] sm:text-xs text-muted-foreground">Times per period</p>
                 </CardContent>
             </Card>
-             <Card>
+             <Card className="scale-fade-in" style={{animationDelay: '0.4s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                     <CardTitle className="text-xs sm:text-sm font-medium">Avg. Order Value</CardTitle>
                     <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
@@ -367,7 +368,7 @@ export default function ReportsPage() {
        )}
 
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
-            <Card className="w-full overflow-hidden">
+            <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.1s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
                     <CardTitle className="text-base sm:text-lg">Inventory Value Over Time</CardTitle>
                 </CardHeader>
@@ -411,7 +412,7 @@ export default function ReportsPage() {
                 </CardContent>
             </Card>
 
-            <Card className="w-full overflow-hidden">
+            <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.2s'}}>
                  <CardHeader className="pb-2 sm:pb-4">
                      <CardTitle className="text-base sm:text-lg">Documents Processed Volume</CardTitle>
                  </CardHeader>
@@ -455,7 +456,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="w-full overflow-hidden">
+            <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.3s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
                     <CardTitle className="text-base sm:text-lg">Sales by Category</CardTitle>
                 </CardHeader>
@@ -486,7 +487,7 @@ export default function ReportsPage() {
                 </CardContent>
             </Card>
 
-            <Card className="w-full overflow-hidden">
+            <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.4s'}}>
                  <CardHeader className="pb-2 sm:pb-4">
                      <CardTitle className="text-base sm:text-lg">Inventory Value by Category</CardTitle>
                  </CardHeader>
@@ -550,7 +551,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
+            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
                     <CardTitle className="text-base sm:text-lg">Top Selling Products (by Value)</CardTitle>
                      <CardDescription className="text-xs sm:text-sm">Top 5 products by total sales value in the selected period.</CardDescription>
@@ -583,7 +584,7 @@ export default function ReportsPage() {
                 </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
+            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.6s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
                     <CardTitle className="text-base sm:text-lg">Stock Alert Dashboard</CardTitle>
                     <CardDescription className="text-xs sm:text-sm">Products requiring attention based on defined stock levels.</CardDescription>

@@ -136,6 +136,25 @@ body {
 
   .fade-in-content {
     animation: fadeInContent 0.8s ease-out forwards;
+    opacity: 0; /* Ensure it starts hidden */
+    animation-fill-mode: forwards; /* Keep the 'to' state */
   }
 
+  /* New: Subtle scale and fade for cards/elements */
+  @keyframes scaleFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(5px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .scale-fade-in {
+    animation: scaleFadeIn 0.5s ease-out forwards;
+    animation-fill-mode: forwards; /* Keep the 'to' state */
+    opacity: 0; /* Initially hide element to prevent flash of unstyled content */
+  }
+
+  /* Staggered animation delays - optional, can be applied inline or via specific classes */
+  .delay-100 { animation-delay: 0.1s !important; } /* Use !important if Tailwind specificity is an issue */
+  .delay-200 { animation-delay: 0.2s !important; }
+  .delay-300 { animation-delay: 0.3s !important; }
+  .delay-400 { animation-delay: 0.4s !important; }
 }

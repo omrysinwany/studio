@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -21,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 
 const formSchema = z.object({
@@ -67,7 +69,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-lg">
+      <Card className="w-full max-w-md shadow-lg scale-fade-in">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Login to InvoTrack</CardTitle>
           <CardDescription>Enter your credentials to access your account.</CardDescription>

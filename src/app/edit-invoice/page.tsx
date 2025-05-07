@@ -20,6 +20,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
+import { cn } from '@/lib/utils';
 
 interface EditableProduct extends Product {
   _originalId?: string;
@@ -51,7 +52,6 @@ function EditInvoiceContent() {
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [scanProcessError, setScanProcessError] = useState<string | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
-  const [imageUriStorageKey, setImageUriStorageKey] = useState<string | null>(null); // State for image URI key
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
 
   const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
@@ -63,11 +63,9 @@ function EditInvoiceContent() {
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
-    const imageKeyParam = searchParams.get('imageUriKey'); // Get image URI key
 
     setDataKey(key);
     setTempInvoiceId(tempInvIdParam);
-    setImageUriStorageKey(imageKeyParam); // Store image URI key
 
     let hasAttemptedLoad = false;
 
@@ -90,7 +88,6 @@ function EditInvoiceContent() {
               variant: "destructive",
             });
              if (key) localStorage.removeItem(key);
-             if (imageKeyParam) localStorage.removeItem(imageKeyParam); // Clean up image URI if data key is missing
              setIsLoading(false);
              setInitialDataLoaded(true);
             return;
@@ -102,7 +99,6 @@ function EditInvoiceContent() {
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
              if (key) localStorage.removeItem(key);
-             if (imageKeyParam) localStorage.removeItem(imageKeyParam);
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -139,7 +135,6 @@ function EditInvoiceContent() {
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
           if (key) localStorage.removeItem(key);
-          if (imageKeyParam) localStorage.removeItem(imageKeyParam);
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -237,32 +232,15 @@ function EditInvoiceContent() {
   const proceedWithFinalSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true);
       try {
-          let retrievedInvoiceDataUri: string | undefined = undefined;
-          if (imageUriStorageKey) {
-              retrievedInvoiceDataUri = localStorage.getItem(imageUriStorageKey) || undefined;
-              if (retrievedInvoiceDataUri) {
-                console.log(`[EditInvoice] Retrieved image URI from localStorage for key: ${imageUriStorageKey}`);
-              } else {
-                console.warn(`[EditInvoice] No image URI found in localStorage for key: ${imageUriStorageKey}`);
-              }
-          } else {
-            console.log("[EditInvoice] No image URI key provided, image will not be saved with invoice history.");
-          }
-
-          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with image URI (if any):", retrievedInvoiceDataUri ? "Present" : "Absent");
-
-          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', retrievedInvoiceDataUri, tempInvoiceId || undefined);
-
+          console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId);
+          // The invoiceDataUri is now directly included in the tempInvoiceId record, so it's not passed here.
+          await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', tempInvoiceId || undefined);
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
               console.log(`Removed temp scan data with key: ${dataKey}`);
           }
-          if (imageUriStorageKey) {
-              localStorage.removeItem(imageUriStorageKey);
-              console.log(`Removed temp image URI with key: ${imageUriStorageKey}`);
-          }
-
+          // Image URI in temp store is implicitly handled by finalizeSaveProductsService if it needs it.
 
           toast({
               title: "Products Saved",
@@ -392,10 +370,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             localStorage.removeItem(dataKey);
             console.log(`Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
         }
-        if (imageUriStorageKey) {
-            localStorage.removeItem(imageUriStorageKey);
-            console.log(`Cleared temp image URI with key ${imageUriStorageKey} on explicit back navigation.`);
-        }
+        // The imageUriKey is removed when finalizeSaveProductsService is called or if initial load fails.
+        // Here, we are just going back without saving, so related temp data should be cleared.
         router.push('/upload');
     };
 
@@ -431,7 +407,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.
                      </AlertDescription>
                  </Alert>
-                 <Card className="shadow-md">
+                 <Card className="shadow-md scale-fade-in">
                      <CardHeader>
                          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
                          <CardDescription>
@@ -475,7 +451,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         {`The document scan encountered an issue: ${scanProcessError}. You can try adding rows manually or go back and upload again.`}
                     </AlertDescription>
                 </Alert>
-                 <Card className="shadow-md">
+                 <Card className="shadow-md scale-fade-in">
                      <CardHeader>
                          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
                          <CardDescription>
@@ -513,7 +489,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-      <Card className="shadow-md">
+      <Card className="shadow-md scale-fade-in">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
           <CardDescription>
@@ -521,8 +497,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -680,4 +657,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

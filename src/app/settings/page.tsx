@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Settings as SettingsIcon, User, LogIn, Plug } from 'lucide-react'; // Added LogIn icon, Plug icon
 import Link from 'next/link'; // Import Link
 import { Button } from '@/components/ui/button'; // Import Button
+import { cn } from '@/lib/utils';
 
 
 export default function SettingsPage() {
@@ -28,7 +29,7 @@ export default function SettingsPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-      <Card className="shadow-md">
+      <Card className="shadow-md scale-fade-in">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold text-primary flex items-center">
             <SettingsIcon className="mr-2 h-6 w-6" /> Settings
@@ -42,7 +43,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-6">
            {user ? (
               <>
-                <Card>
+                <Card className="scale-fade-in" style={{animationDelay: '0.1s'}}>
                      <CardHeader>
                         <CardTitle className="text-lg flex items-center"><User className="mr-2 h-5 w-5" /> User Profile</CardTitle>
                      </CardHeader>
@@ -55,7 +56,7 @@ export default function SettingsPage() {
                 </Card>
 
                  {/* POS Integration Link Card */}
-                 <Card>
+                 <Card className="scale-fade-in" style={{animationDelay: '0.2s'}}>
                     <CardHeader>
                         <CardTitle className="text-lg flex items-center">
                             <Plug className="mr-2 h-5 w-5" /> POS Integration
@@ -74,7 +75,7 @@ export default function SettingsPage() {
                  </Card>
               </>
            ) : (
-               <div className="text-center p-6 border rounded-md bg-muted/50">
+               <div className="text-center p-6 border rounded-md bg-muted/50 scale-fade-in">
                   <p className="text-muted-foreground mb-4">You need to be logged in to view your settings.</p>
                   <Button asChild>
                      <Link href="/login">
@@ -88,7 +89,7 @@ export default function SettingsPage() {
            {/* Add more setting sections as needed - only show if user is logged in */}
            {/* Example: Notification Settings */}
            {/* {user && (
-               <Card>
+               <Card className="scale-fade-in" style={{animationDelay: '0.3s'}}>
                     <CardHeader>
                        <CardTitle className="text-lg">Notifications</CardTitle>
                     </CardHeader>
@@ -98,7 +99,7 @@ export default function SettingsPage() {
                 </Card>
             )} */}
 
-           {user && <p className="text-center text-muted-foreground mt-8">More settings coming soon!</p>}
+           {user && <p className="text-center text-muted-foreground mt-8 scale-fade-in" style={{animationDelay: '0.4s'}}>More settings coming soon!</p>}
 
         </CardContent>
       </Card>

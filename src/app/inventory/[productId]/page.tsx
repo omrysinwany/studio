@@ -51,13 +51,15 @@ const formatDisplayNumber = (
 // Helper function for input values (no grouping, fixed decimals for currency, or integer for quantity)
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
     if (value === null || value === undefined || isNaN(value)) {
+        if (fieldType === 'stockLevel' && value === null) return ''; // Allow empty for stock levels
         return fieldType === 'currency' ? '0.00' : '0';
     }
     // Use toFixed for consistent decimal places, but parse as float first to handle potential strings
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return parseInt(String(value), 10).toString(); // For quantity and stockLevel, ensure integer
+     // For quantity and stockLevel, ensure integer, unless stockLevel is explicitly null/empty
+    return parseInt(String(value), 10).toString();
 };
 
 // Helper function to format quantity as integer for display (with grouping)
@@ -120,12 +122,16 @@ export default function ProductDetailPage() {
 
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string = value;
+      let numericValue: number | string | null = value; // Allow null for stock levels
       if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
-          numericValue = parseFloat(stringValue.replace(/,/g, ''));
-          if (isNaN(numericValue)) {
-             numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? (value === '' ? null : 0) : 0; // Allow empty for stock levels -> null
+          if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel')) {
+              numericValue = null; // Set to null if empty for stock levels
+          } else {
+            numericValue = parseFloat(stringValue.replace(/,/g, ''));
+            if (isNaN(numericValue as number)) {
+               numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? null : 0;
+            }
           }
       }
 
@@ -184,7 +190,7 @@ export default function ProductDetailPage() {
       await deleteProductService(product.id);
       toast({
         title: "Product Deleted",
-        description: `Product "${product.description}" has been deleted.`,
+        description: `Product "${product.shortName || product.description}" has been deleted.`,
       });
       router.push('/inventory?refresh=true');
     } catch (err) {
@@ -273,7 +279,7 @@ export default function ProductDetailPage() {
 
          const inputValue =
            inputType === 'number'
-             ? formatInputValue(value as number | undefined | null, isCurrency ? 'currency' : (isQuantity || isStockLevel ? 'stockLevel' : 'currency')) // Adjust for stockLevel type
+             ? formatInputValue(value as number | undefined | null, isCurrency ? 'currency' : (isStockLevel ? 'stockLevel' : 'quantity'))
              : (value as string) || '';
 
 
@@ -397,7 +403,7 @@ export default function ProductDetailPage() {
         </div>
        </div>
 
-      <Card className="shadow-lg">
+      <Card className="shadow-lg scale-fade-in">
         <CardHeader>
            {isEditing ? (
              <>

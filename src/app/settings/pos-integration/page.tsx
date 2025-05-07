@@ -13,14 +13,15 @@ import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integr
 import {
     savePosSettingsService,
     getPosSettingsService,
-    finalizeSaveProductsService // Corrected import name
+    finalizeSaveProductsService
 } from '@/services/backend';
 import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
 import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the inventory sync action
 import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from '@/components/ui/separator'; // Import Separator
+import { cn } from '@/lib/utils';
 
 type PosSystemInfo = { systemId: string; systemName: string };
 
@@ -252,7 +253,7 @@ export default function PosIntegrationSettingsPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-      <Card className="shadow-md">
+      <Card className="shadow-md scale-fade-in">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
             <Plug className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Point of Sale (POS) Integration
@@ -281,7 +282,7 @@ export default function PosIntegrationSettingsPage() {
           </div>
 
           {selectedSystemId && (
-            <Card className="bg-muted/30 p-4 md:p-6 space-y-4 border">
+            <Card className="bg-muted/30 p-4 md:p-6 space-y-4 border scale-fade-in" style={{animationDelay: '0.1s'}}>
                 <h3 className="text-lg font-medium mb-4">
                     Configure {availableSystems.find(s => s.systemId === selectedSystemId)?.systemName}
                 </h3>
@@ -324,7 +325,7 @@ export default function PosIntegrationSettingsPage() {
           )}
 
            {selectedSystemId && (
-               <Card className="p-4 md:p-6 space-y-4 border">
+               <Card className="p-4 md:p-6 space-y-4 border scale-fade-in" style={{animationDelay: '0.2s'}}>
                    <h3 className="text-lg font-medium">Manual Inventory Synchronization</h3>
                    <Separator />
                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -357,7 +358,7 @@ export default function PosIntegrationSettingsPage() {
 
 
           {!selectedSystemId && availableSystems.length > 0 && (
-            <Alert>
+            <Alert className="scale-fade-in" style={{animationDelay: '0.1s'}}>
               <AlertTitle>Select a System</AlertTitle>
               <AlertDescription>
                 Please choose a POS system from the list above to configure the integration.
@@ -365,7 +366,7 @@ export default function PosIntegrationSettingsPage() {
             </Alert>
           )}
             {!selectedSystemId && availableSystems.length === 0 && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="scale-fade-in" style={{animationDelay: '0.1s'}}>
               <AlertTitle>No Adapters Available</AlertTitle>
               <AlertDescription>
                 No POS system adapters are currently configured in the application. Add adapters in the code to enable integration.

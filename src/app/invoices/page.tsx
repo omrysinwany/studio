@@ -326,6 +326,7 @@ export default function InvoicesPage() {
             title: "Save Failed",
             description: "Could not save invoice details.",
             variant: "destructive",
+            duration: 6000,
         });
     } finally {
         setIsSavingDetails(false);
@@ -430,7 +431,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-      <Card className="shadow-md bg-card text-card-foreground">
+      <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
@@ -732,7 +733,7 @@ export default function InvoicesPage() {
                 <p className="col-span-full text-center text-muted-foreground py-10">No invoices found.</p>
               ) : (
                 filteredAndSortedInvoices.map((item) => (
-                  <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleViewDetails(item)}>
+                  <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                     <CardHeader className="p-0 relative aspect-[4/3]">
                       {item.invoiceDataUri ? (
                         <NextImage
@@ -896,4 +897,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-

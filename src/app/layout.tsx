@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'InvoTrack Mobile',
+  title: 'InvoTrack',
   description: 'Inventory management based on delivery notes and invoices',
 };
 
@@ -37,8 +37,8 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <AuthProvider>
-              <Navigation /> {/* Add Navigation */}
-              <main className="flex-grow"> {/* Ensure main content takes up space */}
+              <Navigation />
+              <main className="flex-grow fade-in-content"> {/* Apply fade-in animation to main content */}
                  {children}
               </main>
               <Toaster />
@@ -48,4 +48,3 @@ export default function RootLayout({
     </html>
   );
 }
-

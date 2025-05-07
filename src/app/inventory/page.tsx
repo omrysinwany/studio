@@ -25,7 +25,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Down
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend';
+import { Product, getProductsService, clearInventoryService } from '@/services/backend'; // Corrected import and added clearInventoryService
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -93,8 +93,8 @@ export default function InventoryPage() {
     quantity: true,
     unitPrice: true,
     lineTotal: false,
-    minStockLevel: false,
-    maxStockLevel: false,
+    minStockLevel: true,
+    maxStockLevel: true,
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -255,8 +255,8 @@ export default function InventoryPage() {
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]', headerClassName: 'text-center' },
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
         { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
-        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
+        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
@@ -347,7 +347,7 @@ export default function InventoryPage() {
 
   return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-       <Card className="shadow-md bg-card text-card-foreground">
+       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
          <CardHeader>
            <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
               <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Inventory Overview
@@ -618,4 +618,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
