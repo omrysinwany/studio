@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -60,7 +59,7 @@ function EditInvoiceContent() {
 
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
-  const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false); // State for sheet visibility
+  const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false); 
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   
   const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
@@ -98,6 +97,7 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
+            // Clear any potentially related keys if primary data is missing
              if (key) localStorage.removeItem(key); 
              if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
              if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
@@ -183,7 +183,7 @@ function EditInvoiceContent() {
     setProducts(prevProducts =>
       prevProducts.map(product => {
         if (product.id === id) {
-          let numericValue: number | string | undefined = value;
+          let numericValue: number | string | undefined = value; 
           if (['quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
               const stringValue = String(value);
               if (stringValue.trim() === '' && ['salePrice', 'minStockLevel', 'maxStockLevel'].includes(field)) {
@@ -254,15 +254,21 @@ function EditInvoiceContent() {
           let imageUriForFinalSave: string | undefined = undefined;
           if (compressedImageKey) {
               imageUriForFinalSave = localStorage.getItem(compressedImageKey) || undefined;
+              console.log(`[EditInvoice] Retrieved compressed image for final save (key: ${compressedImageKey}). Exists: ${!!imageUriForFinalSave}`);
+          } else {
+              console.log("[EditInvoice] No compressed image key found, no image will be passed for final save.");
           }
-
-          console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri (from compressedKey):", imageUriForFinalSave ? 'Exists' : 'Does not exist');
+          
+          console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
           
           await finalizeSaveProductsService(productsForService, fileName, 'upload', tempInvoiceId || undefined, imageUriForFinalSave);
 
+          // Clear all related localStorage items after successful save
           if (dataKey) localStorage.removeItem(dataKey);
           if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
           if (compressedImageKey) localStorage.removeItem(compressedImageKey);
+          console.log("[EditInvoice] All temporary localStorage keys cleared after successful save.");
+
 
           toast({
               title: "Products Saved",
@@ -325,7 +331,7 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         if (newProductsNeedingDetails.length > 0) {
             setProductsForNextStep(productsReadyForDetailCheck);
             setPromptingForNewProductDetails(newProductsNeedingDetails);
-            setIsBarcodePromptOpen(true); // Open the sheet
+            setIsBarcodePromptOpen(true); 
             setIsSaving(false);
         } else {
             await proceedWithFinalSave(productsReadyForDetailCheck);
@@ -364,7 +370,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
  const handleNewProductDetailsComplete = (updatedNewProducts: Product[] | null) => {
      setPromptingForNewProductDetails(null);
-     setIsBarcodePromptOpen(false); // Close the sheet
+     setIsBarcodePromptOpen(false); 
      if (updatedNewProducts) {
          const finalProductsToSave = productsForNextStep.map(originalProduct => {
              const updatedVersion = updatedNewProducts.find(unp => unp.id === originalProduct.id);
@@ -666,3 +672,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+

@@ -10,7 +10,7 @@ export interface Product {
   barcode?: string;
   quantity: number;
   unitPrice: number;
-  salePrice?: number; // Added sale price
+  salePrice?: number; 
   lineTotal: number;
   minStockLevel?: number;
   maxStockLevel?: number;
@@ -118,9 +118,8 @@ const saveStoredData = <T>(key: string, data: T): void => {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
     console.error(`Error writing ${key} to localStorage:`, error);
-    // Potentially re-throw or handle quota exceeded specifically if needed by callers
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.includes('exceeded the quota'))) {
-        throw error; // Re-throw quota error to be handled by caller
+        throw error; 
     }
   }
 };
@@ -170,16 +169,16 @@ export async function checkProductPricesBeforeSaveService(
             if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 console.log(`Price discrepancy found for product ID ${existingProduct.id}. Existing: ${existingUnitPrice}, New: ${unitPriceFromScan}`);
                 priceDiscrepancies.push({
-                    ...scannedProduct, // This includes the potentially new salePrice from the scan/edit
+                    ...scannedProduct, 
                     id: existingProduct.id,
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                 });
             } else {
                 productsToSaveDirectly.push({
-                    ...scannedProduct, // Also includes potentially new salePrice
+                    ...scannedProduct, 
                     id: existingProduct.id,
-                    unitPrice: existingUnitPrice // Keep existing unit price if no discrepancy
+                    unitPrice: existingUnitPrice 
                 });
             }
         } else {
@@ -196,9 +195,10 @@ export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
     fileName: string,
     source: string = 'upload',
-    tempInvoiceId?: string
+    tempInvoiceId?: string,
+    invoiceDataUriToSave?: string // Renamed from invoiceDataUri to avoid conflict
 ): Promise<void> {
-    console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId})`, productsToFinalizeSave);
+    console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
     await new Promise(resolve => setTimeout(resolve, 100));
 
     let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
@@ -206,19 +206,7 @@ export async function finalizeSaveProductsService(
 
     let calculatedInvoiceTotalAmount = 0;
     let productsProcessedSuccessfully = true;
-    let retrievedInvoiceDataUri: string | undefined = undefined;
-
-    if (tempInvoiceId && source === 'upload') {
-        const tempInvoiceRecord = currentInvoices.find(inv => inv.id === tempInvoiceId && inv.status === 'pending');
-        if (tempInvoiceRecord) {
-            retrievedInvoiceDataUri = tempInvoiceRecord.invoiceDataUri;
-            console.log(`Retrieved invoiceDataUri for tempInvoiceId ${tempInvoiceId}`);
-        } else {
-            console.warn(`Could not find PENDING invoice record for tempInvoiceId: ${tempInvoiceId} to retrieve invoiceDataUri.`);
-        }
-    }
-
-
+    
     try {
         const updatedInventory = [...currentInventory];
 
@@ -254,8 +242,6 @@ export async function finalizeSaveProductsService(
                 existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
                 existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
-                // Description and shortName are typically not updated during quantity/price updates from an invoice
-                // unless explicitly intended. Keeping existing ones if not provided in productToSave.
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
 
@@ -316,7 +302,7 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(), 
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, 
+                invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
             };
             console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
@@ -329,7 +315,7 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, 
+                invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices];
@@ -434,7 +420,6 @@ export async function updateProductService(productId: string, updatedData: Parti
          updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
     }
     updatedProduct.barcode = updatedProduct.barcode || undefined;
-    // Handle salePrice: allow setting to undefined if explicitly passed as null/undefined
     updatedProduct.salePrice = updatedData.salePrice === null || updatedData.salePrice === undefined 
                               ? undefined 
                               : (Number.isFinite(updatedData.salePrice) ? Number(updatedData.salePrice) : currentInventory[productIndex].salePrice);

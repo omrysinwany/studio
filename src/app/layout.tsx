@@ -1,11 +1,11 @@
-
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/AuthContext';
-import Navigation from '@/components/layout/Navigation'; // Import Navigation
-import { ThemeProvider } from "@/components/theme-provider"; // Import ThemeProvider
+import Navigation from '@/components/layout/Navigation'; 
+import { ThemeProvider } from "@/components/theme-provider"; 
+
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
 });
+
 
 export const metadata: Metadata = {
   title: 'InvoTrack',
@@ -38,7 +39,7 @@ export default function RootLayout({
           >
             <AuthProvider>
               <Navigation />
-              <main className="flex-grow fade-in-content"> {/* Apply fade-in animation to main content */}
+              <main className="flex-grow fade-in-content"> 
                  {children}
               </main>
               <Toaster />
