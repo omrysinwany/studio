@@ -1,15 +1,16 @@
 
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+  SheetClose, // Added SheetClose for explicit close button
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,10 +22,13 @@ import { toast } from '@/hooks/use-toast';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface BarcodePromptDialogProps {
   products: Product[];
   onComplete: (updatedProducts: Product[] | null) => void;
+  isOpen: boolean; // Added isOpen prop to control sheet visibility from parent
+  onOpenChange: (isOpen: boolean) => void; // Added onOpenChange prop
 }
 
 type SalePriceMethod = 'manual' | 'percentage';
@@ -39,9 +43,9 @@ interface ProductInputState {
 const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
   products: initialProductsFromProps,
   onComplete,
+  isOpen,
+  onOpenChange,
 }) => {
-  // Use a state for initialProducts to handle potential updates from parent if necessary,
-  // though for this dialog, it's typically a one-time pass.
   const [initialProducts, setInitialProducts] = useState<Product[]>([...initialProductsFromProps]);
   const [productsToDisplay, setProductsToDisplay] = useState<Product[]>([...initialProductsFromProps]);
   const [productInputStates, setProductInputStates] = useState<Record<string, ProductInputState>>(
@@ -55,8 +59,25 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
       return acc;
     }, {} as Record<string, ProductInputState>)
   );
-  const [skippedProductIds, setSkippedProductIds] = useState<Set<string>>(new Set());
   const [currentScanningProductId, setCurrentScanningProductId] = useState<string | null>(null);
+
+  // Reset productsToDisplay when initialProductsFromProps changes (e.g., new scan)
+  React.useEffect(() => {
+    setInitialProducts([...initialProductsFromProps]);
+    setProductsToDisplay([...initialProductsFromProps]);
+    setProductInputStates(
+      initialProductsFromProps.reduce((acc, p) => {
+        acc[p.id] = {
+          barcode: p.barcode || '',
+          salePrice: p.salePrice,
+          salePriceMethod: p.salePrice !== undefined ? 'manual' : 'percentage',
+          profitPercentage: '',
+        };
+        return acc;
+      }, {} as Record<string, ProductInputState>)
+    );
+  }, [initialProductsFromProps]);
+
 
   const handleInputChange = useCallback((productId: string, field: keyof ProductInputState, value: string | number | SalePriceMethod) => {
     setProductInputStates(prevStates => {
@@ -74,7 +95,6 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
         currentState.salePriceMethod = value as SalePriceMethod;
       }
 
-      // Auto-calculate sale price if method is percentage
       if (currentState.salePriceMethod === 'percentage') {
         const percentageStr = currentState.profitPercentage;
         if (product.unitPrice && percentageStr) {
@@ -82,10 +102,10 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
           if (!isNaN(percentage) && percentage >= 0) {
             currentState.salePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
           } else if (percentageStr.trim() === '') {
-            currentState.salePrice = undefined; // Clear sale price if percentage is cleared
+            currentState.salePrice = undefined;
           }
         } else {
-          currentState.salePrice = undefined; // Clear if no unit price or percentage
+          currentState.salePrice = undefined;
         }
       }
       return { ...prevStates, [productId]: currentState };
@@ -114,7 +134,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     const state = productInputStates[productId];
     const product = initialProducts.find(p => p.id === productId);
 
-    if (!state || !product) return false; // Should not happen
+    if (!state || !product) return false;
 
     if (state.salePrice === undefined || state.salePrice === null || isNaN(Number(state.salePrice)) || Number(state.salePrice) <= 0) {
       toast({
@@ -127,7 +147,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     return true;
   };
 
-  const handleConfirmAndRemoveProduct = useCallback((productId: string) => {
+  const handleConfirmProduct = useCallback((productId: string) => {
     if (!validateProductInputs(productId)) return;
 
     setProductsToDisplay(prev => prev.filter(p => p.id !== productId));
@@ -135,23 +155,12 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     toast({
       title: 'Details Set',
       description: `Details for "${product?.shortName || product?.description}" are ready.`,
+      variant: 'default'
     });
   }, [productInputStates, initialProducts]);
 
 
-  const handleSkipProduct = useCallback((productId: string) => {
-    setSkippedProductIds(prev => new Set(prev).add(productId));
-    setProductsToDisplay(prev => prev.filter(p => p.id !== productId));
-    const product = initialProducts.find(p => p.id === productId);
-    toast({
-      title: 'Product Skipped',
-      description: `"${product?.shortName || product?.description}" will not be added with new details.`,
-    });
-  }, [initialProducts]);
-
-
   const handleSaveAllAndContinue = () => {
-    // Validate any remaining products in the display list
     for (const product of productsToDisplay) {
       if (!validateProductInputs(product.id)) {
         toast({
@@ -160,13 +169,11 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
           variant: 'destructive',
           duration: 7000,
         });
-        return; // Stop if any displayed product is invalid
+        return;
       }
     }
 
-    // Construct the final list of products to return
     const productsToReturn: Product[] = initialProducts
-      .filter(p => !skippedProductIds.has(p.id)) // Exclude skipped products
       .map(p => {
         const inputs = productInputStates[p.id];
         return {
@@ -177,29 +184,32 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
       });
 
     onComplete(productsToReturn);
+    onOpenChange(false); // Close sheet on completion
   };
 
-  const handleCancel = () => onComplete(null);
-
-  const processedCount = initialProducts.length - productsToDisplay.length - skippedProductIds.size;
-  const remainingToProcessCount = productsToDisplay.length;
-
+  const handleCancel = () => {
+    onComplete(null);
+    onOpenChange(false); // Close sheet on cancel
+  };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="max-w-xl w-[95vw] sm:max-w-2xl md:max-w-3xl max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-4 sm:p-6 border-b shrink-0">
-          <DialogTitle className="flex items-center text-lg sm:text-xl">
+    <Sheet open={isOpen} onOpenChange={(open) => {
+      onOpenChange(open);
+      if (!open) handleCancel(); // Ensure onComplete(null) is called if sheet is closed externally
+    }}>
+      <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
+        <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
+          <SheetTitle className="flex items-center text-lg sm:text-xl">
             <PackagePlus className="mr-2 h-5 w-5 text-primary" />
             Assign Details to New Products
-          </DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm">
-            For each new product, provide a sale price. Barcode is optional. Confirm or skip each item.
-            {productsToDisplay.length > 0 ? ` (${productsToDisplay.length} remaining to review).` : ' All products reviewed.'}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetTitle>
+          <SheetDescription className="text-xs sm:text-sm">
+            For each new product, provide a sale price. Barcode is optional. Confirm details for each item.
+            {productsToDisplay.length > 0 ? ` (${productsToDisplay.length} remaining).` : ' All products reviewed.'}
+          </SheetDescription>
+        </SheetHeader>
 
-        {productsToDisplay.length === 0 ? (
+        {productsToDisplay.length === 0 && initialProducts.length > 0 ? (
           <div className="flex-grow flex flex-col items-center justify-center p-6 text-center">
             <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
             <p className="text-lg font-medium">All new products reviewed!</p>
@@ -207,38 +217,28 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
               Click "Save All & Continue" to finalize.
             </p>
           </div>
+        ) : initialProducts.length === 0 ? (
+           <div className="flex-grow flex flex-col items-center justify-center p-6 text-center">
+            <p className="text-lg font-medium">No new products to process.</p>
+          </div>
         ) : (
           <ScrollArea className="flex-grow border-b flex-shrink min-h-0">
-            <div className="p-3 sm:p-4 space-y-4">
+            <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
               {productsToDisplay.map((product) => {
                 const state = productInputStates[product.id];
-                if (!state) return null; // Should ideally not happen
+                if (!state) return null;
 
                 return (
-                  <Card key={product.id} className="bg-card shadow-sm">
+                  <Card key={product.id} className="bg-card shadow-sm rounded-md">
                     <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex-grow">
-                          <CardTitle className="text-base sm:text-lg font-semibold leading-tight">
-                            {product.shortName || product.description}
-                          </CardTitle>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Catalog: {product.catalogNumber || 'N/A'} | Qty:{' '}
-                            {product.quantity} | Cost:{' '}
-                            {product.unitPrice !== undefined ? `₪${product.unitPrice.toFixed(2)}` : 'N/A'}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSkipProduct(product.id)}
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                          aria-label={`Skip product ${product.shortName || product.description}`}
-                          title="Skip this product"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <CardTitle className="text-base sm:text-lg font-semibold leading-tight">
+                        {product.shortName || product.description}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Catalog: {product.catalogNumber || 'N/A'} | Qty:{' '}
+                        {product.quantity} | Cost:{' '}
+                        {product.unitPrice !== undefined ? `₪${product.unitPrice.toFixed(2)}` : 'N/A'}
+                      </p>
                     </CardHeader>
                     <CardContent className="p-3 sm:p-4 pt-0 space-y-3">
                       <Separator className="my-2" />
@@ -346,7 +346,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                           type="button"
                           variant="default"
                           size="sm"
-                          onClick={() => handleConfirmAndRemoveProduct(product.id)}
+                          onClick={() => handleConfirmProduct(product.id)}
                           className="w-full text-xs sm:text-sm h-9 bg-primary hover:bg-primary/90"
                         >
                           <CheckCircle className="mr-1.5 h-4 w-4" />
@@ -361,22 +361,22 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
           </ScrollArea>
         )}
 
-        <DialogFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0">
-          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-            <X className="mr-1.5 h-4 w-4" /> Cancel Save Process
-          </Button>
+        <SheetFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
+          <SheetClose asChild>
+            <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+              <X className="mr-1.5 h-4 w-4" /> Cancel Save Process
+            </Button>
+          </SheetClose>
           <Button
             onClick={handleSaveAllAndContinue}
             className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10 bg-accent hover:bg-accent/90"
-            // Disable if there are products to display but something is invalid (this is handled inside the function now)
-            // Or if there are no initial products (nothing to save).
             disabled={initialProducts.length === 0 && productsToDisplay.length === 0}
           >
             <Save className="mr-1.5 h-4 w-4" />
              Save All & Continue
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </SheetFooter>
+      </SheetContent>
 
       {currentScanningProductId && (
         <BarcodeScanner
@@ -384,7 +384,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
           onClose={handleScannerClose}
         />
       )}
-    </Dialog>
+    </Sheet>
   );
 };
 

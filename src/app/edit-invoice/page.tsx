@@ -53,7 +53,6 @@ function EditInvoiceContent() {
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [scanProcessError, setScanProcessError] = useState<string | null>(null);
   
-  // Store keys from query params for later cleanup
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
   const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
@@ -61,6 +60,7 @@ function EditInvoiceContent() {
 
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
+  const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false); // State for sheet visibility
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   
   const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
@@ -98,7 +98,7 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-             if (key) localStorage.removeItem(key); // Early cleanup of dataKey if data is missing
+             if (key) localStorage.removeItem(key); 
              if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
              if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
              setIsLoading(false);
@@ -208,9 +208,9 @@ function EditInvoiceContent() {
                if (quantity !== 0) {
                    updatedProduct.unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
                } else if (lineTotal !== 0) {
-                    updatedProduct.unitPrice = 0; // Or handle as an error, as unit price can't be determined
+                    updatedProduct.unitPrice = 0; 
                } else {
-                    updatedProduct.unitPrice = 0; // If both are zero
+                    updatedProduct.unitPrice = 0; 
                }
           }
           return updatedProduct;
@@ -254,29 +254,15 @@ function EditInvoiceContent() {
           let imageUriForFinalSave: string | undefined = undefined;
           if (compressedImageKey) {
               imageUriForFinalSave = localStorage.getItem(compressedImageKey) || undefined;
-              if (!imageUriForFinalSave) {
-                console.warn(`[EditInvoice] Compressed image URI not found in localStorage for key ${compressedImageKey}. Final invoice record might not have an image if direct data was too large.`);
-              }
           }
 
           console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri (from compressedKey):", imageUriForFinalSave ? 'Exists' : 'Does not exist');
           
-          await finalizeSaveProductsService(productsForService, fileName, 'upload', imageUriForFinalSave, tempInvoiceId || undefined);
+          await finalizeSaveProductsService(productsForService, fileName, 'upload', tempInvoiceId || undefined, imageUriForFinalSave);
 
-          // Clear temporary localStorage items
-          if (dataKey) {
-              localStorage.removeItem(dataKey);
-              console.log(`[EditInvoice] Removed temp scan data with key: ${dataKey}`);
-          }
-          if (originalImagePreviewKey) {
-            localStorage.removeItem(originalImagePreviewKey);
-            console.log(`[EditInvoice] Removed temp original image preview URI with key: ${originalImagePreviewKey}`);
-          }
-          if (compressedImageKey) {
-            localStorage.removeItem(compressedImageKey);
-            console.log(`[EditInvoice] Removed temp compressed image URI with key: ${compressedImageKey}`);
-          }
-
+          if (dataKey) localStorage.removeItem(dataKey);
+          if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
+          if (compressedImageKey) localStorage.removeItem(compressedImageKey);
 
           toast({
               title: "Products Saved",
@@ -301,10 +287,8 @@ function EditInvoiceContent() {
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
-        console.log("Products passed to checkProductPricesBeforeSaveService:", productsFromEdit);
         const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit, tempInvoiceId || undefined);
-        console.log("Price check result:", priceCheckResult);
-
+        
         setProductsForNextStep(priceCheckResult.productsToSaveDirectly);
 
         if (priceCheckResult.priceDiscrepancies.length > 0) {
@@ -314,7 +298,7 @@ function EditInvoiceContent() {
             await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
         }
     } catch (error) {
-        console.error("Error during initial save checks (price/barcode/salePrice):", error);
+        console.error("Error during initial save checks:", error);
         toast({
             title: "Error Preparing Save",
             description: `Could not prepare data for saving: ${(error as Error).message}. Please try again.`,
@@ -339,12 +323,11 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         });
 
         if (newProductsNeedingDetails.length > 0) {
-            console.log("New products needing details:", newProductsNeedingDetails);
             setProductsForNextStep(productsReadyForDetailCheck);
             setPromptingForNewProductDetails(newProductsNeedingDetails);
+            setIsBarcodePromptOpen(true); // Open the sheet
             setIsSaving(false);
         } else {
-            console.log("No new products, proceeding to final save with:", productsReadyForDetailCheck);
             await proceedWithFinalSave(productsReadyForDetailCheck);
         }
     } catch (error) {
@@ -367,7 +350,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
         });
         
-        console.log("Products after price confirmation, ready for detail check:", allProductsAfterPriceCheck);
         checkForNewProductsAndDetails(allProductsAfterPriceCheck);
     } else {
         toast({
@@ -382,6 +364,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
  const handleNewProductDetailsComplete = (updatedNewProducts: Product[] | null) => {
      setPromptingForNewProductDetails(null);
+     setIsBarcodePromptOpen(false); // Close the sheet
      if (updatedNewProducts) {
          const finalProductsToSave = productsForNextStep.map(originalProduct => {
              const updatedVersion = updatedNewProducts.find(unp => unp.id === originalProduct.id);
@@ -394,11 +377,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              }
              return originalProduct;
          });
-
-         console.log("Final products to save after new product details prompt:", finalProductsToSave);
          proceedWithFinalSave(finalProductsToSave);
      } else {
-         console.log("New product detail entry was cancelled.");
          toast({
              title: "Save Process Incomplete",
              description: "New product detail entry was cancelled. Changes were not fully saved.",
@@ -410,18 +390,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
 
     const handleGoBack = () => {
-        if (dataKey) {
-            localStorage.removeItem(dataKey);
-            console.log(`[EditInvoice] Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
-        }
-        if (originalImagePreviewKey) {
-          localStorage.removeItem(originalImagePreviewKey);
-          console.log(`[EditInvoice] Cleared temp original image preview URI with key: ${originalImagePreviewKey}`);
-        }
-        if (compressedImageKey) {
-            localStorage.removeItem(compressedImageKey);
-            console.log(`[EditInvoice] Cleared temp compressed image URI with key: ${compressedImageKey}`);
-        }
+        if (dataKey) localStorage.removeItem(dataKey);
+        if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
+        if (compressedImageKey) localStorage.removeItem(compressedImageKey);
         router.push('/upload');
     };
 
@@ -547,9 +518,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -669,6 +639,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         <BarcodePromptDialog
           products={promptingForNewProductDetails}
           onComplete={handleNewProductDetailsComplete}
+          isOpen={isBarcodePromptOpen}
+          onOpenChange={setIsBarcodePromptOpen}
         />
       )}
 
