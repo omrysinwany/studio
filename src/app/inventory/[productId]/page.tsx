@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -26,6 +25,7 @@ import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 
 
+// Helper to format numbers for display
 const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -33,7 +33,7 @@ const formatDisplayNumber = (
     const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, {
+        return (0).toLocaleString(undefined, { // Default to 0 for display if invalid
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -47,16 +47,22 @@ const formatDisplayNumber = (
     });
 };
 
+// Helper to format numbers for input fields
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
+    // For optional fields like salePrice, minStock, maxStock, allow empty string if value is undefined/null
+    if ((fieldType === 'currency' || fieldType === 'stockLevel') && (value === undefined || value === null)) {
+        return '';
+    }
     if (value === null || value === undefined || isNaN(value)) {
-        if ((fieldType === 'stockLevel' || fieldType === 'currency') && value === null) return ''; // Allow empty for stock levels and sale price
         return fieldType === 'currency' ? '0.00' : '0';
     }
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return parseInt(String(value), 10).toString();
+    // For quantity, ensure it's an integer for display, but allow float for calculation if needed
+    return String(value); // Allow floats for quantity input, parse on change
 };
+
 
 const formatIntegerQuantity = (
     value: number | undefined | null
@@ -88,7 +94,7 @@ export default function ProductDetailPage() {
       const data = await getProductByIdService(productId);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data });
+        setEditedProduct({ ...data }); // Initialize editedProduct with fetched data
       } else {
         setError("Product not found.");
          toast({
@@ -117,20 +123,20 @@ export default function ProductDetailPage() {
 
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string | null = value; 
+      let numericValue: number | string | null | undefined = value; // Allow undefined for optional fields
       if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
           if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
-              numericValue = null; 
+              numericValue = undefined; // Set to undefined for empty optional fields
           } else {
             numericValue = parseFloat(stringValue.replace(/,/g, ''));
             if (isNaN(numericValue as number)) {
-               numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? null : 0;
+               numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
             }
           }
       }
 
-      const updated = { ...prev, [field]: numericValue === null ? undefined : numericValue };
+      const updated = { ...prev, [field]: numericValue };
 
 
       if (field === 'quantity' || field === 'unitPrice') {
@@ -146,14 +152,30 @@ export default function ProductDetailPage() {
   const handleSave = async () => {
     if (!product || !product.id) return;
 
+    // Validate Sale Price
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
-            title: "Missing Sale Price",
+            title: "Missing or Invalid Sale Price",
             description: "Please enter a valid sale price for the product.",
             variant: "destructive"
         });
         return;
     }
+    // Validate Min Stock Level (must be number if not empty, or empty)
+    if (editedProduct.minStockLevel !== undefined && editedProduct.minStockLevel !== null && (isNaN(Number(editedProduct.minStockLevel)) || Number(editedProduct.minStockLevel) < 0)) {
+      toast({ title: "Invalid Min Stock", description: "Minimum stock level must be a non-negative number.", variant: "destructive" });
+      return;
+    }
+    // Validate Max Stock Level
+    if (editedProduct.maxStockLevel !== undefined && editedProduct.maxStockLevel !== null && (isNaN(Number(editedProduct.maxStockLevel)) || Number(editedProduct.maxStockLevel) < 0)) {
+      toast({ title: "Invalid Max Stock", description: "Maximum stock level must be a non-negative number.", variant: "destructive" });
+      return;
+    }
+    if (editedProduct.minStockLevel !== undefined && editedProduct.maxStockLevel !== undefined && Number(editedProduct.minStockLevel) > Number(editedProduct.maxStockLevel)) {
+        toast({ title: "Invalid Stock Levels", description: "Minimum stock cannot be greater than maximum stock.", variant: "destructive" });
+        return;
+    }
+
 
     setIsSaving(true);
     try {
@@ -164,10 +186,10 @@ export default function ProductDetailPage() {
         barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
-        salePrice: Number(editedProduct.salePrice) ?? product.salePrice,
+        salePrice: Number(editedProduct.salePrice), // Already validated
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
-        minStockLevel: editedProduct.minStockLevel === null ? undefined : (Number(editedProduct.minStockLevel) ?? product.minStockLevel),
-        maxStockLevel: editedProduct.maxStockLevel === null ? undefined : (Number(editedProduct.maxStockLevel) ?? product.maxStockLevel),
+        minStockLevel: editedProduct.minStockLevel === undefined ? undefined : Number(editedProduct.minStockLevel),
+        maxStockLevel: editedProduct.maxStockLevel === undefined ? undefined : Number(editedProduct.maxStockLevel),
       };
 
       await updateProductService(product.id, productToSave);
@@ -220,7 +242,7 @@ export default function ProductDetailPage() {
 
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product });
+        setEditedProduct({ ...product }); // Reset to original product data
         setIsEditing(false);
         toast({
             title: "Edit Cancelled",
@@ -252,13 +274,13 @@ export default function ProductDetailPage() {
      const IconComponent = icon;
      let displayValue: string | React.ReactNode = '-';
 
-     if (value !== null && value !== undefined) {
+     if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
             if (isCurrency) displayValue = `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`;
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value);
             else displayValue = formatDisplayNumber(value, { decimals: 2, useGrouping: true });
         } else {
-            displayValue = value || (isBarcode ? 'Not set' : '-');
+            displayValue = value || (isBarcode || isStockLevel ? 'Not set' : '-');
         }
      } else {
         displayValue = (isBarcode || isStockLevel || (label === "Sale Price" && isCurrency)) ? 'Not set' : '-';
@@ -306,7 +328,7 @@ export default function ProductDetailPage() {
                     onChange={(e) => handleInputChange(fieldKey, e.target.value)}
                     className="mt-1 h-9 flex-grow"
                     step={inputType === 'number' ? (isCurrency ? '0.01' : '1') : undefined}
-                    min={inputType === 'number' ? (isSalePriceField ? '0.01' : '0') : undefined}
+                    min={inputType === 'number' ? (isSalePriceField ? '0.01' : (isStockLevel ? "0" : "0")) : undefined}
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
                     placeholder={isStockLevel ? "Optional" : (isSalePriceField ? "Required" : "")}
                     required={isSalePriceField}
@@ -456,7 +478,7 @@ export default function ProductDetailPage() {
                </>
            )}
 
-           {product.quantity <= (product.minStockLevel || 10) && product.quantity > 0 && !isEditing && (
+           {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && !isEditing && (
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
                     Low Stock
@@ -484,7 +506,7 @@ export default function ProductDetailPage() {
                     {renderEditItem(Barcode, "Barcode", editedProduct.barcode, 'barcode', false, false, true)}
                     {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
                     {renderEditItem(Tag, "Unit Price (Cost)", editedProduct.unitPrice, 'unitPrice', true)}
-                    {renderEditItem(DollarSign, "Sale Price", editedProduct.salePrice, 'salePrice', true)}
+                    {renderEditItem(DollarSign, "Sale Price (₪)", editedProduct.salePrice, 'salePrice', true)}
                     {renderEditItem(DollarSign, "Line Total (Cost)", editedProduct.lineTotal, 'lineTotal', true)}
                     {renderEditItem(TrendingDown, "Min Stock Level", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                     {renderEditItem(TrendingUp, "Max Stock Level", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}

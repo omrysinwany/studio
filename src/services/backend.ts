@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
@@ -197,7 +196,7 @@ export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
     fileName: string,
     source: string = 'upload',
-    tempInvoiceId?: string // Removed invoiceDataUri as it's part of tempInvoiceId now
+    tempInvoiceId?: string
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId})`, productsToFinalizeSave);
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -209,7 +208,6 @@ export async function finalizeSaveProductsService(
     let productsProcessedSuccessfully = true;
     let retrievedInvoiceDataUri: string | undefined = undefined;
 
-    // If tempInvoiceId is provided and source is 'upload', try to retrieve its invoiceDataUri
     if (tempInvoiceId && source === 'upload') {
         const tempInvoiceRecord = currentInvoices.find(inv => inv.id === tempInvoiceId && inv.status === 'pending');
         if (tempInvoiceRecord) {
@@ -251,13 +249,16 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                // Unit price for existing products is confirmed via priceDiscrepancy or kept if no discrepancy
-                existingProduct.unitPrice = unitPrice; // This unitPrice is already the confirmed one
+                existingProduct.unitPrice = unitPrice; 
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
-                // Sale price: if productToSave has a salePrice, update it. Otherwise, keep existing.
                 existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
                 existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
+                // Description and shortName are typically not updated during quantity/price updates from an invoice
+                // unless explicitly intended. Keeping existing ones if not provided in productToSave.
+                existingProduct.description = productToSave.description || existingProduct.description;
+                existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
+
 
                 console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice}, SalePrice=${existingProduct.salePrice}, LineTotal=${existingProduct.lineTotal}`);
             } else {
@@ -312,16 +313,14 @@ export async function finalizeSaveProductsService(
             currentInvoices[existingInvoiceIndex] = {
                 ...existingRecord,
                 fileName: fileName,
-                uploadTime: new Date().toISOString(), // Update uploadTime to reflect save time
+                uploadTime: new Date().toISOString(), 
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, // Use the retrieved URI
+                invoiceDataUri: retrievedInvoiceDataUri, 
                 errorMessage: errorMessage,
             };
             console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
         } else {
-             // This case should ideally not happen if tempInvoiceId is always created.
-            // If it does, it means we're creating a new record without a prior pending one.
             invoiceIdToUse = tempInvoiceId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
             console.warn(`Creating new invoice record as tempInvoiceId "${tempInvoiceId}" was not found or not provided for update. New ID: ${invoiceIdToUse}`);
             const newInvoiceRecord: InvoiceHistoryItem = {
@@ -330,7 +329,7 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, // Use the retrieved URI
+                invoiceDataUri: retrievedInvoiceDataUri, 
                 errorMessage: errorMessage,
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices];
@@ -350,7 +349,7 @@ export async function finalizeSaveProductsService(
         if (!productsProcessedSuccessfully) {
             console.warn("[Backend - finalizeSaveProductsService] Product processing error occurred, invoice status set to 'error'.");
         }
-    } else if (source.endsWith('_sync')) { // Handle POS sync source
+    } else if (source.endsWith('_sync')) { 
       console.log(`POS Sync (${source}) completed. Inventory updated. No invoice record created for this sync type.`);
     } else {
       console.log(`Skipping invoice history update for source: ${source}`);
@@ -435,9 +434,18 @@ export async function updateProductService(productId: string, updatedData: Parti
          updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
     }
     updatedProduct.barcode = updatedProduct.barcode || undefined;
-    updatedProduct.salePrice = updatedData.salePrice === null ? undefined : (Number.isFinite(updatedData.salePrice) ? Number(updatedData.salePrice) : currentInventory[productIndex].salePrice);
-    updatedProduct.minStockLevel = updatedData.minStockLevel === null ? undefined : (Number.isFinite(updatedData.minStockLevel) ? Number(updatedData.minStockLevel) : currentInventory[productIndex].minStockLevel);
-    updatedProduct.maxStockLevel = updatedData.maxStockLevel === null ? undefined : (Number.isFinite(updatedData.maxStockLevel) ? Number(updatedData.maxStockLevel) : currentInventory[productIndex].maxStockLevel);
+    // Handle salePrice: allow setting to undefined if explicitly passed as null/undefined
+    updatedProduct.salePrice = updatedData.salePrice === null || updatedData.salePrice === undefined 
+                              ? undefined 
+                              : (Number.isFinite(updatedData.salePrice) ? Number(updatedData.salePrice) : currentInventory[productIndex].salePrice);
+    
+    updatedProduct.minStockLevel = updatedData.minStockLevel === null || updatedData.minStockLevel === undefined
+                                  ? undefined
+                                  : (Number.isFinite(updatedData.minStockLevel) ? Number(updatedData.minStockLevel) : currentInventory[productIndex].minStockLevel);
+    
+    updatedProduct.maxStockLevel = updatedData.maxStockLevel === null || updatedData.maxStockLevel === undefined
+                                  ? undefined
+                                  : (Number.isFinite(updatedData.maxStockLevel) ? Number(updatedData.maxStockLevel) : currentInventory[productIndex].maxStockLevel);
 
 
   currentInventory[productIndex] = updatedProduct;
@@ -494,9 +502,9 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     ...originalInvoice,
     ...updatedData,
     id: invoiceId,
-    uploadTime: originalInvoice.uploadTime, // Keep original uploadTime
+    uploadTime: originalInvoice.uploadTime, 
     invoiceDataUri: updatedData.invoiceDataUri === null ? undefined : (updatedData.invoiceDataUri ?? originalInvoice.invoiceDataUri),
-    status: updatedData.status || originalInvoice.status, // Status should not be changed here typically, but allow if passed
+    status: updatedData.status || originalInvoice.status, 
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;

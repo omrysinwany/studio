@@ -1,323 +1,366 @@
-
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Camera, Save, X, CheckCircle, Percent } from 'lucide-react';
+import { Camera, Save, X, CheckCircle, Percent, AlertTriangle, PackagePlus, Trash2 } from 'lucide-react';
 import BarcodeScanner from '@/components/barcode-scanner';
 import type { Product } from '@/services/backend';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
 interface BarcodePromptDialogProps {
-  products: Product[];
-  onComplete: (updatedProducts: Product[] | null) => void;
+  products: Product[]; // Products needing details (barcode and sale price)
+  onComplete: (updatedProducts: Product[] | null) => void; // Returns all products with updated details, or null if cancelled
 }
 
 type SalePriceMethod = 'manual' | 'percentage';
 
-const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onComplete }) => {
-  const [promptedProducts, setPromptedProducts] = useState<Product[]>(
-    products.map(p => ({
-      ...p,
-      barcode: p.barcode || '',
-      salePrice: p.salePrice === undefined ? undefined : p.salePrice,
-    }))
+interface ProductEditState {
+  barcode: string;
+  salePrice?: number;
+  salePriceMethod: SalePriceMethod;
+  profitPercentage: string; // Stored as string for input field
+  isConfirmed?: boolean; // For UI state
+}
+
+const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products: initialProducts, onComplete }) => {
+  const [editableProducts, setEditableProducts] = useState<Product[]>(
+    initialProducts.map(p => ({ ...p })) // Create a mutable copy
+  );
+  const [editStates, setEditStates] = useState<Record<string, ProductEditState>>(
+    initialProducts.reduce((acc, p) => {
+      acc[p.id] = {
+        barcode: p.barcode || '',
+        salePrice: p.salePrice,
+        salePriceMethod: 'manual',
+        profitPercentage: '',
+        isConfirmed: false,
+      };
+      return acc;
+    }, {} as Record<string, ProductEditState>)
   );
   const [currentScanningProductId, setCurrentScanningProductId] = useState<string | null>(null);
-  const [locallyConfirmedProducts, setLocallyConfirmedProducts] = useState<Product[]>([]);
-  const [salePriceMethods, setSalePriceMethods] = useState<Record<string, SalePriceMethod>>(
-    products.reduce((acc, p) => {
-      acc[p.id] = 'manual';
-      return acc;
-    }, {} as Record<string, SalePriceMethod>)
-  );
-  const [profitPercentages, setProfitPercentages] = useState<Record<string, string>>(
-     products.reduce((acc, p) => {
-      acc[p.id] = ''; // Initialize with empty string for percentage input
-      return acc;
-    }, {} as Record<string, string>)
-  );
 
+  const handleInputChange = (productId: string, field: keyof ProductEditState, value: string | number) => {
+    setEditStates(prev => {
+      const currentEdit = { ...prev[productId] };
+      if (field === 'salePrice') {
+        const numericValue = parseFloat(String(value));
+        currentEdit.salePrice = String(value).trim() === '' ? undefined : (isNaN(numericValue) || numericValue < 0 ? undefined : numericValue);
+      } else if (field === 'barcode' || field === 'profitPercentage') {
+        currentEdit[field as 'barcode' | 'profitPercentage'] = String(value);
+      }
 
-  const handleInputChange = (productId: string, field: keyof Product, value: string) => {
-    setPromptedProducts(prev =>
-      prev.map(p => {
-        if (p.id === productId) {
-          if (field === 'salePrice') {
-            const numericValue = parseFloat(value);
-            // For manual input, allow empty to represent undefined for now, will validate on confirm
-            return { ...p, [field]: value.trim() === '' ? undefined : (isNaN(numericValue) || numericValue < 0 ? undefined : numericValue) };
-          }
-          return { ...p, [field]: value.trim() };
+      // Recalculate sale price if profit percentage changed
+      if (field === 'profitPercentage' && currentEdit.salePriceMethod === 'percentage') {
+        const product = editableProducts.find(p => p.id === productId);
+        const percentage = parseFloat(String(value));
+        if (product && product.unitPrice && !isNaN(percentage) && percentage >= 0) {
+          currentEdit.salePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
+        } else if (String(value).trim() === '') {
+          currentEdit.salePrice = undefined;
         }
-        return p;
-      })
-    );
-  };
-
-  const handleProfitPercentageChange = (productId: string, value: string) => {
-    setProfitPercentages(prev => ({ ...prev, [productId]: value }));
-    const percentage = parseFloat(value);
-    const product = promptedProducts.find(p => p.id === productId);
-    if (product && product.unitPrice && !isNaN(percentage) && percentage >= 0) {
-      const calculatedSalePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
-      setPromptedProducts(prev =>
-        prev.map(p => (p.id === productId ? { ...p, salePrice: calculatedSalePrice } : p))
-      );
-    } else if (product && value.trim() === '') { // Clear sale price if percentage is cleared
-        setPromptedProducts(prev =>
-            prev.map(p => (p.id === productId ? { ...p, salePrice: undefined } : p))
-        );
-    }
+      }
+      return { ...prev, [productId]: currentEdit };
+    });
   };
 
   const handleSalePriceMethodChange = (productId: string, method: SalePriceMethod) => {
-    setSalePriceMethods(prev => ({ ...prev, [productId]: method }));
-    if (method === 'manual') {
-      // Optionally clear percentage or reset salePrice if switching to manual
-      // setProfitPercentages(prev => ({ ...prev, [productId]: '' }));
-      // setPromptedProducts(prev => prev.map(p => p.id === productId ? {...p, salePrice: undefined} : p));
-    } else {
-        // If switching to percentage, recalculate based on current percentage if any
-        const product = promptedProducts.find(p => p.id === productId);
-        const percentageStr = profitPercentages[productId];
-        if(product && product.unitPrice && percentageStr){
-            const percentage = parseFloat(percentageStr);
-             if (!isNaN(percentage) && percentage >= 0) {
-                const calculatedSalePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
-                setPromptedProducts(prev =>
-                    prev.map(p => (p.id === productId ? { ...p, salePrice: calculatedSalePrice } : p))
-                );
-            }
+    setEditStates(prev => {
+      const currentEdit = { ...prev[productId], salePriceMethod: method };
+      // If switching to percentage, recalculate if percentage exists
+      if (method === 'percentage') {
+        const product = editableProducts.find(p => p.id === productId);
+        const percentageStr = currentEdit.profitPercentage;
+        if (product && product.unitPrice && percentageStr) {
+          const percentage = parseFloat(percentageStr);
+          if (!isNaN(percentage) && percentage >= 0) {
+            currentEdit.salePrice = parseFloat((product.unitPrice * (1 + percentage / 100)).toFixed(2));
+          }
         }
-    }
+      }
+      // If switching to manual, you might want to clear the percentage or set salePrice to undefined to force manual entry
+      // For now, let's keep the salePrice as is, user can edit it.
+      return { ...prev, [productId]: currentEdit };
+    });
   };
 
-
-  const handleScanClick = (productId: string) => {
-    setCurrentScanningProductId(productId);
-  };
+  const handleScanClick = (productId: string) => setCurrentScanningProductId(productId);
+  const handleScannerClose = () => setCurrentScanningProductId(null);
 
   const handleBarcodeDetected = useCallback((barcodeValue: string) => {
     if (currentScanningProductId) {
       handleInputChange(currentScanningProductId, 'barcode', barcodeValue);
-      toast({
-        title: "Barcode Scanned",
-        description: `Barcode ${barcodeValue} assigned.`,
-      });
+      toast({ title: "Barcode Scanned", description: `Barcode ${barcodeValue} assigned.` });
     }
     setCurrentScanningProductId(null);
   }, [currentScanningProductId]);
 
-  const handleScannerClose = () => {
-    setCurrentScanningProductId(null);
-  };
-
-  const handleSaveAll = () => {
-    const productsToValidate = [...promptedProducts];
-    const productsWithMissingSalePrice = productsToValidate.filter(
-      p => p.salePrice === undefined || p.salePrice === null || isNaN(Number(p.salePrice)) || Number(p.salePrice) <= 0
-    );
-
-    if (productsWithMissingSalePrice.length > 0) {
+  const validateProductDetails = (productId: string): boolean => {
+    const state = editStates[productId];
+    if (state.salePrice === undefined || state.salePrice === null || isNaN(Number(state.salePrice)) || Number(state.salePrice) <= 0) {
+      const product = editableProducts.find(p => p.id === productId);
       toast({
         title: "Missing Sale Price",
-        description: `Please enter a valid sale price for all remaining new products: ${productsWithMissingSalePrice.map(p=> p.shortName || p.catalogNumber).join(', ')}. Or confirm them individually.`,
+        description: `Please enter a valid sale price for "${product?.shortName || product?.description}".`,
         variant: "destructive",
-        duration: 7000,
+      });
+      return false;
+    }
+    return true;
+  };
+
+  const handleConfirmProduct = useCallback((productId: string) => {
+    if (!validateProductDetails(productId)) return;
+
+    setEditStates(prev => ({
+      ...prev,
+      [productId]: { ...prev[productId], isConfirmed: true },
+    }));
+    toast({
+      title: "Product Details Confirmed",
+      description: `Details for product ID ${productId.slice(-6)} are set.`,
+    });
+  }, [editStates]);
+
+  const unconfirmedProducts = useMemo(() => {
+    return editableProducts.filter(p => !editStates[p.id]?.isConfirmed);
+  }, [editableProducts, editStates]);
+  
+  const confirmedProductsCount = useMemo(() => {
+    return editableProducts.length - unconfirmedProducts.length;
+  }, [editableProducts.length, unconfirmedProducts.length]);
+
+
+  const handleSaveAllAndContinue = () => {
+    const productsToReturn: Product[] = [];
+    let allValid = true;
+
+    editableProducts.forEach(p => {
+      const state = editStates[p.id];
+      if (!state.isConfirmed) { // Only validate unconfirmed products
+        if (!validateProductDetails(p.id)) {
+          allValid = false;
+          return; // Stop this iteration, but continue checking others
+        }
+      }
+      productsToReturn.push({
+        ...p,
+        barcode: state.barcode || undefined,
+        salePrice: state.salePrice,
+      });
+    });
+
+    if (!allValid) {
+      toast({
+          title: "Incomplete Details",
+          description: "Please provide a valid sale price for all unconfirmed products or confirm them individually before saving all.",
+          variant: "destructive",
+          duration: 7000,
       });
       return;
     }
-    onComplete([...locallyConfirmedProducts, ...productsToValidate]);
+    onComplete(productsToReturn);
   };
 
-  const handleCancel = () => {
-    onComplete(null);
-  };
-
-
-  const handleConfirmProduct = useCallback((productId: string) => {
-    const productToConfirm = promptedProducts.find(p => p.id === productId);
-    if (!productToConfirm) return;
-
-    if (productToConfirm.salePrice === undefined || productToConfirm.salePrice === null || isNaN(Number(productToConfirm.salePrice)) || Number(productToConfirm.salePrice) <= 0) {
-        toast({
-            title: "Missing Sale Price",
-            description: `Please enter a valid sale price for "${productToConfirm.shortName || productToConfirm.description}".`,
-            variant: "destructive",
-        });
-        return;
-    }
-
-    setLocallyConfirmedProducts(prev => [...prev, productToConfirm]);
-    setPromptedProducts(prev => prev.filter(p => p.id !== productId));
-    toast({
-        title: "Product Confirmed",
-        description: `Details for "${productToConfirm.shortName || productToConfirm.description}" confirmed.`,
-        variant: "default"
+  const handleCancel = () => onComplete(null);
+  
+  const handleRemoveProduct = (productId: string) => {
+    setEditableProducts(prev => prev.filter(p => p.id !== productId));
+    setEditStates(prev => {
+        const newStates = {...prev};
+        delete newStates[productId];
+        return newStates;
     });
-
-  }, [promptedProducts]);
+    toast({
+        title: "Product Removed",
+        description: "Product removed from this assignment session.",
+    });
+  };
 
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col p-0">
+      <DialogContent className="max-w-xl w-[95vw] sm:w-full max-h-[95vh] flex flex-col p-0">
         <DialogHeader className="p-4 sm:p-6 border-b shrink-0">
-          <DialogTitle>New Product Details</DialogTitle>
-          <DialogDescription>
-            Enter details for new products. Barcode is optional, Sale Price is required. Click "Confirm &amp; Save All" when done, or confirm items individually.
+          <DialogTitle className="flex items-center text-lg sm:text-xl">
+            <PackagePlus className="mr-2 h-5 w-5 text-primary" />
+            Enter Details for New Products
+          </DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            For each new product, barcode is optional. Sale price is required. Confirm items individually or "Save All &amp; Continue" when done. ({unconfirmedProducts.length} remaining / {editableProducts.length} total)
           </DialogDescription>
         </DialogHeader>
 
+        {editableProducts.length === 0 ? (
+            <div className="flex-grow flex flex-col items-center justify-center p-6 text-center">
+                <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+                <p className="text-lg font-medium">All new products processed!</p>
+                <p className="text-sm text-muted-foreground">Click "Save All &amp; Continue" to finalize.</p>
+            </div>
+        ) : (
         <ScrollArea className="flex-grow border-b">
-          <div className={cn("space-y-6 p-4 sm:p-6", promptedProducts.length === 0 && locallyConfirmedProducts.length === 0 && "flex justify-center items-center h-full")}>
-             {promptedProducts.length === 0 && locallyConfirmedProducts.length === 0 && (
-                <p className="text-muted-foreground text-center py-4">No new products to assign details.</p>
-             )}
-             {promptedProducts.length === 0 && locallyConfirmedProducts.length > 0 && (
-                <p className="text-muted-foreground text-center py-4">All new products have been processed. Click "Confirm & Save All" to finish.</p>
-             )}
-             {promptedProducts.map((product) => (
-               <div key={product.id} className="space-y-3 border-b pb-4 last:border-b-0">
-                 <Label className="font-medium text-base">
-                   {product.shortName || product.description}
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity} | Cost: ₪{product.unitPrice.toFixed(2)}
-                 </p>
-                 
-                 <div>
-                     <Label htmlFor={`barcode-${product.id}`} className="text-sm">Barcode (Optional)</Label>
-                     <div className="flex items-center gap-2 mt-1">
-                     <Input
-                         id={`barcode-${product.id}`}
-                         value={product.barcode || ''}
-                         onChange={(e) => handleInputChange(product.id, 'barcode', e.target.value)}
-                         placeholder="Enter or scan barcode"
-                         className="flex-grow"
-                         aria-label={`Barcode for ${product.shortName || product.description}`}
-                     />
-                     <Button
-                         type="button"
-                         variant="outline"
-                         size="icon"
-                         onClick={() => handleScanClick(product.id)}
-                         className="h-9 w-9 shrink-0"
-                         aria-label={`Scan barcode for ${product.shortName || product.description}`}
-                     >
-                         <Camera className="h-4 w-4" />
-                     </Button>
-                     </div>
-                 </div>
-                
-                <div className="space-y-2">
-                    <Label className="text-sm">Sale Price Method <span className="text-destructive">*</span></Label>
-                    <RadioGroup
-                        value={salePriceMethods[product.id]}
-                        onValueChange={(value) => handleSalePriceMethodChange(product.id, value as SalePriceMethod)}
-                        className="flex gap-4"
-                    >
-                        <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="manual" id={`manual-${product.id}`} />
-                        <Label htmlFor={`manual-${product.id}`} className="text-xs font-normal">Manual Price</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="percentage" id={`percentage-${product.id}`} />
-                        <Label htmlFor={`percentage-${product.id}`} className="text-xs font-normal">Profit %</Label>
-                        </div>
-                    </RadioGroup>
-                </div>
+          <div className="p-3 sm:p-4 space-y-4">
+            {editableProducts.map((product) => {
+              const state = editStates[product.id];
+              if (!state || state.isConfirmed) return null; // Don't render confirmed items here
 
-                {salePriceMethods[product.id] === 'manual' && (
-                    <div>
-                        <Label htmlFor={`salePrice-${product.id}`} className="text-sm">
-                            Sale Price (₪) <span className="text-destructive">*</span>
-                        </Label>
-                        <div className="relative mt-1">
-                            <Input
-                                id={`salePrice-${product.id}`}
-                                type="number"
-                                value={product.salePrice === undefined ? '' : String(product.salePrice)}
-                                onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
-                                placeholder="Enter sale price"
-                                min="0.01"
-                                step="0.01"
-                                className="pl-3" // No icon, so pl-3 is fine
-                                aria-label={`Sale price for ${product.shortName || product.description}`}
-                                required
-                            />
+              return (
+                <Card key={product.id} className={cn("transition-all duration-300", state.isConfirmed ? "bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700" : "bg-card")}>
+                  <CardHeader className="p-3 sm:p-4 pb-2 sm:pb-3">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle className="text-base sm:text-lg font-semibold">
+                            {product.shortName || product.description}
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground">
+                            Catalog: {product.catalogNumber || 'N/A'} | Qty: {product.quantity} | Cost: ₪{product.unitPrice.toFixed(2)}
+                            </p>
                         </div>
+                         <Button variant="ghost" size="icon" onClick={() => handleRemoveProduct(product.id)} className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0">
+                            <Trash2 className="h-4 w-4"/>
+                            <span className="sr-only">Remove Product</span>
+                        </Button>
                     </div>
-                )}
-
-                {salePriceMethods[product.id] === 'percentage' && (
-                  <div className="grid grid-cols-2 gap-2 items-end">
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4 pt-0 space-y-3">
+                    <Separator className="my-2"/>
                     <div>
-                        <Label htmlFor={`profitPercentage-${product.id}`} className="text-sm">
-                            Profit Margin (%) <span className="text-destructive">*</span>
-                        </Label>
-                         <div className="relative mt-1">
-                            <Input
-                                id={`profitPercentage-${product.id}`}
-                                type="number"
-                                value={profitPercentages[product.id]}
-                                onChange={(e) => handleProfitPercentageChange(product.id, e.target.value)}
-                                placeholder="e.g., 25"
-                                min="0"
-                                step="0.1"
-                                className="pl-3"
-                                aria-label={`Profit percentage for ${product.shortName || product.description}`}
-                                required
-                            />
-                            <Percent className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        </div>
-                    </div>
-                     <div>
-                        <Label className="text-sm">Calculated Sale Price (₪)</Label>
+                      <Label htmlFor={`barcode-${product.id}`} className="text-xs sm:text-sm">Barcode (Optional)</Label>
+                      <div className="flex items-center gap-2 mt-1">
                         <Input
+                          id={`barcode-${product.id}`}
+                          value={state.barcode}
+                          onChange={(e) => handleInputChange(product.id, 'barcode', e.target.value)}
+                          placeholder="Enter or scan barcode"
+                          className="h-9 text-sm"
+                          aria-label={`Barcode for ${product.shortName || product.description}`}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleScanClick(product.id)}
+                          className="h-9 w-9 shrink-0"
+                          aria-label={`Scan barcode for ${product.shortName || product.description}`}
+                        >
+                          <Camera className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs sm:text-sm">Sale Price Method <span className="text-destructive">*</span></Label>
+                      <RadioGroup
+                        value={state.salePriceMethod}
+                        onValueChange={(value) => handleSalePriceMethodChange(product.id, value as SalePriceMethod)}
+                        className="flex gap-3 sm:gap-4 pt-1"
+                      >
+                        <div className="flex items-center space-x-1.5">
+                          <RadioGroupItem value="manual" id={`manual-${product.id}`} />
+                          <Label htmlFor={`manual-${product.id}`} className="text-xs sm:text-sm font-normal cursor-pointer">Manual Price</Label>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          <RadioGroupItem value="percentage" id={`percentage-${product.id}`} />
+                          <Label htmlFor={`percentage-${product.id}`} className="text-xs sm:text-sm font-normal cursor-pointer">Profit %</Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
+                    {state.salePriceMethod === 'manual' && (
+                      <div>
+                        <Label htmlFor={`salePrice-${product.id}`} className="text-xs sm:text-sm">
+                          Sale Price (₪) <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id={`salePrice-${product.id}`}
+                          type="number"
+                          value={state.salePrice === undefined ? '' : String(state.salePrice)}
+                          onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
+                          placeholder="Required"
+                          min="0.01"
+                          step="0.01"
+                          className="h-9 text-sm mt-1"
+                          aria-label={`Sale price for ${product.shortName || product.description}`}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    {state.salePriceMethod === 'percentage' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 items-end">
+                        <div>
+                          <Label htmlFor={`profitPercentage-${product.id}`} className="text-xs sm:text-sm">
+                            Profit Margin (%) <span className="text-destructive">*</span>
+                          </Label>
+                          <div className="relative mt-1">
+                            <Input
+                              id={`profitPercentage-${product.id}`}
+                              type="number"
+                              value={state.profitPercentage}
+                              onChange={(e) => handleInputChange(product.id, 'profitPercentage', e.target.value)}
+                              placeholder="e.g., 25"
+                              min="0"
+                              step="0.1"
+                              className="h-9 text-sm pl-3 pr-7" // Added pr-7 for icon
+                              aria-label={`Profit percentage for ${product.shortName || product.description}`}
+                              required
+                            />
+                            <Percent className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs sm:text-sm">Calculated Sale Price (₪)</Label>
+                          <Input
                             type="text"
-                            value={product.salePrice === undefined ? 'N/A' : `₪${product.salePrice.toFixed(2)}`}
+                            value={state.salePrice === undefined ? 'N/A' : `₪${state.salePrice.toFixed(2)}`}
                             readOnly
                             disabled
-                            className="mt-1 bg-muted/50 pl-3"
+                            className="h-9 text-sm mt-1 bg-muted/50"
                             aria-label={`Calculated sale price for ${product.shortName || product.description}`}
-                        />
-                    </div>
-                  </div>
-                )}
-
-                  <div className="flex items-center gap-2 mt-3">
-                      <Button
-                          type="button"
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleConfirmProduct(product.id)}
-                          className="text-xs h-8 px-2 flex-1 bg-green-600 hover:bg-green-700 text-white"
-                          title={`Confirm details for ${product.shortName || product.description}`}
-                          aria-label={`Confirm details for ${product.shortName || product.description}`}
-                          >
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Confirm This Product
-                      </Button>
-                  </div>
-               </div>
-             ))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                     <div className="pt-2">
+                        <Button
+                            type="button"
+                            variant={state.isConfirmed ? "secondary" : "default"}
+                            size="sm"
+                            onClick={() => handleConfirmProduct(product.id)}
+                            className={cn("w-full text-xs sm:text-sm h-9", state.isConfirmed && "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-800 dark:text-green-100 dark:hover:bg-green-700")}
+                            disabled={state.isConfirmed}
+                        >
+                            <CheckCircle className="mr-1.5 h-4 w-4" />
+                            {state.isConfirmed ? "Details Confirmed" : "Confirm Details for This Product"}
+                        </Button>
+                     </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </ScrollArea>
+        )}
 
-        <DialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2 shrink-0">
-          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
-            <X className="mr-2 h-4 w-4" /> Cancel Save Process
+        <DialogFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0">
+          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+            <X className="mr-1.5 h-4 w-4" /> Cancel All &amp; Return
           </Button>
-          <Button onClick={handleSaveAll} className="w-full sm:w-auto" disabled={promptedProducts.length === 0 && locallyConfirmedProducts.length === 0}>
-            <Save className="mr-2 h-4 w-4" /> Confirm &amp; Save All
+          <Button
+            onClick={handleSaveAllAndContinue}
+            className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10"
+            disabled={editableProducts.length === 0 && confirmedProductsCount === 0}
+          >
+            <Save className="mr-1.5 h-4 w-4" />
+            {unconfirmedProducts.length > 0 ? `Save Confirmed & Remaining (${unconfirmedProducts.length})` : `Save All Confirmed (${confirmedProductsCount})`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -333,4 +376,3 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({ products, onC
 };
 
 export default BarcodePromptDialog;
-
