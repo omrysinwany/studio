@@ -162,7 +162,7 @@ export default function ReportsPage() {
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const numPoints = isMobile ? 7 : 15; // Fewer points for mobile
+       const numPoints = isMobile ? 5 : 10; // Fewer points for mobile
        const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints)));
 
        while (currentDate <= endDate) {
@@ -194,7 +194,7 @@ export default function ReportsPage() {
        // Generate Documents Processed Volume
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const procVolNumPoints = isMobile ? 4 : 6; // Fewer points for mobile
+       const procVolNumPoints = isMobile ? 3 : 5; // Fewer points for mobile
        const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); // Monthly steps
 
         while (currentDate <= endDate) {
@@ -263,20 +263,20 @@ export default function ReportsPage() {
    }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-primary shrink-0">Reports &amp; Statistics</h1>
+    <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-primary shrink-0">Reports &amp; Statistics</h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
               id="date"
               variant={"outline"}
               className={cn(
-                "w-full md:w-auto md:min-w-[260px] justify-start text-left font-normal",
+                "w-full md:w-auto md:min-w-[240px] justify-start text-left font-normal text-xs sm:text-sm",
                 !dateRange && "text-muted-foreground"
               )}
             >
-              <CalendarIcon className="mr-2 h-4 w-4" />
+              <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
               {dateRange?.from ? (
                 dateRange.to ? (
                   <>
@@ -309,73 +309,73 @@ export default function ReportsPage() {
       </div>
 
        {kpis && (
-           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
              <Card className="xl:col-span-2">
-               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Total Inventory Value</CardTitle>
-                 <DollarSign className="h-4 w-4 text-muted-foreground" />
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                 <CardTitle className="text-xs sm:text-sm font-medium">Total Inventory Value</CardTitle>
+                 <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
-               <CardContent>
-                 <div className="text-2xl font-bold">{formatNumber(kpis.totalValue, { currency: true })}</div>
-                 <p className={cn("text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
-                   {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-3 w-3 mr-1" /> : <TrendingDown className="inline h-3 w-3 mr-1" />}
+               <CardContent className="pb-2 sm:pb-4">
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalValue, { currency: true })}</div>
+                 <p className={cn("text-[10px] sm:text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
+                   {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" /> : <TrendingDown className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
                    {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% vs last period
                  </p>
                </CardContent>
              </Card>
              <Card>
-               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Total Items in Stock</CardTitle>
-                 <Package className="h-4 w-4 text-muted-foreground" />
+               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                 <CardTitle className="text-xs sm:text-sm font-medium">Total Items in Stock</CardTitle>
+                 <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
-               <CardContent>
-                 <div className="text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
-                 <p className="text-xs text-muted-foreground">Unique SKUs</p>
+               <CardContent className="pb-2 sm:pb-4">
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
+                 <p className="text-[10px] sm:text-xs text-muted-foreground">Unique SKUs</p>
                </CardContent>
              </Card>
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Gross Profit Margin</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                    <CardTitle className="text-xs sm:text-sm font-medium">Gross Profit Margin</CardTitle>
+                    <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, { decimals: 1 })}%</div>
-                    <p className="text-xs text-muted-foreground">Estimate</p>
+                <CardContent className="pb-2 sm:pb-4">
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, { decimals: 1 })}%</div>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">Estimate</p>
                 </CardContent>
             </Card>
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Inventory Turnover</CardTitle>
-                    <Repeat className="h-4 w-4 text-muted-foreground" />
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                    <CardTitle className="text-xs sm:text-sm font-medium">Inventory Turnover</CardTitle>
+                    <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, { decimals: 1 })}</div>
-                    <p className="text-xs text-muted-foreground">Times per period</p>
+                <CardContent className="pb-2 sm:pb-4">
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, { decimals: 1 })}</div>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">Times per period</p>
                 </CardContent>
             </Card>
              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
-                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                    <CardTitle className="text-xs sm:text-sm font-medium">Avg. Order Value</CardTitle>
+                    <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
-                <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(kpis.averageOrderValue, { currency: true, decimals: 2})}</div>
-                    <p className="text-xs text-muted-foreground">From processed invoices</p>
+                <CardContent className="pb-2 sm:pb-4">
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.averageOrderValue, { currency: true, decimals: 2})}</div>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">From invoices</p>
                 </CardContent>
             </Card>
            </div>
        )}
 
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-            <Card>
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-lg">Inventory Value Over Time</CardTitle>
+        <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
+            <Card className="w-full overflow-hidden">
+                <CardHeader className="pb-2 sm:pb-4">
+                    <CardTitle className="text-base sm:text-lg">Inventory Value Over Time</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
+                <CardContent className="p-0 sm:p-0">
                     {lineChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
+                        <ChartContainer config={chartConfig} className="h-[180px] sm:h-[220px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 10 : 20, left: isMobile ? 0 : -15, bottom: isMobile ? 50 : 30 }}>
+                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 5 : 15, left: isMobile ? -25 : -10, bottom: isMobile ? 30 : 20 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis
                                         dataKey="date"
@@ -383,10 +383,10 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        angle={-45}
+                                        angle={isMobile ? -60 : -45}
                                         textAnchor="end"
-                                        height={isMobile ? 60 : 40} 
-                                        interval={isMobile ? Math.max(0, Math.floor(lineChartData.length / 4) -1) : "preserveStartEnd"}
+                                        height={isMobile ? 40 : 30} 
+                                        interval={isMobile ? Math.max(0, Math.floor(lineChartData.length / 3) -1) : "preserveStartEnd"}
                                      />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
@@ -394,32 +394,32 @@ export default function ReportsPage() {
                                         tickLine={false}
                                         axisLine={false}
                                         tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'}
-                                        width={isMobile ? 35 : 45} 
+                                        width={isMobile ? 30 : 40} 
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
                                         formatter={(value: number) => formatNumber(value, { currency: true })}
                                     />
-                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
+                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                                 </LineChart>
                            </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                       <p className="text-center text-muted-foreground py-10">No value trend data for selected period.</p>
+                       <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No value trend data for selected period.</p>
                     )}
                 </CardContent>
             </Card>
 
-            <Card>
-                 <CardHeader className="pb-4">
-                     <CardTitle className="text-lg">Documents Processed Volume</CardTitle>
+            <Card className="w-full overflow-hidden">
+                 <CardHeader className="pb-2 sm:pb-4">
+                     <CardTitle className="text-base sm:text-lg">Documents Processed Volume</CardTitle>
                  </CardHeader>
-                 <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
+                 <CardContent className="p-0 sm:p-0">
                       {processingBarChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
+                        <ChartContainer config={chartConfig} className="h-[180px] sm:h-[220px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? 0 : -20, bottom: isMobile ? 50 : 30 }}>
+                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -20 : -15, bottom: isMobile ? 30 : 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis
                                         dataKey="period"
@@ -427,10 +427,10 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        angle={-45}
+                                        angle={isMobile ? -60 : -45}
                                         textAnchor="end"
-                                        height={isMobile ? 60 : 40}
-                                        interval={isMobile ? Math.max(0, Math.floor(processingBarChartData.length / 3) -1) : "preserveStartEnd"}
+                                        height={isMobile ? 40 : 30}
+                                        interval={isMobile ? Math.max(0, Math.floor(processingBarChartData.length / 2) -1) : "preserveStartEnd"}
                                     />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
@@ -438,41 +438,41 @@ export default function ReportsPage() {
                                         tickLine={false}
                                         axisLine={false}
                                         tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })}
-                                        width={isMobile ? 30: 35}
+                                        width={isMobile ? 25 : 30}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                         formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
                                      />
-                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={3} />
+                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined}/>
                                 </BarChart>
                            </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
-                        <p className="text-center text-muted-foreground py-10">No processing volume data for selected period.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No processing volume data.</p>
                      )}
                  </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-lg">Sales by Category</CardTitle>
+            <Card className="w-full overflow-hidden">
+                <CardHeader className="pb-2 sm:pb-4">
+                    <CardTitle className="text-base sm:text-lg">Sales by Category</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
+                <CardContent className="p-0 sm:p-0">
                     {salesByCategoryBarData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="h-[250px] sm:h-[300px] w-full">
+                        <ChartContainer config={chartConfig} className="h-[220px] sm:h-[280px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 15 : 10, left: isMobile ? 5 : 5, bottom: 5 }}>
+                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} interval={0} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 55} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
                                         formatter={(value: number) => formatNumber(value, { currency: true })}
                                     />
-                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={3}>
+                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined}>
                                         {salesByCategoryBarData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                         ))}
@@ -481,18 +481,18 @@ export default function ReportsPage() {
                             </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                        <p className="text-center text-muted-foreground py-10">No sales by category data for selected period.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No sales by category data.</p>
                     )}
                 </CardContent>
             </Card>
 
-            <Card>
-                 <CardHeader className="pb-4">
-                     <CardTitle className="text-lg">Inventory Value by Category</CardTitle>
+            <Card className="w-full overflow-hidden">
+                 <CardHeader className="pb-2 sm:pb-4">
+                     <CardTitle className="text-base sm:text-lg">Inventory Value by Category</CardTitle>
                  </CardHeader>
-                 <CardContent className="flex items-center justify-center p-0 sm:pb-4">
+                 <CardContent className="flex items-center justify-center p-0 sm:pb-2">
                      {pieChartData.length > 0 ? (
-                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[200px] sm:h-[250px]">
+                        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[180px] sm:h-[230px]">
                            <ResponsiveContainer width="100%" height="100%">
                                 <RechartsPie>
                                     <RechartsTooltip
@@ -507,9 +507,20 @@ export default function ReportsPage() {
                                          cx="50%"
                                          cy="50%"
                                          outerRadius="80%"
-                                         innerRadius="50%"
-                                         paddingAngle={2}
+                                         innerRadius={isMobile ? "45%" : "50%"}
+                                         paddingAngle={1}
                                          labelLine={false}
+                                         label={isMobile ? undefined : ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                                            const RADIAN = Math.PI / 180;
+                                            const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                                            return (percent * 100) > 5 ? (
+                                                <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10px">
+                                                    {`${(percent * 100).toFixed(0)}%`}
+                                                </text>
+                                            ) : null;
+                                        }}
                                     >
                                         {pieChartData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
@@ -517,10 +528,10 @@ export default function ReportsPage() {
                                      </RechartsPie>
                                      <RechartsLegend
                                          content={({ payload }) => (
-                                            <ul className="flex flex-wrap justify-center gap-x-2 gap-y-1 mt-2 text-[10px] sm:text-xs">
+                                            <ul className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 mt-1 text-[9px] sm:text-[10px]">
                                                 {payload?.map((entry, index) => (
                                                     <li key={`item-${index}`} className="flex items-center gap-1">
-                                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                                                        <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ backgroundColor: entry.color }} />
                                                         {entry.value}
                                                     </li>
                                                 ))}
@@ -534,84 +545,84 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                          </ChartContainer>
                      ) : (
-                         <p className="text-center text-muted-foreground py-10">No category value data.</p>
+                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No category value data.</p>
                       )}
                  </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-lg">Top Selling Products (by Value)</CardTitle>
-                     <CardDescription>Top 5 products by total sales value in the selected period.</CardDescription>
+            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
+                <CardHeader className="pb-2 sm:pb-4">
+                    <CardTitle className="text-base sm:text-lg">Top Selling Products (by Value)</CardTitle>
+                     <CardDescription className="text-xs sm:text-sm">Top 5 products by total sales value in the selected period.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     {topSellingProductsBarData.length > 0 ? (
                          <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-full">
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs sm:text-sm px-2 sm:px-4">Product Name</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Qty Sold</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Total Value</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Product</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Qty Sold</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Total Value</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {topSellingProductsBarData.map((product, index) => (
                                         <TableRow key={product.id || index}>
-                                            <TableCell className="font-medium text-xs sm:text-sm px-2 sm:px-4">{product.name}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(product.totalValue, { currency: true })}</TableCell>
+                                            <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{product.name}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, { currency: true })}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
                         </div>
                     ) : (
-                        <p className="text-center text-muted-foreground py-10">No top selling products data for selected period.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No top selling products data.</p>
                     )}
                 </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-lg">Stock Alert Dashboard</CardTitle>
-                    <CardDescription>Products requiring attention based on defined stock levels.</CardDescription>
+            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
+                <CardHeader className="pb-2 sm:pb-4">
+                    <CardTitle className="text-base sm:text-lg">Stock Alert Dashboard</CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">Products requiring attention based on defined stock levels.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     {stockAlerts.length > 0 ? (
                         <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-full">
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs sm:text-sm px-2 sm:px-4">Product Name</TableHead>
-                                        <TableHead className="text-xs sm:text-sm hidden md:table-cell px-2 sm:px-4">Catalog #</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Current Qty</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">Min Stock</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">Max Stock</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Status</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Product</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Catalog #</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Current Qty</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Min Stock</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Max Stock</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {stockAlerts.map((alert) => (
                                         <TableRow key={alert.id}>
-                                            <TableCell className="font-medium text-xs sm:text-sm px-2 sm:px-4">{alert.name}</TableCell>
-                                            <TableCell className="text-xs sm:text-sm hidden md:table-cell px-2 sm:px-4">{alert.catalogNumber}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">
+                                            <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{alert.name}</TableCell>
+                                            <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.catalogNumber}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
-                                                    ? `${formatNumber(10, { decimals: 0 })} (Default)`
+                                                    ? `${formatNumber(10, { decimals: 0 })} (Def.)`
                                                     : (alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
-                                                        "whitespace-nowrap",
+                                                        "whitespace-nowrap text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5",
                                                         alert.status === 'Low Stock' && 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80',
                                                         alert.status === 'Over Stock' && 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80'
                                                     )}
                                                 >
-                                                    <AlertTriangle className="mr-1 h-3 w-3" />
+                                                    <AlertTriangle className="mr-0.5 sm:mr-1 h-2.5 w-2.5 sm:h-3 sm:w-3" />
                                                     {alert.status}
                                                 </Badge>
                                             </TableCell>
@@ -621,7 +632,7 @@ export default function ReportsPage() {
                             </Table>
                         </div>
                     ) : (
-                         <p className="text-center text-muted-foreground py-10">No stock alerts at the moment.</p>
+                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No stock alerts at the moment.</p>
                     )}
                 </CardContent>
             </Card>
