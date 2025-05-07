@@ -57,6 +57,11 @@ function EditInvoiceContent() {
   const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
   const [compressedImageKey, setCompressedImageKey] = useState<string | null>(null);
 
+  // State to store extracted invoice details
+  const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
+  const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
+  const [extractedTotalAmount, setExtractedTotalAmount] = useState<number | undefined>(undefined);
+
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
   const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false); 
@@ -146,7 +151,11 @@ function EditInvoiceContent() {
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
           setProducts(productsWithIds);
-           setErrorLoading(null);
+          // Set extracted invoice details from parsedData
+          setExtractedInvoiceNumber(parsedData.invoiceNumber);
+          setExtractedSupplierName(parsedData.supplier);
+          setExtractedTotalAmount(parsedData.totalAmount);
+          setErrorLoading(null);
 
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
@@ -261,7 +270,16 @@ function EditInvoiceContent() {
           
           console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
           
-          await finalizeSaveProductsService(productsForService, fileName, 'upload', tempInvoiceId || undefined, imageUriForFinalSave);
+          await finalizeSaveProductsService(
+            productsForService, 
+            fileName, 
+            'upload', 
+            tempInvoiceId || undefined, 
+            imageUriForFinalSave,
+            extractedInvoiceNumber, // Pass extracted invoice number
+            extractedSupplierName,  // Pass extracted supplier name
+            extractedTotalAmount    // Pass extracted total amount
+          );
 
           // Clear all related localStorage items after successful save
           if (dataKey) localStorage.removeItem(dataKey);

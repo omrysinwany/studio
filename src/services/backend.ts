@@ -196,15 +196,19 @@ export async function finalizeSaveProductsService(
     fileName: string,
     source: string = 'upload',
     tempInvoiceId?: string,
-    invoiceDataUriToSave?: string // Renamed from invoiceDataUri to avoid conflict
+    invoiceDataUriToSave?: string,
+    extractedInvoiceNumber?: string,
+    extractedSupplierName?: string,
+    extractedTotalAmount?: number
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
+    console.log(`Extracted Invoice Details: Number=${extractedInvoiceNumber}, Supplier=${extractedSupplierName}, Total=${extractedTotalAmount}`);
     await new Promise(resolve => setTimeout(resolve, 100));
 
     let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
     let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
 
-    let calculatedInvoiceTotalAmount = 0;
+    let calculatedInvoiceTotalAmountFromProducts = 0;
     let productsProcessedSuccessfully = true;
     
     try {
@@ -217,7 +221,7 @@ export async function finalizeSaveProductsService(
             const lineTotal = parseFloat((quantityToAdd * unitPrice).toFixed(2));
 
             if (!isNaN(lineTotal)) {
-                calculatedInvoiceTotalAmount += lineTotal;
+                calculatedInvoiceTotalAmountFromProducts += lineTotal;
             } else {
                 console.warn(`Invalid lineTotal for product: ${productToSave.id || productToSave.catalogNumber}. Skipping for invoice total.`);
             }
@@ -237,6 +241,8 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
+                // Keep existing product's unitPrice and salePrice, only update if explicitly changed (e.g. via price discrepancy confirmation)
+                // For now, we assume unitPrice passed in productToSave is the confirmed one.
                 existingProduct.unitPrice = unitPrice; 
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
                 existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
@@ -286,6 +292,11 @@ export async function finalizeSaveProductsService(
         const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
         const errorMessage = productsProcessedSuccessfully ? undefined : 'Failed to process some products into inventory.';
         
+        // Use the extracted total amount if available, otherwise fallback to sum of product lines
+        const finalInvoiceTotalAmount = extractedTotalAmount !== undefined 
+                                        ? extractedTotalAmount 
+                                        : parseFloat(calculatedInvoiceTotalAmountFromProducts.toFixed(2));
+
         let invoiceIdToUse: string;
         let existingInvoiceIndex = -1;
 
@@ -301,7 +312,9 @@ export async function finalizeSaveProductsService(
                 fileName: fileName,
                 uploadTime: new Date().toISOString(), 
                 status: finalStatus,
-                totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
+                invoiceNumber: extractedInvoiceNumber || existingRecord.invoiceNumber,
+                supplier: extractedSupplierName || existingRecord.supplier,
+                totalAmount: finalInvoiceTotalAmount,
                 invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
             };
@@ -314,7 +327,9 @@ export async function finalizeSaveProductsService(
                 fileName: fileName,
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
-                totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
+                invoiceNumber: extractedInvoiceNumber,
+                supplier: extractedSupplierName,
+                totalAmount: finalInvoiceTotalAmount,
                 invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
             };

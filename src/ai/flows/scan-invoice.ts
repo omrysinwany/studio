@@ -29,6 +29,17 @@ export async function scanInvoice(input: ScanInvoiceInput): Promise<ScanInvoiceO
   return scanInvoiceFlow(input);
 }
 
+// Define the schema for the raw output expected from the AI, including invoice-level details
+const PromptOutputSchema = z.object({
+    products: z.array(ExtractedProductSchema)
+             .describe('Raw extracted product list from the invoice.'),
+    invoice_details: z.object({
+        invoice_number: z.string().optional().describe("The invoice number found on the document."),
+        supplier_name: z.string().optional().describe("The supplier's name identified on the document."),
+        invoice_total_amount: z.number().optional().describe("The final total amount stated on the invoice document, usually including any taxes or VAT. Look for keywords like 'סהכ', 'Total', 'Grand Total', 'סהכ לתשלום'.")
+    }).optional().describe("Overall details extracted from the invoice document, not specific to any single product line.")
+});
+
 
 const prompt = ai.definePrompt({
   name: 'scanInvoicePrompt',
@@ -42,17 +53,15 @@ const prompt = ai.definePrompt({
     }),
   },
   output: {
-    // Output schema from AI matches the extraction request
-    schema: z.object({
-        products: z.array(ExtractedProductSchema) // Use the Zod schema defined in invoice-schemas.ts
-                 .describe('Raw extracted product list from the invoice.'),
-    })
+    // Output schema from AI matches the extraction request including invoice details
+    schema: PromptOutputSchema
   },
   prompt: `
-    Analyze the following image and extract information for ALL distinct products found.
-    Provide the extracted data as a JSON **object** with a single key named "products".
-    The value of the "products" key should be a JSON **array** (list) of JSON objects.
-    Each JSON object in the array should represent a single product and contain the following keys:
+    Analyze the following image and extract information.
+    Provide the extracted data as a JSON **object**.
+
+    This JSON object should have a key named "products" whose value is a JSON **array** (list) of JSON objects.
+    Each JSON object in the "products" array should represent a single product and contain the following keys:
     "product_name",
     "catalog_number",
     "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product),
@@ -67,11 +76,19 @@ const prompt = ai.definePrompt({
     For the keys "quantity", "purchase_price", "sale_price", and "total", extract ONLY the numerical value (integers or decimals).
     **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys.
 
-    **NEW**: Also, include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
+    Include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
 
     If a specific piece of information (other than description, barcode, and sale_price) for a product is not found, you can omit that key from that product's JSON object.
-    Ensure the output is a valid JSON object.
-    If no products are found, return a JSON object with the "products" key set to an empty array: \`{"products": []}\`.
+    
+    Additionally, the main JSON object should also have a key named "invoice_details" if invoice-level information is found.
+    The value of "invoice_details" should be a JSON object containing the following optional keys:
+    "invoice_number" (string, the invoice number from the document),
+    "supplier_name" (string, the supplier's name from the document),
+    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה". Extract ONLY the numerical value, no currency symbols).
+
+    Ensure the entire output is a valid JSON object.
+    If no products are found, "products" should be an empty array: \`{"products": []}\`.
+    If no invoice-level details are found, the "invoice_details" key can be omitted or be an empty object.
     NEVER return null or an empty response. ALWAYS return a JSON object structured as described.
 
     Invoice Image: {{media url=invoiceDataUri}}
@@ -87,31 +104,26 @@ const scanInvoiceFlow = ai.defineFlow<
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema
 }, async input => {
-    let rawOutputFromAI: any = null;
+    let rawOutputFromAI: z.infer<typeof PromptOutputSchema> | null = null;
+    let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
+    let invoiceNumberForOutput: string | undefined = undefined;
+    let supplierForOutput: string | undefined = undefined;
+    let totalAmountForOutput: number | undefined = undefined;
+
     try {
         const { output } = await prompt(input);
-        rawOutputFromAI = output; // Store the raw output for logging
-
-        if (output === null || typeof output !== 'object' || !('products' in output)) {
-            console.error('AI returned null or an invalid structure (missing "products" key). Received:', output);
-            return {
-                products: [],
-                error: "AI output was null or malformed. Expected an object with a 'products' array."
-            };
-        }
         
-        const validationResult = z.object({ products: z.array(ExtractedProductSchema).nullable() }).safeParse(output);
+        // Validate the overall structure from AI using PromptOutputSchema
+        const validationResult = PromptOutputSchema.safeParse(output);
 
-        if (validationResult.success) {
-            const productsArray = validationResult.data.products ?? []; 
-            rawOutputFromAI = { products: productsArray }; 
-        } else {
-            console.error('AI output structure validation failed after prompt success. Received:', output, 'Errors:', validationResult.error.flatten());
+        if (!validationResult.success) {
+            console.error('AI output structure validation failed. Received:', output, 'Errors:', validationResult.error.flatten());
             return {
                 products: [],
                 error: `AI output validation failed: ${validationResult.error.flatten().formErrors.join(', ')}`
             };
         }
+        rawOutputFromAI = validationResult.data;
 
     } catch (promptError: any) {
         console.error('Error calling AI prompt:', promptError, "Raw AI output if available (before error):", rawOutputFromAI);
@@ -128,16 +140,16 @@ const scanInvoiceFlow = ai.defineFlow<
 
     try {
         if (!rawOutputFromAI || !Array.isArray(rawOutputFromAI.products)) {
-            console.error('Invalid rawOutputFromAI structure before processing:', rawOutputFromAI);
-            return { products: [], error: "Internal error: Invalid raw data structure from AI after initial processing." };
+            console.error('Invalid rawOutputFromAI structure before processing product lines:', rawOutputFromAI);
+            return { products: [], error: "Internal error: Invalid raw product data structure from AI after initial processing." };
         }
 
-        const processedProducts = rawOutputFromAI.products
+        productsForOutput = rawOutputFromAI.products
             .map((rawProduct: z.infer<typeof ExtractedProductSchema>) => {
                 const quantity = rawProduct.quantity ?? 0;
                 const lineTotal = rawProduct.total ?? 0;
                 const purchasePrice = rawProduct.purchase_price ?? 0;
-                const salePrice = rawProduct.sale_price; // Might be undefined
+                const salePrice = rawProduct.sale_price; 
 
                 let unitPrice = 0;
                 if (quantity !== 0 && lineTotal !== 0) {
@@ -145,7 +157,6 @@ const scanInvoiceFlow = ai.defineFlow<
                 } else if (purchasePrice !== 0) {
                     unitPrice = purchasePrice;
                 }
-
 
                 const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
@@ -157,16 +168,28 @@ const scanInvoiceFlow = ai.defineFlow<
                     shortName: shortName,
                     quantity: quantity,
                     unitPrice: unitPrice, 
-                    salePrice: salePrice, // Add salePrice here
+                    salePrice: salePrice,
                     lineTotal: lineTotal,
-                    minStockLevel: undefined, // These will be set later if needed
+                    minStockLevel: undefined,
                     maxStockLevel: undefined,
                 };
                 return finalProduct;
             })
             .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product' || product.barcode);
 
-        return { products: processedProducts };
+        // Process invoice-level details
+        if (rawOutputFromAI.invoice_details) {
+            invoiceNumberForOutput = rawOutputFromAI.invoice_details.invoice_number;
+            supplierForOutput = rawOutputFromAI.invoice_details.supplier_name;
+            totalAmountForOutput = rawOutputFromAI.invoice_details.invoice_total_amount;
+        }
+        
+        return { 
+            products: productsForOutput,
+            invoiceNumber: invoiceNumberForOutput,
+            supplier: supplierForOutput,
+            totalAmount: totalAmountForOutput,
+        };
 
     } catch (processingError: any) {
          console.error('Error processing AI output:', processingError, 'Raw Output for processing:', rawOutputFromAI);

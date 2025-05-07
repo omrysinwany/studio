@@ -1,4 +1,3 @@
-
 // src/ai/flows/invoice-schemas.ts
 import { z } from 'genkit';
 
@@ -39,9 +38,12 @@ export const FinalProductSchema = z.object({
   maxStockLevel: z.number().optional().describe('Maximum stock level for the product.'),
 });
 
-// Final output schema for the entire flow, containing processed products
+// Final output schema for the entire flow, containing processed products and invoice details
 export const ScanInvoiceOutputSchema = z.object({
   products: z.array(FinalProductSchema)
     .describe('The list of products extracted and processed from the invoice.'),
+  invoiceNumber: z.string().optional().describe("The extracted invoice number from the document."),
+  supplier: z.string().optional().describe("The extracted supplier name from the document."),
+  totalAmount: z.number().optional().describe("The extracted final total amount from the document."),
   error: z.string().optional().describe('An error message if the scan or processing failed.'),
 });
