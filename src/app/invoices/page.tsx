@@ -72,6 +72,11 @@ const formatNumber = (
     });
 };
 
+const isValidImageSrc = (src: string | undefined): src is string => {
+  if (!src || typeof src !== 'string') return false;
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
+};
+
 
 const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
 
@@ -299,7 +304,7 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            // invoiceDataUri is not directly edited here, it's part of the selectedInvoiceDetails
+            // invoiceDataUri and status are not directly edited here
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -309,12 +314,11 @@ export default function InvoicesPage() {
         });
         setIsEditingDetails(false);
         // Refresh the selected invoice details with potentially updated data
-        // Keep the existing invoiceDataUri from the original selectedInvoiceDetails
         const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails({
                 ...refreshedInvoice,
-                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri // Preserve original URI
+                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri // Preserve original URI from current view
             });
         } else {
            fetchInvoices(); // Fallback to full refresh
@@ -735,7 +739,7 @@ export default function InvoicesPage() {
                 filteredAndSortedInvoices.map((item) => (
                   <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                     <CardHeader className="p-0 relative aspect-[4/3]">
-                      {item.invoiceDataUri ? (
+                      {isValidImageSrc(item.invoiceDataUri) ? (
                         <NextImage
                           src={item.invoiceDataUri}
                           alt={`Preview of ${item.fileName}`}
@@ -781,8 +785,7 @@ export default function InvoicesPage() {
              </DialogDescription>
           </DialogHeader>
           {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow">
-              <div className="p-4 sm:p-6 space-y-4">
+            <ScrollArea className="flex-grow p-4 sm:p-6">
               {isEditingDetails ? (
                 <div className="space-y-3">
                     <div>
@@ -830,9 +833,9 @@ export default function InvoicesPage() {
                       <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
                     </div>
                   )}
-                  <Separator />
+                  <Separator className="my-4"/>
                   <div className="overflow-auto max-h-[50vh]">
-                  {selectedInvoiceDetails.invoiceDataUri && selectedInvoiceDetails.invoiceDataUri.trim() !== '' ? (
+                  {isValidImageSrc(selectedInvoiceDetails.invoiceDataUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.invoiceDataUri}
                         alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
@@ -847,7 +850,6 @@ export default function InvoicesPage() {
                   </div>
                 </>
               )}
-              </div>
             </ScrollArea>
           )}
           <CustomDialogFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2">
@@ -897,3 +899,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+
