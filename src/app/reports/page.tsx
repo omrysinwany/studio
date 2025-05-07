@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart } from 'lucide-react';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, PieChart as RechartsPie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { DateRange } from 'react-day-picker';
@@ -47,11 +48,6 @@ const chartConfig = {
   count: { label: 'Count', color: 'hsl(var(--chart-2))' },
   sales: { label: 'Sales (₪)', color: 'hsl(var(--chart-3))' },
   quantitySold: { label: 'Quantity Sold', color: 'hsl(var(--chart-4))'},
-  Electronics: { label: 'Electronics', color: 'hsl(var(--chart-1))' },
-  Clothing: { label: 'Clothing', color: 'hsl(var(--chart-2))' },
-  'Home Goods': { label: 'Home Goods', color: 'hsl(var(--chart-3))' },
-  Books: { label: 'Books', color: 'hsl(var(--chart-4))' },
-  Other: { label: 'Other', color: 'hsl(var(--chart-5))' },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 const PIE_COLORS = [
@@ -92,6 +88,15 @@ export default function ReportsPage() {
     to: new Date(),
   });
   const { toast } = useToast();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -137,10 +142,10 @@ export default function ReportsPage() {
        const lowStockItemsCount = getLowStockItems(inventory).length;
 
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; 
-       const mockCogs = mockTotalRevenue * 0.65; 
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5;
+       const mockCogs = mockTotalRevenue * 0.65;
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); 
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
@@ -150,17 +155,17 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         valueChangePercent: Math.random() * 10 - 5, 
+         valueChangePercent: Math.random() * 10 - 5,
        });
 
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const numPoints = window.innerWidth < 640 ? 15 : 30; // Fewer points for mobile
-       const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints))); 
-       
+       const numPoints = isMobile ? 7 : 15;
+       const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints)));
+
        while (currentDate <= endDate) {
-           const monthStr = format(currentDate, "MMM dd"); // More granular for line chart
+           const monthStr = format(currentDate, "MMM dd");
            const monthValue = inventory.slice(0, Math.floor(Math.random() * inventory.length)).reduce((sum, p) => sum + (p.lineTotal || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
                date: monthStr,
@@ -171,7 +176,7 @@ export default function ReportsPage() {
        setValueOverTime(votData);
 
 
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; 
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other'];
         const catDistData = categories.map(cat => {
             const categoryProducts = inventory.filter(p => (p.description.toLowerCase().includes(cat.slice(0,4).toLowerCase())) || (cat === 'Other' && !categories.slice(0,-1).some(c => p.description.toLowerCase().includes(c.slice(0,4).toLowerCase()))));
             return {
@@ -183,8 +188,8 @@ export default function ReportsPage() {
 
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const procVolNumPoints = window.innerWidth < 640 ? 6 : 12; // Fewer points for bar chart on mobile
-       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); // Approx months
+       const procVolNumPoints = isMobile ? 4 : 6; 
+       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); 
 
         while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yy");
@@ -196,13 +201,15 @@ export default function ReportsPage() {
        }
        setProcessingVolume(procVolData);
 
-       setSalesByCategory(categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 })));
+       const mockSalesByCategoryData = categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 }));
+       setSalesByCategory(mockSalesByCategoryData);
+
 
         const topProducts = inventory
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, 
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1,
                 totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1)
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
@@ -230,7 +237,7 @@ export default function ReportsPage() {
      };
 
      generateReports();
-   }, [dateRange, toast, inventory, invoices, isLoading]);
+   }, [dateRange, toast, inventory, invoices, isLoading, isMobile]);
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -281,17 +288,7 @@ export default function ReportsPage() {
                defaultMonth={dateRange?.from}
                selected={dateRange}
                onSelect={setDateRange}
-               numberOfMonths={1}
-               className="sm:hidden"
-             />
-             <Calendar
-               initialFocus
-               mode="range"
-               defaultMonth={dateRange?.from}
-               selected={dateRange}
-               onSelect={setDateRange}
-               numberOfMonths={2}
-               className="hidden sm:block"
+               numberOfMonths={isMobile ? 1 : 2}
              />
             {dateRange && (
                 <div className="p-2 border-t flex justify-end">
@@ -369,20 +366,27 @@ export default function ReportsPage() {
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: 10, left: 0, bottom: 30 }}>
+                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 5 : 10, left: isMobile ? -25 : -20, bottom: isMobile ? 40 : 30 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis 
-                                        dataKey="date" 
-                                        stroke="hsl(var(--muted-foreground))" 
-                                        fontSize={10} 
-                                        tickLine={false} 
-                                        axisLine={false} 
-                                        angle={-45} 
-                                        textAnchor="end" 
-                                        height={50} 
-                                        interval="preserveStartEnd"
+                                     <XAxis
+                                        dataKey="date"
+                                        stroke="hsl(var(--muted-foreground))"
+                                        fontSize={isMobile ? 8 : 10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={isMobile ? 50 : 40}
+                                        interval={isMobile ? Math.floor(lineChartData.length / 4) : "preserveStartEnd"}
                                      />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'} />
+                                     <YAxis
+                                        stroke="hsl(var(--muted-foreground))"
+                                        fontSize={isMobile ? 8 : 10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'}
+                                        width={isMobile ? 35: 40}
+                                     />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
@@ -406,20 +410,27 @@ export default function ReportsPage() {
                       {processingBarChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: 5, left: 0, bottom: 30 }}>
+                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -25 : -20, bottom: isMobile ? 40 : 30 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis 
-                                        dataKey="period" 
-                                        stroke="hsl(var(--muted-foreground))" 
-                                        fontSize={10} 
-                                        tickLine={false} 
-                                        axisLine={false} 
-                                        angle={-45} 
-                                        textAnchor="end" 
-                                        height={50}
-                                        interval="preserveStartEnd"
+                                    <XAxis
+                                        dataKey="period"
+                                        stroke="hsl(var(--muted-foreground))"
+                                        fontSize={isMobile ? 8 : 10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        angle={-45}
+                                        textAnchor="end"
+                                        height={isMobile ? 50 : 40}
+                                        interval={isMobile ? Math.floor(processingBarChartData.length / 3) : "preserveStartEnd"}
                                     />
-                                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })} />
+                                     <YAxis
+                                        stroke="hsl(var(--muted-foreground))"
+                                        fontSize={isMobile ? 8 : 10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })}
+                                        width={isMobile ? 30: 35}
+                                     />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
@@ -443,10 +454,10 @@ export default function ReportsPage() {
                     {salesByCategoryBarData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] sm:h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
+                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 5 : 10, left: isMobile ? 0 : 5, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} width={window.innerWidth < 640 ? 50 : 80} interval={0} />
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 60} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -496,11 +507,19 @@ export default function ReportsPage() {
                                          ))}
                                      </RechartsPie>
                                      <RechartsLegend
-                                         content={<ChartLegendContent nameKey="name" />}
+                                         content={({ payload }) => (
+                                            <ul className="flex flex-wrap justify-center gap-x-2 gap-y-1 mt-2 text-[10px] sm:text-xs">
+                                                {payload?.map((entry, index) => (
+                                                    <li key={`item-${index}`} className="flex items-center gap-1">
+                                                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                                                        {entry.value}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
                                          verticalAlign="bottom"
                                          align="center"
-                                         iconType="circle"
-                                         wrapperStyle={{ paddingTop: 10, fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} 
+                                         wrapperStyle={{ fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                      />
                                  </RechartsPie>
                            </ResponsiveContainer>
@@ -522,17 +541,17 @@ export default function ReportsPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs sm:text-sm">Product Name</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm">Quantity Sold</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm">Total Value</TableHead>
+                                        <TableHead className="text-xs sm:text-sm px-2 sm:px-4">Product Name</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Qty Sold</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Total Value</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {topSellingProductsBarData.map((product, index) => (
                                         <TableRow key={product.id || index}>
-                                            <TableCell className="font-medium text-xs sm:text-sm">{product.name}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm">{formatNumber(product.totalValue, { currency: true })}</TableCell>
+                                            <TableCell className="font-medium text-xs sm:text-sm px-2 sm:px-4">{product.name}</TableCell>
+                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(product.totalValue, { currency: true })}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -555,27 +574,27 @@ export default function ReportsPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-xs sm:text-sm">Product Name</TableHead>
-                                        <TableHead className="text-xs sm:text-sm hidden md:table-cell">Catalog #</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm">Current Qty</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell">Min Stock</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell">Max Stock</TableHead>
-                                        <TableHead className="text-right text-xs sm:text-sm">Status</TableHead>
+                                        <TableHead className="text-xs sm:text-sm px-2 sm:px-4">Product Name</TableHead>
+                                        <TableHead className="text-xs sm:text-sm hidden md:table-cell px-2 sm:px-4">Catalog #</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Current Qty</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">Min Stock</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">Max Stock</TableHead>
+                                        <TableHead className="text-right text-xs sm:text-sm px-2 sm:px-4">Status</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {stockAlerts.map((alert) => (
                                         <TableRow key={alert.id}>
-                                            <TableCell className="font-medium text-xs sm:text-sm">{alert.name}</TableCell>
-                                            <TableCell className="text-xs sm:text-sm hidden md:table-cell">{alert.catalogNumber}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell">
+                                            <TableCell className="font-medium text-xs sm:text-sm px-2 sm:px-4">{alert.name}</TableCell>
+                                            <TableCell className="text-xs sm:text-sm hidden md:table-cell px-2 sm:px-4">{alert.catalogNumber}</TableCell>
+                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
                                                     ? `${formatNumber(10, { decimals: 0 })} (Default)`
                                                     : (alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
-                                            <TableCell className="text-right text-xs sm:text-sm">
+                                            <TableCell className="text-right text-xs sm:text-sm hidden sm:table-cell px-2 sm:px-4">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-xs sm:text-sm px-2 sm:px-4">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
                                                         "whitespace-nowrap",
