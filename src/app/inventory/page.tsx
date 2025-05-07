@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -93,8 +93,8 @@ export default function InventoryPage() {
     quantity: true,
     unitPrice: true,
     lineTotal: false,
-    minStockLevel: false, // Hidden by default
-    maxStockLevel: false, // Hidden by default
+    minStockLevel: false,
+    maxStockLevel: false,
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -246,7 +246,7 @@ export default function InventoryPage() {
     };
 
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
-        { key: 'actions', label: 'Actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' },
+        { key: 'actions', label: 'View', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
         { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px]', mobileHidden: true, headerClassName: 'text-center' },
         { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center' },
@@ -438,41 +438,6 @@ export default function InventoryPage() {
                      ))}
                    </DropdownMenuContent>
                  </DropdownMenu>
-
-                  <Button variant="outline" onClick={handleExportInventory} className="flex-1 md:flex-initial">
-                    <Download className="mr-2 h-4 w-4" /> Export CSV
-                  </Button>
-
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isDeleting} className="flex-1 md:flex-initial">
-                                {isDeleting ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                )}
-                                Delete All
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete all inventory items.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                {isDeleting ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : null}
-                                Yes, delete all
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-
                </div>
            </div>
 
@@ -615,6 +580,40 @@ export default function InventoryPage() {
                 </div>
             )}
          </CardContent>
+         <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
+              <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
+                <Download className="mr-2 h-4 w-4" /> Export CSV
+              </Button>
+              <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                      <Button variant="destructive" disabled={isDeleting} className="w-full sm:w-auto">
+                          {isDeleting ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                              <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Delete All
+                      </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                      <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                          This action cannot be undone. This will permanently delete all inventory items.
+                      </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                          {isDeleting ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Yes, delete all
+                      </AlertDialogAction>
+                      </AlertDialogFooter>
+                  </AlertDialogContent>
+              </AlertDialog>
+         </CardFooter>
        </Card>
     </div>
   );
