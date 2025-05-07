@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, PieChart as RechartsPie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -48,6 +47,7 @@ const chartConfig = {
   count: { label: 'Count', color: 'hsl(var(--chart-2))' },
   sales: { label: 'Sales (₪)', color: 'hsl(var(--chart-3))' },
   quantitySold: { label: 'Quantity Sold', color: 'hsl(var(--chart-4))'},
+  documents: { label: 'Documents', color: 'hsl(var(--chart-5))' }
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 const PIE_COLORS = [
@@ -142,10 +142,10 @@ export default function ReportsPage() {
        const lowStockItemsCount = getLowStockItems(inventory).length;
 
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5;
-       const mockCogs = mockTotalRevenue * 0.65;
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Mock factor
+       const mockCogs = mockTotalRevenue * 0.65; // Mock COGS
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); // Use average inventory value (mocked as half current)
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
@@ -155,69 +155,78 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         valueChangePercent: Math.random() * 10 - 5,
+         valueChangePercent: Math.random() * 10 - 5, // Mock value change
        });
 
+       // Generate Inventory Value Over Time data
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const numPoints = isMobile ? 7 : 15;
+       const numPoints = isMobile ? 7 : 15; // Fewer points for mobile
        const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints)));
 
        while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM dd");
-           const monthValue = inventory.slice(0, Math.floor(Math.random() * inventory.length)).reduce((sum, p) => sum + (p.lineTotal || 0),0) * (0.8 + Math.random() * 0.4);
+           // Simulate value based on filtered invoices up to this date (very rough simulation)
+           const invoicesUpToDate = invoices.filter(inv => new Date(inv.uploadTime) <= currentDate);
+           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4); // Mock factor
            votData.push({
                date: monthStr,
-               value: monthValue,
+               value: simulatedValue,
            });
            currentDate.setDate(currentDate.getDate() + step);
        }
        setValueOverTime(votData);
 
 
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other'];
+       // Generate Inventory Value by Category data (mock categories for now)
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; // Mock categories
         const catDistData = categories.map(cat => {
+            // Simulate category distribution based on product descriptions (very basic)
             const categoryProducts = inventory.filter(p => (p.description.toLowerCase().includes(cat.slice(0,4).toLowerCase())) || (cat === 'Other' && !categories.slice(0,-1).some(c => p.description.toLowerCase().includes(c.slice(0,4).toLowerCase()))));
             return {
                 name: cat,
                 value: calculateInventoryValue(categoryProducts)
             };
-        }).filter(c => c.value > 0);
+        }).filter(c => c.value > 0); // Only show categories with value
        setCategoryDistribution(catDistData);
 
+       // Generate Documents Processed Volume
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const procVolNumPoints = isMobile ? 4 : 6; 
-       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); 
+       const procVolNumPoints = isMobile ? 4 : 6; // Fewer points for mobile
+       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); // Monthly steps
 
         while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yy");
            const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yy") === monthStr).length;
-           if(!procVolData.find(d => d.period === monthStr)) {
-             procVolData.push({ period: monthStr, count });
+           if(!procVolData.find(d => d.period === monthStr)) { // Avoid duplicates if step is small
+             procVolData.push({ period: monthStr, documents: count });
            }
            currentDate.setMonth(currentDate.getMonth() + procVolStep);
        }
        setProcessingVolume(procVolData);
 
+       // Generate Sales by Category (mock data, needs real sales data integration)
        const mockSalesByCategoryData = categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 }));
        setSalesByCategory(mockSalesByCategoryData);
 
 
+        // Generate Top Selling Products (mocking sales volume for now)
         const topProducts = inventory
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1,
-                totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1)
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, // Mock sold quantity
+                totalValue: (p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) // Mock total value
             }))
-            .sort((a,b) => b.totalValue - a.totalValue)
-            .slice(0, 5);
+            .sort((a,b) => b.totalValue - a.totalValue) // Sort by total value
+            .slice(0, 5); // Top 5
        setTopSellingProducts(topProducts);
 
+        // Generate Stock Alerts
         const alerts: StockAlert[] = inventory.reduce((acc, p) => {
-            const minStockLevelOrDefault = p.minStockLevel ?? 10;
+            const minStockLevelOrDefault = p.minStockLevel ?? 10; // Default min stock if not set
             const isDefaultMin = p.minStockLevel === undefined;
 
             if (p.quantity === 0) {
@@ -229,7 +238,7 @@ export default function ReportsPage() {
             }
             return acc;
         }, [] as StockAlert[]);
-        setStockAlerts(alerts.sort((a, b) => {
+        setStockAlerts(alerts.sort((a, b) => { // Sort alerts for consistent display
             const statusOrder = { 'Out of Stock': 1, 'Low Stock': 2, 'Over Stock': 3 };
             return statusOrder[a.status] - statusOrder[b.status];
         }));
@@ -256,7 +265,7 @@ export default function ReportsPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-primary shrink-0">Reports & Statistics</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-primary shrink-0">Reports &amp; Statistics</h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -362,11 +371,11 @@ export default function ReportsPage() {
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Inventory Value Over Time</CardTitle>
                 </CardHeader>
-                <CardContent className="pl-0 pr-1 pb-4">
+                <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
                     {lineChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 5 : 10, left: isMobile ? -25 : -20, bottom: isMobile ? 40 : 30 }}>
+                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 10 : 20, left: isMobile ? 0 : -15, bottom: isMobile ? 50 : 30 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis
                                         dataKey="date"
@@ -376,8 +385,8 @@ export default function ReportsPage() {
                                         axisLine={false}
                                         angle={-45}
                                         textAnchor="end"
-                                        height={isMobile ? 50 : 40}
-                                        interval={isMobile ? Math.floor(lineChartData.length / 4) : "preserveStartEnd"}
+                                        height={isMobile ? 60 : 40} 
+                                        interval={isMobile ? Math.max(0, Math.floor(lineChartData.length / 4) -1) : "preserveStartEnd"}
                                      />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
@@ -385,7 +394,7 @@ export default function ReportsPage() {
                                         tickLine={false}
                                         axisLine={false}
                                         tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'}
-                                        width={isMobile ? 35: 40}
+                                        width={isMobile ? 35 : 45} 
                                      />
                                      <RechartsTooltip
                                         cursor={false}
@@ -406,11 +415,11 @@ export default function ReportsPage() {
                  <CardHeader className="pb-4">
                      <CardTitle className="text-lg">Documents Processed Volume</CardTitle>
                  </CardHeader>
-                 <CardContent className="pl-0 pr-1 pb-4">
+                 <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
                       {processingBarChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[200px] sm:h-[250px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -25 : -20, bottom: isMobile ? 40 : 30 }}>
+                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? 0 : -20, bottom: isMobile ? 50 : 30 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis
                                         dataKey="period"
@@ -420,8 +429,8 @@ export default function ReportsPage() {
                                         axisLine={false}
                                         angle={-45}
                                         textAnchor="end"
-                                        height={isMobile ? 50 : 40}
-                                        interval={isMobile ? Math.floor(processingBarChartData.length / 3) : "preserveStartEnd"}
+                                        height={isMobile ? 60 : 40}
+                                        interval={isMobile ? Math.max(0, Math.floor(processingBarChartData.length / 3) -1) : "preserveStartEnd"}
                                     />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
@@ -436,7 +445,7 @@ export default function ReportsPage() {
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                         formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
                                      />
-                                    <Bar dataKey="count" fill="var(--color-count)" radius={3} />
+                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={3} />
                                 </BarChart>
                            </ResponsiveContainer>
                         </ChartContainer>
@@ -450,14 +459,14 @@ export default function ReportsPage() {
                 <CardHeader className="pb-4">
                     <CardTitle className="text-lg">Sales by Category</CardTitle>
                 </CardHeader>
-                <CardContent className="pl-0 pr-1 pb-4">
+                <CardContent className="p-0 sm:pl-0 sm:pr-1 sm:pb-4">
                     {salesByCategoryBarData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[250px] sm:h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 5 : 10, left: isMobile ? 0 : 5, bottom: 5 }}>
+                                <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 15 : 10, left: isMobile ? 5 : 5, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 60} interval={0} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -481,7 +490,7 @@ export default function ReportsPage() {
                  <CardHeader className="pb-4">
                      <CardTitle className="text-lg">Inventory Value by Category</CardTitle>
                  </CardHeader>
-                 <CardContent className="flex items-center justify-center pb-4 sm:pb-8">
+                 <CardContent className="flex items-center justify-center p-0 sm:pb-4">
                      {pieChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[200px] sm:h-[250px]">
                            <ResponsiveContainer width="100%" height="100%">
@@ -535,7 +544,7 @@ export default function ReportsPage() {
                     <CardTitle className="text-lg">Top Selling Products (by Value)</CardTitle>
                      <CardDescription>Top 5 products by total sales value in the selected period.</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                     {topSellingProductsBarData.length > 0 ? (
                          <div className="overflow-x-auto">
                             <Table>
@@ -568,7 +577,7 @@ export default function ReportsPage() {
                     <CardTitle className="text-lg">Stock Alert Dashboard</CardTitle>
                     <CardDescription>Products requiring attention based on defined stock levels.</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                     {stockAlerts.length > 0 ? (
                         <div className="overflow-x-auto">
                             <Table>
