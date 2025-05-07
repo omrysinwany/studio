@@ -9,17 +9,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager';
-import { savePosSettings, getPosSettings, saveProducts } from '@/services/backend'; // Import backend functions for settings AND saveProducts
-import type { PosConnectionConfig, SyncResult, Product } from '@/services/pos-integration/pos-adapter.interface'; // Import SyncResult type
+// Corrected imports to use the actual exported names with 'Service' suffix
+import {
+    savePosSettingsService,
+    getPosSettingsService,
+    finalizeSaveProductsService // Corrected import name
+} from '@/services/backend';
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
 import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the inventory sync action
 import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator'; // Import Separator
+import { Separator } from '@/components/ui/separator';
 
 type PosSystemInfo = { systemId: string; systemName: string };
 
-// Define field structures for different systems
 const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[]> = {
   caspit: [
     { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
@@ -44,17 +48,16 @@ export default function PosIntegrationSettingsPage() {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncResults, setSyncResults] = useState<SyncResult[]>([]); // Combined results from diff sync types
+  const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const { toast } = useToast();
 
-  // Fetch available systems and load existing settings on mount
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
     try {
       const systems = getAvailablePosSystems();
       setAvailableSystems(systems);
 
-      const savedSettings = await getPosSettings();
+      const savedSettings = await getPosSettingsService();
       if (savedSettings) {
         setSelectedSystemId(savedSettings.systemId);
         setConfigValues(savedSettings.config || {});
@@ -77,7 +80,7 @@ export default function PosIntegrationSettingsPage() {
 
   const handleSystemChange = (systemId: string) => {
     setSelectedSystemId(systemId);
-    getPosSettings().then(savedSettings => {
+    getPosSettingsService().then(savedSettings => {
         if (savedSettings && savedSettings.systemId === systemId) {
             setConfigValues(savedSettings.config || {});
         } else {
@@ -133,7 +136,7 @@ export default function PosIntegrationSettingsPage() {
     if (!selectedSystemId) return;
     setIsSaving(true);
     try {
-      await savePosSettings(selectedSystemId, configValues);
+      await savePosSettingsService(selectedSystemId, configValues);
       toast({
         title: "Settings Saved",
         description: `POS integration settings for ${availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || 'system'} saved successfully.`,
@@ -156,21 +159,18 @@ export default function PosIntegrationSettingsPage() {
      if (!selectedSystemId) return;
 
      setIsSyncing(true);
-     setSyncResults([]); // Clear previous results
+     setSyncResults([]);
      toast({ title: "Inventory Sync Started", description: `Starting inventory sync with ${selectedSystemId}...` });
-     let inventorySyncSucceeded = false;
 
      try {
-         // Pass configValues from state directly to the action
          console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
          const inventoryResult = await syncInventoryAction(configValues, selectedSystemId);
-         setSyncResults([inventoryResult]); // Show inventory sync result
+         setSyncResults([inventoryResult]);
 
          if (inventoryResult.success && inventoryResult.products) {
-             inventorySyncSucceeded = true;
              try {
                  console.log(`[POS Page] Saving ${inventoryResult.products.length} synced products...`);
-                 await saveProducts(inventoryResult.products, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
+                 await finalizeSaveProductsService(inventoryResult.products, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
                  console.log(`[POS Page] Successfully saved synced products.`);
                  setSyncResults(prev => [...prev, { success: true, message: `Saved ${inventoryResult.products?.length ?? 0} products to inventory.` }]);
                  toast({
@@ -178,7 +178,6 @@ export default function PosIntegrationSettingsPage() {
                     description: `Successfully synced and saved ${inventoryResult.products.length} products from ${selectedSystemId}.`,
                  });
              } catch (saveError: any) {
-                 inventorySyncSucceeded = false;
                  console.error("[POS Page] Error saving synced products:", saveError);
                  setSyncResults(prev => [...prev, { success: false, message: `Failed to save products: ${saveError.message}` }]);
                  toast({
@@ -207,7 +206,6 @@ export default function PosIntegrationSettingsPage() {
      }
    };
 
-  // --- Dynamic Form Fields based on selected system ---
   const renderConfigFields = () => {
     if (!selectedSystemId) return null;
     const fields = systemConfigFields[selectedSystemId] || [];
@@ -262,11 +260,10 @@ export default function PosIntegrationSettingsPage() {
           <CardDescription>Connect InvoTrack to your POS system to synchronize data.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* System Selection */}
           <div className="space-y-2">
             <Label htmlFor="pos-system">Select POS System</Label>
             <Select value={selectedSystemId} onValueChange={handleSystemChange}>
-              <SelectTrigger id="pos-system" className="w-full md:w-[300px]"> {/* Full width on mobile */}
+              <SelectTrigger id="pos-system" className="w-full md:w-[300px]">
                 <SelectValue placeholder="Choose a system..." />
               </SelectTrigger>
               <SelectContent>
@@ -283,7 +280,6 @@ export default function PosIntegrationSettingsPage() {
             </Select>
           </div>
 
-          {/* Configuration Fields */}
           {selectedSystemId && (
             <Card className="bg-muted/30 p-4 md:p-6 space-y-4 border">
                 <h3 className="text-lg font-medium mb-4">
@@ -291,13 +287,12 @@ export default function PosIntegrationSettingsPage() {
                 </h3>
                 {renderConfigFields()}
 
-                {/* Connection Test */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4"> {/* Stack vertically */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-4">
                     <Button
                         variant="outline"
                         onClick={handleTestConnection}
                         disabled={isTesting || !selectedSystemId || Object.keys(configValues).length === 0}
-                        className="w-full sm:w-auto" // Full width on mobile
+                        className="w-full sm:w-auto"
                     >
                         {isTesting ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testing...</>
@@ -312,12 +307,11 @@ export default function PosIntegrationSettingsPage() {
                         </div>
                     )}
                 </div>
-                 {/* Save Button for Config */}
                  <div className="flex justify-end pt-2">
                      <Button
                          onClick={handleSaveChanges}
                          disabled={isSaving || !selectedSystemId || Object.keys(configValues).length === 0}
-                         className="w-full sm:w-auto" // Full width on mobile
+                         className="w-full sm:w-auto"
                      >
                      {isSaving ? (
                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
@@ -329,16 +323,15 @@ export default function PosIntegrationSettingsPage() {
             </Card>
           )}
 
-           {/* Manual Sync Section */}
            {selectedSystemId && (
                <Card className="p-4 md:p-6 space-y-4 border">
                    <h3 className="text-lg font-medium">Manual Inventory Synchronization</h3>
                    <Separator />
-                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"> {/* Stack vertically */}
+                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                        <Button
-                           onClick={handleSyncNow} // This button now triggers inventory sync
-                           disabled={isSyncing || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving} // Disable if no config or saving
-                           className="w-full sm:w-auto" // Full width on mobile
+                           onClick={handleSyncNow}
+                           disabled={isSyncing || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving}
+                           className="w-full sm:w-auto"
                        >
                            {isSyncing ? (
                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing Inventory...</>
@@ -346,7 +339,6 @@ export default function PosIntegrationSettingsPage() {
                                <><RefreshCw className="mr-2 h-4 w-4" /> Sync Inventory Now</>
                            )}
                        </Button>
-                       {/* Display Sync Results */}
                        {syncResults.length > 0 && (
                            <div className="space-y-2 text-sm mt-2 sm:mt-0 sm:ml-4">
                                {syncResults.map((result, index) => (
@@ -364,7 +356,6 @@ export default function PosIntegrationSettingsPage() {
            )}
 
 
-          {/* Initial/No System Selected State */}
           {!selectedSystemId && availableSystems.length > 0 && (
             <Alert>
               <AlertTitle>Select a System</AlertTitle>
