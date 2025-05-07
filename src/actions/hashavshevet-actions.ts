@@ -7,22 +7,15 @@ import type { PosConnectionConfig, SyncResult, Product } from '@/services/pos-in
 const HASHAVSHEVET_API_BASE_URL = 'https://api.example-hashavshevet.com/v1'; // Replace with actual URL
 
 // --- Helper function to handle authentication (placeholder) ---
-// Hashavshevet likely uses API keys or other methods. This needs implementation.
 async function getHashavshevetAuthHeaders(config: PosConnectionConfig): Promise<Record<string, string>> {
-    const { apiKey, apiSecret, companyId } = config; // Example config fields
+    const { apiKey } = config;
     if (!apiKey) {
         throw new Error('Missing Hashavshevet API Key in configuration.');
     }
-    // Add other necessary validation
-
-    // Placeholder for authentication logic (e.g., creating Basic Auth, Bearer Token)
-    // This will depend entirely on Hashavshevet's API requirements.
     console.log('[Hashavshevet Action - getAuth] Using API Key:', apiKey ? 'Provided' : 'Missing');
     return {
-        'Authorization': `Bearer ${apiKey}`, // Example: Bearer token
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        // Add other headers like Company ID if required
-        // 'X-Company-ID': companyId
     };
 }
 
@@ -30,8 +23,7 @@ async function getHashavshevetAuthHeaders(config: PosConnectionConfig): Promise<
 export async function testHashavshevetConnectionAction(config: PosConnectionConfig): Promise<{ success: boolean; message: string }> {
     try {
         const headers = await getHashavshevetAuthHeaders(config);
-        // Make a simple test request (e.g., fetch company info or a specific endpoint that requires auth)
-        const testUrl = `${HASHAVSHEVET_API_BASE_URL}/test-endpoint`; // Replace with a real test endpoint
+        const testUrl = `${HASHAVSHEVET_API_BASE_URL}/test-endpoint`;
         console.log('[Hashavshevet Action - testConnection] Testing connection to:', testUrl);
 
         const response = await fetch(testUrl, { method: 'GET', headers });
@@ -41,7 +33,6 @@ export async function testHashavshevetConnectionAction(config: PosConnectionConf
             throw new Error(`Hashavshevet API Error (${response.status}): ${errorText || response.statusText}`);
         }
 
-        // If the request succeeds (status 2xx), assume connection is okay
         console.log('[Hashavshevet Action - testConnection] Test connection successful.');
         return { success: true, message: 'Connection successful!' };
 
@@ -53,12 +44,11 @@ export async function testHashavshevetConnectionAction(config: PosConnectionConf
 
 // --- Map Hashavshevet Product Data ---
  function mapHashavshevetProductToAction(hashavshevetProduct: any): Product | null {
-      // Use fields from Hashavshevet's product structure (needs confirmation from API docs)
-      // Example field names - ADJUST THESE based on actual API response
-      const productId = hashavshevetProduct.InternalID || hashavshevetProduct.ItemKey; // Unique ID if available
+      const productId = hashavshevetProduct.InternalID || hashavshevetProduct.ItemKey;
       const catalogNumber = hashavshevetProduct.ItemCode || hashavshevetProduct.CatalogNum;
       const description = hashavshevetProduct.ItemName || hashavshevetProduct.Description;
-      const unitPrice = hashavshevetProduct.Price || hashavshevetProduct.SalePrice || 0;
+      const unitPrice = hashavshevetProduct.PurchasePrice || hashavshevetProduct.CostPrice || 0; // Cost price
+      const salePrice = hashavshevetProduct.SalePrice || hashavshevetProduct.ListPrice || undefined; // Sale price (optional)
       const quantityInStock = hashavshevetProduct.StockQuantity ?? hashavshevetProduct.QuantityOnHand ?? 0;
 
       if (!catalogNumber && !description) {
@@ -67,12 +57,13 @@ export async function testHashavshevetConnectionAction(config: PosConnectionConf
       }
 
       const invoTrackProduct: Product = {
-        id: productId || `${catalogNumber}-${Date.now()}`, // Use ID or generate one
+        id: productId || `${catalogNumber}-${Date.now()}`,
         catalogNumber: catalogNumber || 'N/A',
         description: description || 'No Description',
         quantity: quantityInStock,
         unitPrice: unitPrice,
-        lineTotal: quantityInStock * unitPrice, // Calculate initial line total
+        salePrice: salePrice, // Add salePrice
+        lineTotal: quantityInStock * unitPrice, // Based on cost price
       };
       return invoTrackProduct;
 }
@@ -88,16 +79,13 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
     }
 
     let allProducts: Product[] = [];
-    // Placeholder for pagination logic (depends on Hashavshevet API)
     let currentPage = 1;
     let hasMore = true;
     let totalSynced = 0;
 
     try {
-        // This loop is a placeholder - Hashavshevet might use different pagination (limit/offset, next page links, etc.)
         while (hasMore) {
-            // Construct the URL with pagination parameters
-            const url = `${HASHAVSHEVET_API_BASE_URL}/items?page=${currentPage}`; // Replace with actual product endpoint and params
+            const url = `${HASHAVSHEVET_API_BASE_URL}/items?page=${currentPage}`;
             console.log(`[Hashavshevet Action - syncProducts] Fetching page ${currentPage}: ${url}`);
             const response = await fetch(url, { headers });
             const responseText = await response.text();
@@ -115,9 +103,7 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
                 throw new Error('Invalid JSON response received from Hashavshevet product API.');
             }
 
-            // *** Adjust data structure check based on Hashavshevet's response ***
-            // Example: Check if data is an array or an object with a 'results' array
-            const productsFromApi = Array.isArray(data) ? data : data?.results || data?.Items; // Adjust based on actual structure
+            const productsFromApi = Array.isArray(data) ? data : data?.results || data?.Items;
 
             if (!Array.isArray(productsFromApi)) {
                 console.error(`[Hashavshevet Action - syncProducts] Invalid product data structure received. Expected array. Raw response: ${responseText}`);
@@ -131,16 +117,13 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
             allProducts = allProducts.concat(mappedProducts);
             totalSynced += mappedProducts.length;
 
-            // *** Adjust pagination check based on Hashavshevet's response ***
-            // Example: Check for a 'nextPage' link or if the number of results is less than the page size
-            if (productsFromApi.length < 50) { // Assuming a page size of 50
+            if (productsFromApi.length < 50) { 
                  hasMore = false;
             } else {
                  currentPage++;
             }
 
-            // Safety break
-            if (currentPage > 50) { // Limit to 50 pages max
+            if (currentPage > 50) { 
                  console.warn(`[Hashavshevet Action - syncProducts] Reached page limit (${currentPage}). Stopping sync.`);
                  hasMore = false;
             }
@@ -151,7 +134,7 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
             success: true,
             message: `Successfully fetched ${totalSynced} products from Hashavshevet.`,
             itemsSynced: totalSynced,
-            products: allProducts // Return the fetched products
+            products: allProducts
         };
 
     } catch (error: any) {
@@ -170,16 +153,9 @@ export async function syncHashavshevetSalesAction(config: PosConnectionConfig): 
         return { success: false, message: `Sales sync failed: Could not get auth headers - ${error.message}` };
     }
 
-    // Placeholder - Implement actual sales fetching and processing logic here
     console.log("[Hashavshevet Action - syncSales] Placeholder for sales sync...");
      try {
-        // Fetch sales data using the auth headers and relevant Hashavshevet endpoints (e.g., /invoices, /transactions)
-        // Process sales data (e.g., update inventory quantities in backend)
-        // const salesUrl = `${HASHAVSHEVET_API_BASE_URL}/sales?startDate=...&endDate=...`; // Adjust endpoint and params
-        // const salesResponse = await fetch(salesUrl, { headers });
-        // ... process sales data ...
-
-        return { success: true, message: "Sales sync placeholder completed (Hashavshevet)." }; // Update message when implemented
+        return { success: true, message: "Sales sync placeholder completed (Hashavshevet)." };
     } catch (error: any) {
         console.error("[Hashavshevet Action - syncSales] Error during sales sync:", error);
         return { success: false, message: `Sales sync failed: ${error.message}` };

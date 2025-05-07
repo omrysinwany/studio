@@ -58,17 +58,18 @@ const prompt = ai.definePrompt({
     "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product),
     "quantity",
     "purchase_price",
+    "sale_price" (include this key only if a sale price is clearly present for that specific product),
     "total",
     "description" (include this key only if a description is clearly present for that specific product).
 
     **IMPORTANT for "quantity":** If there are multiple columns indicating quantity (e.g., one for "Units"/'יח'/'כמות' and another for "Cases"/'ארגזים'/'קרטונים'), ALWAYS extract the value from the column representing **individual units**.
 
-    For the keys "quantity", "purchase_price", and "total", extract ONLY the numerical value (integers or decimals).
-    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these three keys.
+    For the keys "quantity", "purchase_price", "sale_price", and "total", extract ONLY the numerical value (integers or decimals).
+    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys.
 
     **NEW**: Also, include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
 
-    If a specific piece of information (other than description and barcode) for a product is not found, you can omit that key from that product's JSON object.
+    If a specific piece of information (other than description, barcode, and sale_price) for a product is not found, you can omit that key from that product's JSON object.
     Ensure the output is a valid JSON object.
     If no products are found, return a JSON object with the "products" key set to an empty array: \`{"products": []}\`.
     NEVER return null or an empty response. ALWAYS return a JSON object structured as described.
@@ -91,9 +92,6 @@ const scanInvoiceFlow = ai.defineFlow<
         const { output } = await prompt(input);
         rawOutputFromAI = output; // Store the raw output for logging
 
-        // Defensive check: If AI returns null or not an object, handle it.
-        // This scenario should ideally be caught by Genkit's schema validation during the prompt call itself,
-        // leading to the catch block. This check is an additional safeguard.
         if (output === null || typeof output !== 'object' || !('products' in output)) {
             console.error('AI returned null or an invalid structure (missing "products" key). Received:', output);
             return {
@@ -102,11 +100,10 @@ const scanInvoiceFlow = ai.defineFlow<
             };
         }
         
-        // Zod validation for the structure of 'output.products'
         const validationResult = z.object({ products: z.array(ExtractedProductSchema).nullable() }).safeParse(output);
 
         if (validationResult.success) {
-            const productsArray = validationResult.data.products ?? []; // Handle null products array if schema allows
+            const productsArray = validationResult.data.products ?? []; 
             rawOutputFromAI = { products: productsArray }; 
         } else {
             console.error('AI output structure validation failed after prompt success. Received:', output, 'Errors:', validationResult.error.flatten());
@@ -120,7 +117,6 @@ const scanInvoiceFlow = ai.defineFlow<
         console.error('Error calling AI prompt:', promptError, "Raw AI output if available (before error):", rawOutputFromAI);
         
         let userErrorMessage = `Error calling AI: ${promptError.message || 'Unknown AI error'}`;
-        // Check for the specific schema validation error where the AI returned null
         if (promptError.message && promptError.message.includes("INVALID_ARGUMENT") && promptError.message.includes("Provided data: null")) {
             userErrorMessage = "The AI model failed to return structured product data. This can happen with unclear images or complex layouts. Please try a clearer image or add products manually.";
         } else if (promptError.message && promptError.message.includes("Schema validation failed")) {
@@ -141,9 +137,8 @@ const scanInvoiceFlow = ai.defineFlow<
                 const quantity = rawProduct.quantity ?? 0;
                 const lineTotal = rawProduct.total ?? 0;
                 const purchasePrice = rawProduct.purchase_price ?? 0;
+                const salePrice = rawProduct.sale_price; // Might be undefined
 
-                // Recalculate unitPrice based on lineTotal and quantity, if possible.
-                // Otherwise, use the purchase_price if available.
                 let unitPrice = 0;
                 if (quantity !== 0 && lineTotal !== 0) {
                     unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
@@ -161,8 +156,11 @@ const scanInvoiceFlow = ai.defineFlow<
                     description: description,
                     shortName: shortName,
                     quantity: quantity,
-                    unitPrice: unitPrice, // Use the recalculated/prioritized unit price
+                    unitPrice: unitPrice, 
+                    salePrice: salePrice, // Add salePrice here
                     lineTotal: lineTotal,
+                    minStockLevel: undefined, // These will be set later if needed
+                    maxStockLevel: undefined,
                 };
                 return finalProduct;
             })

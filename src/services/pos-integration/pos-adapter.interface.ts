@@ -44,6 +44,7 @@ export interface Product {
   description: string;
   quantity: number;
   unitPrice: number;
+  salePrice?: number; // Added sale price
   lineTotal: number;
 }
 

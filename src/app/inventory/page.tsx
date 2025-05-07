@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -92,9 +92,10 @@ export default function InventoryPage() {
     barcode: false,
     quantity: true,
     unitPrice: true,
+    salePrice: true, // Show salePrice by default
     lineTotal: false,
-    minStockLevel: false, // Hidden by default
-    maxStockLevel: false, // Hidden by default
+    minStockLevel: false,
+    maxStockLevel: false,
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -121,6 +122,7 @@ export default function InventoryPage() {
                  ...item,
                  quantity: quantity,
                  unitPrice: unitPrice,
+                 salePrice: item.salePrice,
                  lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
                  minStockLevel: item.minStockLevel,
                  maxStockLevel: item.maxStockLevel,
@@ -254,6 +256,7 @@ export default function InventoryPage() {
         { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
         { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[100px]', headerClassName: 'text-center' },
         { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
+        { key: 'salePrice', label: 'Sale Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
         { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
         { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
         { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', headerClassName: 'text-center' },
@@ -284,7 +287,7 @@ export default function InventoryPage() {
         }
 
         const exportColumns: (keyof Product | 'id')[] = [
-            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'
+            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'
         ];
 
         const headers = exportColumns
@@ -516,6 +519,12 @@ export default function InventoryPage() {
                                                 <p>{item.barcode}</p>
                                             </>
                                         )}
+                                        {item.salePrice !== undefined && (
+                                            <>
+                                                <p className="font-semibold mt-2">Sale Price:</p>
+                                                <p>₪{formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}</p>
+                                            </>
+                                        )}
                                     </PopoverContent>
                                 </Popover>
                             </TableCell>
@@ -539,6 +548,7 @@ export default function InventoryPage() {
                           </TableCell>
                         )}
                         {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
+                        {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? `₪${formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}` : '-'}</TableCell>}
                         {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
                         {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
                         {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
@@ -618,6 +628,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
-
-    

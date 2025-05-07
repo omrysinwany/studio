@@ -16,30 +16,32 @@ export const ScanInvoiceInputSchema = z.object({
 export const ExtractedProductSchema = z.object({
   product_name: z.string().optional().describe("The name/description of the product."),
   catalog_number: z.string().optional().describe('The catalog number of the product.'),
-  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product, if visible.'), // Added barcode
-  // Ensure quantity, purchase_price, and total are correctly handled as numbers, even if optional
-  quantity: z.number().describe('The quantity of the product (individual units).'), // Assuming prompt forces this to be a number
-  purchase_price: z.number().optional().describe('The extracted purchase price (unit price if available).'), // Optional purchase price
-  total: z.number().describe('The line total for the product.'), // Assuming prompt forces this to be a number
+  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product, if visible.'),
+  quantity: z.number().describe('The quantity of the product (individual units).'),
+  purchase_price: z.number().optional().describe('The extracted purchase price (unit price if available).'),
+  sale_price: z.number().optional().describe('The extracted sale price (unit price if available).'), // Added sale_price
+  total: z.number().describe('The line total for the product.'),
   description: z.string().optional().describe('Optional description if clearly present.'),
-  short_product_name: z.string().optional().describe("A short, concise name or keyword summary for the product (max 3-4 words)."), // Added short name field
+  short_product_name: z.string().optional().describe("A short, concise name or keyword summary for the product (max 3-4 words)."),
 });
 
 // Final processed product schema (used for saving and editing)
 export const FinalProductSchema = z.object({
   catalogNumber: z.string().describe('The catalog number of the product.'),
-  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product.'), // Added barcode
+  barcode: z.string().optional().describe('The barcode (EAN/UPC) of the product.'),
   description: z.string().describe('The description of the product.'),
-  shortName: z.string().optional().describe("A short, concise name for the product."), // Added short name field (optional)
+  shortName: z.string().optional().describe("A short, concise name for the product."),
   quantity: z.number().describe('The quantity of the product (individual units).'),
-  unitPrice: z.number().describe('The calculated unit price (total / quantity or fallback).'), // Calculated or fallback
+  unitPrice: z.number().describe('The calculated unit price (total / quantity or fallback).'),
+  salePrice: z.number().optional().describe('The sale price of the product.'), // Added salePrice
   lineTotal: z.number().describe('The line total for the product.'),
+  minStockLevel: z.number().optional().describe('Minimum stock level for the product.'),
+  maxStockLevel: z.number().optional().describe('Maximum stock level for the product.'),
 });
 
 // Final output schema for the entire flow, containing processed products
 export const ScanInvoiceOutputSchema = z.object({
-  products: z.array(FinalProductSchema) // Use the final, processed schema here
+  products: z.array(FinalProductSchema)
     .describe('The list of products extracted and processed from the invoice.'),
   error: z.string().optional().describe('An error message if the scan or processing failed.'),
 });
-

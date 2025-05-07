@@ -5,10 +5,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown } from 'lucide-react'; // Added TrendingUp, TrendingDown
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend'; // Import deleteProduct
+import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -26,7 +26,6 @@ import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 
 
-// Helper function to safely format numbers for display
 const formatDisplayNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
@@ -48,21 +47,17 @@ const formatDisplayNumber = (
     });
 };
 
-// Helper function for input values (no grouping, fixed decimals for currency, or integer for quantity)
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        if (fieldType === 'stockLevel' && value === null) return ''; // Allow empty for stock levels
+        if ((fieldType === 'stockLevel' || fieldType === 'currency') && value === null) return ''; // Allow empty for stock levels and sale price
         return fieldType === 'currency' ? '0.00' : '0';
     }
-    // Use toFixed for consistent decimal places, but parse as float first to handle potential strings
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-     // For quantity and stockLevel, ensure integer, unless stockLevel is explicitly null/empty
     return parseInt(String(value), 10).toString();
 };
 
-// Helper function to format quantity as integer for display (with grouping)
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
@@ -122,15 +117,15 @@ export default function ProductDetailPage() {
 
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string | null = value; // Allow null for stock levels
-      if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
+      let numericValue: number | string | null = value; 
+      if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
-          if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel')) {
-              numericValue = null; // Set to null if empty for stock levels
+          if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
+              numericValue = null; 
           } else {
             numericValue = parseFloat(stringValue.replace(/,/g, ''));
             if (isNaN(numericValue as number)) {
-               numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? null : 0;
+               numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? null : 0;
             }
           }
       }
@@ -150,6 +145,16 @@ export default function ProductDetailPage() {
 
   const handleSave = async () => {
     if (!product || !product.id) return;
+
+    if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
+        toast({
+            title: "Missing Sale Price",
+            description: "Please enter a valid sale price for the product.",
+            variant: "destructive"
+        });
+        return;
+    }
+
     setIsSaving(true);
     try {
       const productToSave: Partial<Product> = {
@@ -159,6 +164,7 @@ export default function ProductDetailPage() {
         barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
+        salePrice: Number(editedProduct.salePrice) ?? product.salePrice,
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === null ? undefined : (Number(editedProduct.minStockLevel) ?? product.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === null ? undefined : (Number(editedProduct.maxStockLevel) ?? product.maxStockLevel),
@@ -255,7 +261,7 @@ export default function ProductDetailPage() {
             displayValue = value || (isBarcode ? 'Not set' : '-');
         }
      } else {
-        displayValue = (isBarcode || isStockLevel) ? 'Not set' : '-';
+        displayValue = (isBarcode || isStockLevel || (label === "Sale Price" && isCurrency)) ? 'Not set' : '-';
      }
 
 
@@ -273,7 +279,7 @@ export default function ProductDetailPage() {
     const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined | null, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
         const IconComponent = icon;
         const inputType =
-          fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'lineTotal' || fieldKey === 'minStockLevel' || fieldKey === 'maxStockLevel'
+          fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'salePrice' || fieldKey === 'lineTotal' || fieldKey === 'minStockLevel' || fieldKey === 'maxStockLevel'
             ? 'number'
             : 'text';
 
@@ -282,12 +288,16 @@ export default function ProductDetailPage() {
              ? formatInputValue(value as number | undefined | null, isCurrency ? 'currency' : (isStockLevel ? 'stockLevel' : 'quantity'))
              : (value as string) || '';
 
+        const isSalePriceField = fieldKey === 'salePrice';
+
 
         return (
           <div className="flex items-start space-x-3 py-2">
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
             <div className="flex-grow">
-              <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">{label}</Label>
+              <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">
+                {label} {isSalePriceField && <span className="text-destructive">*</span>}
+              </Label>
               <div className="flex items-center gap-2">
                 <Input
                     id={fieldKey}
@@ -296,9 +306,10 @@ export default function ProductDetailPage() {
                     onChange={(e) => handleInputChange(fieldKey, e.target.value)}
                     className="mt-1 h-9 flex-grow"
                     step={inputType === 'number' ? (isCurrency ? '0.01' : '1') : undefined}
-                    min={inputType === 'number' ? '0' : undefined}
+                    min={inputType === 'number' ? (isSalePriceField ? '0.01' : '0') : undefined}
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
-                    placeholder={isStockLevel ? "Optional" : ""}
+                    placeholder={isStockLevel ? "Optional" : (isSalePriceField ? "Required" : "")}
+                    required={isSalePriceField}
                   />
                   {isBarcode && (
                     <Button
@@ -472,8 +483,9 @@ export default function ProductDetailPage() {
                  <>
                     {renderEditItem(Barcode, "Barcode", editedProduct.barcode, 'barcode', false, false, true)}
                     {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
-                    {renderEditItem(Tag, "Unit Price", editedProduct.unitPrice, 'unitPrice', true)}
-                    {renderEditItem(DollarSign, "Line Total", editedProduct.lineTotal, 'lineTotal', true)}
+                    {renderEditItem(Tag, "Unit Price (Cost)", editedProduct.unitPrice, 'unitPrice', true)}
+                    {renderEditItem(DollarSign, "Sale Price", editedProduct.salePrice, 'salePrice', true)}
+                    {renderEditItem(DollarSign, "Line Total (Cost)", editedProduct.lineTotal, 'lineTotal', true)}
                     {renderEditItem(TrendingDown, "Min Stock Level", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                     {renderEditItem(TrendingUp, "Max Stock Level", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                  </>
@@ -481,8 +493,9 @@ export default function ProductDetailPage() {
                  <>
                     {renderViewItem(Barcode, "Barcode", product.barcode, false, false, true)}
                     {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
-                    {renderViewItem(Tag, "Unit Price", product.unitPrice, true)}
-                    {renderViewItem(DollarSign, "Line Total", product.lineTotal, true)}
+                    {renderViewItem(Tag, "Unit Price (Cost)", product.unitPrice, true)}
+                    {renderViewItem(DollarSign, "Sale Price", product.salePrice, true)}
+                    {renderViewItem(DollarSign, "Line Total (Cost)", product.lineTotal, true)}
                     {renderViewItem(TrendingDown, "Min Stock Level", product.minStockLevel, false, false, false, true)}
                     {renderViewItem(TrendingUp, "Max Stock Level", product.maxStockLevel, false, false, false, true)}
                  </>

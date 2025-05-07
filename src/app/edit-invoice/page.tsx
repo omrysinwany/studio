@@ -1,13 +1,13 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react';
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
     Product,
@@ -20,7 +20,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
-import { cn } from '@/lib/utils';
+
 
 interface EditableProduct extends Product {
   _originalId?: string;
@@ -54,7 +54,7 @@ function EditInvoiceContent() {
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
 
-  const [promptingForBarcodes, setPromptingForBarcodes] = useState<EditableProduct[] | null>(null);
+  const [promptingForBarcodesAndSalePrice, setPromptingForBarcodesAndSalePrice] = useState<EditableProduct[] | null>(null);
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   const [productsToSaveDirectly, setProductsToSaveDirectly] = useState<Product[]>([]);
 
@@ -126,6 +126,7 @@ function EditInvoiceContent() {
              unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
                         ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
                         : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
+            salePrice: p.salePrice ?? undefined,
             minStockLevel: p.minStockLevel ?? undefined,
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
@@ -166,14 +167,14 @@ function EditInvoiceContent() {
       prevProducts.map(product => {
         if (product.id === id) {
           let numericValue: number | string | undefined = value;
-          if (field === 'quantity' || field === 'unitPrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
+          if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
               const stringValue = String(value);
-              if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel')) {
+              if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
                   numericValue = undefined;
               } else {
                 numericValue = parseFloat(stringValue.replace(/,/g, ''));
                 if (isNaN(numericValue as number)) {
-                   numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
+                   numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
                 }
               }
           }
@@ -211,6 +212,7 @@ function EditInvoiceContent() {
       description: '',
       quantity: 0,
       unitPrice: 0,
+      salePrice: undefined,
       lineTotal: 0,
       barcode: undefined,
       minStockLevel: undefined,
@@ -233,14 +235,12 @@ function EditInvoiceContent() {
       setIsSaving(true);
       try {
           console.log("Proceeding to finalize save products:", finalProductsToSave, "for file:", fileName, "tempInvoiceId:", tempInvoiceId);
-          // The invoiceDataUri is now directly included in the tempInvoiceId record, so it's not passed here.
           await finalizeSaveProductsService(finalProductsToSave, fileName, 'upload', tempInvoiceId || undefined);
 
           if (dataKey) {
               localStorage.removeItem(dataKey);
               console.log(`Removed temp scan data with key: ${dataKey}`);
           }
-          // Image URI in temp store is implicitly handled by finalizeSaveProductsService if it needs it.
 
           toast({
               title: "Products Saved",
@@ -274,10 +274,10 @@ function EditInvoiceContent() {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
             setIsSaving(false);
         } else {
-            await checkForBarcodesAndSave(priceCheckResult.productsToSaveDirectly);
+            await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
         }
     } catch (error) {
-        console.error("Error during initial save checks (price/barcode):", error);
+        console.error("Error during initial save checks (price/barcode/salePrice):", error);
         toast({
             title: "Error Preparing Save",
             description: "Could not prepare data for saving. Please try again.",
@@ -287,7 +287,7 @@ function EditInvoiceContent() {
     }
 };
 
-const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
+const checkForNewProductsAndDetails = async (productsForDetailCheck: Product[]) => {
     try {
         const currentInventory = await getProductsService();
         const inventoryMap = new Map<string, Product>();
@@ -297,26 +297,26 @@ const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
             if (p.catalogNumber && p.catalogNumber !== 'N/A') inventoryMap.set(`catalog:${p.catalogNumber}`, p);
         });
 
-        const newProductsWithoutBarcode = productsForBarcodeCheck.filter(p => {
-            const existsByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
+        const newProductsNeedingDetails = productsForDetailCheck.filter(p => {
             const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
-            const existsByCatalog = p.catalogNumber && p.catalogNumber !== 'N/A' && inventoryMap.has(`catalog:${p.catalogNumber}`);
-            return !isExistingProduct && !existsByBarcode && !existsByCatalog && !p.barcode;
+            // A new product either has no ID, or its ID is not in the current inventory
+            return !isExistingProduct;
         }).map(p => ({ ...p, _isNewForPrompt: true }));
 
 
-        if (newProductsWithoutBarcode.length > 0) {
-            setPromptingForBarcodes(newProductsWithoutBarcode);
-            setProductsToSaveDirectly(productsForBarcodeCheck);
+        if (newProductsNeedingDetails.length > 0) {
+            setPromptingForBarcodesAndSalePrice(newProductsNeedingDetails);
+            setProductsToSaveDirectly(productsForDetailCheck); // Store all products that passed price check
             setIsSaving(false);
         } else {
-            await proceedWithFinalSave(productsForBarcodeCheck);
+            // No new products, or all existing products are fine, proceed with final save
+            await proceedWithFinalSave(productsForDetailCheck);
         }
     } catch (error) {
-        console.error("Error checking inventory for barcode prompt:", error);
+        console.error("Error checking inventory for new product details prompt:", error);
         toast({
-            title: "Error Preparing Barcodes",
-            description: "Could not check for new products needing barcodes.",
+            title: "Error Preparing New Product Details",
+            description: "Could not check for new products needing details.",
             variant: "destructive",
         });
         setIsSaving(false);
@@ -326,8 +326,11 @@ const checkForBarcodesAndSave = async (productsForBarcodeCheck: Product[]) => {
 
 const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => {
     if (resolvedProducts) {
-        const allProductsReadyForBarcodeCheck = [...productsToSaveDirectly.filter(p => !resolvedProducts.find(rp => rp.id === p.id)), ...resolvedProducts];
-        checkForBarcodesAndSave(allProductsReadyForBarcodeCheck);
+        const allProductsReadyForDetailCheck = [
+            ...productsToSaveDirectly.filter(p => !resolvedProducts.find(rp => rp.id === p.id)),
+            ...resolvedProducts
+        ];
+        checkForNewProductsAndDetails(allProductsReadyForDetailCheck);
     } else {
         toast({
             title: "Save Cancelled",
@@ -339,29 +342,38 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 };
 
 
- const handleBarcodePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
+ const handleBarcodeAndSalePricePromptComplete = (updatedProductsFromPrompt: Product[] | null) => {
      if (updatedProductsFromPrompt) {
-         console.log("Barcode prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
-         const finalProductsWithBarcodes = productsToSaveDirectly.map(originalProduct => {
-             const productFromBarcodePrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
-             if (productFromBarcodePrompt) {
-                 return { ...originalProduct, barcode: productFromBarcodePrompt.barcode, _isNewForPrompt: false };
+         console.log("Barcode and Sale Price prompt completed. Updated products from prompt:", updatedProductsFromPrompt);
+         
+         // Merge the updates from the prompt (barcode, salePrice) into the productsToSaveDirectly list
+         const finalProductsToSave = productsToSaveDirectly.map(originalProduct => {
+             const productFromPrompt = updatedProductsFromPrompt.find(up => up.id === originalProduct.id);
+             if (productFromPrompt) {
+                 // If this product was in the prompt, use its updated barcode and salePrice
+                 return { 
+                     ...originalProduct, 
+                     barcode: productFromPrompt.barcode, 
+                     salePrice: productFromPrompt.salePrice,
+                     _isNewForPrompt: false 
+                 };
              }
+             // If it wasn't in the prompt (e.g., an existing product that didn't need details), keep it as is
              return { ...originalProduct, _isNewForPrompt: false };
          }).map(({ _originalId, _isNewForPrompt, ...rest }) => rest);
 
 
-         setProducts(finalProductsWithBarcodes);
-         proceedWithFinalSave(finalProductsWithBarcodes);
+         setProducts(finalProductsToSave); // Update the local state for display if needed, though it will navigate away
+         proceedWithFinalSave(finalProductsToSave);
      } else {
-         console.log("Barcode prompt cancelled.");
+         console.log("Barcode and Sale Price prompt cancelled.");
          toast({
              title: "Save Cancelled",
-             description: "Barcode entry was cancelled. No changes were saved.",
+             description: "New product detail entry was cancelled. No changes were saved.",
              variant: "default",
          });
      }
-     setPromptingForBarcodes(null);
+     setPromptingForBarcodesAndSalePrice(null);
  };
 
 
@@ -370,8 +382,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             localStorage.removeItem(dataKey);
             console.log(`Cleared temp scan data with key ${dataKey} on explicit back navigation.`);
         }
-        // The imageUriKey is removed when finalizeSaveProductsService is called or if initial load fails.
-        // Here, we are just going back without saving, so related temp data should be cleared.
         router.push('/upload');
     };
 
@@ -497,15 +507,15 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
                   <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Sale Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead>
@@ -551,6 +561,18 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         step="0.01"
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
+                      <Input
+                        type="number"
+                        value={formatInputValue(product.salePrice, 'currency')}
+                        onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
+                        className="w-24 sm:w-28 text-right h-9"
+                        step="0.01"
+                        min="0"
+                        placeholder="Optional"
+                        aria-label={`Sale price for ${product.description}`}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
@@ -628,10 +650,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardContent>
       </Card>
 
-      {promptingForBarcodes && (
+      {promptingForBarcodesAndSalePrice && (
         <BarcodePromptDialog
-          products={promptingForBarcodes}
-          onComplete={handleBarcodePromptComplete}
+          products={promptingForBarcodesAndSalePrice}
+          onComplete={handleBarcodeAndSalePricePromptComplete}
         />
       )}
 

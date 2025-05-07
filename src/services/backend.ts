@@ -11,6 +11,7 @@ export interface Product {
   barcode?: string;
   quantity: number;
   unitPrice: number;
+  salePrice?: number; // Added sale price
   lineTotal: number;
   minStockLevel?: number;
   maxStockLevel?: number;
@@ -33,11 +34,11 @@ const INVOICES_STORAGE_KEY = 'mockInvoicesData';
 const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings';
 
 const initialMockInventory: Product[] = [
-   { id: 'prod1', catalogNumber: '12345', barcode: '7290012345011', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, lineTotal: 99.90, minStockLevel: 5, maxStockLevel: 20 },
-   { id: 'prod2', catalogNumber: '67890', barcode: '7290067890012', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, lineTotal: 99.95, minStockLevel: 2, maxStockLevel: 10 },
-   { id: 'prod3', catalogNumber: 'ABCDE', barcode: '72900ABCDE013', description: 'Another Mock Item', shortName: 'Another Mock', quantity: 25, unitPrice: 1.50, lineTotal: 37.50, minStockLevel: 10, maxStockLevel: 50 },
-   { id: 'prod4', catalogNumber: 'LOW01', barcode: '72900LOW01014', description: 'Low Stock Mock', shortName: 'Low Stock', quantity: 8, unitPrice: 5.00, lineTotal: 40.00, minStockLevel: 10, maxStockLevel: 15 },
-   { id: 'prod5', catalogNumber: 'OUT01', barcode: '72900OUT01015', description: 'Out of Stock Mock', shortName: 'Out Stock', quantity: 0, unitPrice: 12.00, lineTotal: 0.00, minStockLevel: 5, maxStockLevel: 10 },
+   { id: 'prod1', catalogNumber: '12345', barcode: '7290012345011', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, salePrice: 12.99, lineTotal: 99.90, minStockLevel: 5, maxStockLevel: 20 },
+   { id: 'prod2', catalogNumber: '67890', barcode: '7290067890012', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, salePrice: 24.99, lineTotal: 99.95, minStockLevel: 2, maxStockLevel: 10 },
+   { id: 'prod3', catalogNumber: 'ABCDE', barcode: '72900ABCDE013', description: 'Another Mock Item', shortName: 'Another Mock', quantity: 25, unitPrice: 1.50, salePrice: 2.00, lineTotal: 37.50, minStockLevel: 10, maxStockLevel: 50 },
+   { id: 'prod4', catalogNumber: 'LOW01', barcode: '72900LOW01014', description: 'Low Stock Mock', shortName: 'Low Stock', quantity: 8, unitPrice: 5.00, salePrice: 7.50, lineTotal: 40.00, minStockLevel: 10, maxStockLevel: 15 },
+   { id: 'prod5', catalogNumber: 'OUT01', barcode: '72900OUT01015', description: 'Out of Stock Mock', shortName: 'Out Stock', quantity: 0, unitPrice: 12.00, salePrice: 15.00, lineTotal: 0.00, minStockLevel: 5, maxStockLevel: 10 },
 ];
 
 const initialMockInvoices: InvoiceHistoryItem[] = [
@@ -170,16 +171,16 @@ export async function checkProductPricesBeforeSaveService(
             if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 console.log(`Price discrepancy found for product ID ${existingProduct.id}. Existing: ${existingUnitPrice}, New: ${unitPriceFromScan}`);
                 priceDiscrepancies.push({
-                    ...scannedProduct,
+                    ...scannedProduct, // This includes the potentially new salePrice from the scan/edit
                     id: existingProduct.id,
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                 });
             } else {
                 productsToSaveDirectly.push({
-                    ...scannedProduct,
+                    ...scannedProduct, // Also includes potentially new salePrice
                     id: existingProduct.id,
-                    unitPrice: existingUnitPrice
+                    unitPrice: existingUnitPrice // Keep existing unit price if no discrepancy
                 });
             }
         } else {
@@ -196,8 +197,7 @@ export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
     fileName: string,
     source: string = 'upload',
-    retrievedInvoiceDataUri?: string, // Changed parameter name
-    tempInvoiceId?: string
+    tempInvoiceId?: string // Removed invoiceDataUri as it's part of tempInvoiceId now
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId})`, productsToFinalizeSave);
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -207,6 +207,19 @@ export async function finalizeSaveProductsService(
 
     let calculatedInvoiceTotalAmount = 0;
     let productsProcessedSuccessfully = true;
+    let retrievedInvoiceDataUri: string | undefined = undefined;
+
+    // If tempInvoiceId is provided and source is 'upload', try to retrieve its invoiceDataUri
+    if (tempInvoiceId && source === 'upload') {
+        const tempInvoiceRecord = currentInvoices.find(inv => inv.id === tempInvoiceId && inv.status === 'pending');
+        if (tempInvoiceRecord) {
+            retrievedInvoiceDataUri = tempInvoiceRecord.invoiceDataUri;
+            console.log(`Retrieved invoiceDataUri for tempInvoiceId ${tempInvoiceId}`);
+        } else {
+            console.warn(`Could not find PENDING invoice record for tempInvoiceId: ${tempInvoiceId} to retrieve invoiceDataUri.`);
+        }
+    }
+
 
     try {
         const updatedInventory = [...currentInventory];
@@ -214,6 +227,7 @@ export async function finalizeSaveProductsService(
         productsToFinalizeSave.forEach(productToSave => {
             const quantityToAdd = parseFloat(String(productToSave.quantity)) || 0;
             const unitPrice = parseFloat(String(productToSave.unitPrice)) || 0;
+            const salePrice = productToSave.salePrice !== undefined ? parseFloat(String(productToSave.salePrice)) : undefined;
             const lineTotal = parseFloat((quantityToAdd * unitPrice).toFixed(2));
 
             if (!isNaN(lineTotal)) {
@@ -237,10 +251,15 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                // Do not update unit price or other details if product exists, only quantity
+                // Unit price for existing products is confirmed via priceDiscrepancy or kept if no discrepancy
+                existingProduct.unitPrice = unitPrice; // This unitPrice is already the confirmed one
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
-                // Keep existing description, shortName, barcode, catalogNumber, min/max stock
-                console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice} (unchanged), LineTotal=${existingProduct.lineTotal}`);
+                // Sale price: if productToSave has a salePrice, update it. Otherwise, keep existing.
+                existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
+                existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
+                existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
+
+                console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice}, SalePrice=${existingProduct.salePrice}, LineTotal=${existingProduct.lineTotal}`);
             } else {
                 if (!productToSave.catalogNumber && !productToSave.description && !productToSave.barcode) {
                     console.log("Skipping adding product with no identifier:", productToSave);
@@ -255,6 +274,7 @@ export async function finalizeSaveProductsService(
                     id: newId,
                     quantity: quantityToAdd,
                     unitPrice: unitPrice,
+                    salePrice: salePrice,
                     lineTotal: lineTotal,
                     catalogNumber: productToSave.catalogNumber || 'N/A',
                     description: productToSave.description || 'No Description',
@@ -292,22 +312,25 @@ export async function finalizeSaveProductsService(
             currentInvoices[existingInvoiceIndex] = {
                 ...existingRecord,
                 fileName: fileName,
-                uploadTime: new Date().toISOString(),
+                uploadTime: new Date().toISOString(), // Update uploadTime to reflect save time
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, // Use the passed URI
+                invoiceDataUri: retrievedInvoiceDataUri, // Use the retrieved URI
                 errorMessage: errorMessage,
             };
             console.log(`Updated invoice record ID: ${invoiceIdToUse}`);
         } else {
+             // This case should ideally not happen if tempInvoiceId is always created.
+            // If it does, it means we're creating a new record without a prior pending one.
             invoiceIdToUse = tempInvoiceId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+            console.warn(`Creating new invoice record as tempInvoiceId "${tempInvoiceId}" was not found or not provided for update. New ID: ${invoiceIdToUse}`);
             const newInvoiceRecord: InvoiceHistoryItem = {
                 id: invoiceIdToUse,
                 fileName: fileName,
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 totalAmount: parseFloat(calculatedInvoiceTotalAmount.toFixed(2)),
-                invoiceDataUri: retrievedInvoiceDataUri, // Use the passed URI
+                invoiceDataUri: retrievedInvoiceDataUri, // Use the retrieved URI
                 errorMessage: errorMessage,
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices];
@@ -327,8 +350,10 @@ export async function finalizeSaveProductsService(
         if (!productsProcessedSuccessfully) {
             console.warn("[Backend - finalizeSaveProductsService] Product processing error occurred, invoice status set to 'error'.");
         }
+    } else if (source.endsWith('_sync')) { // Handle POS sync source
+      console.log(`POS Sync (${source}) completed. Inventory updated. No invoice record created for this sync type.`);
     } else {
-        console.log(`Skipping invoice history update for source: ${source}`);
+      console.log(`Skipping invoice history update for source: ${source}`);
     }
 }
 
@@ -348,6 +373,7 @@ export async function getProductsService(): Promise<Product[]> {
         shortName: item.shortName || description.split(' ').slice(0, 3).join(' '),
         lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
         barcode: item.barcode || undefined,
+        salePrice: item.salePrice ?? undefined,
         minStockLevel: item.minStockLevel ?? undefined,
         maxStockLevel: item.maxStockLevel ?? undefined,
       };
@@ -372,6 +398,7 @@ export async function getProductByIdService(productId: string): Promise<Product 
            shortName: product.shortName || description.split(' ').slice(0, 3).join(' '),
            lineTotal: parseFloat((quantity * unitPrice).toFixed(2)),
            barcode: product.barcode || undefined,
+           salePrice: product.salePrice ?? undefined,
            minStockLevel: product.minStockLevel ?? undefined,
            maxStockLevel: product.maxStockLevel ?? undefined,
         };
@@ -408,6 +435,7 @@ export async function updateProductService(productId: string, updatedData: Parti
          updatedProduct.shortName = description.split(' ').slice(0, 3).join(' ');
     }
     updatedProduct.barcode = updatedProduct.barcode || undefined;
+    updatedProduct.salePrice = updatedData.salePrice === null ? undefined : (Number.isFinite(updatedData.salePrice) ? Number(updatedData.salePrice) : currentInventory[productIndex].salePrice);
     updatedProduct.minStockLevel = updatedData.minStockLevel === null ? undefined : (Number.isFinite(updatedData.minStockLevel) ? Number(updatedData.minStockLevel) : currentInventory[productIndex].minStockLevel);
     updatedProduct.maxStockLevel = updatedData.maxStockLevel === null ? undefined : (Number.isFinite(updatedData.maxStockLevel) ? Number(updatedData.maxStockLevel) : currentInventory[productIndex].maxStockLevel);
 
@@ -468,7 +496,7 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     id: invoiceId,
     uploadTime: originalInvoice.uploadTime, // Keep original uploadTime
     invoiceDataUri: updatedData.invoiceDataUri === null ? undefined : (updatedData.invoiceDataUri ?? originalInvoice.invoiceDataUri),
-    status: originalInvoice.status,
+    status: updatedData.status || originalInvoice.status, // Status should not be changed here typically, but allow if passed
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;
