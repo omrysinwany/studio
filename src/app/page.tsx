@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -97,6 +96,28 @@ export default function Home() {
     router.push('/reports');
   };
 
+  const formatLargeNumber = (num: number, decimals = 1): string => {
+    if (Math.abs(num) < 1000) {
+        return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    const si = [
+        { value: 1, symbol: "" },
+        { value: 1E3, symbol: "K" },
+        { value: 1E6, symbol: "M" },
+        { value: 1E9, symbol: "B" },
+        { value: 1E12, symbol: "T" }
+    ];
+    const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
+    let i;
+    for (i = si.length - 1; i > 0; i--) {
+        if (Math.abs(num) >= si[i].value) {
+            break;
+        }
+    }
+    const formattedNum = (num / si[i].value).toFixed(decimals).replace(rx, "$1");
+    return formattedNum + si[i].symbol;
+  };
+
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
     if (isLoadingKpis) {
       return <Loader2 className="h-5 w-5 animate-spin text-primary" />;
@@ -104,11 +125,16 @@ export default function Home() {
     if (kpiError) return <span className="text-destructive text-sm">-</span>;
     if (value === undefined || value === null) return '-';
     
+    const prefix = isCurrency ? '₪' : '';
+    if (value >= 10000 && !isInteger) { // Shorten if large and not explicitly integer
+        return prefix + formatLargeNumber(value, isCurrency ? 2 : 1);
+    }
+
     const options: Intl.NumberFormatOptions = {
-      minimumFractionDigits: isInteger ? 0 : 2,
-      maximumFractionDigits: isInteger ? 0 : 2,
+      minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
+      maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 1),
     };
-    return `${isCurrency ? '₪' : ''}${value.toLocaleString(undefined, options)}`;
+    return prefix + value.toLocaleString(undefined, options);
   };
   
   const renderKpiText = (text: string | undefined) => {
@@ -146,43 +172,42 @@ export default function Home() {
           </Alert>
         )}
 
-        {/* Apply grid layout to KPI cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 md:mb-12">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-8 md:mb-12">
            <Link href="/inventory" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+                 <CardTitle className="text-xs sm:text-sm font-medium">Total Items</CardTitle>
                  <Package className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
-                 <p className="text-xs text-muted-foreground">In stock</p>
+                 <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
+                 <p className="text-[10px] sm:text-xs text-muted-foreground">In stock</p>
                </CardContent>
              </Card>
            </Link>
 
             <Link href="/reports" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Inventory Value</CardTitle>
+                 <CardTitle className="text-xs sm:text-sm font-medium">Inventory Value</CardTitle>
                  <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span>
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.inventoryValue, true)}</div>
-                 <p className="text-xs text-muted-foreground">Current total value</p>
+                 <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.inventoryValue, true)}</div>
+                 <p className="text-[10px] sm:text-xs text-muted-foreground">Current total value</p>
                </CardContent>
              </Card>
             </Link>
 
             <Link href="/invoices" className="block hover:no-underline">
-             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
+             <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                 <CardTitle className="text-sm font-medium">Docs Processed (30d)</CardTitle>
+                 <CardTitle className="text-xs sm:text-sm font-medium">Docs (30d)</CardTitle>
                  <FileText className="h-4 w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent>
-                 <div className="text-2xl font-bold">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
-                 <p className="text-xs text-muted-foreground truncate" title={kpiData?.latestDocName || ''}>
+                 <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
+                 <p className="text-[10px] sm:text-xs text-muted-foreground truncate" title={kpiData?.latestDocName || ''}>
                     Last: {renderKpiText(kpiData?.latestDocName)}
                   </p>
                </CardContent>
@@ -190,14 +215,14 @@ export default function Home() {
             </Link>
 
              <Link href="/inventory?filter=low" className="block hover:no-underline">
-                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left sm:text-center">
+                 <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full text-left">
                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                     <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+                     <CardTitle className="text-xs sm:text-sm font-medium">Low Stock</CardTitle>
                      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                  </CardHeader>
                  <CardContent>
-                     <div className="text-2xl font-bold">{renderKpiValue(kpiData?.lowStockItems, false, true)}</div>
-                     <p className="text-xs text-muted-foreground">Items needing attention</p>
+                     <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.lowStockItems, false, true)}</div>
+                     <p className="text-[10px] sm:text-xs text-muted-foreground">Items needing attention</p>
                  </CardContent>
                  </Card>
             </Link>
