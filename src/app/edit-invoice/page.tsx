@@ -14,11 +14,15 @@ import {
     checkProductPricesBeforeSaveService,
     finalizeSaveProductsService,
     ProductPriceDiscrepancy,
+    getSupplierSummariesService,
+    updateSupplierContactInfoService,
+    SupplierSummary,
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
+import SupplierConfirmationDialog from '@/components/supplier-confirmation-dialog';
 
 
 interface EditableProduct extends Product {
@@ -57,7 +61,6 @@ function EditInvoiceContent() {
   const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
   const [compressedImageKey, setCompressedImageKey] = useState<string | null>(null);
 
-  // State to store extracted invoice details
   const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
   const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
   const [extractedTotalAmount, setExtractedTotalAmount] = useState<number | undefined>(undefined);
@@ -68,6 +71,12 @@ function EditInvoiceContent() {
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
   
   const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
+
+  const [showSupplierDialog, setShowSupplierDialog] = useState(false);
+  const [potentialSupplierName, setPotentialSupplierName] = useState<string | undefined>(undefined);
+  const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
+  const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
+  const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
 
 
   useEffect(() => {
@@ -102,12 +111,11 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-            // Clear any potentially related keys if primary data is missing
-             if (key) localStorage.removeItem(key); 
-             if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
-             if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
-             setIsLoading(false);
-             setInitialDataLoaded(true);
+            if (key) localStorage.removeItem(key); 
+            if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
+            if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
+            setIsLoading(false);
+            setInitialDataLoaded(true);
             return;
         }
 
@@ -151,11 +159,11 @@ function EditInvoiceContent() {
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
           setProducts(productsWithIds);
-          // Set extracted invoice details from parsedData
           setExtractedInvoiceNumber(parsedData.invoiceNumber);
-          setExtractedSupplierName(parsedData.supplier);
+          setAiScannedSupplierName(parsedData.supplier); 
           setExtractedTotalAmount(parsedData.totalAmount);
           setErrorLoading(null);
+          checkSupplier(parsedData.supplier);
 
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
@@ -186,6 +194,53 @@ function EditInvoiceContent() {
         setInitialDataLoaded(true);
     }
   }, [searchParams, toast, initialDataLoaded]);
+
+
+  const checkSupplier = async (scannedSupplierName?: string) => {
+    if (!scannedSupplierName) {
+      setIsSupplierConfirmed(true); // No supplier name from AI, proceed
+      return;
+    }
+    try {
+      const suppliers = await getSupplierSummariesService();
+      setExistingSuppliers(suppliers);
+      const isExisting = suppliers.some(s => s.name.toLowerCase() === scannedSupplierName.toLowerCase());
+      if (isExisting) {
+        setExtractedSupplierName(scannedSupplierName);
+        setIsSupplierConfirmed(true);
+      } else {
+        setPotentialSupplierName(scannedSupplierName);
+        setShowSupplierDialog(true);
+      }
+    } catch (error) {
+      console.error("Error fetching existing suppliers:", error);
+      toast({ title: "Error fetching suppliers", variant: "destructive" });
+      // In case of error, let user proceed or handle as appropriate
+      setExtractedSupplierName(scannedSupplierName); // Use scanned name if fetch fails
+      setIsSupplierConfirmed(true);
+    }
+  };
+
+  const handleSupplierConfirmation = async (confirmedSupplierName: string | null, isNew: boolean = false) => {
+    setShowSupplierDialog(false);
+    if (confirmedSupplierName) {
+      setExtractedSupplierName(confirmedSupplierName);
+      if (isNew) {
+        try {
+          // Add to backend if it's a new supplier
+          await updateSupplierContactInfoService(confirmedSupplierName, {}); 
+          toast({ title: "New Supplier Added", description: `${confirmedSupplierName} has been added to your supplier list.` });
+        } catch (error) {
+          console.error("Failed to add new supplier:", error);
+          toast({ title: "Failed to Add Supplier", variant: "destructive" });
+        }
+      }
+    } else {
+      // User cancelled or didn't confirm, use original scanned name or let it be undefined
+      setExtractedSupplierName(aiScannedSupplierName);
+    }
+    setIsSupplierConfirmed(true);
+  };
 
 
   const handleInputChange = (id: string, field: keyof EditableProduct, value: string | number) => {
@@ -276,12 +331,11 @@ function EditInvoiceContent() {
             'upload', 
             tempInvoiceId || undefined, 
             imageUriForFinalSave,
-            extractedInvoiceNumber, // Pass extracted invoice number
-            extractedSupplierName,  // Pass extracted supplier name
-            extractedTotalAmount    // Pass extracted total amount
+            extractedInvoiceNumber,
+            extractedSupplierName, // Pass the confirmed/final supplier name
+            extractedTotalAmount
           );
 
-          // Clear all related localStorage items after successful save
           if (dataKey) localStorage.removeItem(dataKey);
           if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
           if (compressedImageKey) localStorage.removeItem(compressedImageKey);
@@ -308,6 +362,12 @@ function EditInvoiceContent() {
 
 
  const handleSave = async () => {
+    if (!isSupplierConfirmed) {
+        setShowSupplierDialog(true); // Re-open if not confirmed (e.g., user closed it without choice)
+        toast({ title: "Supplier Not Confirmed", description: "Please confirm the supplier before saving.", variant: "default" });
+        return;
+    }
+
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
@@ -464,7 +524,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
                              </Button>
-                             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                             <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                               {isSaving ? (
                                  <>
                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -508,7 +568,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
                              </Button>
-                             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                             <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                               {isSaving ? (
                                  <>
                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -539,6 +599,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
           <CardDescription>
              Review and edit the extracted data for: <span className="font-medium">{fileName || 'Unknown Document'}</span>
+             {extractedSupplierName && ` | Supplier: ${extractedSupplierName}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -639,7 +700,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
                <PlusCircle className="mr-2 h-4 w-4" /> Add Row
              </Button>
-             <Button onClick={handleSave} disabled={isSaving || products.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+             <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
               {isSaving ? (
                  <>
                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
@@ -658,6 +719,21 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              </div>
         </CardContent>
       </Card>
+
+       {showSupplierDialog && potentialSupplierName && (
+        <SupplierConfirmationDialog
+          potentialSupplierName={potentialSupplierName}
+          existingSuppliers={existingSuppliers}
+          onConfirm={handleSupplierConfirmation}
+          onCancel={() => {
+            setShowSupplierDialog(false);
+            setIsSupplierConfirmed(true); // Assume user wants to proceed with original or no supplier
+            setExtractedSupplierName(aiScannedSupplierName);
+          }}
+          isOpen={showSupplierDialog}
+          onOpenChange={setShowSupplierDialog}
+        />
+      )}
 
       {promptingForNewProductDetails && (
         <BarcodePromptDialog
@@ -690,4 +766,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

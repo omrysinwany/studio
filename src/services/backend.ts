@@ -213,11 +213,11 @@ export async function finalizeSaveProductsService(
     tempInvoiceId?: string, 
     invoiceDataUriToSave?: string,
     extractedInvoiceNumber?: string,
-    extractedSupplierName?: string,
+    finalSupplierName?: string, // Changed from extractedSupplierName
     extractedTotalAmount?: number
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
-    console.log(`Extracted Invoice Details: Number=${extractedInvoiceNumber}, Supplier=${extractedSupplierName}, Total=${extractedTotalAmount}`);
+    console.log(`Extracted Invoice Details: Number=${extractedInvoiceNumber}, Supplier=${finalSupplierName}, Total=${extractedTotalAmount}`);
     await new Promise(resolve => setTimeout(resolve, 100)); 
 
     let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
@@ -255,16 +255,15 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                existingProduct.unitPrice = unitPrice; 
-                existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2)); 
-                
+                // Keep existing product's unitPrice, salePrice, minStockLevel, maxStockLevel unless explicitly changed
+                // Only update description, shortName, catalogNumber, barcode from the new data IF PROVIDED
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
-                existingProduct.catalogNumber = productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A' ? productToSave.catalogNumber : existingProduct.catalogNumber;
+                existingProduct.catalogNumber = (productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A') ? productToSave.catalogNumber : existingProduct.catalogNumber;
                 existingProduct.barcode = productToSave.barcode || existingProduct.barcode;
-                existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
-                existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
-                existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
+                
+                // Recalculate lineTotal based on potentially new quantity and existing unitPrice
+                existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
 
                 console.log(`Updated existing product ID ${existingProduct.id}: Qty=${existingProduct.quantity}, UnitPrice=${existingProduct.unitPrice}, SalePrice=${existingProduct.salePrice}, LineTotal=${existingProduct.lineTotal}`);
             } else {
@@ -326,7 +325,7 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(), 
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber || existingRecord.invoiceNumber, 
-                supplier: extractedSupplierName || existingRecord.supplier, 
+                supplier: finalSupplierName || existingRecord.supplier, 
                 totalAmount: finalInvoiceTotalAmount, 
                 invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
@@ -341,7 +340,7 @@ export async function finalizeSaveProductsService(
                 uploadTime: new Date().toISOString(),
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber,
-                supplier: extractedSupplierName,
+                supplier: finalSupplierName,
                 totalAmount: finalInvoiceTotalAmount,
                 invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
@@ -679,8 +678,10 @@ export async function updateSupplierContactInfoService(supplierName: string, con
   const supplierIndex = suppliers.findIndex(s => s.name === supplierName);
 
   if (supplierIndex !== -1) {
-    suppliers[supplierIndex] = { ...suppliers[supplierIndex], ...contactInfo };
+    // Update existing supplier
+    suppliers[supplierIndex] = { ...suppliers[supplierIndex], ...contactInfo, name: supplierName };
   } else {
+    // Add new supplier if only name is provided (or other contact info)
     suppliers.push({ name: supplierName, ...contactInfo });
   }
   saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers);

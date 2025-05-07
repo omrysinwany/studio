@@ -14,7 +14,8 @@ import {
   ScanInvoiceInputSchema,
   ScanInvoiceOutputSchema,
   ExtractedProductSchema,
-  FinalProductSchema
+  FinalProductSchema,
+  PromptOutputSchema, // Import the new PromptOutputSchema
 } from './invoice-schemas';
 import type {
   ScanInvoiceInput,
@@ -28,17 +29,6 @@ export type { ScanInvoiceInput, ScanInvoiceOutput };
 export async function scanInvoice(input: ScanInvoiceInput): Promise<ScanInvoiceOutput> {
   return scanInvoiceFlow(input);
 }
-
-// Define the schema for the raw output expected from the AI, including invoice-level details
-const PromptOutputSchema = z.object({
-    products: z.array(ExtractedProductSchema)
-             .describe('Raw extracted product list from the invoice.'),
-    invoice_details: z.object({
-        invoice_number: z.string().optional().describe("The invoice number found on the document."),
-        supplier_name: z.string().optional().describe("The supplier's name identified on the document."),
-        invoice_total_amount: z.number().optional().describe("The final total amount stated on the invoice document, usually including any taxes or VAT. Look for keywords like 'סהכ', 'Total', 'Grand Total', 'סהכ לתשלום'.")
-    }).optional().describe("Overall details extracted from the invoice document, not specific to any single product line.")
-});
 
 
 const prompt = ai.definePrompt({

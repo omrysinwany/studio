@@ -38,6 +38,19 @@ export const FinalProductSchema = z.object({
   maxStockLevel: z.number().optional().describe('Maximum stock level for the product.'),
 });
 
+
+// Schema for the raw output from the AI prompt, including invoice-level details
+export const PromptOutputSchema = z.object({
+    products: z.array(ExtractedProductSchema)
+             .describe('Raw extracted product list from the invoice.'),
+    invoice_details: z.object({
+        invoice_number: z.string().optional().describe("The invoice number found on the document."),
+        supplier_name: z.string().optional().describe("The supplier's name identified on the document."),
+        invoice_total_amount: z.number().optional().describe("The final total amount stated on the invoice document, usually including any taxes or VAT. Look for keywords like 'סהכ', 'Total', 'Grand Total', 'סהכ לתשלום'.")
+    }).optional().describe("Overall details extracted from the invoice document, not specific to any single product line.")
+});
+
+
 // Final output schema for the entire flow, containing processed products and invoice details
 export const ScanInvoiceOutputSchema = z.object({
   products: z.array(FinalProductSchema)
