@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle } from "lucide-react"; // Removed TrendingUp, TrendingDown as they are used in sparkline
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,7 @@ import { getProductsService, InvoiceHistoryItem, getInvoicesService } from '@/se
 import { calculateInventoryValue, calculateTotalItems, getLowStockItems } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip } from 'recharts'; // Added Recharts components for sparkline
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip } from 'recharts';
 
 
 interface KpiData {
@@ -21,7 +21,7 @@ interface KpiData {
   docsProcessedLast30Days: number;
   lowStockItems: number;
   latestDocName?: string;
-  inventoryValueTrend?: { name: string; value: number }[]; // Added for sparkline
+  inventoryValueTrend?: { name: string; value: number }[];
 }
 
 // Sparkline Chart Component
@@ -70,7 +70,7 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchKpiData() {
-      if (authLoading) return; // Wait for auth to settle
+      if (authLoading) return;
 
       setIsLoadingKpis(true);
       setKpiError(null);
@@ -96,7 +96,6 @@ export default function Home() {
           ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
           : null;
 
-        // Mock trend data for inventory value sparkline
         const mockInventoryValueTrend = [
           { name: 'Day 1', value: inventoryValue * 0.95 },
           { name: 'Day 2', value: inventoryValue * 0.98 },
@@ -176,18 +175,15 @@ export default function Home() {
     if (value === undefined || value === null || isNaN(value)) return '-';
     
     const prefix = isCurrency ? '₪' : '';
-    // Always show full number if less than 10,000 for currency, or if explicitly integer
     if (isCurrency && Math.abs(value) < 10000 || isInteger && Math.abs(value) < 1000 ) {
          return prefix + value.toLocaleString(undefined, { 
             minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
             maximumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0) 
         });
     }
-    // Use formatLargeNumber for larger numbers that are not explicitly integers
      if (!isInteger && Math.abs(value) >= 1000) {
-        return prefix + formatLargeNumber(value, isCurrency ? 2 : 1);
+        return prefix + formatLargeNumber(value, isCurrency ? 2 : 0);
     }
-
 
     const options: Intl.NumberFormatOptions = {
       minimumFractionDigits: isInteger ? 0 : (isCurrency ? 2 : 0),
@@ -251,7 +247,7 @@ export default function Home() {
                  <CardTitle className="text-xs sm:text-sm font-medium">Inventory Value</CardTitle>
                  <span className="h-4 w-4 text-muted-foreground font-semibold">₪</span>
                </CardHeader>
-               <CardContent className="pt-1"> {/* Adjusted padding for sparkline */}
+               <CardContent className="pt-1">
                  <div className="text-lg sm:text-2xl font-bold">{renderKpiValue(kpiData?.inventoryValue, true)}</div>
                  <div className="mt-1">
                     <SparkLineChart data={kpiData?.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
@@ -289,8 +285,7 @@ export default function Home() {
             </Link>
          </div>
 
-
-        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-8 md:mb-12">
           <Button
             size="lg"
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-shadow duration-300 text-base"
