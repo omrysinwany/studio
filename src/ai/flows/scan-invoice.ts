@@ -15,7 +15,7 @@ import {
   ScanInvoiceOutputSchema,
   ExtractedProductSchema,
   FinalProductSchema,
-  PromptOutputSchema, // Import the new PromptOutputSchema
+  PromptOutputSchema,
 } from './invoice-schemas';
 import type {
   ScanInvoiceInput,
@@ -43,7 +43,6 @@ const prompt = ai.definePrompt({
     }),
   },
   output: {
-    // Output schema from AI matches the extraction request including invoice details
     schema: PromptOutputSchema
   },
   prompt: `
@@ -51,29 +50,32 @@ const prompt = ai.definePrompt({
     Provide the extracted data as a JSON **object**.
 
     This JSON object should have a key named "products" whose value is a JSON **array** (list) of JSON objects.
-    Each JSON object in the "products" array should represent a single product and contain the following keys:
-    "product_name",
-    "catalog_number",
+    Each JSON object in the "products" array should represent a single product. 
+    
+    For each product, ALWAYS include the following keys:
+    "product_name" (string),
+    "catalog_number" (string, if not found, provide an empty string "").
+
+    Also include these keys if the information is present:
     "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product),
-    "quantity",
-    "purchase_price",
-    "sale_price" (include this key only if a sale price is clearly present for that specific product),
-    "total",
-    "description" (include this key only if a description is clearly present for that specific product).
+    "quantity" (number),
+    "purchase_price" (number),
+    "sale_price" (number, include this key only if a sale price is clearly present for that specific product),
+    "total" (number),
+    "description" (string, include this key only if a description is clearly present for that specific product).
 
     **IMPORTANT for "quantity":** If there are multiple columns indicating quantity (e.g., one for "Units"/'יח'/'כמות' and another for "Cases"/'ארגזים'/'קרטונים'), ALWAYS extract the value from the column representing **individual units**.
 
     For the keys "quantity", "purchase_price", "sale_price", and "total", extract ONLY the numerical value (integers or decimals).
-    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys.
+    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys. If the value is not found for "purchase_price", "sale_price", or "total", you can omit the key or provide a value of 0. For "quantity", if not found, provide 0.
+
 
     Include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
-
-    If a specific piece of information (other than description, barcode, and sale_price) for a product is not found, you can omit that key from that product's JSON object.
     
     Additionally, the main JSON object should also have a key named "invoice_details" if invoice-level information is found.
     The value of "invoice_details" should be a JSON object containing the following optional keys:
     "invoice_number" (string, the invoice number from the document),
-    "supplier_name" (string, the supplier's name from the document),
+    "supplier_name" (string, the supplier's name identified on the document),
     "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה". Extract ONLY the numerical value, no currency symbols).
 
     Ensure the entire output is a valid JSON object.
@@ -118,7 +120,7 @@ const scanInvoiceFlow = ai.defineFlow<
 
             if (!validationResult.success) {
                 console.error('AI output structure validation failed. Received:', output, 'Errors:', validationResult.error.flatten());
-                if (currentRetry < maxRetries - 1 && output === null) { // Retry if output is null and not last attempt
+                if (currentRetry < maxRetries - 1 && output === null) { 
                     console.log(`AI returned null, retrying... (Attempt ${currentRetry + 1})`);
                     currentRetry++;
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -131,7 +133,7 @@ const scanInvoiceFlow = ai.defineFlow<
                 };
             }
             rawOutputFromAI = validationResult.data;
-            break; // Success, exit retry loop
+            break; 
 
         } catch (promptError: any) {
             console.error(`Error calling AI prompt (attempt ${currentRetry + 1}):`, promptError, "Raw AI output if available (before error):", rawOutputFromAI);
@@ -148,7 +150,7 @@ const scanInvoiceFlow = ai.defineFlow<
                   });
                 }
                 await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
+                delay *= 2; 
             } else {
                 let userErrorMessage = `Error calling AI: ${promptError.message || 'Unknown AI error'}`;
                 if (isServiceUnavailable) {
@@ -206,9 +208,9 @@ const scanInvoiceFlow = ai.defineFlow<
                 };
                 return finalProduct;
             })
-            .filter(product => product.catalogNumber !== 'N/A' || product.description !== 'Unknown Product' || product.barcode);
+            .filter(product => (product.catalogNumber && product.catalogNumber !== 'N/A') || (product.description && product.description !== 'Unknown Product') || product.barcode);
 
-        // Process invoice-level details
+
         if (rawOutputFromAI.invoice_details) {
             invoiceNumberForOutput = rawOutputFromAI.invoice_details.invoice_number;
             supplierForOutput = rawOutputFromAI.invoice_details.supplier_name;
@@ -228,3 +230,4 @@ const scanInvoiceFlow = ai.defineFlow<
          return { products: [], error: `Error processing AI data: ${(processingError as Error).message || 'Unknown processing error'}` };
     }
 });
+
