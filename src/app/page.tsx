@@ -225,10 +225,10 @@ export default function Home() {
             {user ? `Hello, ${user.username}! Manage your inventory efficiently.` : 'Streamlining your inventory management.'}
           </p>
           
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
+           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
             <Button
               size="lg"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleScanClick}
             >
               <ScanLine className="mr-2 h-5 w-5" /> Scan Document
@@ -236,7 +236,7 @@ export default function Home() {
             <Button
               variant="outline"
               size="lg"
-              className="w-full border-primary text-primary hover:bg-primary/10 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              className="w-full border-primary text-primary hover:bg-primary/10 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleInventoryClick}
             >
               <Package className="mr-2 h-5 w-5" /> View Inventory
@@ -244,7 +244,7 @@ export default function Home() {
             <Button
               variant="secondary"
               size="lg"
-              className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-0.5 py-6 sm:py-7"
+              className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleReportsClick}
             >
               <BarChart2 className="mr-2 h-5 w-5" /> View Reports
@@ -259,7 +259,7 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
               {/* KPI Card 1: Total Items */}
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -307,7 +307,7 @@ export default function Home() {
                       </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                      <p>Total monetary value of your current inventory.</p>
+                      <p>Total monetary value of your current inventory (cost price).</p>
                       {kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
                           <p className={cn("text-xs", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-500" : "text-red-500")}>
                               vs. {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
