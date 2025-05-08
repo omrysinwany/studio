@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -17,10 +18,9 @@ import {
     getSupplierSummariesService,
     updateSupplierContactInfoService,
     SupplierSummary,
-    clearTemporaryScanData, 
+    clearTemporaryScanData,
     TEMP_DATA_KEY_PREFIX,
     TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
-    TEMP_COMPRESSED_IMAGE_KEY_PREFIX
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -55,17 +55,18 @@ function EditInvoiceContent() {
   const { t } = useTranslation();
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
-  const [originalFileName, setOriginalFileName] = useState<string>(''); 
+  const [originalFileName, setOriginalFileName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [scanProcessError, setScanProcessError] = useState<string | null>(null);
-  
+
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
   const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
-  const [compressedImageKey, setCompressedImageKey] = useState<string | null>(null);
+  const [compressedImageKeyFromParam, setCompressedImageKeyFromParam] = useState<string | null>(null);
+
 
   const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
   const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
@@ -73,9 +74,9 @@ function EditInvoiceContent() {
 
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
-  const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false); 
+  const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false);
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
-  
+
   const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
 
   const [showSupplierDialog, setShowSupplierDialog] = useState(false);
@@ -84,16 +85,19 @@ function EditInvoiceContent() {
   const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
   const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
 
-   const cleanupTemporaryData = useCallback(() => {
-    if (dataKey) {
-        clearTemporaryScanData(dataKey.replace(TEMP_DATA_KEY_PREFIX, ''));
-        console.log(`[EditInvoice] Triggered cleanup for scan result associated with key: ${dataKey}`);
-    } else if (tempInvoiceId && tempInvoiceId.startsWith('pending-inv-')) {
-        const uniqueScanId = tempInvoiceId.replace('pending-inv-', '');
-        clearTemporaryScanData(uniqueScanId);
-        console.log(`[EditInvoice] Triggered cleanup based on tempInvoiceId: ${tempInvoiceId}`);
+   const cleanupTemporaryDataLocal = useCallback(() => {
+    let uniqueIdToClear: string | null = null;
+    if (dataKey?.startsWith(TEMP_DATA_KEY_PREFIX)) {
+        uniqueIdToClear = dataKey.replace(TEMP_DATA_KEY_PREFIX, '');
+    } else if (tempInvoiceId?.startsWith('pending-inv-')) {
+        uniqueIdToClear = tempInvoiceId.replace('pending-inv-', '');
+    }
+
+    if (uniqueIdToClear) {
+        clearTemporaryScanData(uniqueScanIdToClear);
+        console.log(`[EditInvoice] Triggered cleanup for scan result associated with unique ID: ${uniqueIdToClear}`);
     } else {
-        console.log("[EditInvoice] cleanupTemporaryData called, but no dataKey or relevant tempInvoiceId found to clear.");
+        console.log("[EditInvoice] cleanupTemporaryDataLocal called, but no dataKey or relevant tempInvoiceId found to clear.");
     }
   }, [dataKey, tempInvoiceId]);
 
@@ -102,11 +106,13 @@ function EditInvoiceContent() {
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
-    
+    const compressedKeyParam = searchParams.get('compressedImageKey'); // Get compressed image key
+
     setDataKey(key);
     setTempInvoiceId(tempInvIdParam);
+    setCompressedImageKeyFromParam(compressedKeyParam); // Store compressed image key
 
-    // Construct other keys based on the unique part of the dataKey or tempInvIdParam
+
     let uniquePart: string | null = null;
     if (key?.startsWith(TEMP_DATA_KEY_PREFIX)) {
         uniquePart = key.replace(TEMP_DATA_KEY_PREFIX, '');
@@ -116,14 +122,13 @@ function EditInvoiceContent() {
 
     if (uniquePart) {
         setOriginalImagePreviewKey(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${uniquePart}`);
-        setCompressedImageKey(`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${uniquePart}`);
     }
 
 
     let hasAttemptedLoad = false;
 
     if (nameParam) {
-      setOriginalFileName(decodeURIComponent(nameParam)); 
+      setOriginalFileName(decodeURIComponent(nameParam));
     } else {
         setOriginalFileName(t('edit_invoice_unknown_document'));
     }
@@ -140,7 +145,7 @@ function EditInvoiceContent() {
               description: t('edit_invoice_toast_error_loading_desc_not_found'),
               variant: "destructive",
             });
-            cleanupTemporaryData(); 
+            cleanupTemporaryDataLocal();
             setIsLoading(false);
             setInitialDataLoaded(true);
             return;
@@ -151,7 +156,7 @@ function EditInvoiceContent() {
             parsedData = JSON.parse(storedData);
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-             cleanupTemporaryData(); 
+             cleanupTemporaryDataLocal();
              setErrorLoading(t('edit_invoice_error_invalid_json'));
               toast({
                   title: t('edit_invoice_toast_error_loading_title'),
@@ -181,17 +186,18 @@ function EditInvoiceContent() {
                         : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
             minStockLevel: p.minStockLevel ?? undefined,
             maxStockLevel: p.maxStockLevel ?? undefined,
+            salePrice: p.salePrice ?? undefined,
           }));
           setProducts(productsWithIds);
           setExtractedInvoiceNumber(parsedData.invoiceNumber);
-          setAiScannedSupplierName(parsedData.supplier); 
+          setAiScannedSupplierName(parsedData.supplier);
           setExtractedTotalAmount(parsedData.totalAmount);
           setErrorLoading(null);
           checkSupplier(parsedData.supplier);
 
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-          cleanupTemporaryData(); 
+          cleanupTemporaryDataLocal();
            setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
            toast({
                title: t('edit_invoice_toast_error_loading_title'),
@@ -215,12 +221,12 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryData, t]);
+  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryDataLocal, t]);
 
 
   const checkSupplier = async (scannedSupplierName?: string) => {
     if (!scannedSupplierName) {
-      setIsSupplierConfirmed(true); 
+      setIsSupplierConfirmed(true);
       return;
     }
     try {
@@ -237,7 +243,7 @@ function EditInvoiceContent() {
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName); 
+      setExtractedSupplierName(scannedSupplierName);
       setIsSupplierConfirmed(true);
     }
   };
@@ -248,7 +254,7 @@ function EditInvoiceContent() {
       setExtractedSupplierName(confirmedSupplierName);
       if (isNew) {
         try {
-          await updateSupplierContactInfoService(confirmedSupplierName, {}); 
+          await updateSupplierContactInfoService(confirmedSupplierName, {});
           toast({ title: t('edit_invoice_toast_new_supplier_added_title'), description: t('edit_invoice_toast_new_supplier_added_desc', { supplierName: confirmedSupplierName }) });
         } catch (error) {
           console.error("Failed to add new supplier:", error);
@@ -290,32 +296,35 @@ function EditInvoiceContent() {
 
           // Recalculate dependent fields based on which field was edited
           if (field === 'quantity' || field === 'unitPrice') {
-            currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
+             if (currentQuantity > 0 && currentUnitPrice !== 0) { // Only calculate if both are positive
+                currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
+             } else if (currentQuantity === 0 || currentUnitPrice === 0) {
+                currentLineTotal = 0; // If either is zero, total is zero
+             }
+             // else, if one is non-zero and the other is zero, lineTotal might have been manually set, so respect it unless it was just calculated.
             updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
             if (currentQuantity > 0) {
               currentUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
               updatedProduct.unitPrice = currentUnitPrice;
             } else {
-              updatedProduct.unitPrice = (currentLineTotal === 0) ? 0 : currentUnitPrice;
+                updatedProduct.unitPrice = (currentLineTotal === 0) ? 0 : currentUnitPrice;
             }
           }
-          
-          // Ensure unitPrice is always total/quantity if quantity > 0
-          if (currentQuantity > 0) {
+
+          // Ensure unitPrice is always total/quantity if quantity > 0 and lineTotal is meaningful
+          if (currentQuantity > 0 && currentLineTotal !== 0) {
             const derivedUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
-            updatedProduct.unitPrice = derivedUnitPrice;
-          } else {
-            // If quantity is 0:
-            // If lineTotal is 0, unitPrice should be 0.
-            // Otherwise, unitPrice is ambiguous (could be what user entered if they edited it, or 0).
-            if (currentLineTotal === 0) {
-                updatedProduct.unitPrice = 0;
+            if (Math.abs(derivedUnitPrice - currentUnitPrice) > 0.001 && field !== 'unitPrice') {
+                 console.log(`[EditInvoice] Recalculating unitPrice for ${updatedProduct.description}. Original: ${currentUnitPrice}, New derived: ${derivedUnitPrice}`);
+                 updatedProduct.unitPrice = derivedUnitPrice;
             }
-            // If qty is 0 and lineTotal is non-zero, unitPrice might have been manually entered.
-            // In this state, unitPrice cannot be derived, so we keep its current value.
+          } else if (currentQuantity === 0 && currentLineTotal === 0) { // if both are zero, unit price is zero
+            updatedProduct.unitPrice = 0;
           }
-          
+          // If qty is 0 and lineTotal is non-zero, unitPrice might have been manually entered, so keep it.
+          // If unitPrice was manually entered and qty is >0, lineTotal gets updated above.
+
           return updatedProduct;
         }
         return p;
@@ -335,6 +344,7 @@ function EditInvoiceContent() {
       barcode: undefined,
       minStockLevel: undefined,
       maxStockLevel: undefined,
+      salePrice: undefined,
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
   };
@@ -353,14 +363,24 @@ function EditInvoiceContent() {
       setIsSaving(true);
       try {
           const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => rest);
-          let imageUriForFinalSave: string | undefined = undefined;
-          if (compressedImageKey) {
-              imageUriForFinalSave = localStorage.getItem(compressedImageKey) || undefined;
-              console.log(`[EditInvoice] Retrieved compressed image for final save (key: ${compressedImageKey}). Exists: ${!!imageUriForFinalSave}`);
-          } else {
-              console.log("[EditInvoice] No compressed image key found, no image will be passed for final save.");
-          }
           
+          let imageForFinalInvoiceRecord: string | undefined = undefined;
+
+          if (compressedImageKeyFromParam) {
+              imageForFinalInvoiceRecord = localStorage.getItem(compressedImageKeyFromParam) || undefined;
+              if (imageForFinalInvoiceRecord) {
+                  console.log(`[EditInvoice] Using COMPRESSED image for final invoice record (key: ${compressedImageKeyFromParam}).`);
+              }
+          }
+
+          if (!imageForFinalInvoiceRecord && originalImagePreviewKey) {
+              imageForFinalInvoiceRecord = localStorage.getItem(originalImagePreviewKey) || undefined;
+              if (imageForFinalInvoiceRecord) {
+                  console.log(`[EditInvoice] Using ORIGINAL image preview for final invoice record (key: ${originalImagePreviewKey}) as compressed was not found or key was missing.`);
+              }
+          }
+
+
           let finalFileName = originalFileName;
           if(extractedSupplierName && extractedInvoiceNumber) {
             finalFileName = `${extractedSupplierName}_${extractedInvoiceNumber}`;
@@ -369,21 +389,21 @@ function EditInvoiceContent() {
           } else if (extractedInvoiceNumber) {
             finalFileName = `Invoice_${extractedInvoiceNumber}`;
           }
-          
-          console.log("Proceeding to finalize save products:", productsForService, "for final file name:", finalFileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
-          
+
+          console.log("Proceeding to finalize save products:", productsForService, "for final file name:", finalFileName, "tempInvoiceId:", tempInvoiceId, "with image for final save:", imageForFinalInvoiceRecord ? 'Exists' : 'Does not exist');
+
           await finalizeSaveProductsService(
-            productsForService, 
-            finalFileName, 
-            'upload', 
-            tempInvoiceId || undefined, 
-            imageUriForFinalSave,
+            productsForService,
+            finalFileName,
+            'upload',
+            tempInvoiceId || undefined,
+            imageForFinalInvoiceRecord,
             extractedInvoiceNumber,
-            extractedSupplierName, 
+            extractedSupplierName,
             extractedTotalAmount
           );
 
-          cleanupTemporaryData(); 
+          cleanupTemporaryDataLocal();
           console.log("[EditInvoice] All temporary localStorage keys cleared after successful save.");
 
 
@@ -393,13 +413,22 @@ function EditInvoiceContent() {
           });
           router.push('/inventory?refresh=true');
 
-      } catch (error) {
+      } catch (error: any) {
           console.error("Failed to finalize save products:", error);
-          toast({
-              title: t('edit_invoice_toast_save_failed_title'),
-              description: t('edit_invoice_toast_save_failed_desc_finalize', { message: (error as Error).message || t('edit_invoice_try_again')}),
-              variant: "destructive",
-          });
+           if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            toast({
+                title: t('upload_toast_storage_full_title_critical'),
+                description: t('upload_toast_storage_full_desc_finalize'),
+                variant: "destructive",
+                duration: 10000,
+            });
+          } else {
+            toast({
+                title: t('edit_invoice_toast_save_failed_title'),
+                description: t('edit_invoice_toast_save_failed_desc_finalize', { message: (error as Error).message || t('edit_invoice_try_again')}),
+                variant: "destructive",
+            });
+          }
       } finally {
           setIsSaving(false);
       }
@@ -408,7 +437,7 @@ function EditInvoiceContent() {
 
  const handleSave = async () => {
     if (!isSupplierConfirmed) {
-        setShowSupplierDialog(true); 
+        setShowSupplierDialog(true);
         toast({ title: t('edit_invoice_toast_supplier_not_confirmed_title'), description: t('edit_invoice_toast_supplier_not_confirmed_desc'), variant: "default" });
         return;
     }
@@ -417,7 +446,7 @@ function EditInvoiceContent() {
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
         const priceCheckResult = await checkProductPricesBeforeSaveService(productsFromEdit, tempInvoiceId || undefined);
-        
+
         setProductsForNextStep(priceCheckResult.productsToSaveDirectly);
 
         if (priceCheckResult.priceDiscrepancies.length > 0) {
@@ -444,26 +473,24 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         const inventoryMap = new Map<string, Product>();
         currentInventory.forEach(p => {
             if (p.id) inventoryMap.set(`id:${p.id}`, p);
-             // Also map by catalog number if it's unique enough or a primary identifier for existing items.
             if (p.catalogNumber && p.catalogNumber !== "N/A") inventoryMap.set(`catalog:${p.catalogNumber}`, p);
             if (p.barcode) inventoryMap.set(`barcode:${p.barcode}`, p);
         });
 
         const newProductsNeedingDetails = productsReadyForDetailCheck.filter(p => {
-            // Check if the product exists by ID (if it's not a newly generated ID), catalog number, or barcode
             const isExistingById = p.id && !p.id.includes('-new') && inventoryMap.has(`id:${p.id}`);
             const isExistingByCatalog = p.catalogNumber && p.catalogNumber !== "N/A" && inventoryMap.has(`catalog:${p.catalogNumber}`);
             const isExistingByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
 
             const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
-            
+
             return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && (p.salePrice === undefined || p.salePrice === null);
         });
 
         if (newProductsNeedingDetails.length > 0) {
             setProductsForNextStep(productsReadyForDetailCheck);
             setPromptingForNewProductDetails(newProductsNeedingDetails);
-            setIsBarcodePromptOpen(true); 
+            setIsBarcodePromptOpen(true);
             setIsSaving(false);
         } else {
             await proceedWithFinalSave(productsReadyForDetailCheck);
@@ -487,7 +514,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             const resolvedVersion = resolvedProducts.find(rp => rp.id === originalProduct.id);
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
         });
-        
+
         checkForNewProductsAndDetails(allProductsAfterPriceCheck);
     } else {
         toast({
@@ -502,7 +529,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
  const handleNewProductDetailsComplete = (updatedNewProducts: Product[] | null) => {
      setPromptingForNewProductDetails(null);
-     setIsBarcodePromptOpen(false); 
+     setIsBarcodePromptOpen(false);
      if (updatedNewProducts) {
          const finalProductsToSave = productsForNextStep.map(originalProduct => {
              const updatedVersion = updatedNewProducts.find(unp => unp.id === originalProduct.id);
@@ -528,7 +555,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
 
     const handleGoBack = () => {
-        cleanupTemporaryData(); 
+        cleanupTemporaryDataLocal();
         router.push('/upload');
     };
 
@@ -655,8 +682,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
+           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -766,7 +794,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onConfirm={handleSupplierConfirmation}
           onCancel={() => {
             setShowSupplierDialog(false);
-            setIsSupplierConfirmed(true); 
+            setIsSupplierConfirmed(true); // Assume user proceeds with scanned name if cancelled
             setExtractedSupplierName(aiScannedSupplierName);
           }}
           isOpen={showSupplierDialog}
@@ -806,3 +834,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+

@@ -1,4 +1,6 @@
 
+'use client'; // Mark as client component to use useEffect
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -6,11 +8,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/AuthContext';
 import Navigation from '@/components/layout/Navigation';
 import { ThemeProvider } from "@/components/theme-provider";
-import { LanguageProvider } from '@/context/LanguageContext'; // Import LanguageProvider
-import { clearOldTemporaryScanData } from '@/services/backend'; // Import cleanup function
-import React from 'react'; // useEffect is implicitly available
+import { LanguageProvider } from '@/context/LanguageContext';
+import React, { useEffect } from 'react'; // Import useEffect
+import { 
+  TEMP_DATA_KEY_PREFIX, 
+  TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, 
+  TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
+  clearOldTemporaryScanData // Import the cleanup function
+} from '@/services/backend';
 
-// No need to import useEffect if we call clearOldTemporaryScanData in a client component or action
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -22,23 +28,31 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-// Metadata remains here as it's for server-side rendering
+// Metadata cannot be exported from a client component.
+// If dynamic metadata is needed, use the generateMetadata function in a server component.
+// For static metadata, it can remain here if this were a server component,
+// but since we need 'use client' for useEffect, this would be an issue.
+// Let's remove it for now or assume it's handled at a higher level server component.
+/*
 export const metadata: Metadata = {
-  title: 'InvoTrack', // This can be localized later if needed by moving to generateMetadata
+  title: 'InvoTrack',
   description: 'Inventory management based on delivery notes and invoices',
 };
+*/
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // useEffect for cleanup should be in a client component,
-  // but for simplicity in this structure, we are assuming it's called
-  // appropriately elsewhere or this component might be marked 'use client'
-  // if direct side effects like this are intended here.
-  // For now, just rendering the structure.
-  // clearOldTemporaryScanData(); // This would ideally be in a 'use client' component or triggered differently
+  useEffect(() => {
+    // Call the cleanup function when the app loads (RootLayout mounts)
+    clearOldTemporaryScanData();
+    
+    // Optional: Set an interval to run cleanup periodically while the app is open
+    // const intervalId = setInterval(clearOldTemporaryScanData, 60 * 60 * 1000); // Every hour
+    // return () => clearInterval(intervalId); // Cleanup interval on unmount
+  }, []);
 
   return (
     <LanguageProvider>

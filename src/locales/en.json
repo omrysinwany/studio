@@ -330,6 +330,8 @@
   "upload_toast_upload_failed_title": "Upload Failed",
   "upload_toast_upload_failed_read_desc": "Could not read the selected file.",
   "upload_toast_upload_failed_unexpected_desc": "An unexpected error occurred: {{message}}. Please try again.",
+  "upload_toast_storage_full_title_critical": "Storage Full",
+  "upload_toast_storage_full_desc_finalize": "Could not save all data. Local storage is full. Please try clearing browser data or contact support.",
   "upload_title": "Upload New Document",
   "upload_description": "Select a JPEG, PNG, or PDF file of your invoice or delivery note.",
   "upload_file_input_aria": "Select document file",

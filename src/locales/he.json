@@ -330,6 +330,8 @@
   "upload_toast_upload_failed_title": "העלאה נכשלה",
   "upload_toast_upload_failed_read_desc": "לא ניתן לקרוא את הקובץ שנבחר.",
   "upload_toast_upload_failed_unexpected_desc": "אירעה שגיאה לא צפויה: {{message}}. אנא נסה שנית.",
+  "upload_toast_storage_full_title_critical": "שטח האחסון מלא",
+  "upload_toast_storage_full_desc_finalize": "לא ניתן היה לשמור את כל הנתונים. שטח האחסון המקומי מלא. אנא נסה לנקות נתוני דפדפן או פנה לתמיכה.",
   "upload_title": "העלה מסמך חדש",
   "upload_description": "בחר קובץ JPEG, PNG, או PDF של החשבונית או תעודת המשלוח שלך.",
   "upload_file_input_aria": "בחר קובץ מסמך",
