@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -248,15 +249,11 @@ function EditInvoiceContent() {
       prevProducts.map(product => {
         if (product.id === id) {
           let numericValue: number | string | undefined = value; 
-          if (['quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
+          if (['quantity', 'unitPrice', 'lineTotal'].includes(field)) {
               const stringValue = String(value);
-              if (stringValue.trim() === '' && ['salePrice', 'minStockLevel', 'maxStockLevel'].includes(field)) {
-                  numericValue = undefined;
-              } else {
-                numericValue = parseFloat(stringValue.replace(/,/g, ''));
-                if (isNaN(numericValue as number)) {
-                   numericValue = ['salePrice', 'minStockLevel', 'maxStockLevel'].includes(field) ? undefined : 0;
-                }
+              numericValue = parseFloat(stringValue.replace(/,/g, ''));
+              if (isNaN(numericValue as number)) {
+                 numericValue = 0;
               }
           }
 
@@ -604,14 +601,13 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
+            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
                   <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Sale Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
@@ -656,18 +652,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         min="0"
                         aria-label={`Unit price for ${product.description}`}
                       />
-                    </TableCell>
-                     <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <Input
-                            type="number"
-                            value={formatInputValue(product.salePrice, 'currency')}
-                            onChange={(e) => handleInputChange(product.id, 'salePrice', e.target.value)}
-                            className="w-24 sm:w-28 text-right h-9"
-                            step="0.01"
-                            min="0"
-                            placeholder="Optional"
-                            aria-label={`Sale price for ${product.description}`}
-                        />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Input
@@ -748,6 +732,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         <UnitPriceConfirmationDialog
           discrepancies={priceDiscrepancies}
           onComplete={handlePriceConfirmationComplete}
+          isOpen={!!priceDiscrepancies}
+          onOpenChange={(open) => {
+            if (!open) setPriceDiscrepancies(null);
+          }}
         />
       )}
     </div>
