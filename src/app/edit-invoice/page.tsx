@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -642,8 +643,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
                   <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_description')}</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price')}</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total')}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>
                 </TableRow>
               </TableHeader>

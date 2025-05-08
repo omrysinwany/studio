@@ -46,8 +46,7 @@ type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpen
 type SortDirection = 'asc' | 'desc';
 
 
-const formatDate = (date: Date | string | undefined, f: string = 'PP') => {
-  const { t } = useTranslation();
+const formatDate = (date: Date | string | undefined, t: (key: string) => string, f: string = 'PP') => {
   if (!date) return t('suppliers_na');
   try {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
@@ -60,8 +59,7 @@ const formatDate = (date: Date | string | undefined, f: string = 'PP') => {
 };
 
 
-const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
-    const { t } = useTranslation();
+const renderStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string) => string) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
@@ -218,13 +216,13 @@ export default function SuppliersPage() {
 
     const spendingByMonth: Record<string, number> = {};
     last12Months.forEach(monthDate => {
-        const monthYear = format(monthDate, 'MMM yyyy');
+        const monthYear = formatDate(monthDate, t, 'MMM yyyy');
         spendingByMonth[monthYear] = 0;
     });
 
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
-        const monthYear = formatDate(invoice.uploadTime as string, 'MMM yyyy');
+        const monthYear = formatDate(invoice.uploadTime as string, t, 'MMM yyyy');
         if(spendingByMonth.hasOwnProperty(monthYear)){
             spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
         }
@@ -527,14 +525,14 @@ export default function SuppliersPage() {
                                 {index < selectedSupplierInvoices.slice(0, 10).length - 1 && <div className="h-full w-px bg-border" />}
                               </div>
                               <div className="pb-3 flex-1">
-                                <p className="text-xs text-muted-foreground">{formatDate(invoice.uploadTime as string, 'PPp')}</p>
+                                <p className="text-xs text-muted-foreground">{formatDate(invoice.uploadTime as string, t, 'PPp')}</p>
                                 <p className="text-sm font-medium">
                                   <Button variant="link" className="p-0 h-auto text-sm" onClick={() => navigateToInvoiceDetails(invoice.id)}>
                                     {invoice.fileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
                                   </Button>
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {t('suppliers_invoice_total')}: {formatCurrency(invoice.totalAmount)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status)}
+                                  {t('suppliers_invoice_total')}: {formatCurrency(invoice.totalAmount)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status, t)}
                                 </p>
                               </div>
                             </div>

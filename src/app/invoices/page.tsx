@@ -27,7 +27,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format } from 'date-fns';
+ import { format, parseISO } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
  import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
@@ -63,23 +63,26 @@ import { useTranslation } from '@/hooks/useTranslation';
 
 const formatNumber = (
     value: number | undefined | null,
-    options?: { decimals?: number, useGrouping?: boolean }
+    t: (key: string, params?: Record<string, string | number>) => string,
+    options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = false } = options || {};
+    const { decimals = 2, useGrouping = false, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, {
+        const zeroFormatted = (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
-    return value.toLocaleString(undefined, {
+    const formattedValue = value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
+    return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
 
 const isValidImageSrc = (src: string | undefined): src is string => {
@@ -284,7 +287,7 @@ export default function InvoicesPage() {
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document'); // or a more generic N/A
      try {
-        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        const dateObj = typeof date === 'string' ? parseISO(date) : date;
         if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
         return window.innerWidth < 640
              ? format(dateObj, 'dd/MM/yy')
@@ -430,7 +433,7 @@ export default function InvoicesPage() {
             try { return value.toISOString(); } catch { return t('invoices_invalid_date'); }
          }
          if (typeof value === 'number') {
-             return formatNumber(value, { decimals: 2, useGrouping: false });
+             return formatNumber(value, t, { decimals: 2, useGrouping: false });
          }
         let stringValue = String(value);
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
@@ -691,7 +694,7 @@ export default function InvoicesPage() {
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                       >
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                           {t(header.labelKey as any, { currencySymbol: t('currency_symbol') })}
+                           {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
                            {header.sortable && sortKey === header.key && (
                               <span className="text-xs" aria-hidden="true">
                                  {sortDirection === 'asc' ? '▲' : '▼'}
@@ -757,7 +760,7 @@ export default function InvoicesPage() {
                          {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                          {visibleColumns.totalAmount && (
                            <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
-                              {item.totalAmount !== undefined && item.totalAmount !== null ? `${t('currency_symbol')}${formatNumber(item.totalAmount, { useGrouping: true })}` : t('invoices_na')}
+                              {item.totalAmount !== undefined && item.totalAmount !== null ? formatNumber(item.totalAmount, t, { currency: true }) : t('invoices_na')}
                            </TableCell>
                          )}
                          {visibleColumns.errorMessage && (
@@ -812,7 +815,7 @@ export default function InvoicesPage() {
                       <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
                       <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
                        {item.supplier && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplier}</p>}
-                       {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {t('currency_symbol')}{formatNumber(item.totalAmount, { useGrouping: true })}</p>}
+                       {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatNumber(item.totalAmount, t, { currency: true })}</p>}
                     </CardContent>
                      <CardFooter className="p-3 border-t">
                         <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
@@ -853,7 +856,7 @@ export default function InvoicesPage() {
                         <Input id="editSupplier" value={editedInvoiceData.supplier || ''} onChange={(e) => handleEditDetailsInputChange('supplier', e.target.value)} disabled={isSavingDetails}/>
                     </div>
                     <div>
-                        <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency')}</Label>
+                        <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
                     {selectedInvoiceDetails.status === 'error' && (
@@ -876,7 +879,7 @@ export default function InvoicesPage() {
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `${t('currency_symbol')}${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true }) : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -913,7 +916,7 @@ export default function InvoicesPage() {
                             <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button>
                             <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
                                 {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                {t('save_changes_button')}
+                                {isSavingDetails ? t('saving_button') : t('save_changes_button')}
                             </Button>
                         </>
                     ) : (

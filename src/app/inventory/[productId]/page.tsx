@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -29,23 +30,25 @@ import { useTranslation } from '@/hooks/useTranslation';
 // Helper to format numbers for display
 const formatDisplayNumber = (
     value: number | undefined | null,
+    t: (key: string) => string, // Added t parameter
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, { 
+        const zeroFormatted = (0).toLocaleString(undefined, { 
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
+        return `${t('currency_symbol')}${zeroFormatted}`;
     }
 
-    return value.toLocaleString(undefined, {
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
-    });
+    })}`;
 };
 
 // Helper to format numbers for input fields
@@ -64,12 +67,13 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
 
 
 const formatIntegerQuantity = (
-    value: number | undefined | null
+    value: number | undefined | null,
+    t: (key: string) => string // Added t parameter
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return formatDisplayNumber(0, { decimals: 0, useGrouping: false });
+        return formatDisplayNumber(0, t, { decimals: 0, useGrouping: false });
     }
-    return formatDisplayNumber(Math.round(value), { decimals: 0, useGrouping: true });
+    return formatDisplayNumber(Math.round(value), t, { decimals: 0, useGrouping: true });
 };
 
 export default function ProductDetailPage() {
@@ -276,9 +280,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = `₪${formatDisplayNumber(value, { decimals: 2, useGrouping: true })}`;
-            else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value);
-            else displayValue = formatDisplayNumber(value, { decimals: 2, useGrouping: true });
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
+            else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
+            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -508,7 +512,7 @@ export default function ProductDetailPage() {
                     {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
                     {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
                     {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true)}
-                    {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
+                    {renderEditItem(TrendingUp, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                     {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                  </>
              ) : (

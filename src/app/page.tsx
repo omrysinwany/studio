@@ -32,6 +32,7 @@ interface KpiData {
 }
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
+  const { t } = useTranslation(); // For currency symbol
   if (!data || data.length === 0) {
     return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">No trend data</div>;
   }
@@ -47,7 +48,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
             padding: "0.25rem 0.5rem",
           }}
           formatter={(value: number, name: string) => {
-             if (name === 'value') return [`₪${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, "Value"];
+             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, "Value"];
              return [value.toLocaleString(), name];
           }}
           labelFormatter={() => ''}
@@ -154,10 +155,10 @@ export default function Home() {
 
   const formatLargeNumber = (num: number | undefined, decimals = 1, isCurrency = false): string => {
     if (num === undefined || num === null || isNaN(num)) {
-      return isCurrency ? '₪-' : '-';
+      return isCurrency ? `${t('currency_symbol')}-` : '-';
     }
 
-    const prefix = isCurrency ? '₪' : '';
+    const prefix = isCurrency ? `${t('currency_symbol')}` : '';
 
     if (Math.abs(num) < 1000) {
         return prefix + num.toLocaleString(undefined, {
@@ -193,7 +194,7 @@ export default function Home() {
       return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
     }
     if (kpiError) return <span className="text-destructive text-lg">-</span>;
-    if (value === undefined || value === null || isNaN(value)) return isCurrency ? '₪-' : '-';
+    if (value === undefined || value === null || isNaN(value)) return isCurrency ? `${t('currency_symbol')}-` : '-';
 
     return formatLargeNumber(value, isInteger ? 0 : (isCurrency ? 2 : 1), isCurrency);
   };

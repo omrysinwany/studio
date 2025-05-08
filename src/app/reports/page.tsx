@@ -304,7 +304,6 @@ export default function ReportsPage() {
                mode="range"
                defaultMonth={dateRange?.from}
                selected={dateRange}
-               onSelect={setDateRange}
                numberOfMonths={isMobile ? 1 : 2}
              />
             {dateRange && (
@@ -484,7 +483,7 @@ export default function ReportsPage() {
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, t, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={60} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} /> {/* Adjusted width for mobile */}
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
@@ -659,4 +658,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
