@@ -3,11 +3,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins } from 'lucide-react'; 
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
 import { Button } from '@/components/ui/button';
-import { DateRange } from 'react-day-picker';
+import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, subMonths } from 'date-fns';
@@ -17,22 +17,23 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { 
-    calculateInventoryValue, 
-    calculateTotalItems, 
-    getLowStockItems, 
-    calculateGrossProfitMargin, 
-    calculateInventoryTurnoverRate, 
+import {
+    calculateInventoryValue,
+    calculateTotalItems,
+    getLowStockItems,
+    calculateGrossProfitMargin,
+    calculateInventoryTurnoverRate,
     calculateAverageOrderValue,
-    calculateTotalPotentialGrossProfit 
+    calculateTotalPotentialGrossProfit
 } from '@/lib/kpi-calculations';
 import { useTranslation } from '@/hooks/useTranslation';
 
+// Moved formatNumber outside the component and made it accept 't'
 const formatNumber = (
     value: number | undefined | null,
+    t: (key: string, params?: Record<string, string | number>) => string, // Added t as a parameter
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { t } = useTranslation(); // Ensure t is accessible
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
@@ -54,12 +55,13 @@ const formatNumber = (
 
 
 const chartConfig = {
-  value: { label: 'reports_chart_label_value', color: 'hsl(var(--chart-1))' },
-  count: { label: 'reports_chart_label_count', color: 'hsl(var(--chart-2))' },
-  sales: { label: 'reports_chart_label_sales', color: 'hsl(var(--chart-3))' },
-  quantitySold: { label: 'reports_chart_label_qty_sold', color: 'hsl(var(--chart-4))'},
-  documents: { label: 'reports_chart_label_documents', color: 'hsl(var(--chart-5))' }
-} satisfies React.ComponentProps<typeof ChartContainer>["config"];
+  value: { labelKey: 'reports_chart_label_value', color: 'hsl(var(--chart-1))' },
+  count: { labelKey: 'reports_chart_label_count', color: 'hsl(var(--chart-2))' },
+  sales: { labelKey: 'reports_chart_label_sales', color: 'hsl(var(--chart-3))' },
+  quantitySold: { labelKey: 'reports_chart_label_qty_sold', color: 'hsl(var(--chart-4))'},
+  documents: { labelKey: 'reports_chart_label_documents', color: 'hsl(var(--chart-5))' }
+} satisfies Omit<React.ComponentProps<typeof ChartContainer>["config"], string>;
+
 
 const PIE_COLORS = [
     'hsl(var(--chart-1))',
@@ -82,7 +84,7 @@ interface StockAlert {
 
 
 export default function ReportsPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(); // Get t here
   const [kpis, setKpis] = useState<any | null>(null);
   const [valueOverTime, setValueOverTime] = useState<any[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
@@ -152,13 +154,13 @@ export default function ReportsPage() {
        const totalValue = calculateInventoryValue(inventory);
        const totalItemsCount = calculateTotalItems(inventory);
        const lowStockItemsCount = getLowStockItems(inventory).length;
-       const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory); 
+       const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory);
 
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; 
-       const mockCogs = mockTotalRevenue * 0.65; 
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5;
+       const mockCogs = mockTotalRevenue * 0.65;
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); 
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
@@ -168,20 +170,20 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         totalPotentialGrossProfit, 
-         valueChangePercent: Math.random() * 10 - 5, 
+         totalPotentialGrossProfit,
+         valueChangePercent: Math.random() * 10 - 5,
        });
 
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const numPoints = isMobile ? 5 : 10; 
+       const numPoints = isMobile ? 5 : 10;
        const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints)));
 
        while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM dd");
            const invoicesUpToDate = invoices.filter(inv => new Date(inv.uploadTime) <= currentDate);
-           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4); 
+           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
                date: monthStr,
                value: simulatedValue,
@@ -191,25 +193,25 @@ export default function ReportsPage() {
        setValueOverTime(votData);
 
 
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; 
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other'];
         const catDistData = categories.map(cat => {
             const categoryProducts = inventory.filter(p => (p.description.toLowerCase().includes(cat.slice(0,4).toLowerCase())) || (cat === 'Other' && !categories.slice(0,-1).some(c => p.description.toLowerCase().includes(c.slice(0,4).toLowerCase()))));
             return {
                 name: cat,
                 value: calculateInventoryValue(categoryProducts)
             };
-        }).filter(c => c.value > 0); 
+        }).filter(c => c.value > 0);
        setCategoryDistribution(catDistData);
 
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const procVolNumPoints = isMobile ? 3 : 5; 
-       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); 
+       const procVolNumPoints = isMobile ? 3 : 5;
+       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints)));
 
         while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yy");
            const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yy") === monthStr).length;
-           if(!procVolData.find(d => d.period === monthStr)) { 
+           if(!procVolData.find(d => d.period === monthStr)) {
              procVolData.push({ period: monthStr, documents: count });
            }
            currentDate.setMonth(currentDate.getMonth() + procVolStep);
@@ -224,15 +226,15 @@ export default function ReportsPage() {
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, 
-                totalValue: (p.salePrice || p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) 
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1,
+                totalValue: (p.salePrice || p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1)
             }))
-            .sort((a,b) => b.totalValue - a.totalValue) 
-            .slice(0, 5); 
+            .sort((a,b) => b.totalValue - a.totalValue)
+            .slice(0, 5);
        setTopSellingProducts(topProducts);
 
         const alerts: StockAlert[] = inventory.reduce((acc, p) => {
-            const minStockLevelOrDefault = p.minStockLevel ?? 10; 
+            const minStockLevelOrDefault = p.minStockLevel ?? 10;
             const isDefaultMin = p.minStockLevel === undefined;
 
             if (p.quantity === 0) {
@@ -244,7 +246,7 @@ export default function ReportsPage() {
             }
             return acc;
         }, [] as StockAlert[]);
-        setStockAlerts(alerts.sort((a, b) => { 
+        setStockAlerts(alerts.sort((a, b) => {
             const statusOrder = { 'Out of Stock': 1, 'Low Stock': 2, 'Over Stock': 3 };
             return statusOrder[a.status] - statusOrder[b.status];
         }));
@@ -322,10 +324,10 @@ export default function ReportsPage() {
                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalValue, { currency: true })}</div>
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalValue, t, { currency: true })}</div>
                  <p className={cn("text-[10px] sm:text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" /> : <TrendingDown className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
-                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
+                   {formatNumber(Math.abs(kpis.valueChangePercent), t, { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
                  </p>
                </CardContent>
              </Card>
@@ -335,7 +337,7 @@ export default function ReportsPage() {
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalItems, t, { decimals: 0, useGrouping: true })}</div>
                  <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_unique_skus')}</p>
                </CardContent>
              </Card>
@@ -345,7 +347,7 @@ export default function ReportsPage() {
                     <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalPotentialGrossProfit, { currency: true })}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalPotentialGrossProfit, t, { currency: true })}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_potential_from_stock')}</p>
                 </CardContent>
             </Card>
@@ -355,7 +357,7 @@ export default function ReportsPage() {
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, { decimals: 1 })}%</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, t, { decimals: 1 })}%</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_estimate')}</p>
                 </CardContent>
             </Card>
@@ -365,7 +367,7 @@ export default function ReportsPage() {
                     <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, { decimals: 1 })}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, t, { decimals: 1 })}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_times_per_period')}</p>
                 </CardContent>
             </Card>
@@ -375,7 +377,7 @@ export default function ReportsPage() {
                     <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.averageOrderValue, { currency: true, decimals: 2})}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.averageOrderValue, t, { currency: true, decimals: 2})}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_from_invoices')}</p>
                 </CardContent>
             </Card>
@@ -401,7 +403,7 @@ export default function ReportsPage() {
                                         axisLine={false}
                                         angle={isMobile ? -60 : -45}
                                         textAnchor="end"
-                                        height={isMobile ? 40 : 30} 
+                                        height={isMobile ? 40 : 30}
                                         interval={isMobile ? Math.max(0, Math.floor(lineChartData.length / 3) -1) : "preserveStartEnd"}
                                      />
                                      <YAxis
@@ -409,15 +411,15 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value / 1000, { decimals: 0})}k`}
-                                        width={isMobile ? 30 : 40} 
+                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value / 1000, t, { decimals: 0})}k`}
+                                        width={isMobile ? 30 : 40}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        formatter={(value: number) => formatNumber(value, { currency: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
                                     />
-                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.label)}/>
+                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.labelKey)}/>
                                 </LineChart>
                            </ResponsiveContainer>
                         </ChartContainer>
@@ -453,15 +455,15 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => formatNumber(value, { decimals: 0, useGrouping: true })}
+                                        tickFormatter={(value) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
                                         width={isMobile ? 25 : 30}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
                                      />
-                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined} name={t(chartConfig.documents.label)}/>
+                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined} name={t(chartConfig.documents.labelKey)}/>
                                 </BarChart>
                            </ResponsiveContainer>
                         </ChartContainer>
@@ -481,14 +483,14 @@ export default function ReportsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 55} interval={0} />
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, t, { currency: true, decimals: 0})} />
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={60} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
-                                        formatter={(value: number) => formatNumber(value, { currency: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
                                     />
-                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined} name={t(chartConfig.sales.label)}>
+                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined} name={t(chartConfig.sales.labelKey)}>
                                         {salesByCategoryBarData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                         ))}
@@ -514,7 +516,7 @@ export default function ReportsPage() {
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                        formatter={(value: number, name) => `${name}: ${formatNumber(value, { currency: true })}`}
+                                        formatter={(value: number, name) => `${name}: ${formatNumber(value, t, { currency: true })}`}
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -586,8 +588,8 @@ export default function ReportsPage() {
                                     {topSellingProductsBarData.map((product, index) => (
                                         <TableRow key={product.id || index}>
                                             <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{product.name}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, { currency: true })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, t, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, t, { currency: true })}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -623,13 +625,13 @@ export default function ReportsPage() {
                                         <TableRow key={alert.id}>
                                             <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{alert.name}</TableCell>
                                             <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.catalogNumber}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, t, { decimals: 0 })}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
-                                                    ? `${formatNumber(10, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
-                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-')}
+                                                    ? `${formatNumber(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
+                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, t, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
@@ -657,3 +659,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+

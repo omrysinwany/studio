@@ -1,16 +1,18 @@
+
 "use client"
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 
 import { cn } from "@/lib/utils"
+import { useTranslation } from "@/hooks/useTranslation" // Import useTranslation
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
 
 export type ChartConfig = {
   [k in string]: {
-    label?: React.ReactNode
+    labelKey?: string // Changed from label to labelKey for translation
     icon?: React.ComponentType
   } & (
     | { color?: string; theme?: never }
@@ -132,6 +134,7 @@ const ChartTooltipContent = React.forwardRef<
     ref
   ) => {
     const { config } = useChart()
+    const { t } = useTranslation() // Get t for translations
 
     const tooltipLabel = React.useMemo(() => {
       if (hideLabel || !payload?.length) {
@@ -143,8 +146,8 @@ const ChartTooltipContent = React.forwardRef<
       const itemConfig = getPayloadConfigFromPayload(config, item, key)
       const value =
         !labelKey && typeof label === "string"
-          ? config[label as keyof typeof config]?.label || label
-          : itemConfig?.label
+          ? (config[label as keyof typeof config]?.labelKey ? t(config[label as keyof typeof config]!.labelKey!) : label)
+          : (itemConfig?.labelKey ? t(itemConfig.labelKey) : undefined)
 
       if (labelFormatter) {
         return (
@@ -167,6 +170,7 @@ const ChartTooltipContent = React.forwardRef<
       labelClassName,
       config,
       labelKey,
+      t, // Add t to dependency array
     ])
 
     if (!active || !payload?.length) {
@@ -235,7 +239,7 @@ const ChartTooltipContent = React.forwardRef<
                       <div className="grid gap-1.5">
                         {nestLabel ? tooltipLabel : null}
                         <span className="text-muted-foreground">
-                          {itemConfig?.label || item.name}
+                          {itemConfig?.labelKey ? t(itemConfig.labelKey) : item.name}
                         </span>
                       </div>
                       {item.value && (
@@ -271,6 +275,7 @@ const ChartLegendContent = React.forwardRef<
     ref
   ) => {
     const { config } = useChart()
+    const { t } = useTranslation() // Get t for translations
 
     if (!payload?.length) {
       return null
@@ -306,7 +311,7 @@ const ChartLegendContent = React.forwardRef<
                   }}
                 />
               )}
-              {itemConfig?.label}
+              {itemConfig?.labelKey ? t(itemConfig.labelKey) : item.value}
             </div>
           )
         })}
@@ -363,3 +368,4 @@ export {
   ChartLegendContent,
   ChartStyle,
 }
+
