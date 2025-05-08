@@ -20,11 +20,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend';
+import { Product, getProductsService, clearInventoryService } from '@/services/backend'; 
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -73,13 +73,10 @@ const formatDisplayNumber = (
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    // Ensure that if a number has decimals (e.g., 13.8), it's rounded for display as integer
-    // but the actual value remains for calculations if needed elsewhere.
     if (value === null || value === undefined || isNaN(value)) {
-        return formatDisplayNumber(0, { decimals: 0, useGrouping: false }); // Display '0' if not a number
+        return '0';
     }
-    // Round to nearest integer for display
-    return formatDisplayNumber(Math.round(value), { decimals: 0, useGrouping: true });
+    return Math.round(value).toLocaleString(undefined, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
 
@@ -90,17 +87,17 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     actions: true,
-    id: false,
-    description: false, // Default false
-    shortName: true, // Product column (short name)
-    catalogNumber: true, // Default true
-    barcode: false,
-    quantity: true,
-    unitPrice: true, // Unit Price (Cost)
-    salePrice: false, // Sale Price - now defaults to false
-    lineTotal: false,
-    minStockLevel: false, // Default false
-    maxStockLevel: false, // Default false
+    id: false, 
+    shortName: true, 
+    description: false, 
+    catalogNumber: false, 
+    barcode: false, 
+    quantity: true, 
+    unitPrice: true, 
+    salePrice: true, 
+    lineTotal: false, 
+    minStockLevel: false, 
+    maxStockLevel: false, 
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -117,9 +114,7 @@ export default function InventoryPage() {
     const fetchInventory = useCallback(async () => {
       setIsLoading(true);
       try {
-        console.log("Fetching inventory data...");
         const data = await getProductsService();
-        console.log("Fetched inventory data:", data);
         const inventoryWithCorrectTotals = data.map(item => {
             const quantity = Number(item.quantity) || 0;
             const unitPrice = Number(item.unitPrice) || 0;
@@ -211,9 +206,9 @@ export default function InventoryPage() {
            } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
            } else {
-              if (valA == null && valB != null) comparison = -1;
+              if (valA == null && valB != null) comparison = -1; 
               else if (valA != null && valB == null) comparison = 1;
-              else comparison = 0;
+              else comparison = 0; 
            }
 
           return sortDirection === 'asc' ? comparison : comparison * -1;
@@ -253,18 +248,18 @@ export default function InventoryPage() {
     };
 
     const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
-        { key: 'actions', label: 'View', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4', headerClassName: 'text-center sticky left-0 bg-card z-10' },
-        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px]', headerClassName: 'text-center' },
-        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell', headerClassName: 'text-center hidden md:table-cell' },
-        { key: 'id', label: 'ID', sortable: true, headerClassName: 'text-center', mobileHidden: true },
-        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] hidden sm:table-cell', headerClassName: 'text-center hidden sm:table-cell' },
-        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px]', headerClassName: 'text-center' },
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
-        { key: 'salePrice', label: 'Sale Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: false, headerClassName: 'text-center' },
-        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
-        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px]', mobileHidden: true, headerClassName: 'text-center' },
+        { key: 'actions', label: 'View', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2' },
+        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden md:table-cell px-2 sm:px-4 py-2' },
+        { key: 'id', label: 'ID', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] hidden sm:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden sm:table-cell px-2 sm:px-4 py-2' },
+        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'salePrice', label: 'Sale Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
@@ -457,15 +452,14 @@ export default function InventoryPage() {
                       key={header.key}
                       className={cn(
                         header.className,
-                        header.headerClassName,
+                        header.headerClassName, 
                         header.sortable && "cursor-pointer hover:bg-muted/50",
-                        header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                        'px-2 sm:px-4 py-2 text-center'
+                        header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1"> 
                         {header.label}
                         {header.sortable && sortKey === header.key && (
                           <span className="text-xs" aria-hidden="true">
@@ -512,8 +506,12 @@ export default function InventoryPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
-                              <p className="font-semibold">Description:</p>
-                              <p>{item.description || 'No description available.'}</p>
+                              {item.description && item.description !== (item.shortName || item.description?.split(' ').slice(0,3).join(' ')) && (
+                                <>
+                                  <p className="font-semibold">Description:</p>
+                                  <p>{item.description}</p>
+                                </>
+                              )}
                               {item.catalogNumber && item.catalogNumber !== "N/A" && (
                                 <>
                                   <p className="font-semibold mt-2">Catalog #:</p>
@@ -526,12 +524,10 @@ export default function InventoryPage() {
                                   <p>{item.barcode}</p>
                                 </>
                               )}
-                              {item.unitPrice !== undefined && (
-                                <>
-                                  <p className="font-semibold mt-2">Unit Price (Cost):</p>
-                                  <p>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</p>
-                                </>
-                              )}
+                               <>
+                                <p className="font-semibold mt-2">Unit Price (Cost):</p>
+                                <p>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</p>
+                               </>
                             </PopoverContent>
                           </Popover>
                         </TableCell>
@@ -541,7 +537,7 @@ export default function InventoryPage() {
                       {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                       {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                       {visibleColumns.quantity && (
-                        <TableCell className="text-center px-2 sm:px-4 py-2">
+                        <TableCell className="text-center px-2 sm:px-4 py-2"> 
                           <span>{formatIntegerQuantity(item.quantity)}</span>
                           {item.quantity === 0 && (
                             <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
@@ -565,9 +561,10 @@ export default function InventoryPage() {
               </TableBody>
             </Table>
           </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between sm:justify-end space-x-2 py-4">
+        </CardContent>
+        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
+         {totalPages > 1 && (
+            <div className="flex items-center justify-between sm:justify-end space-x-2 py-4 w-full">
               <span className="text-sm text-muted-foreground hidden sm:block">
                 Page {currentPage} of {totalPages} ({totalItems} items)
               </span>
@@ -596,43 +593,42 @@ export default function InventoryPage() {
               </div>
             </div>
           )}
-        </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
-          <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
-            <Download className="mr-2 h-4 w-4" /> Export CSV
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isDeleting} className="w-full sm:w-auto">
-                {isDeleting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                )}
-                Delete All
+          <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto mt-4 sm:mt-0">
+              <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
+                <Download className="mr-2 h-4 w-4" /> Export CSV
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete all inventory items.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                  {isDeleting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  Yes, delete all
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" disabled={isDeleting} className="w-full sm:w-auto">
+                    {isDeleting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Delete All
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete all inventory items.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                      {isDeleting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Yes, delete all
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+          </div>
         </CardFooter>
       </Card>
     </div>
   );
 }
-
