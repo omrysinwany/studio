@@ -1,13 +1,13 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, DollarSign } from 'lucide-react';
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
     Product,
@@ -18,7 +18,7 @@ import {
     getSupplierSummariesService,
     updateSupplierContactInfoService,
     SupplierSummary,
-    clearTemporaryScanData, // Import the cleanup function
+    clearTemporaryScanData, 
     TEMP_DATA_KEY_PREFIX,
     TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
     TEMP_COMPRESSED_IMAGE_KEY_PREFIX
@@ -54,7 +54,7 @@ function EditInvoiceContent() {
   const { toast } = useToast();
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
-  const [originalFileName, setOriginalFileName] = useState<string>(''); // Store original file name
+  const [originalFileName, setOriginalFileName] = useState<string>(''); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -85,41 +85,44 @@ function EditInvoiceContent() {
 
    const cleanupTemporaryData = useCallback(() => {
     if (dataKey) {
-        localStorage.removeItem(dataKey);
-        console.log(`[EditInvoice] Cleared scan result: ${dataKey}`);
-    }
-    if (originalImagePreviewKey) {
-        localStorage.removeItem(originalImagePreviewKey);
-        console.log(`[EditInvoice] Cleared original image preview: ${originalImagePreviewKey}`);
-    }
-    if (compressedImageKey) {
-        localStorage.removeItem(compressedImageKey);
-        console.log(`[EditInvoice] Cleared compressed image: ${compressedImageKey}`);
-    }
-    // If the tempInvoiceId was constructed from uniqueScanId, we can clear it
-    if (tempInvoiceId && tempInvoiceId.startsWith('pending-inv-')) {
+        clearTemporaryScanData(dataKey.replace(TEMP_DATA_KEY_PREFIX, ''));
+        console.log(`[EditInvoice] Triggered cleanup for scan result associated with key: ${dataKey}`);
+    } else if (tempInvoiceId && tempInvoiceId.startsWith('pending-inv-')) {
         const uniqueScanId = tempInvoiceId.replace('pending-inv-', '');
-        clearTemporaryScanData(uniqueScanId); // Calls the central cleanup
+        clearTemporaryScanData(uniqueScanId);
+        console.log(`[EditInvoice] Triggered cleanup based on tempInvoiceId: ${tempInvoiceId}`);
+    } else {
+        console.log("[EditInvoice] cleanupTemporaryData called, but no dataKey or relevant tempInvoiceId found to clear.");
     }
-  }, [dataKey, originalImagePreviewKey, compressedImageKey, tempInvoiceId]);
+  }, [dataKey, tempInvoiceId]);
 
 
   useEffect(() => {
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
-    const originalPreviewKeyParam = searchParams.get('originalImagePreviewKey');
-    const compressedKeyParam = searchParams.get('compressedImageKey');
-
+    
     setDataKey(key);
     setTempInvoiceId(tempInvIdParam);
-    setOriginalImagePreviewKey(originalPreviewKeyParam);
-    setCompressedImageKey(compressedKeyParam);
+
+    // Construct other keys based on the unique part of the dataKey or tempInvIdParam
+    let uniquePart: string | null = null;
+    if (key?.startsWith(TEMP_DATA_KEY_PREFIX)) {
+        uniquePart = key.replace(TEMP_DATA_KEY_PREFIX, '');
+    } else if (tempInvIdParam?.startsWith('pending-inv-')) {
+        uniquePart = tempInvIdParam.replace('pending-inv-', '');
+    }
+
+    if (uniquePart) {
+        setOriginalImagePreviewKey(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${uniquePart}`);
+        setCompressedImageKey(`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${uniquePart}`);
+    }
+
 
     let hasAttemptedLoad = false;
 
     if (nameParam) {
-      setOriginalFileName(decodeURIComponent(nameParam)); // Store original file name
+      setOriginalFileName(decodeURIComponent(nameParam)); 
     } else {
         setOriginalFileName('Unknown Document');
     }
@@ -136,7 +139,7 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-            cleanupTemporaryData(); // Clean up if data not found
+            cleanupTemporaryData(); 
             setIsLoading(false);
             setInitialDataLoaded(true);
             return;
@@ -147,7 +150,7 @@ function EditInvoiceContent() {
             parsedData = JSON.parse(storedData);
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-             cleanupTemporaryData(); // Clean up on parse error
+             cleanupTemporaryData(); 
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -188,7 +191,7 @@ function EditInvoiceContent() {
 
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-          cleanupTemporaryData(); // Clean up on invalid data structure
+          cleanupTemporaryData(); 
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -264,11 +267,11 @@ function EditInvoiceContent() {
       prevProducts.map(product => {
         if (product.id === id) {
           let numericValue: number | string | undefined = value; 
-          if (['quantity', 'unitPrice', 'lineTotal'].includes(field)) {
+          if (['quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
               const stringValue = String(value);
               numericValue = parseFloat(stringValue.replace(/,/g, ''));
               if (isNaN(numericValue as number)) {
-                 numericValue = 0;
+                 numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
               }
           }
 
@@ -335,11 +338,20 @@ function EditInvoiceContent() {
               console.log("[EditInvoice] No compressed image key found, no image will be passed for final save.");
           }
           
-          console.log("Proceeding to finalize save products:", productsForService, "for original file:", originalFileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
+          let finalFileName = originalFileName;
+          if(extractedSupplierName && extractedInvoiceNumber) {
+            finalFileName = `${extractedSupplierName}_${extractedInvoiceNumber}`;
+          } else if (extractedSupplierName) {
+            finalFileName = extractedSupplierName;
+          } else if (extractedInvoiceNumber) {
+            finalFileName = `Invoice_${extractedInvoiceNumber}`;
+          }
+          
+          console.log("Proceeding to finalize save products:", productsForService, "for final file name:", finalFileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
           
           await finalizeSaveProductsService(
             productsForService, 
-            originalFileName, // Use original file name
+            finalFileName, 
             'upload', 
             tempInvoiceId || undefined, 
             imageUriForFinalSave,
@@ -348,7 +360,7 @@ function EditInvoiceContent() {
             extractedTotalAmount
           );
 
-          cleanupTemporaryData(); // Aggressively clear data after successful save
+          cleanupTemporaryData(); 
           console.log("[EditInvoice] All temporary localStorage keys cleared after successful save.");
 
 
@@ -409,11 +421,22 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         const inventoryMap = new Map<string, Product>();
         currentInventory.forEach(p => {
             if (p.id) inventoryMap.set(`id:${p.id}`, p);
+             // Also map by catalog number if it's unique enough or a primary identifier for existing items.
+            if (p.catalogNumber && p.catalogNumber !== "N/A") inventoryMap.set(`catalog:${p.catalogNumber}`, p);
+            if (p.barcode) inventoryMap.set(`barcode:${p.barcode}`, p);
         });
 
         const newProductsNeedingDetails = productsReadyForDetailCheck.filter(p => {
-            const isExistingProduct = p.id && inventoryMap.has(`id:${p.id}`);
-            return !isExistingProduct || (p.id && p.id.includes('-new'));
+            // Check if the product exists by ID (if it's not a newly generated ID), catalog number, or barcode
+            const isExistingById = p.id && !p.id.includes('-new') && inventoryMap.has(`id:${p.id}`);
+            const isExistingByCatalog = p.catalogNumber && p.catalogNumber !== "N/A" && inventoryMap.has(`catalog:${p.catalogNumber}`);
+            const isExistingByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
+
+            const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
+            
+            // A product needs details if it's new OR if it's marked with '-new' (an explicitly added row)
+            // AND it doesn't have a sale price yet (assuming sale price is mandatory for new items)
+            return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && p.salePrice === undefined;
         });
 
         if (newProductsNeedingDetails.length > 0) {
@@ -484,7 +507,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
 
     const handleGoBack = () => {
-        cleanupTemporaryData(); // Clean up on explicit back navigation
+        cleanupTemporaryData(); 
         router.push('/upload');
     };
 
@@ -620,6 +643,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead>
                   <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -674,6 +699,28 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                          min="0"
                          aria-label={`Line total for ${product.description}`}
                       />
+                    </TableCell>
+                     <TableCell className="text-right px-2 sm:px-4 py-2">
+                        <Input
+                            type="number"
+                            value={formatInputValue(product.minStockLevel, 'stockLevel')}
+                            onChange={(e) => handleInputChange(product.id, 'minStockLevel', e.target.value)}
+                            className="w-20 sm:w-24 text-right h-9"
+                            min="0"
+                            placeholder="Optional"
+                            aria-label={`Minimum stock level for ${product.description}`}
+                        />
+                    </TableCell>
+                    <TableCell className="text-right px-2 sm:px-4 py-2">
+                        <Input
+                            type="number"
+                            value={formatInputValue(product.maxStockLevel, 'stockLevel')}
+                            onChange={(e) => handleInputChange(product.id, 'maxStockLevel', e.target.value)}
+                            className="w-20 sm:w-24 text-right h-9"
+                            min="0"
+                            placeholder="Optional"
+                            aria-label={`Maximum stock level for ${product.description}`}
+                        />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Button
