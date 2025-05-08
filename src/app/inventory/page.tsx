@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -24,7 +25,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Down
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend'; 
+import { Product, getProductsService, clearInventoryService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -87,17 +88,17 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     actions: true,
-    id: false, 
-    shortName: true, 
-    description: false, 
-    catalogNumber: false, 
-    barcode: false, 
-    quantity: true, 
-    unitPrice: true, 
-    salePrice: true, 
-    lineTotal: false, 
-    minStockLevel: false, 
-    maxStockLevel: false, 
+    id: false,
+    shortName: true,
+    description: false,
+    catalogNumber: false,
+    barcode: false,
+    quantity: true,
+    unitPrice: false,
+    salePrice: true,
+    lineTotal: false,
+    minStockLevel: false,
+    maxStockLevel: false,
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -206,9 +207,9 @@ export default function InventoryPage() {
            } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
            } else {
-              if (valA == null && valB != null) comparison = -1; 
+              if (valA == null && valB != null) comparison = -1;
               else if (valA != null && valB == null) comparison = 1;
-              else comparison = 0; 
+              else comparison = 0;
            }
 
           return sortDirection === 'asc' ? comparison : comparison * -1;
@@ -452,14 +453,14 @@ export default function InventoryPage() {
                       key={header.key}
                       className={cn(
                         header.className,
-                        header.headerClassName, 
+                        header.headerClassName,
                         header.sortable && "cursor-pointer hover:bg-muted/50",
                         header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
-                      <div className="flex items-center justify-center gap-1"> 
+                      <div className="flex items-center justify-center gap-1">
                         {header.label}
                         {header.sortable && sortKey === header.key && (
                           <span className="text-xs" aria-hidden="true">
@@ -537,7 +538,7 @@ export default function InventoryPage() {
                       {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
                       {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                       {visibleColumns.quantity && (
-                        <TableCell className="text-center px-2 sm:px-4 py-2"> 
+                        <TableCell className="text-center px-2 sm:px-4 py-2">
                           <span>{formatIntegerQuantity(item.quantity)}</span>
                           {item.quantity === 0 && (
                             <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
@@ -562,9 +563,9 @@ export default function InventoryPage() {
             </Table>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col sm:flex-row justify-end gap-2 p-4 border-t">
+        <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 p-4 border-t">
          {totalPages > 1 && (
-            <div className="flex items-center justify-between sm:justify-end space-x-2 py-4 w-full">
+            <div className="flex items-center justify-center sm:justify-start space-x-2 py-2 w-full sm:w-auto">
               <span className="text-sm text-muted-foreground hidden sm:block">
                 Page {currentPage} of {totalPages} ({totalItems} items)
               </span>
@@ -593,7 +594,7 @@ export default function InventoryPage() {
               </div>
             </div>
           )}
-          <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto mt-4 sm:mt-0">
+          <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
               <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
                 <Download className="mr-2 h-4 w-4" /> Export CSV
               </Button>
