@@ -1,4 +1,3 @@
-
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -46,18 +45,18 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent, // Renamed to avoid conflict
-  AlertDialogDescription as AlertDialogDescriptionComponent, // Renamed
-  AlertDialogFooter as AlertDialogFooterComponent, // Renamed
-  AlertDialogHeader as AlertDialogHeaderComponent, // Renamed
-  AlertDialogTitle as AlertDialogTitleComponent, // Renamed
+  AlertDialogContent as AlertDialogContentComponent, 
+  AlertDialogDescription as AlertDialogDescriptionComponent, 
+  AlertDialogFooter as AlertDialogFooterComponent, 
+  AlertDialogHeader as AlertDialogHeaderComponent, 
+  AlertDialogTitle as AlertDialogTitleComponent, 
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch'; // Corrected path
+import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 
 
@@ -66,13 +65,13 @@ const formatNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = false, currency = false } = options || {};
+    const { decimals = 2, useGrouping = true, currency = false } = options || {}; // Default useGrouping to true
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping,
+            useGrouping: useGrouping, 
         });
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
@@ -80,7 +79,7 @@ const formatNumber = (
     const formattedValue = value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping,
+        useGrouping: useGrouping, 
     });
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
@@ -285,7 +284,7 @@ export default function InvoicesPage() {
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
 
    const formatDate = (date: Date | string | undefined) => {
-     if (!date) return t('edit_invoice_unknown_document'); // or a more generic N/A
+     if (!date) return t('edit_invoice_unknown_document'); 
      try {
         const dateObj = typeof date === 'string' ? parseISO(date) : date;
         if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
@@ -360,7 +359,7 @@ export default function InvoicesPage() {
             setSelectedInvoiceDetails(refreshedInvoice);
         } else {
            setShowDetailsSheet(false);
-           fetchInvoices();
+           fetchInvoices(); 
         }
 
     } catch (error) {
@@ -879,7 +878,7 @@ export default function InvoicesPage() {
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true }) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: false }) : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -958,3 +957,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+
