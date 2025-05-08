@@ -1,7 +1,7 @@
 
 'use client';
 
- import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'; // Added useRef
+ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
  import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
  import {
@@ -46,18 +46,19 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent,
-  AlertDialogDescription as AlertDialogDescriptionComponent,
-  AlertDialogFooter as AlertDialogFooterComponent,
-  AlertDialogHeader as AlertDialogHeaderComponent,
-  AlertDialogTitle as AlertDialogTitleComponent,
+  AlertDialogContent as AlertDialogContentComponent, // Renamed to avoid conflict
+  AlertDialogDescription as AlertDialogDescriptionComponent, // Renamed
+  AlertDialogFooter as AlertDialogFooterComponent, // Renamed
+  AlertDialogHeader as AlertDialogHeaderComponent, // Renamed
+  AlertDialogTitle as AlertDialogTitleComponent, // Renamed
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch';
+import { useSmartTouch } from '@/hooks/useSmartTouch'; // Corrected path
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 const formatNumber = (
@@ -83,7 +84,6 @@ const formatNumber = (
 
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
-  // Allow data URIs and regular URLs
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
@@ -93,6 +93,7 @@ type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 export default function InvoicesPage() {
+  const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,7 +107,7 @@ export default function InvoicesPage() {
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    invoiceDataUri: false, // Not directly displayed in table, but used for preview
+    invoiceDataUri: false,
     originalImagePreviewUri: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -123,19 +124,16 @@ export default function InvoicesPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid view
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
     onTap: (e) => {
-      // This will only be called for genuine taps, not scrolls
-      // We need to check if the tap was on a dropdown trigger
       const target = e.target as HTMLElement;
       const trigger = target.closest('[data-radix-dropdown-menu-trigger]');
       if (trigger && dropdownTriggerRef.current && dropdownTriggerRef.current.contains(trigger)) {
-        // Programmatically open/close dropdown if it's a tap
-        // This logic might need adjustment based on how Radix UI handles triggers
+        // Logic to handle tap if needed, though Radix UI usually handles this
       }
     }
   });
@@ -148,12 +146,12 @@ export default function InvoicesPage() {
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
       toast({
-        title: "Error Fetching Suppliers",
-        description: "Could not load supplier list for filtering.",
+        title: t('invoices_toast_error_fetch_suppliers_title'),
+        description: t('invoices_toast_error_fetch_suppliers_desc'),
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     fetchSuppliers();
@@ -169,13 +167,13 @@ export default function InvoicesPage() {
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoicesMap.get(invoice.id);
             if (existing) {
-                if ((invoice.invoiceDataUri && !existing.invoiceDataUri) ||
-                    (invoice.invoiceDataUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
+                if ((invoice.originalImagePreviewUri && !existing.originalImagePreviewUri) ||
+                    (invoice.originalImagePreviewUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
                     uniqueInvoicesMap.set(invoice.id, invoice);
-                } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
+                } else if (!invoice.originalImagePreviewUri && existing.originalImagePreviewUri) {
                     // Keep existing if it has an image and the new one doesn't
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
-                     uniqueInvoicesMap.set(invoice.id, invoice); // Otherwise, take the newer one
+                     uniqueInvoicesMap.set(invoice.id, invoice);
                 }
             } else {
                 uniqueInvoicesMap.set(invoice.id, invoice);
@@ -227,15 +225,15 @@ export default function InvoicesPage() {
       } catch (error) {
         console.error("Failed to fetch invoices:", error);
         toast({
-          title: "Error Fetching Invoices",
-          description: "Could not load invoice data. Please try again later.",
+          title: t('invoices_toast_error_fetch_invoices_title'),
+          description: t('invoices_toast_error_fetch_invoices_desc'),
           variant: "destructive",
         });
         setInvoices([]);
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection]);
+    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t]);
 
 
    useEffect(() => {
@@ -267,33 +265,33 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm]);
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'actions', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
-      { key: 'id', label: 'ID', sortable: true, className: "hidden" },
-      { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
-      { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
-      { key: 'status', label: 'Status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
-      { key: 'invoiceNumber', label: 'Inv #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-      { key: 'supplier', label: 'Supplier', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
-      { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
-      { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-      { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' },
-       { key: 'originalImagePreviewUri', label: 'Preview URI', sortable: false, className: 'hidden' },
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
+      { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
+      { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
+      { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
+      { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
+      { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
+      { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
+      { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
+      { key: 'invoiceDataUri', labelKey: 'invoices_col_image_uri', sortable: false, className: 'hidden' },
+      { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
    ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
 
    const formatDate = (date: Date | string | undefined) => {
-     if (!date) return 'N/A';
+     if (!date) return t('edit_invoice_unknown_document'); // or a more generic N/A
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        if (isNaN(dateObj.getTime())) return 'Invalid Date';
+        if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
         return window.innerWidth < 640
              ? format(dateObj, 'dd/MM/yy')
              : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
        console.error("Error formatting date:", e, "Input:", date);
-       return 'Invalid Date';
+       return t('invoices_invalid_date');
      }
    };
 
@@ -313,8 +311,8 @@ export default function InvoicesPage() {
     try {
         await deleteInvoiceService(invoiceId);
         toast({
-            title: "Invoice Deleted",
-            description: "The invoice has been successfully deleted.",
+            title: t('invoices_toast_deleted_title'),
+            description: t('invoices_toast_deleted_desc'),
         });
         fetchInvoices();
         setShowDetailsSheet(false);
@@ -322,8 +320,8 @@ export default function InvoicesPage() {
     } catch (error) {
         console.error("Failed to delete invoice:", error);
         toast({
-            title: "Delete Failed",
-            description: "Could not delete the invoice. Please try again.",
+            title: t('invoices_toast_delete_fail_title'),
+            description: t('invoices_toast_delete_fail_desc'),
             variant: "destructive",
         });
     } finally {
@@ -345,20 +343,19 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
+            // Status and originalImagePreviewUri are not user-editable here
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
         toast({
-            title: "Invoice Updated",
-            description: "Invoice details saved successfully.",
+            title: t('invoices_toast_updated_title'),
+            description: t('invoices_toast_updated_desc'),
         });
         setIsEditingDetails(false);
-        // Refresh the specific invoice details in the sheet
         const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
         } else {
-           // If not found (e.g., deleted by another process), close sheet and refetch all
            setShowDetailsSheet(false);
            fetchInvoices();
         }
@@ -366,8 +363,8 @@ export default function InvoicesPage() {
     } catch (error) {
         console.error("Failed to save invoice details:", error);
         toast({
-            title: "Save Failed",
-            description: "Could not save invoice details.",
+            title: t('invoices_toast_save_fail_title'),
+            description: t('invoices_toast_save_fail_desc'),
             variant: "destructive",
             duration: 6000,
         });
@@ -420,7 +417,7 @@ export default function InvoicesPage() {
      return (
         <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
-            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
         </Badge>
      );
   };
@@ -430,7 +427,7 @@ export default function InvoicesPage() {
           return '';
         }
          if (value instanceof Date) {
-            try { return value.toISOString(); } catch { return 'Invalid Date'; }
+            try { return value.toISOString(); } catch { return t('invoices_invalid_date'); }
          }
          if (typeof value === 'number') {
              return formatNumber(value, { decimals: 2, useGrouping: false });
@@ -445,14 +442,14 @@ export default function InvoicesPage() {
 
     const handleExportInvoices = () => {
         if (filteredAndSortedInvoices.length === 0) {
-            toast({ title: "No Data", description: "There is no invoice data to export." });
+            toast({ title: t('invoices_export_csv_no_data_title'), description: t('invoices_export_csv_no_data_desc') });
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
             'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
         ];
         const headers = exportColumns
-            .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
+            .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
             .map(escapeCsvValue)
             .join(',');
         const rows = filteredAndSortedInvoices.map(item => {
@@ -469,7 +466,7 @@ export default function InvoicesPage() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        toast({ title: "Export Started", description: "Your invoice data is being downloaded as CSV." });
+        toast({ title: t('invoices_export_csv_started_title'), description: t('invoices_export_csv_started_desc') });
     };
 
   return (
@@ -478,7 +475,7 @@ export default function InvoicesPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
+                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('invoices_title')}
             </CardTitle>
             <div className="flex items-center gap-2"
                  onTouchStart={onTouchStart}
@@ -489,8 +486,8 @@ export default function InvoicesPage() {
                     variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                     size="icon"
                     onClick={() => setViewMode('list')}
-                    aria-label="List view"
-                    title="List view"
+                    aria-label={t('invoices_list_view_aria')}
+                    title={t('invoices_list_view_title')}
                 >
                     <List className="h-5 w-5" />
                 </Button>
@@ -498,14 +495,14 @@ export default function InvoicesPage() {
                     variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                     size="icon"
                     onClick={() => setViewMode('grid')}
-                    aria-label="Grid view"
-                    title="Grid view"
+                    aria-label={t('invoices_grid_view_aria')}
+                    title={t('invoices_grid_view_title')}
                 >
                     <Grid className="h-5 w-5" />
                 </Button>
             </div>
           </div>
-          <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
+          <CardDescription>{t('invoices_description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
@@ -516,11 +513,11 @@ export default function InvoicesPage() {
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder={t('inventory_search_placeholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
-                aria-label="Search invoices"
+                aria-label={t('invoices_search_aria')}
               />
             </div>
             <div className="flex gap-2 flex-wrap justify-start md:justify-end"
@@ -539,7 +536,7 @@ export default function InvoicesPage() {
                          !dateRange && "text-muted-foreground",
                          "touch-manipulation"
                        )}
-                       aria-label="Select date range for filtering invoices"
+                       aria-label={t('invoices_date_range_aria')}
 
                      >
                        <CalendarIcon className="mr-2 h-4 w-4" />
@@ -552,7 +549,7 @@ export default function InvoicesPage() {
                            format(dateRange.from, "PP")
                          )
                        ) : (
-                         <span>Date Range</span>
+                         <span>{t('reports_date_range_placeholder')}</span>
                        )}
                      </Button>
                    </PopoverTrigger>
@@ -564,7 +561,7 @@ export default function InvoicesPage() {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden" // Show 1 month on small screens
+                       className="sm:block hidden"
                      />
                        <Calendar
                         initialFocus
@@ -572,12 +569,12 @@ export default function InvoicesPage() {
                         defaultMonth={dateRange?.from}
                         selected={dateRange}
                         onSelect={setDateRange}
-                        numberOfMonths={2} // Show 2 months on larger screens
+                        numberOfMonths={2}
                         className="hidden sm:block"
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
-                             <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>Clear</Button>
+                             <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
                         </div>
                      )}
                    </PopoverContent>
@@ -585,20 +582,20 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`} >
+                  <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_filter_supplier_aria', { filterSupplier: filterSupplier || t('invoices_filter_supplier_all')})} >
                     <Briefcase className="mr-2 h-4 w-4" />
-                    {existingSuppliers.find(s => s.name === filterSupplier)?.name || 'Supplier'}
+                    {existingSuppliers.find(s => s.name === filterSupplier)?.name || t('invoice_details_supplier_label')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Filter by Supplier</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
                     checked={!filterSupplier}
                     onCheckedChange={() => setFilterSupplier('')}
                   >
-                    All Suppliers
+                    {t('invoices_filter_supplier_all')}
                   </DropdownMenuCheckboxItem>
                   {existingSuppliers.map((supplier) => (
                     <DropdownMenuCheckboxItem
@@ -614,23 +611,23 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`} >
+                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_filter_status_aria', { filterStatus: filterStatus ? t(`invoice_status_${filterStatus}` as any) : t('invoices_filter_status_all')})} >
                     <Filter className="mr-2 h-4 w-4" />
-                    {filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'Status'}
+                    {filterStatus ? t(`invoice_status_${filterStatus}` as any) : t('upload_history_col_status')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => setFilterStatus('')}>All Statuses</DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => setFilterStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
                   {(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (
                     <DropdownMenuCheckboxItem
                       key={status}
                       checked={filterStatus === status}
                       onCheckedChange={() => setFilterStatus(status)}
                     >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                      {t(`invoice_status_${status}` as any)}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
@@ -639,13 +636,13 @@ export default function InvoicesPage() {
              {viewMode === 'list' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label="Toggle column visibility" >
-                      <Eye className="mr-2 h-4 w-4" /> View
+                    <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_view_aria')} >
+                      <Eye className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                    <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
                       <DropdownMenuCheckboxItem
@@ -654,7 +651,7 @@ export default function InvoicesPage() {
                         checked={visibleColumns[header.key]}
                         onCheckedChange={() => toggleColumnVisibility(header.key)}
                       >
-                        {header.label}
+                        {t(header.labelKey as any)}
                       </DropdownMenuCheckboxItem>
                     ))}
                     <DropdownMenuCheckboxItem
@@ -663,14 +660,14 @@ export default function InvoicesPage() {
                         checked={visibleColumns.errorMessage}
                         onCheckedChange={() => toggleColumnVisibility('errorMessage')}
                       >
-                        {columnDefinitions.find(h => h.key === 'errorMessage')?.label || 'Error Message'}
+                        {t(columnDefinitions.find(h => h.key === 'errorMessage')?.labelKey as any) || 'Error Message'}
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
 
                <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial">
-                 <Download className="mr-2 h-4 w-4" /> Export CSV
+                 <Download className="mr-2 h-4 w-4" /> {t('inventory_export_csv_button')}
                </Button>
             </div>
           </div>
@@ -688,13 +685,13 @@ export default function InvoicesPage() {
                             header.sortable && "cursor-pointer hover:bg-muted/50",
                             header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                             'px-2 sm:px-4 py-2',
-                            header.key === 'actions' && 'sticky left-0 bg-card z-10' // Keep 'actions' sticky
+                            header.key === 'actions' && 'sticky left-0 bg-card z-10'
                         )}
                         onClick={() => header.sortable && handleSort(header.key as SortKey)}
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                       >
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                           {header.label}
+                           {t(header.labelKey as any, { currencySymbol: t('currency_symbol') })}
                            {header.sortable && sortKey === header.key && (
                               <span className="text-xs" aria-hidden="true">
                                  {sortDirection === 'asc' ? '▲' : '▼'}
@@ -711,28 +708,28 @@ export default function InvoicesPage() {
                       <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                         <div className="flex justify-center items-center">
                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                           <span className="ml-2">Loading invoices...</span>
+                           <span className="ml-2">{t('invoices_loading')}</span>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : filteredAndSortedInvoices.length === 0 ? (
                     <TableRow>
                        <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                         No invoices found matching your criteria.
+                         {t('invoices_no_invoices_found')}
                        </TableCell>
                     </TableRow>
                   ) : (
                     filteredAndSortedInvoices.map((item) => (
                       <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                          {visibleColumns.actions && ( // 'actions' is the first column now
+                          {visibleColumns.actions && (
                              <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                  <Button
                                      variant="ghost"
                                      size="icon"
                                      className="text-primary hover:text-primary/80 h-7 w-7"
                                      onClick={() => handleViewDetails(item)}
-                                     title={`View details for ${item.fileName}`}
-                                     aria-label={`View details for ${item.fileName}`}
+                                     title={t('invoices_view_details_title', { fileName: item.fileName })}
+                                     aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
                                  >
                                      <Info className="h-4 w-4" />
                                  </Button>
@@ -744,7 +741,7 @@ export default function InvoicesPage() {
                                   variant="link"
                                   className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
                                   onClick={() => handleViewDetails(item)}
-                                  title={`View details for ${item.fileName}`}
+                                  title={t('invoices_view_details_title', { fileName: item.fileName })}
                                 >
                                   {item.fileName}
                               </Button>
@@ -756,16 +753,16 @@ export default function InvoicesPage() {
                               {renderStatusBadge(item.status)}
                            </TableCell>
                          )}
-                         {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || '-'}</TableCell>}
-                         {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || '-'}</TableCell>}
+                         {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
+                         {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                          {visibleColumns.totalAmount && (
                            <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
-                              {item.totalAmount !== undefined && item.totalAmount !== null ? `₪${formatNumber(item.totalAmount, { useGrouping: true })}` : '-'}
+                              {item.totalAmount !== undefined && item.totalAmount !== null ? `${t('currency_symbol')}${formatNumber(item.totalAmount, { useGrouping: true })}` : t('invoices_na')}
                            </TableCell>
                          )}
                          {visibleColumns.errorMessage && (
                            <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
-                               {item.status === 'error' ? item.errorMessage : '-'}
+                               {item.status === 'error' ? item.errorMessage : t('invoices_na')}
                            </TableCell>
                          )}
                       </TableRow>
@@ -788,15 +785,15 @@ export default function InvoicesPage() {
                     </Card>
                  ))
               ) : filteredAndSortedInvoices.length === 0 ? (
-                <p className="col-span-full text-center text-muted-foreground py-10">No invoices found.</p>
+                <p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>
               ) : (
                 filteredAndSortedInvoices.map((item) => (
                   <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                     <CardHeader className="p-0 relative aspect-[4/3]">
-                      {isValidImageSrc(item.originalImagePreviewUri || item.invoiceDataUri) ? (
+                      {isValidImageSrc(item.originalImagePreviewUri) ? (
                         <NextImage
-                          src={item.originalImagePreviewUri || item.invoiceDataUri!}
-                          alt={`Preview of ${item.fileName}`}
+                          src={item.originalImagePreviewUri}
+                          alt={t('invoices_preview_alt', { fileName: item.fileName })}
                           layout="fill"
                           objectFit="cover"
                           className="rounded-t-lg"
@@ -814,12 +811,12 @@ export default function InvoicesPage() {
                     <CardContent className="p-3 flex-grow">
                       <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
                       <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
-                       {item.supplier && <p className="text-xs text-muted-foreground">Supplier: {item.supplier}</p>}
-                       {item.totalAmount !== undefined && <p className="text-xs font-medium">Total: ₪{formatNumber(item.totalAmount, { useGrouping: true })}</p>}
+                       {item.supplier && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplier}</p>}
+                       {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {t('currency_symbol')}{formatNumber(item.totalAmount, { useGrouping: true })}</p>}
                     </CardContent>
                      <CardFooter className="p-3 border-t">
                         <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
-                            <Info className="mr-1.5 h-3.5 w-3.5"/> View Details
+                            <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
                         </Button>
                      </CardFooter>
                   </Card>
@@ -833,9 +830,9 @@ export default function InvoicesPage() {
       <Sheet open={showDetailsSheet} onOpenChange={setShowDetailsSheet}>
         <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
-             <SheetTitle>{isEditingDetails ? 'Edit Invoice Details' : 'Invoice Details'}</SheetTitle>
+             <SheetTitle>{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
              <SheetDescription>
-                {isEditingDetails ? `Editing: ${selectedInvoiceDetails?.fileName}` : `Detailed information for: ${selectedInvoiceDetails?.fileName}`}
+                {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.fileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.fileName || '' })}
              </SheetDescription>
           </SheetHeader>
           {selectedInvoiceDetails && (
@@ -844,25 +841,24 @@ export default function InvoicesPage() {
               {isEditingDetails ? (
                 <div className="space-y-3">
                     <div>
-                        <Label htmlFor="editFileName">File Name</Label>
+                        <Label htmlFor="editFileName">{t('invoice_details_file_name_label')}</Label>
                         <Input id="editFileName" value={editedInvoiceData.fileName || ''} onChange={(e) => handleEditDetailsInputChange('fileName', e.target.value)} disabled={isSavingDetails}/>
                     </div>
                     <div>
-                        <Label htmlFor="editInvoiceNumber">Invoice Number</Label>
+                        <Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
                         <Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/>
                     </div>
                     <div>
-                        <Label htmlFor="editSupplier">Supplier</Label>
+                        <Label htmlFor="editSupplier">{t('invoice_details_supplier_label')}</Label>
                         <Input id="editSupplier" value={editedInvoiceData.supplier || ''} onChange={(e) => handleEditDetailsInputChange('supplier', e.target.value)} disabled={isSavingDetails}/>
                     </div>
                     <div>
-                        <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
+                        <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency')}</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {/* Status is not editable by user */}
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
-                            <Label htmlFor="editErrorMessage">Error Message</Label>
+                            <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
                         </div>
                     )}
@@ -871,37 +867,37 @@ export default function InvoicesPage() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p><strong>File Name:</strong> {selectedInvoiceDetails.fileName}</p>
-                      <p><strong>Upload Time:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                      <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
+                      <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
                       <div className="flex items-center">
-                        <strong className="mr-1">Status:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
                       </div>
                     </div>
                     <div>
-                      <p><strong>Invoice Number:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
-                      <p><strong>Supplier:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
-                      <p><strong>Total Amount:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
+                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `${t('currency_symbol')}${formatNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
                     <div className="mt-2">
-                      <p className="font-semibold text-destructive">Error Message:</p>
+                      <p className="font-semibold text-destructive">{t('invoice_details_error_message_label')}:</p>
                       <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
                     </div>
                   )}
                   <Separator className="my-4"/>
                   <div className="overflow-auto max-h-[calc(85vh-280px)] sm:max-h-[calc(90vh-300px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.invoiceDataUri) ? (
+                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
-                        src={selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.invoiceDataUri!}
-                        alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
+                        src={selectedInvoiceDetails.originalImagePreviewUri}
+                        alt={t('invoices_preview_alt', { fileName: selectedInvoiceDetails.fileName })}
                         width={800}
                         height={1100}
                         className="rounded-md object-contain mx-auto"
                         data-ai-hint="invoice document"
                     />
                     ) : (
-                    <p className="text-muted-foreground text-center py-4">No image available for this invoice.</p>
+                    <p className="text-muted-foreground text-center py-4">{t('invoice_details_no_image_available')}</p>
                     )}
                   </div>
                 </>
@@ -914,35 +910,35 @@ export default function InvoicesPage() {
                 <>
                     {isEditingDetails ? (
                         <>
-                            <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
+                            <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button>
                             <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
                                 {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                Save Changes
+                                {t('save_changes_button')}
                             </Button>
                         </>
                     ) : (
                         <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit Details
+                            <Edit className="mr-2 h-4 w-4" /> {t('invoices_edit_details_button')}
                         </Button>
                     )}
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete Invoice
+                                <Trash2 className="mr-2 h-4 w-4" /> {t('invoices_delete_button')}
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContentComponent>
                             <AlertDialogHeaderComponent>
-                                <AlertDialogTitleComponent>Are you sure?</AlertDialogTitleComponent>
+                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
                                 <AlertDialogDescriptionComponent>
-                                    This action cannot be undone. This will permanently delete the invoice "{selectedInvoiceDetails.fileName}".
+                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName })}
                                 </AlertDialogDescriptionComponent>
                             </AlertDialogHeaderComponent>
                             <AlertDialogFooterComponent>
-                                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
                                 <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                     {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Yes, delete invoice
+                                    {t('invoices_delete_confirm_action')}
                                 </AlertDialogAction>
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
@@ -950,7 +946,7 @@ export default function InvoicesPage() {
                 </>
             )}
             <SheetClose asChild>
-                 <Button variant="outline" className="sm:ml-auto">Close</Button>
+                 <Button variant="outline" className="sm:ml-auto">{t('invoices_close_button')}</Button>
             </SheetClose>
           </SheetFooter>
         </SheetContent>

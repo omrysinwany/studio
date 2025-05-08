@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText, HandCoins } from 'lucide-react'; 
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins } from 'lucide-react'; 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { Bar, BarChart, Line, LineChart, Pie, PieChart as RechartsPie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
+import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -31,8 +32,8 @@ const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
+    const { t } = useTranslation(); // Ensure t is accessible
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
-    const { t } = useTranslation();
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -53,11 +54,11 @@ const formatNumber = (
 
 
 const chartConfig = {
-  value: { label: 'Value (₪)', color: 'hsl(var(--chart-1))' },
-  count: { label: 'Count', color: 'hsl(var(--chart-2))' },
-  sales: { label: 'Sales (₪)', color: 'hsl(var(--chart-3))' },
-  quantitySold: { label: 'Quantity Sold', color: 'hsl(var(--chart-4))'},
-  documents: { label: 'Documents', color: 'hsl(var(--chart-5))' }
+  value: { label: 'reports_chart_label_value', color: 'hsl(var(--chart-1))' },
+  count: { label: 'reports_chart_label_count', color: 'hsl(var(--chart-2))' },
+  sales: { label: 'reports_chart_label_sales', color: 'hsl(var(--chart-3))' },
+  quantitySold: { label: 'reports_chart_label_qty_sold', color: 'hsl(var(--chart-4))'},
+  documents: { label: 'reports_chart_label_documents', color: 'hsl(var(--chart-5))' }
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
 const PIE_COLORS = [
@@ -81,6 +82,7 @@ interface StockAlert {
 
 
 export default function ReportsPage() {
+  const { t } = useTranslation();
   const [kpis, setKpis] = useState<any | null>(null);
   const [valueOverTime, setValueOverTime] = useState<any[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
@@ -98,7 +100,6 @@ export default function ReportsPage() {
     to: new Date(),
   });
   const { toast } = useToast();
-  const { t } = useTranslation();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -251,7 +252,7 @@ export default function ReportsPage() {
      };
 
      generateReports();
-   }, [dateRange, toast, inventory, invoices, isLoading, isMobile, t]); // Added t to dependency array
+   }, [dateRange, toast, inventory, invoices, isLoading, isMobile, t]);
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -340,7 +341,7 @@ export default function ReportsPage() {
              </Card>
             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.1s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_gross_profit')}</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('kpi_gross_profit')}</CardTitle>
                     <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
@@ -416,7 +417,7 @@ export default function ReportsPage() {
                                         content={<ChartTooltipContent indicator="line" />}
                                         formatter={(value: number) => formatNumber(value, { currency: true })}
                                     />
-                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                    <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.label)}/>
                                 </LineChart>
                            </ResponsiveContainer>
                         </ChartContainer>
@@ -460,7 +461,7 @@ export default function ReportsPage() {
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                         formatter={(value: number) => formatNumber(value, { decimals: 0, useGrouping: true })}
                                      />
-                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined}/>
+                                    <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined} name={t(chartConfig.documents.label)}/>
                                 </BarChart>
                            </ResponsiveContainer>
                         </ChartContainer>
@@ -480,14 +481,14 @@ export default function ReportsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value, { decimals: 0})}`} />
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
                                     <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 55} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
                                         formatter={(value: number) => formatNumber(value, { currency: true })}
                                     />
-                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined}>
+                                    <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined} name={t(chartConfig.sales.label)}>
                                         {salesByCategoryBarData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                         ))}
@@ -509,13 +510,13 @@ export default function ReportsPage() {
                      {pieChartData.length > 0 ? (
                         <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[180px] sm:h-[230px]">
                            <ResponsiveContainer width="100%" height="100%">
-                                <RechartsPie>
+                                <RechartsPieChart>
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
                                         formatter={(value: number, name) => `${name}: ${formatNumber(value, { currency: true })}`}
                                     />
-                                    <RechartsPie
+                                    <Pie
                                          data={pieChartData}
                                          dataKey="value"
                                          nameKey="name"
@@ -540,7 +541,7 @@ export default function ReportsPage() {
                                         {pieChartData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                          ))}
-                                     </RechartsPie>
+                                     </Pie>
                                      <RechartsLegend
                                          content={({ payload }) => (
                                             <ul className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 mt-1 text-[9px] sm:text-[10px]">
@@ -556,7 +557,7 @@ export default function ReportsPage() {
                                          align="center"
                                          wrapperStyle={{ fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                      />
-                                 </RechartsPie>
+                                 </RechartsPieChart>
                            </ResponsiveContainer>
                          </ChartContainer>
                      ) : (

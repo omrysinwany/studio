@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -36,6 +37,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -43,25 +45,23 @@ const ITEMS_PER_PAGE = 10;
 type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpent' ;
 type SortDirection = 'asc' | 'desc';
 
-const formatCurrency = (value: number | undefined | null): string => {
-  if (value === undefined || value === null || isNaN(value)) return '₪0.00';
-  return `₪${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
 
 const formatDate = (date: Date | string | undefined, f: string = 'PP') => {
-  if (!date) return 'N/A';
+  const { t } = useTranslation();
+  if (!date) return t('suppliers_na');
   try {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
-    if (isNaN(dateObj.getTime())) return 'Invalid Date';
+    if (isNaN(dateObj.getTime())) return t('suppliers_invalid_date');
     return format(dateObj, f);
   } catch (e) {
     console.error("Error formatting date:", e, "Input:", date);
-    return 'Invalid Date';
+    return t('suppliers_invalid_date');
   }
 };
 
 
 const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
+    const { t } = useTranslation();
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
@@ -94,7 +94,7 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
     return (
         <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
-            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
         </Badge>
     );
 };
@@ -105,6 +105,11 @@ interface MonthlySpendingData {
 }
 
 export default function SuppliersPage() {
+  const { t } = useTranslation();
+  const formatCurrency = (value: number | undefined | null): string => {
+    if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -139,8 +144,8 @@ export default function SuppliersPage() {
     } catch (error) {
       console.error("Failed to fetch supplier data:", error);
       toast({
-        title: "Error Loading Data",
-        description: "Could not load supplier information.",
+        title: t('suppliers_toast_error_load_title'),
+        description: t('suppliers_toast_error_load_desc'),
         variant: "destructive",
       });
     } finally {
@@ -150,7 +155,7 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     fetchData();
-  }, [toast]);
+  }, [toast, t]); // Added t to dependencies
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -243,14 +248,13 @@ export default function SuppliersPage() {
     setIsSavingContact(true);
     try {
       await updateSupplierContactInfoService(selectedSupplier.name, editedContactInfo);
-      // Refresh supplier list or update the selected supplier in state
       setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, ...editedContactInfo} : s));
       setSelectedSupplier(prev => prev ? {...prev, ...editedContactInfo} : null);
-      toast({ title: "Contact Info Updated", description: `Contact details for ${selectedSupplier.name} saved.` });
+      toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
       setIsEditingContact(false);
     } catch (error: any) {
       console.error("Failed to update contact info:", error);
-      toast({ title: "Update Failed", description: `Could not save contact information: ${error.message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_update_fail_title'), description: t('suppliers_toast_update_fail_desc', { message: error.message }), variant: "destructive" });
     } finally {
       setIsSavingContact(false);
     }
@@ -259,12 +263,12 @@ export default function SuppliersPage() {
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string }) => {
     try {
       const newSupplier = await createSupplierService(name, contactInfo);
-      setSuppliers(prev => [newSupplier, ...prev]); // Add to the beginning for immediate visibility
-      toast({ title: "Supplier Created", description: `Supplier "${name}" added successfully.` });
+      setSuppliers(prev => [newSupplier, ...prev]);
+      toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
-      toast({ title: "Create Failed", description: `Could not create supplier: ${error.message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
     }
   };
 
@@ -273,14 +277,14 @@ export default function SuppliersPage() {
     try {
       await deleteSupplierService(supplierName);
       setSuppliers(prev => prev.filter(s => s.name !== supplierName));
-      toast({ title: "Supplier Deleted", description: `Supplier "${supplierName}" has been deleted.` });
+      toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName }) });
       if (selectedSupplier?.name === supplierName) {
         setIsDetailSheetOpen(false);
         setSelectedSupplier(null);
       }
     } catch (error: any) {
       console.error("Failed to delete supplier:", error);
-      toast({ title: "Delete Failed", description: `Could not delete supplier: ${error.message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_delete_fail_title'), description: t('suppliers_toast_delete_fail_desc', { message: error.message }), variant: "destructive" });
     } finally {
       setIsDeletingSupplier(false);
     }
@@ -302,12 +306,12 @@ export default function SuppliersPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Suppliers Overview
+                <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('suppliers_title')}
               </CardTitle>
-              <CardDescription>Manage and review your suppliers and their order history.</CardDescription>
+              <CardDescription>{t('suppliers_description')}</CardDescription>
             </div>
             <Button onClick={() => setIsCreateSheetOpen(true)} className="w-full sm:w-auto">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New Supplier
+              <PlusCircle className="mr-2 h-4 w-4" /> {t('suppliers_add_new_button')}
             </Button>
           </div>
         </CardHeader>
@@ -316,11 +320,11 @@ export default function SuppliersPage() {
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search suppliers..."
+                placeholder={t('suppliers_search_placeholder')}
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-10"
-                aria-label="Search suppliers"
+                aria-label={t('suppliers_search_aria')}
               />
             </div>
           </div>
@@ -330,19 +334,19 @@ export default function SuppliersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('name')}>
-                    Supplier Name {sortKey === 'name' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
+                    {t('suppliers_col_name')} {sortKey === 'name' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
                   </TableHead>
                   <TableHead className="text-center cursor-pointer hover:bg-muted/50" onClick={() => handleSort('invoiceCount')}>
-                    Orders {sortKey === 'invoiceCount' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
+                    {t('suppliers_col_orders')} {sortKey === 'invoiceCount' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
                   </TableHead>
-                   <TableHead className="text-center">Actions</TableHead>
+                   <TableHead className="text-center">{t('suppliers_col_actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedSuppliers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} className="h-24 text-center">
-                      No suppliers found.
+                      {t('suppliers_no_suppliers_found')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -351,27 +355,27 @@ export default function SuppliersPage() {
                       <TableCell className="font-medium">{supplier.name}</TableCell>
                       <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
                        <TableCell className="text-center space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={`View details for ${supplier.name}`}>
+                        <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
                           <Info className="h-4 w-4 text-primary" />
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title={`Delete ${supplier.name}`} disabled={isDeletingSupplier}>
+                            <Button variant="ghost" size="icon" title={t('suppliers_delete_title', { supplierName: supplier.name })} disabled={isDeletingSupplier}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the supplier "{supplier.name}" and all associated data.
+                                {t('suppliers_delete_confirm_desc', { supplierName: supplier.name })}
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel disabled={isDeletingSupplier}>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
                               <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(isDeletingSupplier && "opacity-50")}>
                                 {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Delete Supplier
+                                {t('suppliers_delete_confirm_action')}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -392,10 +396,10 @@ export default function SuppliersPage() {
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
               >
-                Previous
+                {t('inventory_pagination_previous')}
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {currentPage} of {totalPages}
+                {t('inventory_pagination_page_info', { currentPage: currentPage, totalPages: totalPages, totalItems: totalItems })}
               </span>
               <Button
                 variant="outline"
@@ -403,7 +407,7 @@ export default function SuppliersPage() {
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
               >
-                Next
+                {t('inventory_pagination_next')}
               </Button>
             </div>
           )}
@@ -413,9 +417,9 @@ export default function SuppliersPage() {
       <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl flex flex-col p-0">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
-            <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || 'Supplier Details'}</SheetTitle>
+            <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || t('suppliers_details_title_generic')}</SheetTitle>
             <SheetDescription>
-              Contact information, spending analysis, and order history for {selectedSupplier?.name}.
+              {t('suppliers_details_desc', { supplierName: selectedSupplier?.name || '' })}
             </SheetDescription>
           </SheetHeader>
           {selectedSupplier && (
@@ -423,17 +427,17 @@ export default function SuppliersPage() {
               <div className="p-4 sm:p-6 space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center"><DollarSign className="mr-2 h-4 w-4 text-primary" /> Total Spending</CardTitle>
+                    <CardTitle className="text-base flex items-center"><DollarSign className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_total_spending')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-primary">{formatCurrency(selectedSupplier.totalSpent)}</p>
-                    <p className="text-xs text-muted-foreground">Across {selectedSupplier.invoiceCount} orders</p>
+                    <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> Contact Information</CardTitle>
+                    <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_contact_info')}</CardTitle>
                     {!isEditingContact && (
                       <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)}>
                         <Edit className="h-4 w-4" />
@@ -444,43 +448,43 @@ export default function SuppliersPage() {
                     {isEditingContact ? (
                       <>
                         <div>
-                          <Label htmlFor="supplierPhone" className="text-xs">Phone</Label>
+                          <Label htmlFor="supplierPhone" className="text-xs">{t('suppliers_phone_label')}</Label>
                           <Input
                             id="supplierPhone"
                             type="tel"
                             value={editedContactInfo.phone || ''}
                             onChange={(e) => setEditedContactInfo(prev => ({ ...prev, phone: e.target.value }))}
-                            placeholder="Enter phone number"
+                            placeholder={t('suppliers_phone_placeholder')}
                             className="h-9 mt-1"
                             disabled={isSavingContact}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="supplierEmail" className="text-xs">Email</Label>
+                          <Label htmlFor="supplierEmail" className="text-xs">{t('suppliers_email_label')}</Label>
                           <Input
                             id="supplierEmail"
                             type="email"
                             value={editedContactInfo.email || ''}
                             onChange={(e) => setEditedContactInfo(prev => ({ ...prev, email: e.target.value }))}
-                            placeholder="Enter email address"
+                            placeholder={t('suppliers_email_placeholder')}
                             className="h-9 mt-1"
                             disabled={isSavingContact}
                           />
                         </div>
                         <div className="flex gap-2 pt-2">
                           <Button size="sm" onClick={() => setIsEditingContact(false)} variant="outline" disabled={isSavingContact}>
-                            <X className="mr-1 h-4 w-4" /> Cancel
+                            <X className="mr-1 h-4 w-4" /> {t('cancel_button')}
                           </Button>
                           <Button size="sm" onClick={handleSaveContactInfo} disabled={isSavingContact}>
                             {isSavingContact ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
-                            Save Contact
+                            {t('suppliers_save_contact_button')}
                           </Button>
                         </div>
                       </>
                     ) : (
                       <>
-                        <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.phone || 'N/A'}</p>
-                        <p className="flex items-center"><Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.email || 'N/A'}</p>
+                        <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.phone || t('suppliers_na')}</p>
+                        <p className="flex items-center"><Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.email || t('suppliers_na')}</p>
                       </>
                     )}
                   </CardContent>
@@ -488,7 +492,7 @@ export default function SuppliersPage() {
 
                  <Card>
                     <CardHeader>
-                        <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> Monthly Spending (Last 12 Months)</CardTitle>
+                        <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
@@ -496,21 +500,21 @@ export default function SuppliersPage() {
                             <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                            <YAxis fontSize={10} tickFormatter={(value) => `₪${value/1000}k`} tickLine={false} axisLine={false}/>
-                            <RechartsTooltip formatter={(value: number) => [formatCurrency(value), "Total Spent"]}/>
+                            <YAxis fontSize={10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false}/>
+                            <RechartsTooltip formatter={(value: number) => [formatCurrency(value), t('suppliers_tooltip_total_spent')]}/>
                             <Legend wrapperStyle={{fontSize: "12px"}}/>
-                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Spending"/>
+                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')}/>
                             </BarChart>
                         </ResponsiveContainer>
                         ) : (
-                        <p className="text-sm text-muted-foreground text-center py-4">No spending data available for the last 12 months.</p>
+                        <p className="text-sm text-muted-foreground text-center py-4">{t('suppliers_no_spending_data')}</p>
                         )}
                     </CardContent>
                 </Card>
                 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center"><ListChecks className="mr-2 h-4 w-4 text-primary" /> Activity Timeline (Recent Invoices)</CardTitle>
+                    <CardTitle className="text-base flex items-center"><ListChecks className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_activity_timeline_title')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {selectedSupplierInvoices.length > 0 ? (
@@ -530,7 +534,7 @@ export default function SuppliersPage() {
                                   </Button>
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Total: {formatCurrency(invoice.totalAmount)} - Status: {renderStatusBadge(invoice.status)}
+                                  {t('suppliers_invoice_total')}: {formatCurrency(invoice.totalAmount)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status)}
                                 </p>
                               </div>
                             </div>
@@ -538,7 +542,7 @@ export default function SuppliersPage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">No invoices found for this supplier.</p>
+                      <p className="text-sm text-muted-foreground text-center py-4">{t('suppliers_no_invoices_found_for_supplier')}</p>
                     )}
                   </CardContent>
                 </Card>
@@ -547,7 +551,7 @@ export default function SuppliersPage() {
           )}
           <SheetFooter className="p-4 sm:p-6 border-t shrink-0">
             <SheetClose asChild>
-              <Button variant="outline">Close</Button>
+              <Button variant="outline">{t('invoices_close_button')}</Button>
             </SheetClose>
           </SheetFooter>
         </SheetContent>

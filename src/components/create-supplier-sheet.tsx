@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -15,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Save, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
 
 interface CreateSupplierSheetProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   onOpenChange,
   onCreateSupplier,
 }) => {
+  const { t } = useTranslation(); // Initialize useTranslation
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -36,8 +39,8 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   const handleSubmit = async () => {
     if (!name.trim()) {
       toast({
-        title: "Validation Error",
-        description: "Supplier name is required.",
+        title: t('error_title'), // Use translated string
+        description: t('suppliers_toast_create_fail_desc', { message: 'Supplier name is required.'}), // Provide specific message
         variant: "destructive",
       });
       return;
@@ -54,7 +57,6 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
       setPhone('');
       setEmail('');
     } catch (error: any) {
-      // Error toast is handled by the parent `handleCreateSupplier`
       console.error("Error in handleSubmit for create supplier:", error)
     } finally {
       setIsSaving(false);
@@ -66,45 +68,45 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="text-lg sm:text-xl flex items-center">
-            <PlusCircle className="mr-2 h-5 w-5 text-primary" /> Create New Supplier
+            <PlusCircle className="mr-2 h-5 w-5 text-primary" /> {t('suppliers_create_sheet_title')}
           </SheetTitle>
           <SheetDescription className="text-xs sm:text-sm">
-            Enter the details for the new supplier.
+            {t('suppliers_create_sheet_desc')}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-grow p-4 sm:p-6 space-y-4 overflow-y-auto">
           <div>
-            <Label htmlFor="newSupplierName">Supplier Name <span className="text-destructive">*</span></Label>
+            <Label htmlFor="newSupplierName">{t('suppliers_create_name_label')} <span className="text-destructive">*</span></Label>
             <Input
               id="newSupplierName"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Acme Supplies Inc."
+              placeholder={t('suppliers_create_name_placeholder')}
               className="mt-1"
               disabled={isSaving}
             />
           </div>
           <div>
-            <Label htmlFor="newSupplierPhone">Phone (Optional)</Label>
+            <Label htmlFor="newSupplierPhone">{t('suppliers_create_phone_label')}</Label>
             <Input
               id="newSupplierPhone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g., 050-1234567"
+              placeholder={t('suppliers_create_phone_placeholder')}
               className="mt-1"
               disabled={isSaving}
             />
           </div>
           <div>
-            <Label htmlFor="newSupplierEmail">Email (Optional)</Label>
+            <Label htmlFor="newSupplierEmail">{t('suppliers_create_email_label')}</Label>
             <Input
               id="newSupplierEmail"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g., contact@acmesupplies.com"
+              placeholder={t('suppliers_create_email_placeholder')}
               className="mt-1"
               disabled={isSaving}
             />
@@ -114,7 +116,7 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
         <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
           <SheetClose asChild>
             <Button variant="outline" className="w-full sm:w-auto" disabled={isSaving}>
-              <X className="mr-2 h-4 w-4" /> Cancel
+              <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
             </Button>
           </SheetClose>
           <Button onClick={handleSubmit} className="w-full sm:w-auto" disabled={isSaving || !name.trim()}>
@@ -123,7 +125,7 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            Save Supplier
+            {t('suppliers_create_save_button')}
           </Button>
         </SheetFooter>
       </SheetContent>
