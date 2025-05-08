@@ -18,6 +18,10 @@ import {
     getSupplierSummariesService,
     updateSupplierContactInfoService,
     SupplierSummary,
+    clearTemporaryScanData, // Import the cleanup function
+    TEMP_DATA_KEY_PREFIX,
+    TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
+    TEMP_COMPRESSED_IMAGE_KEY_PREFIX
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -50,7 +54,7 @@ function EditInvoiceContent() {
   const { toast } = useToast();
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
-  const [fileName, setFileName] = useState<string>('');
+  const [originalFileName, setOriginalFileName] = useState<string>(''); // Store original file name
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -79,6 +83,26 @@ function EditInvoiceContent() {
   const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
   const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
 
+   const cleanupTemporaryData = useCallback(() => {
+    if (dataKey) {
+        localStorage.removeItem(dataKey);
+        console.log(`[EditInvoice] Cleared scan result: ${dataKey}`);
+    }
+    if (originalImagePreviewKey) {
+        localStorage.removeItem(originalImagePreviewKey);
+        console.log(`[EditInvoice] Cleared original image preview: ${originalImagePreviewKey}`);
+    }
+    if (compressedImageKey) {
+        localStorage.removeItem(compressedImageKey);
+        console.log(`[EditInvoice] Cleared compressed image: ${compressedImageKey}`);
+    }
+    // If the tempInvoiceId was constructed from uniqueScanId, we can clear it
+    if (tempInvoiceId && tempInvoiceId.startsWith('pending-inv-')) {
+        const uniqueScanId = tempInvoiceId.replace('pending-inv-', '');
+        clearTemporaryScanData(uniqueScanId); // Calls the central cleanup
+    }
+  }, [dataKey, originalImagePreviewKey, compressedImageKey, tempInvoiceId]);
+
 
   useEffect(() => {
     const key = searchParams.get('key');
@@ -95,9 +119,9 @@ function EditInvoiceContent() {
     let hasAttemptedLoad = false;
 
     if (nameParam) {
-      setFileName(decodeURIComponent(nameParam));
+      setOriginalFileName(decodeURIComponent(nameParam)); // Store original file name
     } else {
-        setFileName('Unknown Document');
+        setOriginalFileName('Unknown Document');
     }
 
     if (key) {
@@ -112,9 +136,7 @@ function EditInvoiceContent() {
               description: "Could not load the invoice data for editing. Scan results not found or expired.",
               variant: "destructive",
             });
-            if (key) localStorage.removeItem(key); 
-            if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
-            if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
+            cleanupTemporaryData(); // Clean up if data not found
             setIsLoading(false);
             setInitialDataLoaded(true);
             return;
@@ -125,9 +147,7 @@ function EditInvoiceContent() {
             parsedData = JSON.parse(storedData);
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-             if (key) localStorage.removeItem(key);
-             if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
-             if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
+             cleanupTemporaryData(); // Clean up on parse error
              setErrorLoading("Invalid JSON structure received from storage.");
               toast({
                   title: "Error Loading Data",
@@ -168,9 +188,7 @@ function EditInvoiceContent() {
 
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
-          if (key) localStorage.removeItem(key);
-          if (originalPreviewKeyParam) localStorage.removeItem(originalPreviewKeyParam);
-          if (compressedKeyParam) localStorage.removeItem(compressedKeyParam);
+          cleanupTemporaryData(); // Clean up on invalid data structure
            setErrorLoading("Invalid data structure received after parsing.");
            toast({
                title: "Error Loading Data",
@@ -194,12 +212,12 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-  }, [searchParams, toast, initialDataLoaded]);
+  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryData]);
 
 
   const checkSupplier = async (scannedSupplierName?: string) => {
     if (!scannedSupplierName) {
-      setIsSupplierConfirmed(true); // No supplier name from AI, proceed
+      setIsSupplierConfirmed(true); 
       return;
     }
     try {
@@ -216,8 +234,7 @@ function EditInvoiceContent() {
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: "Error fetching suppliers", variant: "destructive" });
-      // In case of error, let user proceed or handle as appropriate
-      setExtractedSupplierName(scannedSupplierName); // Use scanned name if fetch fails
+      setExtractedSupplierName(scannedSupplierName); 
       setIsSupplierConfirmed(true);
     }
   };
@@ -228,7 +245,6 @@ function EditInvoiceContent() {
       setExtractedSupplierName(confirmedSupplierName);
       if (isNew) {
         try {
-          // Add to backend if it's a new supplier
           await updateSupplierContactInfoService(confirmedSupplierName, {}); 
           toast({ title: "New Supplier Added", description: `${confirmedSupplierName} has been added to your supplier list.` });
         } catch (error) {
@@ -237,7 +253,6 @@ function EditInvoiceContent() {
         }
       }
     } else {
-      // User cancelled or didn't confirm, use original scanned name or let it be undefined
       setExtractedSupplierName(aiScannedSupplierName);
     }
     setIsSupplierConfirmed(true);
@@ -320,22 +335,20 @@ function EditInvoiceContent() {
               console.log("[EditInvoice] No compressed image key found, no image will be passed for final save.");
           }
           
-          console.log("Proceeding to finalize save products:", productsForService, "for file:", fileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
+          console.log("Proceeding to finalize save products:", productsForService, "for original file:", originalFileName, "tempInvoiceId:", tempInvoiceId, "with imageUri for final save:", imageUriForFinalSave ? 'Exists' : 'Does not exist');
           
           await finalizeSaveProductsService(
             productsForService, 
-            fileName, 
+            originalFileName, // Use original file name
             'upload', 
             tempInvoiceId || undefined, 
             imageUriForFinalSave,
             extractedInvoiceNumber,
-            extractedSupplierName, // Pass the confirmed/final supplier name
+            extractedSupplierName, 
             extractedTotalAmount
           );
 
-          if (dataKey) localStorage.removeItem(dataKey);
-          if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
-          if (compressedImageKey) localStorage.removeItem(compressedImageKey);
+          cleanupTemporaryData(); // Aggressively clear data after successful save
           console.log("[EditInvoice] All temporary localStorage keys cleared after successful save.");
 
 
@@ -360,7 +373,7 @@ function EditInvoiceContent() {
 
  const handleSave = async () => {
     if (!isSupplierConfirmed) {
-        setShowSupplierDialog(true); // Re-open if not confirmed (e.g., user closed it without choice)
+        setShowSupplierDialog(true); 
         toast({ title: "Supplier Not Confirmed", description: "Please confirm the supplier before saving.", variant: "default" });
         return;
     }
@@ -471,9 +484,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
 
     const handleGoBack = () => {
-        if (dataKey) localStorage.removeItem(dataKey);
-        if (originalImagePreviewKey) localStorage.removeItem(originalImagePreviewKey);
-        if (compressedImageKey) localStorage.removeItem(compressedImageKey);
+        cleanupTemporaryData(); // Clean up on explicit back navigation
         router.push('/upload');
     };
 
@@ -513,7 +524,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      <CardHeader>
                          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
                          <CardDescription>
-                            File: <span className="font-medium">{fileName || 'Unknown Document'}</span>
+                            File: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
@@ -557,7 +568,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      <CardHeader>
                          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
                          <CardDescription>
-                            File: <span className="font-medium">{fileName || 'Unknown Document'}</span>
+                            File: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
@@ -595,13 +606,13 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
           <CardDescription>
-             Review and edit the extracted data for: <span className="font-medium">{fileName || 'Unknown Document'}</span>
+             Review and edit the extracted data for: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
              {extractedSupplierName && ` | Supplier: ${extractedSupplierName}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]"> 
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
@@ -711,7 +722,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onConfirm={handleSupplierConfirmation}
           onCancel={() => {
             setShowSupplierDialog(false);
-            setIsSupplierConfirmed(true); // Assume user wants to proceed with original or no supplier
+            setIsSupplierConfirmed(true); 
             setExtractedSupplierName(aiScannedSupplierName);
           }}
           isOpen={showSupplierDialog}
@@ -754,3 +765,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+

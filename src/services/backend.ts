@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
@@ -25,8 +26,8 @@ export interface InvoiceHistoryItem {
   supplier?: string;
   totalAmount?: number;
   errorMessage?: string;
-  invoiceDataUri?: string; // For storing compressed image for final save
-  originalImagePreviewUri?: string; // For storing original (or slightly compressed) image for edit page preview
+  invoiceDataUri?: string; 
+  originalImagePreviewUri?: string; 
 }
 
 export interface SupplierSummary {
@@ -41,18 +42,18 @@ export interface SupplierSummary {
 const INVENTORY_STORAGE_KEY = 'mockInventoryData';
 const INVOICES_STORAGE_KEY = 'mockInvoicesData';
 const POS_SETTINGS_STORAGE_KEY = 'mockPosSettings';
-const SUPPLIERS_STORAGE_KEY = 'mockSuppliersData'; // For storing supplier contact info
+const SUPPLIERS_STORAGE_KEY = 'mockSuppliersData'; 
 
 // Keys for temporary data related to a single scan session
-const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_'; // For ScanInvoiceOutput
-const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImagePreviewUri_'; // For image preview on edit page
-const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_'; // For image to be saved with final invoice
+export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_'; // For ScanInvoiceOutput
+export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImagePreviewUri_'; // For image preview on edit page
+export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_'; // For image to be saved with final invoice
 
 
-// Constants for localStorage limits - These are illustrative and might need adjustment
-const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; // 0.5MB
-const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; // 0.25MB
-const MAX_SCAN_RESULTS_SIZE_BYTES = 1 * 1024 * 1024; // 1MB for scan results
+// Constants for localStorage limits
+const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
+const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 1 * 1024 * 1024; 
 
 
 const initialMockInventory: Product[] = [];
@@ -79,33 +80,38 @@ export interface PriceCheckResult {
 
 const getStoredData = <T extends {id?: string; name?: string}>(key: string, initialDataIfKeyMissing: T[] = []): T[] => {
   if (typeof window === 'undefined') {
-    return [...initialDataIfKeyMissing]; // Return a copy for safety server-side
+    return [...initialDataIfKeyMissing]; 
   }
   try {
     const stored = localStorage.getItem(key);
     if (stored) {
       const parsedData = JSON.parse(stored) as T[];
-      // Ensure each item has an ID.
+      
       return parsedData.map((item, index) => ({
           ...item,
           id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
       }));
     } else {
-      // Key doesn't exist, initialize with initialDataIfKeyMissing (which defaults to empty array)
+      
       const dataWithIds = initialDataIfKeyMissing.map((item, index) => ({
         ...item,
         id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
       }));
-      // Only setItem if initialDataIfKeyMissing was provided and is not empty.
-      // This prevents writing an empty array to localStorage if it wasn't there.
-      if (dataWithIds.length > 0) {
+      
+      if (dataWithIds.length > 0 && key !== INVENTORY_STORAGE_KEY && key !== SUPPLIERS_STORAGE_KEY && key !== INVOICES_STORAGE_KEY) {
+         localStorage.setItem(key, JSON.stringify(dataWithIds));
+      } else if (key === INVENTORY_STORAGE_KEY && initialMockInventory.length > 0 && initialDataIfKeyMissing.length > 0) {
+        localStorage.setItem(key, JSON.stringify(dataWithIds));
+      } else if (key === SUPPLIERS_STORAGE_KEY && initialMockSuppliers.length > 0 && initialDataIfKeyMissing.length > 0) {
+        localStorage.setItem(key, JSON.stringify(dataWithIds));
+      } else if (key === INVOICES_STORAGE_KEY && initialMockInvoices.length > 0 && initialDataIfKeyMissing.length > 0) {
         localStorage.setItem(key, JSON.stringify(dataWithIds));
       }
       return dataWithIds;
     }
   } catch (error) {
     console.error(`Error reading ${key} from localStorage:`, error);
-    // Fallback to a fresh copy of initialDataIfKeyMissing on error
+    
     return initialDataIfKeyMissing.map((item, index) => ({
         ...item,
         id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
@@ -207,7 +213,7 @@ export async function checkProductPricesBeforeSaveService(
         } else {
             productsToSaveDirectly.push({
                 ...scannedProduct,
-                unitPrice: unitPriceFromScan // For new products, use the calculated/scanned unit price
+                unitPrice: unitPriceFromScan 
             });
         }
     });
@@ -219,7 +225,7 @@ export async function checkProductPricesBeforeSaveService(
 
 export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
-    fileName: string,
+    originalFileName: string,
     source: string = 'upload', 
     tempInvoiceId?: string, 
     invoiceDataUriToSave?: string,
@@ -227,7 +233,7 @@ export async function finalizeSaveProductsService(
     finalSupplierName?: string, 
     extractedTotalAmount?: number
 ): Promise<void> {
-    console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
+    console.log(`Finalizing save for products related to: ${originalFileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
     console.log(`Extracted Invoice Details: Number=${extractedInvoiceNumber}, Supplier=${finalSupplierName}, Total=${extractedTotalAmount}`);
     await new Promise(resolve => setTimeout(resolve, 100)); 
 
@@ -266,8 +272,8 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                existingProduct.unitPrice = unitPrice || existingProduct.unitPrice; 
                 
+                existingProduct.unitPrice = unitPrice || existingProduct.unitPrice; 
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
                 existingProduct.barcode = productToSave.barcode || existingProduct.barcode; 
@@ -324,12 +330,23 @@ export async function finalizeSaveProductsService(
             existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempInvoiceId);
         }
 
+        let finalFileName = originalFileName;
+        if (finalSupplierName) {
+            finalFileName = finalSupplierName;
+            if (extractedInvoiceNumber) {
+                finalFileName += `_${extractedInvoiceNumber}`;
+            }
+        } else if (extractedInvoiceNumber) {
+            finalFileName = `Invoice_${extractedInvoiceNumber}`;
+        }
+
+
         if (existingInvoiceIndex !== -1 && tempInvoiceId) {
             invoiceIdToUse = tempInvoiceId;
             const existingRecord = currentInvoices[existingInvoiceIndex];
             currentInvoices[existingInvoiceIndex] = {
                 ...existingRecord, 
-                fileName: fileName, 
+                fileName: finalFileName, 
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber || existingRecord.invoiceNumber, 
                 supplier: finalSupplierName || existingRecord.supplier, 
@@ -337,13 +354,13 @@ export async function finalizeSaveProductsService(
                 invoiceDataUri: invoiceDataUriToSave, 
                 errorMessage: errorMessage,
             };
-            console.log(`Updated invoice record ID: ${invoiceIdToUse} with final data.`);
+            console.log(`Updated invoice record ID: ${invoiceIdToUse} with final data. New FileName: ${finalFileName}`);
         } else {
             invoiceIdToUse = tempInvoiceId || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
             console.warn(`Creating new invoice record as tempInvoiceId "${tempInvoiceId}" was not found or not provided for update. New ID: ${invoiceIdToUse}`);
             const newInvoiceRecord: InvoiceHistoryItem = {
                 id: invoiceIdToUse,
-                fileName: fileName,
+                fileName: finalFileName,
                 uploadTime: new Date().toISOString(), 
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber,
@@ -353,7 +370,7 @@ export async function finalizeSaveProductsService(
                 errorMessage: errorMessage,
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices]; 
-            console.log(`Created new invoice record ID: ${invoiceIdToUse} with final data.`);
+            console.log(`Created new invoice record ID: ${invoiceIdToUse} with final data. FileName: ${finalFileName}`);
         }
         
         try {
@@ -637,12 +654,10 @@ export async function loginService(credentials: any): Promise<AuthResponse> {
 // --- Supplier Management ---
 export async function getSupplierSummariesService(): Promise<SupplierSummary[]> {
   const invoices = await getInvoicesService();
-  // Pass initialMockSuppliers (which is empty) to ensure no mock data is seeded if key doesn't exist.
-  const storedSuppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, initialMockSuppliers);
+  const storedSuppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY);
   
   const supplierMap = new Map<string, SupplierSummary>();
 
-  // Initialize map ONLY with suppliers that exist in SUPPLIERS_STORAGE_KEY
   storedSuppliers.forEach(s => {
     supplierMap.set(s.name, { 
       name: s.name,
@@ -653,7 +668,6 @@ export async function getSupplierSummariesService(): Promise<SupplierSummary[]> 
     });
   });
 
-  // Aggregate invoice data ONLY for suppliers already in the map
   invoices.forEach(invoice => {
     if (invoice.supplier && invoice.status === 'completed') {
       const existingSupplierSummary = supplierMap.get(invoice.supplier);
@@ -661,8 +675,6 @@ export async function getSupplierSummariesService(): Promise<SupplierSummary[]> 
         existingSupplierSummary.invoiceCount += 1;
         existingSupplierSummary.totalSpent += (invoice.totalAmount || 0);
       }
-      // If invoice.supplier is not in supplierMap, it means it was deleted or never formally added.
-      // We will not create a new summary for it here to respect deletions.
     }
   });
 
@@ -674,7 +686,7 @@ export async function createSupplierService(name: string, contactInfo: { phone?:
   console.log(`Creating new supplier: ${name}`, contactInfo);
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, initialMockSuppliers);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY);
   
   if (suppliers.some(s => s.name.toLowerCase() === name.toLowerCase())) {
     throw new Error(`Supplier with name "${name}" already exists.`);
@@ -692,15 +704,17 @@ export async function deleteSupplierService(supplierName: string): Promise<void>
   console.log(`Deleting supplier: ${supplierName}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, initialMockSuppliers);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY);
   const initialLength = suppliers.length;
   suppliers = suppliers.filter(s => s.name !== supplierName);
 
   if (suppliers.length === initialLength) {
     console.warn(`Supplier with name "${supplierName}" not found for deletion (might be already deleted).`);
+    // To prevent error in UI if trying to delete non-existent, we can just return successfully
+    // or throw new Error(`Supplier with name "${supplierName}" not found.`); 
   }
 
-  saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers); // Save the filtered list
+  saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers); 
   console.log(`Supplier "${supplierName}" deleted from localStorage.`);
 }
 
@@ -709,7 +723,7 @@ export async function updateSupplierContactInfoService(supplierName: string, con
   console.log(`Updating contact info for supplier: ${supplierName}`, contactInfo);
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, initialMockSuppliers);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY);
   const supplierIndex = suppliers.findIndex(s => s.name === supplierName);
 
   if (supplierIndex !== -1) {
@@ -722,14 +736,14 @@ export async function updateSupplierContactInfoService(supplierName: string, con
   console.log("Supplier contact info saved to localStorage.");
 }
 
-export function clearTemporaryScanData(tempInvoiceId: string) {
+export function clearTemporaryScanData(uniqueScanId: string) {
     if (typeof window === 'undefined') return;
     
-    const dataKey = `${TEMP_DATA_KEY_PREFIX}${tempInvoiceId.replace('pending-inv-', '')}`;
-    const originalImageKey = `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${tempInvoiceId.replace('pending-inv-', '')}`;
-    const compressedImageKey = `${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${tempInvoiceId.replace('pending-inv-', '')}`;
+    const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueScanId}`;
+    const originalImageKey = `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${uniqueScanId}`;
+    const compressedImageKey = `${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${uniqueScanId}`;
 
-    console.log(`[LocalStorageCleanup] Clearing temporary data for tempInvoiceId: ${tempInvoiceId}`);
+    console.log(`[LocalStorageCleanup] Clearing temporary data for uniqueScanId: ${uniqueScanId}`);
     
     localStorage.removeItem(dataKey);
     console.log(`[LocalStorageCleanup] Attempted to clear scan result: ${dataKey}`);
@@ -767,6 +781,7 @@ export function clearOldTemporaryScanData() {
     console.log(`[LocalStorageCleanup] Auto-cleared ${itemsCleared} old temporary scan data items.`);
   }
 
+  // Prune main invoice history if it gets too large
   try {
     let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(INVOICES_STORAGE_KEY) || '[]');
     const MAX_INVOICE_HISTORY_ITEMS = 30; 

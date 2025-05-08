@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, FileText, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Eye } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileText as FileTextIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
@@ -29,7 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
     Sheet,
@@ -39,7 +40,7 @@ import {
     SheetDescription,
     SheetFooter,
     SheetClose,
-} from '@/components/ui/sheet'; // Import Sheet components
+} from '@/components/ui/sheet'; 
 import NextImage from 'next/image';
 import {
   AlertDialog,
@@ -56,6 +57,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useSmartTouch } from '@/hooks/useSmartTouch';
 
 
 const formatNumber = (
@@ -85,8 +87,6 @@ const isValidImageSrc = (src: string | undefined): src is string => {
 };
 
 
-const MOCK_SUPPLIERS = ['Acme Corp', 'Beta Inc', 'Delta Co', 'Epsilon Supply'];
-
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
@@ -106,6 +106,7 @@ export default function InvoicesPage() {
     totalAmount: true,
     errorMessage: false,
     invoiceDataUri: false,
+    originalImagePreviewUri: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -114,7 +115,7 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
   const { toast } = useToast();
-  const [showDetailsSheet, setShowDetailsSheet] = useState(false); // Changed from showDetailsModal
+  const [showDetailsSheet, setShowDetailsSheet] = useState(false); 
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -122,6 +123,41 @@ export default function InvoicesPage() {
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
+
+  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
+  const smartTouchProps = useSmartTouch({
+    onTap: () => {
+      // This will only be called if it's a tap, not a scroll
+      // For dropdowns, Radix might handle its own open/close.
+      // If manual control is needed:
+      // const trigger = dropdownTriggerRef.current;
+      // if (trigger) {
+      //   trigger.click(); // Simulate a click to open/close
+      // }
+    },
+    // Adjust thresholds if needed
+    moveThreshold: 15, // Pixels
+    timeThreshold: 250 // Milliseconds
+  });
+
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const summaries = await getSupplierSummariesService();
+      setExistingSuppliers(summaries);
+    } catch (error) {
+      console.error("Failed to fetch suppliers for filter:", error);
+      toast({
+        title: "Error Fetching Suppliers",
+        description: "Could not load supplier list for filtering.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchSuppliers();
+  }, [fetchSuppliers]);
 
 
     const fetchInvoices = useCallback(async () => {
@@ -137,7 +173,6 @@ export default function InvoicesPage() {
                     (invoice.invoiceDataUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
                     uniqueInvoices.set(invoice.id, invoice);
                 } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
-                    // Keep existing
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
                      uniqueInvoices.set(invoice.id, invoice);
                 }
@@ -268,7 +303,7 @@ export default function InvoicesPage() {
     setSelectedInvoiceDetails(invoice); 
     setEditedInvoiceData({ ...invoice });
     setIsEditingDetails(false);
-    setShowDetailsSheet(true); // Open sheet instead of dialog
+    setShowDetailsSheet(true); 
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -280,7 +315,7 @@ export default function InvoicesPage() {
             description: "The invoice has been successfully deleted.",
         });
         fetchInvoices(); 
-        setShowDetailsSheet(false); // Close sheet
+        setShowDetailsSheet(false); 
         setSelectedInvoiceDetails(null);
     } catch (error) {
         console.error("Failed to delete invoice:", error);
@@ -308,6 +343,7 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
+            invoiceDataUri: editedInvoiceData.invoiceDataUri ?? selectedInvoiceDetails.invoiceDataUri, 
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -320,7 +356,7 @@ export default function InvoicesPage() {
         if (refreshedInvoice) {
             setSelectedInvoiceDetails({
                 ...refreshedInvoice,
-                invoiceDataUri: selectedInvoiceDetails.invoiceDataUri 
+                invoiceDataUri: refreshedInvoice.invoiceDataUri 
             });
         } else {
            fetchInvoices(); 
@@ -441,9 +477,9 @@ export default function InvoicesPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
+                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" {...smartTouchProps}>
                 <Button
                     variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                     size="icon"
@@ -467,7 +503,7 @@ export default function InvoicesPage() {
           <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap" {...smartTouchProps}>
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -478,10 +514,11 @@ export default function InvoicesPage() {
                 aria-label="Search invoices"
               />
             </div>
-            <div className="flex gap-2 flex-wrap justify-start md:justify-end">
+            <div className="flex gap-2 flex-wrap justify-start md:justify-end" {...smartTouchProps}>
                  <Popover>
                    <PopoverTrigger asChild>
                      <Button
+                       ref={dropdownTriggerRef}
                        id="invoiceDate"
                        variant={"outline"}
                        className={cn(
@@ -489,6 +526,7 @@ export default function InvoicesPage() {
                          !dateRange && "text-muted-foreground"
                        )}
                        aria-label="Select date range for filtering invoices"
+                       
                      >
                        <CalendarIcon className="mr-2 h-4 w-4" />
                        {dateRange?.from ? (
@@ -533,9 +571,9 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`}>
+                  <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`} >
                     <Filter className="mr-2 h-4 w-4" />
-                    {filterSupplier || 'Supplier'}
+                    {existingSuppliers.find(s => s.name === filterSupplier)?.name || 'Supplier'}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -548,13 +586,13 @@ export default function InvoicesPage() {
                   >
                     All Suppliers
                   </DropdownMenuCheckboxItem>
-                  {MOCK_SUPPLIERS.map((supplier) => (
+                  {existingSuppliers.map((supplier) => (
                     <DropdownMenuCheckboxItem
-                      key={supplier}
-                      checked={filterSupplier === supplier}
-                      onCheckedChange={() => setFilterSupplier(supplier)}
+                      key={supplier.name}
+                      checked={filterSupplier === supplier.name}
+                      onCheckedChange={() => setFilterSupplier(supplier.name)}
                     >
-                      {supplier}
+                      {supplier.name}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
@@ -562,7 +600,7 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`}>
+                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`} >
                     <Filter className="mr-2 h-4 w-4" />
                     {filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'Status'}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
@@ -587,8 +625,8 @@ export default function InvoicesPage() {
              {viewMode === 'list' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility">
-                      <Eye className="mr-2 h-4 w-4" /> View
+                    <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility" >
+                      <Info className="mr-2 h-4 w-4" /> View
                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -807,7 +845,7 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {selectedInvoiceDetails.status === 'error' && editedInvoiceData.status === 'error' && ( // Only show if status is error
+                    {selectedInvoiceDetails.status === 'error' && editedInvoiceData.status === 'error' && ( 
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
@@ -903,3 +941,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

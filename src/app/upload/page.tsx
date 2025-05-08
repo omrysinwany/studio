@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -11,7 +12,7 @@ import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
 import { useRouter } from 'next/navigation';
 import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService, finalizeSaveProductsService } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoicesService, finalizeSaveProductsService, TEMP_DATA_KEY_PREFIX, TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, TEMP_COMPRESSED_IMAGE_KEY_PREFIX, MAX_SCAN_RESULTS_SIZE_BYTES, clearTemporaryScanData } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
@@ -20,16 +21,10 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
-const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImagePreviewUri_';
-const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
-const INVOICES_STORAGE_KEY = 'mockInvoicesData';
-
+const INVOICES_STORAGE_KEY = 'mockInvoicesData'; // Make sure this matches the key in backend.ts
 
 const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
 const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
-const MAX_SCAN_RESULTS_SIZE_BYTES = 2 * 1024 * 1024;
-
 
 const formatDisplayNumber = (
     value: number | undefined | null,
@@ -92,11 +87,11 @@ async function compressImage(base64Str: string, quality = 0.7, maxWidth = 1024, 
 
 export default function UploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [uploadHistory, setUploadHistory] = useState<InvoiceHistoryItem[]>([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -170,7 +165,9 @@ export default function UploadPage() {
     }, 200);
 
     const timestamp = Date.now();
-    const uniqueScanId = `${timestamp}_${selectedFile.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    const originalFileName = selectedFile.name;
+    const uniqueScanId = `${timestamp}_${originalFileName.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    
     const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueScanId}`;
     const originalImagePreviewKey = `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${uniqueScanId}`;
     const compressedImageKey = `${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${uniqueScanId}`;
@@ -181,7 +178,8 @@ export default function UploadPage() {
     let originalImagePreviewUriSaved = false;
     let compressedImageForFinalSaveUriSaved = false; 
     let originalBase64Data = '';
-    let imageToStoreForFinalSave: string | undefined = undefined;
+    let imageForScanAndFinalSave: string | undefined = undefined; // This will hold the image data for AI and final saving
+    let imageForPreviewOnEditPage : string | undefined = undefined; // This holds the image for edit page preview
 
 
    try {
@@ -195,12 +193,10 @@ export default function UploadPage() {
          setIsUploading(false);
          setIsProcessing(true);
 
-
-         // Create PENDING invoice record without image initially
          try {
              const pendingInvoice: InvoiceHistoryItem = {
                  id: tempInvoiceId,
-                 fileName: selectedFile.name,
+                 fileName: originalFileName, // Use original file name initially
                  uploadTime: new Date().toISOString(),
                  status: 'pending',
                  invoiceDataUri: undefined, 
@@ -214,73 +210,69 @@ export default function UploadPage() {
              if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.message.includes('exceeded the quota'))) {
                  toast({
                     title: 'Storage Full for Invoice History',
-                    description: `Could not save pending invoice record. LocalStorage quota exceeded. File: ${selectedFile.name}`,
+                    description: `Could not save pending invoice record. LocalStorage quota exceeded. File: ${originalFileName}`,
                     variant: 'destructive',
                     duration: 7000,
                 });
             }
          }
 
-        // Image processing (compression)
         try {
-            imageToStoreForFinalSave = await compressImage(originalBase64Data);
-            console.log(`[UploadPage] Image compressed. Original size: ${(originalBase64Data.length / 1024).toFixed(2)}KB, Compressed size: ${(imageToStoreForFinalSave.length / 1024).toFixed(2)}KB`);
-
-            if (imageToStoreForFinalSave.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
+            imageForScanAndFinalSave = await compressImage(originalBase64Data, 0.7, 1024, 1024); 
+            console.log(`[UploadPage] Image compressed for scan/final save. Original size: ${(originalBase64Data.length / 1024).toFixed(2)}KB, Compressed size: ${(imageForScanAndFinalSave.length / 1024).toFixed(2)}KB`);
+            
+            if (imageForScanAndFinalSave.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
                 try {
-                   localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
+                   localStorage.setItem(compressedImageKey, imageForScanAndFinalSave);
                    compressedImageForFinalSaveUriSaved = true;
                    console.log(`[UploadPage] Compressed image URI for final save stored with key: ${compressedImageKey}`);
                 } catch (storageError: any) {
-                   console.warn(`[UploadPage] Failed to store compressed image URI for final save (key: ${compressedImageKey}):`, storageError.message, ". Will pass data directly if needed.");
+                   console.warn(`[UploadPage] Failed to store compressed image URI for final save (key: ${compressedImageKey}):`, storageError.message);
                 }
             } else {
-                console.warn(`[UploadPage] Compressed image for final save is too large for localStorage (${(imageToStoreForFinalSave.length / (1024*1024)).toFixed(2)}MB). Will pass data directly if needed.`);
+                console.warn(`[UploadPage] Compressed image for final save is too large for localStorage (${(imageForScanAndFinalSave.length / (1024*1024)).toFixed(2)}MB).`);
+                imageForScanAndFinalSave = undefined; // Don't use if too large for temp storage
             }
 
+            // Prepare image for edit page preview (can be original or slightly less compressed)
+            // For simplicity, let's try to store the original if it's small enough, otherwise a version for preview.
             if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                try {
-                    localStorage.setItem(originalImagePreviewKey, originalBase64Data);
-                    originalImagePreviewUriSaved = true;
-                    console.log(`[UploadPage] Original image preview URI saved to localStorage with key: ${originalImagePreviewKey}`);
-                } catch (storageError: any) {
-                    console.warn(`[UploadPage] Failed to store original image preview URI (key: ${originalImagePreviewKey}):`, storageError.message);
-                }
+                imageForPreviewOnEditPage = originalBase64Data;
             } else {
-                console.warn(`[UploadPage] Original image is too large for localStorage preview (${(originalBase64Data.length / (1024*1024)).toFixed(2)}MB).`);
+                imageForPreviewOnEditPage = await compressImage(originalBase64Data, 0.8, 1280, 1280); // Slightly higher quality/res for preview
+                console.log(`[UploadPage] Image compressed for edit page preview. Preview size: ${(imageForPreviewOnEditPage.length / 1024).toFixed(2)}KB`);
+            }
+
+            if (imageForPreviewOnEditPage) {
+                try {
+                    localStorage.setItem(originalImagePreviewKey, imageForPreviewOnEditPage);
+                    originalImagePreviewUriSaved = true;
+                    console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
+                } catch (storageError: any) {
+                    console.warn(`[UploadPage] Failed to store image for edit page preview (key: ${originalImagePreviewKey}):`, storageError.message);
+                }
             }
 
         } catch (compressionError) {
-            console.error("[UploadPage] Image compression failed:", compressionError, ". Proceeding with original image for scan.");
-            imageToStoreForFinalSave = originalBase64Data; 
-
-            if (originalBase64Data.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
-                 try {
-                    localStorage.setItem(compressedImageKey, originalBase64Data);
-                    compressedImageForFinalSaveUriSaved = true;
-                    console.log(`[UploadPage] Stored original image (fallback) for final save with key: ${compressedImageKey}`);
-                 } catch (storageError:any) {
-                    console.warn(`[UploadPage] Failed to store original image (fallback) URI for final save (key: ${compressedImageKey}):`, storageError.message);
-                 }
+            console.error("[UploadPage] Image compression failed:", compressionError, ". Using original for scan if possible.");
+            imageForScanAndFinalSave = originalBase64Data; // Fallback to original for scan
+            imageForPreviewOnEditPage = originalBase64Data; // Also for preview
+            
+            // Attempt to store original as compressed (if it fits criteria)
+            if (imageForScanAndFinalSave.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
+                 try { localStorage.setItem(compressedImageKey, imageForScanAndFinalSave); compressedImageForFinalSaveUriSaved = true; } catch (e) {}
             } else {
-                 console.warn(`[UploadPage] Original image (fallback for final save) is too large for localStorage. Will pass data directly if needed.`);
+                 imageForScanAndFinalSave = undefined;
             }
-            if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                 try {
-                    localStorage.setItem(originalImagePreviewKey, originalBase64Data);
-                    originalImagePreviewUriSaved = true;
-                 } catch (storageError:any) {
-                    console.warn(`[UploadPage] Failed to store original image for edit page preview (key: ${originalImagePreviewKey}):`, storageError.message);
-                 }
-            } else {
-                console.warn("[UploadPage] Original image is too large for edit page preview storage even after compression failure.");
+            // Attempt to store original as preview
+            if (imageForPreviewOnEditPage.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                 try { localStorage.setItem(originalImagePreviewKey, imageForPreviewOnEditPage); originalImagePreviewUriSaved = true; } catch (e) {}
             }
         }
 
-
          try {
-             console.log(`[UploadPage] Calling scanInvoice for file: ${selectedFile.name}`);
-             scanResult = await scanInvoice({ invoiceDataUri: imageToStoreForFinalSave || originalBase64Data }); // Use compressed if available
+             console.log(`[UploadPage] Calling scanInvoice for file: ${originalFileName}`);
+             scanResult = await scanInvoice({ invoiceDataUri: imageForScanAndFinalSave || originalBase64Data });
              console.log('[UploadPage] AI Scan Result:', scanResult);
 
             if (scanResult.error) {
@@ -308,13 +300,10 @@ export default function UploadPage() {
                      variant: 'destructive',
                      duration: 10000,
                  });
-                 // Do not proceed to edit page if critical data cannot be saved
                  setIsProcessing(false);
                  setSelectedFile(null);
                  if (fileInputRef.current) fileInputRef.current.value = '';
-                 localStorage.removeItem(dataKey);
-                 localStorage.removeItem(originalImagePreviewKey);
-                 localStorage.removeItem(compressedImageKey);
+                 clearTemporaryScanData(uniqueScanId);
                  fetchHistory();
                  return;
             }
@@ -322,7 +311,7 @@ export default function UploadPage() {
              if (!scanResult.error && scanDataSavedForEdit) {
                  toast({
                    title: 'Scan Complete',
-                   description: `${selectedFile.name} scanned. Review and save on the next page.`,
+                   description: `${originalFileName} scanned. Review and save on the next page.`,
                  });
              }
 
@@ -350,21 +339,17 @@ export default function UploadPage() {
                 setIsProcessing(false);
                 setSelectedFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
-                localStorage.removeItem(dataKey);
-                localStorage.removeItem(originalImagePreviewKey);
-                localStorage.removeItem(compressedImageKey);
+                clearTemporaryScanData(uniqueScanId);
                 fetchHistory();
                 return;
             }
           } finally {
-            // This block will run whether the try/catch for AI processing succeeds or fails
-            if (scanDataSavedForEdit || originalImagePreviewUriSaved || compressedImageForFinalSaveUriSaved) {
+            if (scanDataSavedForEdit) { 
                  const queryParams = new URLSearchParams({
-                     key: dataKey, // Always pass the scan data key
-                     fileName: selectedFile.name,
+                     key: dataKey, 
+                     fileName: originalFileName, 
                      tempInvoiceId: tempInvoiceId,
                  });
-                  // Only add image keys if their respective URIs were successfully stored in localStorage
                  if (originalImagePreviewUriSaved) {
                      queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
                  }
@@ -373,12 +358,8 @@ export default function UploadPage() {
                  }
                  router.push(`/edit-invoice?${queryParams.toString()}`);
              } else {
-                 console.error("[UploadPage] Critical: Neither scan data nor any image URI was saved to localStorage. Aborting navigation to edit page.");
-                 // Attempt to clean up any potentially partially saved items for this scan
-                 localStorage.removeItem(dataKey);
-                 localStorage.removeItem(originalImagePreviewKey);
-                 localStorage.removeItem(compressedImageKey);
-                 // Update UI to reflect that processing failed and cannot proceed
+                 console.error("[UploadPage] Critical: Scan data was not saved to localStorage. Aborting navigation to edit page.");
+                 clearTemporaryScanData(uniqueScanId);
                  setIsProcessing(false);
                  setSelectedFile(null);
                  if (fileInputRef.current) fileInputRef.current.value = '';
@@ -388,7 +369,6 @@ export default function UploadPage() {
                     variant: "destructive",
                  });
              }
-             // General UI reset and history refresh should happen after navigation decision
             setIsProcessing(false);
             setSelectedFile(null);
             if (fileInputRef.current) {
@@ -407,10 +387,7 @@ export default function UploadPage() {
            description: 'Could not read the selected file.',
            variant: 'destructive',
          });
-         // Clean up localStorage items if file reading fails early
-         localStorage.removeItem(dataKey);
-         localStorage.removeItem(originalImagePreviewKey);
-         localStorage.removeItem(compressedImageKey);
+         clearTemporaryScanData(uniqueScanId);
        };
 
     } catch (error) {
@@ -422,10 +399,7 @@ export default function UploadPage() {
          description: `An unexpected error occurred: ${(error as Error).message}. Please try again.`,
          variant: 'destructive',
        });
-       // Clean up localStorage items on general upload error
-       localStorage.removeItem(dataKey);
-       localStorage.removeItem(originalImagePreviewKey);
-       localStorage.removeItem(compressedImageKey);
+       clearTemporaryScanData(uniqueScanId);
      }
   };
 
@@ -664,56 +638,3 @@ export default function UploadPage() {
   );
 }
 
-// Max size for storing the ORIGINAL image preview URI in localStorage (e.g., for edit page preview)
-// const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; // 0.5MB - adjust as needed
-// Max size for storing the COMPRESSED image URI (meant for final save) in localStorage
-// const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; // 0.25MB - adjust as needed
-// const MAX_SCAN_RESULTS_SIZE_BYTES = 2 * 1024 * 1024; // 2MB, for example
-
-
-// Helper function to clear old localStorage items
-// const clearOldLocalStorageItems = () => {
-//   const now = Date.now();
-//   const oneDay = 24 * 60 * 60 * 1000; // Milliseconds in a day
-//   const keysToClear: string[] = [];
-
-//   for (let i = 0; i < localStorage.length; i++) {
-//     const key = localStorage.key(i);
-//     if (key && (key.startsWith(TEMP_DATA_KEY_PREFIX) || key.startsWith(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX) || key.startsWith(TEMP_COMPRESSED_IMAGE_KEY_PREFIX))) {
-//       // Extract timestamp from the key if possible (assuming format like 'prefix_timestamp_filename')
-//       const parts = key.split('_');
-//       if (parts.length > 1) {
-//         const timestamp = parseInt(parts[1], 10);
-//         if (!isNaN(timestamp) && (now - timestamp > oneDay)) { // Clear items older than 1 day
-//           keysToClear.push(key);
-//         }
-//       } else {
-//         // If key doesn't match expected format, consider clearing it if it's very old or based on other criteria
-//         // For now, we'll only clear keys with identifiable timestamps.
-//       }
-//     }
-//   }
-
-//   keysToClear.forEach(key => {
-//     localStorage.removeItem(key);
-//     console.log(`[LocalStorageCleanup] Cleared old item: ${key}`);
-//   });
-
-//   // Also, consider pruning the main invoice history if it gets too large
-//   try {
-//     let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(INVOICES_STORAGE_KEY) || '[]');
-//     if (currentInvoices.length > 50) { // Example: keep only the last 50 invoices
-//       currentInvoices.sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
-//       const prunedInvoices = currentInvoices.slice(0, 50);
-//       localStorage.setItem(INVOICES_STORAGE_KEY, JSON.stringify(prunedInvoices));
-//       console.log(`[LocalStorageCleanup] Pruned main invoice history to 50 items.`);
-//     }
-//   } catch (e) {
-//     console.error("[LocalStorageCleanup] Error pruning main invoice history:", e);
-//   }
-// };
-
-// // Call cleanup on component mount (or at suitable intervals)
-// useEffect(() => {
-//   clearOldLocalStorageItems();
-// }, []);
