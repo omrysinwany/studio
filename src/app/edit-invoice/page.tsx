@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -177,10 +176,9 @@ function EditInvoiceContent() {
             _originalId: p.id,
             quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
             lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-             unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number')
+             unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number' && p.lineTotal !== 0)
                         ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
                         : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
-            salePrice: p.salePrice ?? undefined,
             minStockLevel: p.minStockLevel ?? undefined,
             maxStockLevel: p.maxStockLevel ?? undefined,
           }));
@@ -266,37 +264,61 @@ function EditInvoiceContent() {
 
   const handleInputChange = (id: string, field: keyof EditableProduct, value: string | number) => {
     setProducts(prevProducts =>
-      prevProducts.map(product => {
-        if (product.id === id) {
-          let numericValue: number | string | undefined = value; 
-          if (['quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
-              const stringValue = String(value);
+      prevProducts.map(p => {
+        if (p.id === id) {
+          const updatedProduct = { ...p };
+          let numericValue: number | string | undefined = value;
+
+          if (['quantity', 'unitPrice', 'lineTotal', 'salePrice', 'minStockLevel', 'maxStockLevel'].includes(field)) {
+            const stringValue = String(value);
+            if ((field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') && stringValue.trim() === '') {
+              numericValue = undefined;
+            } else {
               numericValue = parseFloat(stringValue.replace(/,/g, ''));
               if (isNaN(numericValue as number)) {
-                 numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
+                numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
               }
+            }
+            (updatedProduct as any)[field] = numericValue;
+          } else {
+            (updatedProduct as any)[field] = value; // For string fields like catalogNumber, description
           }
 
-          const updatedProduct = { ...product, [field]: numericValue };
+          let currentQuantity = Number(updatedProduct.quantity) || 0;
+          let currentUnitPrice = (updatedProduct.unitPrice !== undefined && updatedProduct.unitPrice !== null && !isNaN(Number(updatedProduct.unitPrice))) ? Number(updatedProduct.unitPrice) : 0;
+          let currentLineTotal = Number(updatedProduct.lineTotal) || 0;
 
-          const quantity = Number(updatedProduct.quantity) || 0;
-          const unitPrice = Number(updatedProduct.unitPrice) || 0;
-          const lineTotal = Number(updatedProduct.lineTotal) || 0;
-
+          // Recalculate dependent fields based on which field was edited
           if (field === 'quantity' || field === 'unitPrice') {
-               updatedProduct.lineTotal = parseFloat((quantity * unitPrice).toFixed(2));
+            currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
+            updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
-               if (quantity !== 0) {
-                   updatedProduct.unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
-               } else if (lineTotal !== 0) {
-                    updatedProduct.unitPrice = 0; 
-               } else {
-                    updatedProduct.unitPrice = 0; 
-               }
+            if (currentQuantity > 0) {
+              currentUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
+              updatedProduct.unitPrice = currentUnitPrice;
+            } else {
+              updatedProduct.unitPrice = (currentLineTotal === 0) ? 0 : currentUnitPrice;
+            }
           }
+          
+          // Ensure unitPrice is always total/quantity if quantity > 0
+          if (currentQuantity > 0) {
+            const derivedUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
+            updatedProduct.unitPrice = derivedUnitPrice;
+          } else {
+            // If quantity is 0:
+            // If lineTotal is 0, unitPrice should be 0.
+            // Otherwise, unitPrice is ambiguous (could be what user entered if they edited it, or 0).
+            if (currentLineTotal === 0) {
+                updatedProduct.unitPrice = 0;
+            }
+            // If qty is 0 and lineTotal is non-zero, unitPrice might have been manually entered.
+            // In this state, unitPrice cannot be derived, so we keep its current value.
+          }
+          
           return updatedProduct;
         }
-        return product;
+        return p;
       })
     );
   };
@@ -309,7 +331,6 @@ function EditInvoiceContent() {
       description: '',
       quantity: 0,
       unitPrice: 0,
-      salePrice: undefined,
       lineTotal: 0,
       barcode: undefined,
       minStockLevel: undefined,
@@ -436,8 +457,6 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
             const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
             
-            // A product needs details if it's new OR if it's marked with '-new' (an explicitly added row)
-            // AND it doesn't have a sale price yet (assuming sale price is mandatory for new items)
             return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && (p.salePrice === undefined || p.salePrice === null);
         });
 
@@ -637,7 +656,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> 
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
