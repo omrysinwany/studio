@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -16,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Save, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface CreateSupplierSheetProps {
   isOpen: boolean;
@@ -29,7 +28,7 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   onOpenChange,
   onCreateSupplier,
 }) => {
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -39,8 +38,8 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   const handleSubmit = async () => {
     if (!name.trim()) {
       toast({
-        title: t('error_title'), // Use translated string
-        description: t('suppliers_toast_create_fail_desc', { message: 'Supplier name is required.'}), // Provide specific message
+        title: t('error_title'),
+        description: t('suppliers_toast_create_fail_name_required'),
         variant: "destructive",
       });
       return;
@@ -52,7 +51,6 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
         phone: phone.trim() || undefined, 
         email: email.trim() || undefined 
       });
-      // Reset form after successful creation
       setName('');
       setPhone('');
       setEmail('');

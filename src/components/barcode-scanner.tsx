@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -8,10 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Loader2, X, Camera, VideoOff, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { BrowserMultiFormatReader } from '@zxing/browser'; // Import browser-specific parts
-// Import core exceptions - These are typically part of @zxing/library
-import { NotFoundException, ChecksumException, FormatException }
-from '@zxing/library';
-
+import { NotFoundException, ChecksumException, FormatException } from '@zxing/library'; // Import core exceptions
+import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
 
 interface BarcodeScannerProps {
   onBarcodeDetected: (barcode: string) => void;
@@ -21,33 +18,33 @@ interface BarcodeScannerProps {
 type ScannerStatus = 'idle' | 'initializing' | 'permission_denied' | 'no_devices' | 'error' | 'scanning' | 'no_library';
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onClose }) => {
+  const { t } = useTranslation(); // Initialize useTranslation
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<ScannerStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { toast } = useToast();
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null); // Ref for zxing reader
-  const streamRef = useRef<MediaStream | null>(null); // Ref for the camera stream
-  const isMountedRef = useRef(true); // Track mount status
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
 
-  // Initialize the reader on mount
   useEffect(() => {
     isMountedRef.current = true;
     try {
-        readerRef.current = new BrowserMultiFormatReader(undefined, 500); // Added hints and timeBetweenScans
+        readerRef.current = new BrowserMultiFormatReader(undefined, 500);
         console.log("ZXing BrowserMultiFormatReader initialized");
         setStatus('idle');
     } catch (error) {
         console.error("Failed to initialize ZXing reader:", error);
-        setErrorMessage("Barcode scanning library failed to load.");
+        setErrorMessage(t('barcode_scanner_error_library_load'));
         setStatus('no_library');
     }
 
     return () => {
       isMountedRef.current = false;
-      stopScanningProcess(); // Cleanup on unmount
+      stopScanningProcess();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once
+  }, [t]);
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
@@ -58,13 +55,13 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
       streamRef.current = null;
     }
      if (readerRef.current) {
-        // readerRef.current.reset(); // Removed as it caused errors
+        // readerRef.current.reset(); // This method might not exist or cause issues
         console.log("ZXing reader instance persists, but stream tracks are stopped.");
      }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-      videoRef.current.pause(); // Explicitly pause video
-      videoRef.current.removeAttribute('src'); // Remove src attribute as well
+      videoRef.current.pause();
+      videoRef.current.removeAttribute('src');
       console.log("Video element paused, srcObject cleared, src removed.");
     }
   }, []);
@@ -78,7 +75,6 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
     }
   }, [stopStream, status]);
 
-  // Function to start scanning using zxing
   const startScan = useCallback(async () => {
      console.log('startScan called. Current status:', status);
      if (!['idle', 'permission_denied', 'error', 'no_devices', 'no_library'].includes(status)) {
@@ -88,7 +84,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
 
      if (!readerRef.current) {
        console.error("ZXing reader not available.");
-       setErrorMessage("Barcode scanning library not available.");
+       setErrorMessage(t('barcode_scanner_error_library_unavailable'));
        setStatus('no_library');
        return;
      }
@@ -102,12 +98,12 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
         const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
         if (videoInputDevices.length === 0) {
             console.warn("No video input devices found");
-            throw new Error("No camera devices found.");
+            throw new Error(t('barcode_scanner_error_no_devices_found'));
         }
         console.log("Available video devices:", videoInputDevices);
         const rearCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment'));
         const selectedDeviceId = rearCamera ? rearCamera.deviceId : videoInputDevices[0].deviceId;
-        console.log(`Selected video device ID: ${selectedDeviceId}` + (rearCamera ? ' (Rear camera preferred)' : ' (First available)'));
+        console.log(`Selected video device ID: ${selectedDeviceId}` + (rearCamera ? ` (${t('barcode_scanner_rear_camera_preferred')})` : ` (${t('barcode_scanner_first_available')})`));
 
         if (!isMountedRef.current) {
            console.log("Component unmounted during device selection.");
@@ -128,16 +124,16 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
              } catch (getUserMediaError: any) {
                  console.error("getUserMedia failed:", getUserMediaError);
                  if (getUserMediaError.name === 'NotAllowedError' || getUserMediaError.name === 'PermissionDeniedError') {
-                     throw new Error('Camera permission denied.');
+                     throw new Error(t('barcode_scanner_error_permission_denied_getUserMedia'));
                  } else if (getUserMediaError.name === 'NotFoundError' || getUserMediaError.name === 'DevicesNotFoundError') {
-                     throw new Error('No suitable camera device found.');
+                     throw new Error(t('barcode_scanner_error_no_suitable_camera_getUserMedia'));
                  } else if (getUserMediaError.name === 'NotReadableError' || getUserMediaError.name === 'TrackStartError') {
-                      throw new Error('Camera is already in use or hardware error.');
+                      throw new Error(t('barcode_scanner_error_camera_in_use_getUserMedia'));
                  } else if (getUserMediaError.name === 'OverconstrainedError') {
                       console.warn('OverconstrainedError getting user media, trying without specific device ID', getUserMediaError.constraint);
                        streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: rearCamera ? 'environment' : 'user' } });
                  } else {
-                     throw new Error(`Failed to access camera: ${getUserMediaError.name} - ${getUserMediaError.message}`);
+                     throw new Error(t('barcode_scanner_error_camera_access_failed_getUserMedia', { errorName: getUserMediaError.name, errorMessage: getUserMediaError.message }));
                  }
              }
 
@@ -185,7 +181,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                          }).catch(decodeError => {
                             console.error("Error starting decodeFromStream:", decodeError);
                             if (isMountedRef.current) {
-                                setErrorMessage(`Failed to start barcode decoding: ${ (decodeError as Error).message}`);
+                                setErrorMessage(t('barcode_scanner_error_decode_start_failed', { message: (decodeError as Error).message }));
                                 setStatus('error');
                                 stopStream();
                             }
@@ -193,7 +189,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                      } else {
                         console.error("Missing reader, stream, or video element ref before starting decode.");
                          if (isMountedRef.current) {
-                            setErrorMessage("Internal error: Cannot start decoder.");
+                            setErrorMessage(t('barcode_scanner_error_internal_decoder_start'));
                             setStatus('error');
                             stopStream();
                          }
@@ -201,7 +197,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                  } catch (playError: any) {
                      console.error("Error playing video:", playError);
                      if (isMountedRef.current) {
-                         setErrorMessage(`Could not start camera video playback: ${playError.name} - ${playError.message}`);
+                         setErrorMessage(t('barcode_scanner_error_video_playback', { errorName: playError.name, errorMessage: playError.message }));
                          setStatus('error');
                          stopStream();
                      }
@@ -210,7 +206,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
              videoRef.current.onerror = (err) => {
                  console.error("Video element error event:", err);
                  if (isMountedRef.current) {
-                      setErrorMessage(`Video element encountered an error.`);
+                      setErrorMessage(t('barcode_scanner_error_video_element'));
                       setStatus('error');
                       stopStream();
                  }
@@ -230,60 +226,60 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
               };
         } else {
           console.error("Video element reference is missing.");
-          throw new Error("Video element reference is missing.");
+          throw new Error(t('barcode_scanner_error_video_ref_missing'));
         }
 
      } catch (error: any) {
        console.error('Error starting scan:', error);
        if (!isMountedRef.current) return;
 
-       let userMessage = `Camera/Scan error: ${error.message}`;
+       let userMessage = t('barcode_scanner_error_generic_camera_scan', { message: error.message });
        let newStatus: ScannerStatus = 'error';
 
         if (error.message?.toLowerCase().includes('permission denied')) {
-         userMessage = 'Camera access denied. Please grant permission in your browser/OS settings.';
+         userMessage = t('barcode_scanner_error_permission_denied_settings');
          newStatus = 'permission_denied';
          toast({
            variant: 'destructive',
-           title: 'Camera Permission Denied',
-           description: 'Allow camera access to scan barcodes.',
+           title: t('barcode_scanner_toast_permission_denied_title'),
+           description: t('barcode_scanner_toast_permission_denied_desc'),
          });
         } else if (error.message?.toLowerCase().includes('no suitable camera device found') || error.message?.toLowerCase().includes('no camera devices found')) {
-            userMessage = 'No suitable camera found. Ensure a camera is connected and enabled.';
+            userMessage = t('barcode_scanner_error_no_suitable_camera_connect');
             newStatus = 'no_devices';
             toast({
                 variant: 'destructive',
-                title: 'Camera Not Found',
-                description: 'Could not find a suitable camera.',
+                title: t('barcode_scanner_toast_camera_not_found_title'),
+                description: t('barcode_scanner_toast_camera_not_found_desc'),
             });
          } else if (error.message?.toLowerCase().includes('already in use') || error.message?.toLowerCase().includes('hardware error')) {
-             userMessage = 'Camera is already in use by another application or encountered a hardware issue.';
+             userMessage = t('barcode_scanner_error_camera_in_use_hardware');
              newStatus = 'error';
              toast({
                  variant: 'destructive',
-                 title: 'Camera Access Issue',
+                 title: t('barcode_scanner_toast_camera_access_issue_title'),
                  description: userMessage,
              });
          } else if (error.name === 'NotSupportedError' || error.message?.toLowerCase().includes('getusermedia is not supported')) {
-             userMessage = 'Camera access or barcode scanning is not supported by your browser or device. Ensure you are using HTTPS and a compatible browser (e.g., not all features work on iOS Safari in all contexts).';
+             userMessage = t('barcode_scanner_error_not_supported_browser');
              newStatus = 'error';
              toast({
                  variant: 'destructive',
-                 title: 'Scanning Not Supported',
+                 title: t('barcode_scanner_toast_not_supported_title'),
                  description: userMessage,
              });
          } else {
              toast({
                 variant: 'destructive',
-                title: 'Camera Error',
-                description: `Could not access camera or start scan: ${error.message}`,
+                title: t('barcode_scanner_toast_camera_error_title'),
+                description: t('barcode_scanner_toast_camera_error_desc', { message: error.message }),
             });
         }
        setErrorMessage(userMessage);
        setStatus(newStatus);
        stopScanningProcess();
      }
-  }, [status, onBarcodeDetected, stopScanningProcess, stopStream, toast]);
+  }, [status, onBarcodeDetected, stopScanningProcess, stopStream, toast, t]);
 
   const handleCloseDialog = () => {
     console.log("Closing dialog, stopping scan process...");
@@ -297,7 +293,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
         return (
           <div className="text-center p-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-            <p>Initializing camera...</p>
+            <p>{t('barcode_scanner_status_initializing')}</p>
             <video ref={videoRef} className="absolute w-px h-px -left-full" playsInline muted autoPlay />
           </div>
         );
@@ -334,15 +330,15 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
                      status === 'no_library' ? <WifiOff className="h-4 w-4" /> :
                      <WifiOff className="h-4 w-4" />}
                     <AlertTitle>
-                        {status === 'no_library' ? 'Scanner Unavailable' :
-                        status === 'permission_denied' ? 'Permission Denied' :
-                        status === 'no_devices' ? 'No Camera Found' : 'Error'}
+                        {status === 'no_library' ? t('barcode_scanner_alert_title_unavailable') :
+                        status === 'permission_denied' ? t('barcode_scanner_alert_title_permission_denied') :
+                        status === 'no_devices' ? t('barcode_scanner_alert_title_no_camera') : t('barcode_scanner_alert_title_error')}
                     </AlertTitle>
-                    <AlertDescription>{errorMessage || 'An unexpected error occurred.'}</AlertDescription>
+                    <AlertDescription>{errorMessage || t('barcode_scanner_alert_desc_unexpected_error')}</AlertDescription>
                 </Alert>
                 {(status === 'permission_denied' || status === 'error' || status === 'no_devices') && (
                     <Button onClick={startScan}>
-                        <Camera className="mr-2 h-4 w-4" /> Retry Scan
+                        <Camera className="mr-2 h-4 w-4" /> {t('barcode_scanner_button_retry_scan')}
                     </Button>
                 )}
                  <video ref={videoRef} className="absolute w-px h-px -left-full" playsInline muted autoPlay/>
@@ -354,7 +350,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
           <div className="text-center p-4 space-y-4">
             <VideoOff className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <Button onClick={startScan}>
-              <Camera className="mr-2 h-4 w-4" /> Start Scan
+              <Camera className="mr-2 h-4 w-4" /> {t('barcode_scanner_button_start_scan')}
             </Button>
              {errorMessage && (
                 <p className="text-xs text-destructive mt-2">{errorMessage}</p>
@@ -369,9 +365,9 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
     <Dialog open={true} onOpenChange={(open) => !open && handleCloseDialog()}>
       <DialogContent className="sm:max-w-[425px] md:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Scan Barcode</DialogTitle>
+          <DialogTitle>{t('barcode_scanner_dialog_title')}</DialogTitle>
           <DialogDescription>
-            Position the barcode within the camera view. {status === 'idle' ? 'Click "Start Scan" to begin.' : status === 'scanning' ? 'Scanning...' : ''}
+            {t('barcode_scanner_dialog_description_position')} {status === 'idle' ? t('barcode_scanner_dialog_description_click_start') : status === 'scanning' ? t('barcode_scanner_dialog_description_scanning') : ''}
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 relative min-h-[200px] flex flex-col items-center justify-center bg-muted rounded-md overflow-hidden">
@@ -379,7 +375,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCloseDialog}>
-            <X className="mr-2 h-4 w-4" /> Cancel
+            <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -388,5 +384,3 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onBarcodeDetected, onCl
 };
 
 export default BarcodeScanner;
-
-    

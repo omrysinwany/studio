@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -10,7 +9,7 @@ import {
   SheetDescription,
   SheetFooter,
   SheetClose,
-} from "@/components/ui/sheet"; // Changed from Dialog to Sheet
+} from "@/components/ui/sheet";
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, Check, X, ChevronsUpDown } from 'lucide-react';
@@ -18,22 +17,24 @@ import type { Product, ProductPriceDiscrepancy } from '@/services/backend';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
 
 interface UnitPriceConfirmationDialogProps {
   discrepancies: ProductPriceDiscrepancy[];
-  onComplete: (resolvedProducts: Product[] | null) => void; // Products with resolved prices, or null if cancelled
+  onComplete: (resolvedProducts: Product[] | null) => void;
 }
 
 type PriceDecision = 'keep_old' | 'update_new';
 
 const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = ({ discrepancies, onComplete }) => {
+  const { t } = useTranslation(); // Initialize useTranslation
   const [priceDecisions, setPriceDecisions] = useState<Record<string, PriceDecision>>(
     discrepancies.reduce((acc, d) => {
-      acc[d.id] = 'keep_old'; // Default to keeping the old price
+      acc[d.id] = 'keep_old';
       return acc;
     }, {} as Record<string, PriceDecision>)
   );
-  const [isOpen, setIsOpen] = useState(true); // Control sheet visibility
+  const [isOpen, setIsOpen] = useState(true);
 
   const handleDecisionChange = (productId: string, decision: PriceDecision) => {
     setPriceDecisions(prev => ({ ...prev, [productId]: decision }));
@@ -43,7 +44,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
     const resolvedProducts: Product[] = discrepancies.map(d => {
       const decision = priceDecisions[d.id];
       return {
-        ...d, // Original scanned/edited product details (quantity, catalogNumber, etc.)
+        ...d,
         unitPrice: decision === 'update_new' ? d.newUnitPrice : d.existingUnitPrice,
       };
     });
@@ -59,7 +60,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (!open) {
-      onComplete(null); // Call onComplete with null if sheet is closed externally
+      onComplete(null);
     }
   };
 
@@ -75,7 +76,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
     setPriceDecisions(newDecisions);
   };
 
-  const formatCurrency = (value: number) => `₪${value.toFixed(2)}`;
+  const formatCurrency = (value: number) => `${t('currency_symbol')}${value.toFixed(2)}`;
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
@@ -83,19 +84,19 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="flex items-center text-lg sm:text-xl">
             <AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />
-            Confirm Unit Price Changes
+            {t('unit_price_confirmation_title')}
           </SheetTitle>
           <SheetDescription className="text-xs sm:text-sm">
-            Some products have different unit prices than what's currently in your inventory. Please review and confirm.
+            {t('unit_price_confirmation_description')}
           </SheetDescription>
         </SheetHeader>
 
         <div className="p-3 sm:p-4 border-b flex flex-col sm:flex-row gap-2">
             <Button onClick={handleUpdateAllToNew} variant="outline" size="sm" className="w-full sm:w-auto">
-                <ChevronsUpDown className="mr-2 h-4 w-4"/> Update All to New Price
+                <ChevronsUpDown className="mr-2 h-4 w-4"/> {t('unit_price_confirmation_update_all_button')}
             </Button>
             <Button onClick={handleKeepAllOld} variant="outline" size="sm" className="w-full sm:w-auto">
-                <ChevronsUpDown className="mr-2 h-4 w-4"/> Keep All Old Prices
+                <ChevronsUpDown className="mr-2 h-4 w-4"/> {t('unit_price_confirmation_keep_all_button')}
             </Button>
         </div>
 
@@ -104,14 +105,14 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
             {discrepancies.map((d) => (
               <div key={d.id} className="p-3 border rounded-md shadow-sm bg-card">
                 <p className="font-medium text-sm">{d.shortName || d.description}</p>
-                <p className="text-xs text-muted-foreground">Catalog: {d.catalogNumber}</p>
+                <p className="text-xs text-muted-foreground">{t('unit_price_confirmation_catalog_label')}: {d.catalogNumber}</p>
                 <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                   <div>
-                    <p className="font-semibold">Current Price:</p>
+                    <p className="font-semibold">{t('unit_price_confirmation_current_price_label')}:</p>
                     <p>{formatCurrency(d.existingUnitPrice)}</p>
                   </div>
                   <div>
-                    <p className="font-semibold text-amber-600 dark:text-amber-400">New Scanned Price:</p>
+                    <p className="font-semibold text-amber-600 dark:text-amber-400">{t('unit_price_confirmation_new_price_label')}:</p>
                     <p className="text-amber-600 dark:text-amber-400">{formatCurrency(d.newUnitPrice)}</p>
                   </div>
                 </div>
@@ -122,11 +123,11 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="keep_old" id={`keep_old_${d.id}`} />
-                    <Label htmlFor={`keep_old_${d.id}`} className="text-xs font-normal cursor-pointer">Keep Old Price ({formatCurrency(d.existingUnitPrice)})</Label>
+                    <Label htmlFor={`keep_old_${d.id}`} className="text-xs font-normal cursor-pointer">{t('unit_price_confirmation_option_keep_old', { price: formatCurrency(d.existingUnitPrice) })}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="update_new" id={`update_new_${d.id}`} />
-                    <Label htmlFor={`update_new_${d.id}`} className="text-xs font-normal cursor-pointer">Update to New Price ({formatCurrency(d.newUnitPrice)})</Label>
+                    <Label htmlFor={`update_new_${d.id}`} className="text-xs font-normal cursor-pointer">{t('unit_price_confirmation_option_update_new', { price: formatCurrency(d.newUnitPrice) })}</Label>
                   </div>
                 </RadioGroup>
               </div>
@@ -137,11 +138,11 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
         <SheetFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0">
           <SheetClose asChild>
              <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-                <X className="mr-2 h-4 w-4" /> Cancel Save
+                <X className="mr-2 h-4 w-4" /> {t('unit_price_confirmation_cancel_button')}
              </Button>
           </SheetClose>
           <Button onClick={handleConfirm} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-            <Check className="mr-2 h-4 w-4" /> Confirm Prices & Save
+            <Check className="mr-2 h-4 w-4" /> {t('unit_price_confirmation_confirm_button')}
           </Button>
         </SheetFooter>
       </SheetContent>
