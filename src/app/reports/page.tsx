@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText, HandCoins } from 'lucide-react'; // Added HandCoins
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileText, HandCoins } from 'lucide-react'; 
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, PieChart as RechartsPie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -23,14 +23,16 @@ import {
     calculateGrossProfitMargin, 
     calculateInventoryTurnoverRate, 
     calculateAverageOrderValue,
-    calculateTotalPotentialGrossProfit // Added calculateTotalPotentialGrossProfit
+    calculateTotalPotentialGrossProfit 
 } from '@/lib/kpi-calculations';
+import { useTranslation } from '@/hooks/useTranslation';
 
 const formatNumber = (
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
+    const { t } = useTranslation();
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -38,7 +40,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `₪${zeroFormatted}` : zeroFormatted;
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
     const formatted = value.toLocaleString(undefined, {
@@ -46,7 +48,7 @@ const formatNumber = (
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
-    return currency ? `₪${formatted}` : formatted;
+    return currency ? `${t('currency_symbol')}${formatted}` : formatted;
 };
 
 
@@ -96,6 +98,7 @@ export default function ReportsPage() {
     to: new Date(),
   });
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -119,8 +122,8 @@ export default function ReportsPage() {
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 toast({
-                    title: "Error Fetching Data",
-                    description: "Could not load inventory or invoice data.",
+                    title: t('reports_toast_error_fetch_title'),
+                    description: t('reports_toast_error_fetch_desc'),
                     variant: "destructive",
                 });
                 setInventory([]);
@@ -131,7 +134,7 @@ export default function ReportsPage() {
         };
 
         fetchInitialData();
-    }, [toast]);
+    }, [toast, t]);
 
    useEffect(() => {
      const generateReports = () => {
@@ -148,13 +151,13 @@ export default function ReportsPage() {
        const totalValue = calculateInventoryValue(inventory);
        const totalItemsCount = calculateTotalItems(inventory);
        const lowStockItemsCount = getLowStockItems(inventory).length;
-       const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory); // Calculate gross profit
+       const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory); 
 
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; // Mock factor
-       const mockCogs = mockTotalRevenue * 0.65; // Mock COGS
+       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) * 1.5; 
+       const mockCogs = mockTotalRevenue * 0.65; 
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); // Use average inventory value (mocked as half current)
+       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1); 
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices);
 
        setKpis({
@@ -164,22 +167,20 @@ export default function ReportsPage() {
          grossProfitMargin,
          inventoryTurnoverRate,
          averageOrderValue,
-         totalPotentialGrossProfit, // Add to KPIs
-         valueChangePercent: Math.random() * 10 - 5, // Mock value change
+         totalPotentialGrossProfit, 
+         valueChangePercent: Math.random() * 10 - 5, 
        });
 
-       // Generate Inventory Value Over Time data
        const votData = [];
        let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDate = dateRange?.to || new Date();
-       const numPoints = isMobile ? 5 : 10; // Fewer points for mobile
+       const numPoints = isMobile ? 5 : 10; 
        const step = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * numPoints)));
 
        while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM dd");
-           // Simulate value based on filtered invoices up to this date (very rough simulation)
            const invoicesUpToDate = invoices.filter(inv => new Date(inv.uploadTime) <= currentDate);
-           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4); // Mock factor
+           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4); 
            votData.push({
                date: monthStr,
                value: simulatedValue,
@@ -189,54 +190,48 @@ export default function ReportsPage() {
        setValueOverTime(votData);
 
 
-       // Generate Inventory Value by Category data (mock categories for now)
-       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; // Mock categories
+       const categories = ['Electronics', 'Clothing', 'Home Goods', 'Books', 'Other']; 
         const catDistData = categories.map(cat => {
-            // Simulate category distribution based on product descriptions (very basic)
             const categoryProducts = inventory.filter(p => (p.description.toLowerCase().includes(cat.slice(0,4).toLowerCase())) || (cat === 'Other' && !categories.slice(0,-1).some(c => p.description.toLowerCase().includes(c.slice(0,4).toLowerCase()))));
             return {
                 name: cat,
                 value: calculateInventoryValue(categoryProducts)
             };
-        }).filter(c => c.value > 0); // Only show categories with value
+        }).filter(c => c.value > 0); 
        setCategoryDistribution(catDistData);
 
-       // Generate Documents Processed Volume
        const procVolData = [];
        currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const procVolNumPoints = isMobile ? 3 : 5; // Fewer points for mobile
-       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); // Monthly steps
+       const procVolNumPoints = isMobile ? 3 : 5; 
+       const procVolStep = Math.max(1, Math.floor((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24 * 30 * procVolNumPoints))); 
 
         while (currentDate <= endDate) {
            const monthStr = format(currentDate, "MMM yy");
            const count = filteredInvoices.filter(inv => format(new Date(inv.uploadTime), "MMM yy") === monthStr).length;
-           if(!procVolData.find(d => d.period === monthStr)) { // Avoid duplicates if step is small
+           if(!procVolData.find(d => d.period === monthStr)) { 
              procVolData.push({ period: monthStr, documents: count });
            }
            currentDate.setMonth(currentDate.getMonth() + procVolStep);
        }
        setProcessingVolume(procVolData);
 
-       // Generate Sales by Category (mock data, needs real sales data integration)
        const mockSalesByCategoryData = categories.map(cat => ({ category: cat, sales: Math.floor(Math.random() * 10000) + 2000 }));
        setSalesByCategory(mockSalesByCategoryData);
 
 
-        // Generate Top Selling Products (mocking sales volume for now)
         const topProducts = inventory
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, // Mock sold quantity
-                totalValue: (p.salePrice || p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) // Use salePrice if available for mock total value
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1, 
+                totalValue: (p.salePrice || p.unitPrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity : 10)) + 1) 
             }))
-            .sort((a,b) => b.totalValue - a.totalValue) // Sort by total value
-            .slice(0, 5); // Top 5
+            .sort((a,b) => b.totalValue - a.totalValue) 
+            .slice(0, 5); 
        setTopSellingProducts(topProducts);
 
-        // Generate Stock Alerts
         const alerts: StockAlert[] = inventory.reduce((acc, p) => {
-            const minStockLevelOrDefault = p.minStockLevel ?? 10; // Default min stock if not set
+            const minStockLevelOrDefault = p.minStockLevel ?? 10; 
             const isDefaultMin = p.minStockLevel === undefined;
 
             if (p.quantity === 0) {
@@ -248,7 +243,7 @@ export default function ReportsPage() {
             }
             return acc;
         }, [] as StockAlert[]);
-        setStockAlerts(alerts.sort((a, b) => { // Sort alerts for consistent display
+        setStockAlerts(alerts.sort((a, b) => { 
             const statusOrder = { 'Out of Stock': 1, 'Low Stock': 2, 'Over Stock': 3 };
             return statusOrder[a.status] - statusOrder[b.status];
         }));
@@ -256,7 +251,7 @@ export default function ReportsPage() {
      };
 
      generateReports();
-   }, [dateRange, toast, inventory, invoices, isLoading, isMobile]);
+   }, [dateRange, toast, inventory, invoices, isLoading, isMobile, t]); // Added t to dependency array
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -275,7 +270,7 @@ export default function ReportsPage() {
   return (
     <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-primary shrink-0">Reports &amp; Statistics</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-primary shrink-0">{t('reports_title')}</h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -296,7 +291,7 @@ export default function ReportsPage() {
                   format(dateRange.from, "PP")
                 )
               ) : (
-                <span>Pick a date range</span>
+                <span>{t('reports_date_range_placeholder')}</span>
               )}
             </Button>
           </PopoverTrigger>
@@ -311,7 +306,7 @@ export default function ReportsPage() {
              />
             {dateRange && (
                 <div className="p-2 border-t flex justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>Clear</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
                 </div>
             )}
           </PopoverContent>
@@ -322,65 +317,65 @@ export default function ReportsPage() {
            <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
              <Card className="xl:col-span-2 scale-fade-in">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                 <CardTitle className="text-xs sm:text-sm font-medium">Total Inventory Value</CardTitle>
+                 <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_value')}</CardTitle>
                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
                  <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalValue, { currency: true })}</div>
                  <p className={cn("text-[10px] sm:text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" /> : <TrendingDown className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
-                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% vs last period
+                   {formatNumber(Math.abs(kpis.valueChangePercent), { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
                  </p>
                </CardContent>
              </Card>
              <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.05s'}}>
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                 <CardTitle className="text-xs sm:text-sm font-medium">Total Items in Stock</CardTitle>
+                 <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_items')}</CardTitle>
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
                  <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalItems, { decimals: 0, useGrouping: true })}</div>
-                 <p className="text-[10px] sm:text-xs text-muted-foreground">Unique SKUs</p>
+                 <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_unique_skus')}</p>
                </CardContent>
              </Card>
             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.1s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">Total Gross Profit</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_gross_profit')}</CardTitle>
                     <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
                     <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalPotentialGrossProfit, { currency: true })}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">Potential from stock</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_potential_from_stock')}</p>
                 </CardContent>
             </Card>
             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.15s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">Gross Profit Margin</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_gross_profit_margin')}</CardTitle>
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
                     <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, { decimals: 1 })}%</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">Estimate</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_estimate')}</p>
                 </CardContent>
             </Card>
             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.2s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">Inventory Turnover</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_inventory_turnover')}</CardTitle>
                     <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
                     <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, { decimals: 1 })}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">Times per period</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_times_per_period')}</p>
                 </CardContent>
             </Card>
              <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.25s'}}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">Avg. Order Value</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_avg_order_value')}</CardTitle>
                     <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
                     <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.averageOrderValue, { currency: true, decimals: 2})}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">From invoices</p>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_from_invoices')}</p>
                 </CardContent>
             </Card>
            </div>
@@ -389,7 +384,7 @@ export default function ReportsPage() {
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.1s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
-                    <CardTitle className="text-base sm:text-lg">Inventory Value Over Time</CardTitle>
+                    <CardTitle className="text-base sm:text-lg">{t('reports_chart_value_over_time_title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-0">
                     {lineChartData.length > 0 ? (
@@ -413,7 +408,7 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => formatNumber(value / 1000, { currency: true, decimals: 0}) + 'k'}
+                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value / 1000, { decimals: 0})}k`}
                                         width={isMobile ? 30 : 40} 
                                      />
                                      <RechartsTooltip
@@ -426,14 +421,14 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                       <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No value trend data for selected period.</p>
+                       <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_chart_no_value_trend_data')}</p>
                     )}
                 </CardContent>
             </Card>
 
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.2s'}}>
                  <CardHeader className="pb-2 sm:pb-4">
-                     <CardTitle className="text-base sm:text-lg">Documents Processed Volume</CardTitle>
+                     <CardTitle className="text-base sm:text-lg">{t('reports_chart_docs_processed_title')}</CardTitle>
                  </CardHeader>
                  <CardContent className="p-0 sm:p-0">
                       {processingBarChartData.length > 0 ? (
@@ -470,14 +465,14 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                         </ChartContainer>
                      ) : (
-                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No processing volume data.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_chart_no_processing_volume_data')}</p>
                      )}
                  </CardContent>
             </Card>
 
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.3s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
-                    <CardTitle className="text-base sm:text-lg">Sales by Category</CardTitle>
+                    <CardTitle className="text-base sm:text-lg">{t('reports_chart_sales_by_category_title')}</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-0">
                     {salesByCategoryBarData.length > 0 ? (
@@ -485,7 +480,7 @@ export default function ReportsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, { currency: true, decimals: 0})} />
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value, { decimals: 0})}`} />
                                     <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 45 : 55} interval={0} />
                                     <RechartsTooltip
                                         cursor={false}
@@ -501,14 +496,14 @@ export default function ReportsPage() {
                             </ResponsiveContainer>
                         </ChartContainer>
                     ) : (
-                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No sales by category data.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_chart_no_sales_by_category_data')}</p>
                     )}
                 </CardContent>
             </Card>
 
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.4s'}}>
                  <CardHeader className="pb-2 sm:pb-4">
-                     <CardTitle className="text-base sm:text-lg">Inventory Value by Category</CardTitle>
+                     <CardTitle className="text-base sm:text-lg">{t('reports_chart_value_by_category_title')}</CardTitle>
                  </CardHeader>
                  <CardContent className="flex items-center justify-center p-0 sm:pb-2">
                      {pieChartData.length > 0 ? (
@@ -565,15 +560,15 @@ export default function ReportsPage() {
                            </ResponsiveContainer>
                          </ChartContainer>
                      ) : (
-                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No category value data.</p>
+                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_chart_no_category_value_data')}</p>
                       )}
                  </CardContent>
             </Card>
 
             <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
-                    <CardTitle className="text-base sm:text-lg">Top Selling Products (by Value)</CardTitle>
-                     <CardDescription className="text-xs sm:text-sm">Top 5 products by total sales value in the selected period.</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">{t('reports_table_top_selling_title')}</CardTitle>
+                     <CardDescription className="text-xs sm:text-sm">{t('reports_table_top_selling_desc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     {topSellingProductsBarData.length > 0 ? (
@@ -581,9 +576,9 @@ export default function ReportsPage() {
                             <Table className="min-w-full">
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Product</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Qty Sold</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Total Value</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_product')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_qty_sold')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_total_value')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -598,15 +593,15 @@ export default function ReportsPage() {
                             </Table>
                         </div>
                     ) : (
-                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No top selling products data.</p>
+                        <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_table_no_top_selling_data')}</p>
                     )}
                 </CardContent>
             </Card>
 
             <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.6s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
-                    <CardTitle className="text-base sm:text-lg">Stock Alert Dashboard</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm">Products requiring attention based on defined stock levels.</CardDescription>
+                    <CardTitle className="text-base sm:text-lg">{t('reports_table_stock_alert_title')}</CardTitle>
+                    <CardDescription className="text-xs sm:text-sm">{t('reports_table_stock_alert_desc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                     {stockAlerts.length > 0 ? (
@@ -614,12 +609,12 @@ export default function ReportsPage() {
                             <Table className="min-w-full">
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Product</TableHead>
-                                        <TableHead className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Catalog #</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Current Qty</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Min Stock</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">Max Stock</TableHead>
-                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">Status</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_product')}</TableHead>
+                                        <TableHead className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_catalog')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_current_qty')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_min_stock')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_max_stock')}</TableHead>
+                                        <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_table_col_status')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -630,7 +625,7 @@ export default function ReportsPage() {
                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, { decimals: 0 })}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
-                                                    ? `${formatNumber(10, { decimals: 0 })} (Def.)`
+                                                    ? `${formatNumber(10, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
                                                     : (alert.minStock !== undefined ? formatNumber(alert.minStock, { decimals: 0 }) : '-')}
                                             </TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, { decimals: 0 }) : '-'}</TableCell>
@@ -643,7 +638,7 @@ export default function ReportsPage() {
                                                     )}
                                                 >
                                                     <AlertTriangle className="mr-0.5 sm:mr-1 h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                                                    {alert.status}
+                                                    {t(`reports_stock_status_${alert.status.toLowerCase().replace(' ', '_')}` as any) || alert.status}
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>
@@ -652,7 +647,7 @@ export default function ReportsPage() {
                             </Table>
                         </div>
                     ) : (
-                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">No stock alerts at the moment.</p>
+                         <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_table_no_stock_alerts')}</p>
                     )}
                 </CardContent>
             </Card>

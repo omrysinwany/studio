@@ -34,7 +34,7 @@ const formatDisplayNumber = (
     const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, { // Default to 0 for display if invalid
+        return (0).toLocaleString(undefined, { 
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -50,7 +50,6 @@ const formatDisplayNumber = (
 
 // Helper to format numbers for input fields
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel'): string => {
-    // For optional fields like salePrice, minStock, maxStock, allow empty string if value is undefined/null
     if ((fieldType === 'currency' || fieldType === 'stockLevel') && (value === undefined || value === null)) {
         return '';
     }
@@ -60,8 +59,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    // For quantity, ensure it's an integer for display, but allow float for calculation if needed
-    return String(value); // Allow floats for quantity input, parse on change
+    return String(value); 
 };
 
 
@@ -99,7 +97,7 @@ export default function ProductDetailPage() {
       const data = await getProductByIdService(productId);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data }); // Initialize editedProduct with fetched data
+        setEditedProduct({ ...data }); 
       } else {
         setError(t('product_detail_error_not_found'));
          toast({
@@ -128,11 +126,11 @@ export default function ProductDetailPage() {
 
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string | null | undefined = value; // Allow undefined for optional fields
+      let numericValue: number | string | null | undefined = value; 
       if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
           if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
-              numericValue = undefined; // Set to undefined for empty optional fields
+              numericValue = undefined; 
           } else {
             numericValue = parseFloat(stringValue.replace(/,/g, ''));
             if (isNaN(numericValue as number)) {
@@ -157,7 +155,6 @@ export default function ProductDetailPage() {
   const handleSave = async () => {
     if (!product || !product.id) return;
 
-    // Validate Sale Price
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
             title: t('product_detail_toast_invalid_sale_price_title'),
@@ -166,12 +163,10 @@ export default function ProductDetailPage() {
         });
         return;
     }
-    // Validate Min Stock Level (must be number if not empty, or empty)
     if (editedProduct.minStockLevel !== undefined && editedProduct.minStockLevel !== null && (isNaN(Number(editedProduct.minStockLevel)) || Number(editedProduct.minStockLevel) < 0)) {
       toast({ title: t('product_detail_toast_invalid_min_stock_title'), description: t('product_detail_toast_invalid_min_stock_desc'), variant: "destructive" });
       return;
     }
-    // Validate Max Stock Level
     if (editedProduct.maxStockLevel !== undefined && editedProduct.maxStockLevel !== null && (isNaN(Number(editedProduct.maxStockLevel)) || Number(editedProduct.maxStockLevel) < 0)) {
       toast({ title: t('product_detail_toast_invalid_max_stock_title'), description: t('product_detail_toast_invalid_max_stock_desc'), variant: "destructive" });
       return;
@@ -191,7 +186,7 @@ export default function ProductDetailPage() {
         barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
-        salePrice: Number(editedProduct.salePrice), // Already validated
+        salePrice: Number(editedProduct.salePrice), 
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === undefined ? undefined : Number(editedProduct.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === undefined ? undefined : Number(editedProduct.maxStockLevel),
@@ -247,7 +242,7 @@ export default function ProductDetailPage() {
 
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product }); // Reset to original product data
+        setEditedProduct({ ...product }); 
         setIsEditing(false);
         toast({
             title: t('product_detail_toast_edit_cancelled_title'),

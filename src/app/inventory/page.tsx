@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -43,6 +42,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -94,7 +94,7 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false, // Default to hidden
+    unitPrice: false, 
     salePrice: true,
     lineTotal: false,
     minStockLevel: false,
@@ -108,6 +108,7 @@ export default function InventoryPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
 
@@ -133,15 +134,15 @@ export default function InventoryPage() {
       } catch (error) {
         console.error("Failed to fetch inventory:", error);
         toast({
-          title: "Error Fetching Inventory",
-          description: "Could not load inventory data. Please try again later.",
+          title: t('inventory_toast_error_fetch_title'),
+          description: t('inventory_toast_error_fetch_desc'),
           variant: "destructive",
         });
         setInventory([]);
       } finally {
         setIsLoading(false);
       }
-    }, [toast]);
+    }, [toast, t]);
 
 
    useEffect(() => {
@@ -248,19 +249,19 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
-        { key: 'actions', label: 'View', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2' },
-        { key: 'shortName', label: 'Product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'description', label: 'Description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden md:table-cell px-2 sm:px-4 py-2' },
-        { key: 'id', label: 'ID', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'catalogNumber', label: 'Catalog #', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] hidden sm:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden sm:table-cell px-2 sm:px-4 py-2' },
-        { key: 'barcode', label: 'Barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'quantity', label: 'Qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'unitPrice', label: 'Unit Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'salePrice', label: 'Sale Price (₪)', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'lineTotal', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'minStockLevel', label: 'Min Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'maxStockLevel', label: 'Max Stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+    const columnDefinitions: { key: keyof Product | 'actions' | 'id'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
+        { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2' },
+        { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'description', labelKey: 'inventory_col_description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden md:table-cell px-2 sm:px-4 py-2' },
+        { key: 'id', labelKey: 'inventory_col_id', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] hidden sm:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden sm:table-cell px-2 sm:px-4 py-2' },
+        { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-right min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
@@ -283,7 +284,7 @@ export default function InventoryPage() {
 
     const handleExportInventory = () => {
         if (filteredAndSortedInventory.length === 0) {
-            toast({ title: "No Data", description: "There is no inventory data to export." });
+            toast({ title: t('inventory_toast_no_data_export_title'), description: t('inventory_toast_no_data_export_desc') });
             return;
         }
 
@@ -292,7 +293,7 @@ export default function InventoryPage() {
         ];
 
         const headers = exportColumns
-            .map(key => columnDefinitions.find(col => col.key === key)?.label || key)
+            .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key))
             .map(escapeCsvValue)
             .join(',');
 
@@ -303,7 +304,7 @@ export default function InventoryPage() {
         });
 
         const csvContent = [headers, ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
 
@@ -315,7 +316,7 @@ export default function InventoryPage() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        toast({ title: "Export Started", description: "Your inventory data is being downloaded as CSV." });
+        toast({ title: t('inventory_toast_export_started_title'), description: t('inventory_toast_export_started_desc') });
     };
 
     const handleDeleteAllInventory = async () => {
@@ -325,14 +326,14 @@ export default function InventoryPage() {
             await fetchInventory();
             setCurrentPage(1);
             toast({
-                title: "Inventory Cleared",
-                description: "All inventory items have been deleted.",
+                title: t('inventory_toast_cleared_title'),
+                description: t('inventory_toast_cleared_desc'),
             });
         } catch (error) {
             console.error("Failed to clear inventory:", error);
             toast({
-                title: "Error Clearing Inventory",
-                description: "Could not delete inventory data. Please try again.",
+                title: t('inventory_toast_clear_error_title'),
+                description: t('inventory_toast_clear_error_desc'),
                 variant: "destructive",
             });
         } finally {
@@ -354,20 +355,20 @@ export default function InventoryPage() {
       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-            <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Inventory Overview
+            <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
           </CardTitle>
-          <CardDescription>Browse, search, and manage your inventory items.</CardDescription>
+          <CardDescription>{t('inventory_description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder={t('inventory_search_placeholder')}
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 className="pl-10"
-                aria-label="Search inventory"
+                aria-label={t('inventory_search_aria')}
               />
             </div>
             <div className="flex gap-2 flex-wrap justify-start md:justify-end">
@@ -375,46 +376,46 @@ export default function InventoryPage() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="flex-1 md:flex-initial">
                     <Filter className="mr-2 h-4 w-4" />
-                    {filterStockLevel === 'low' ? 'Low Stock' :
-                      filterStockLevel === 'inStock' ? 'In Stock' :
-                      filterStockLevel === 'out' ? 'Out of Stock' :
-                      filterStockLevel === 'over' ? 'Over Stock' :
-                      'Stock'}
+                    {filterStockLevel === 'low' ? t('inventory_filter_low') :
+                      filterStockLevel === 'inStock' ? t('inventory_filter_in_stock') :
+                      filterStockLevel === 'out' ? t('inventory_filter_out_of_stock') :
+                      filterStockLevel === 'over' ? t('inventory_filter_over_stock') :
+                      t('inventory_filter_stock_label')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Filter by Stock Level</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t('inventory_filter_by_stock_level')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
                     checked={filterStockLevel === 'all'}
                     onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}
                   >
-                    All
+                    {t('inventory_filter_all')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filterStockLevel === 'inStock'}
                     onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}
                   >
-                    In Stock
+                    {t('inventory_filter_in_stock')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filterStockLevel === 'low'}
                     onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}
                   >
-                    Low Stock
+                    {t('inventory_filter_low')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filterStockLevel === 'out'}
                     onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}
                   >
-                    Out of Stock
+                    {t('inventory_filter_out_of_stock')}
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={filterStockLevel === 'over'}
                     onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}
                   >
-                    Over Stock
+                    {t('inventory_filter_over_stock')}
                   </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -422,12 +423,12 @@ export default function InventoryPage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="flex-1 md:flex-initial">
-                    <Eye className="mr-2 h-4 w-4" /> View
+                    <Eye className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
                     <DropdownMenuCheckboxItem
@@ -436,7 +437,7 @@ export default function InventoryPage() {
                       checked={visibleColumns[header.key]}
                       onCheckedChange={() => toggleColumnVisibility(header.key)}
                     >
-                      {header.label}
+                      {t(header.labelKey)}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
@@ -454,7 +455,7 @@ export default function InventoryPage() {
                       className={cn(
                         header.className,
                         header.headerClassName,
-                        "text-center", // Center all header text
+                        "text-center", 
                         header.sortable && "cursor-pointer hover:bg-muted/50",
                         header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                       )}
@@ -462,7 +463,7 @@ export default function InventoryPage() {
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
                       <div className="flex items-center justify-center gap-1">
-                        {header.label}
+                        {t(header.labelKey)}
                         {header.sortable && sortKey === header.key && (
                           <span className="text-xs" aria-hidden="true">
                             {sortDirection === 'asc' ? '▲' : '▼'}
@@ -477,7 +478,7 @@ export default function InventoryPage() {
                 {paginatedInventory.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                      No inventory items found matching your criteria.
+                      {t('inventory_no_items_found')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -491,7 +492,7 @@ export default function InventoryPage() {
                               size="icon"
                               onClick={() => item.id && router.push(`/inventory/${item.id}`)}
                               disabled={!item.id}
-                              aria-label={`View details for ${item.shortName || item.description}`}
+                              aria-label={t('inventory_view_details_aria', { productName: item.shortName || item.description })}
                               className="h-8 w-8 text-primary hover:text-primary/80"
                             >
                               <Eye className="h-4 w-4" />
@@ -510,24 +511,24 @@ export default function InventoryPage() {
                             <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
                               {item.description && (
                                 <>
-                                  <p className="font-semibold">Description:</p>
+                                  <p className="font-semibold">{t('inventory_popover_description')}:</p>
                                   <p>{item.description}</p>
                                 </>
                               )}
                               {item.catalogNumber && item.catalogNumber !== "N/A" && (
                                 <>
-                                  <p className="font-semibold mt-2">Catalog #:</p>
+                                  <p className="font-semibold mt-2">{t('inventory_popover_catalog')}:</p>
                                   <p>{item.catalogNumber}</p>
                                 </>
                               )}
                               {item.barcode && (
                                 <>
-                                  <p className="font-semibold mt-2">Barcode:</p>
+                                  <p className="font-semibold mt-2">{t('inventory_popover_barcode')}:</p>
                                   <p>{item.barcode}</p>
                                 </>
                               )}
                                <>
-                                <p className="font-semibold mt-2">Unit Price (Cost):</p>
+                                <p className="font-semibold mt-2">{t('inventory_popover_unit_price')}:</p>
                                 <p>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</p>
                                </>
                             </PopoverContent>
@@ -542,13 +543,13 @@ export default function InventoryPage() {
                         <TableCell className="text-center px-2 sm:px-4 py-2">
                           <span>{formatIntegerQuantity(item.quantity)}</span>
                           {item.quantity === 0 && (
-                            <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Out</Badge>
+                            <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">{t('inventory_badge_out_of_stock')}</Badge>
                           )}
                           {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && (
-                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Low</Badge>
+                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">{t('inventory_badge_low_stock')}</Badge>
                           )}
                           {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && (
-                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">Over</Badge>
+                            <Badge variant="secondary" className="ml-1 sm:ml-2 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">{t('inventory_badge_over_stock')}</Badge>
                           )}
                         </TableCell>
                       )}
@@ -568,7 +569,7 @@ export default function InventoryPage() {
          {totalPages > 1 && (
             <div className="flex items-center justify-center sm:justify-start space-x-2 py-2 w-full sm:w-auto">
               <span className="text-sm text-muted-foreground hidden sm:block">
-                Page {currentPage} of {totalPages} ({totalItems} items)
+                {t('inventory_pagination_page_info', { currentPage: currentPage, totalPages: totalPages, totalItems: totalItems })}
               </span>
               <div className="flex space-x-1">
                 <Button
@@ -578,7 +579,7 @@ export default function InventoryPage() {
                   disabled={currentPage === 1}
                   className="h-8 px-2"
                 >
-                  <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Previous</span>
+                  <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">{t('inventory_pagination_previous')}</span>
                 </Button>
                 <span className="text-sm text-muted-foreground sm:hidden px-2 flex items-center">
                   {currentPage}/{totalPages}
@@ -590,14 +591,14 @@ export default function InventoryPage() {
                   disabled={currentPage === totalPages}
                   className="h-8 px-2"
                 >
-                  <span className="hidden sm:inline">Next</span> <ChevronRight className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t('inventory_pagination_next')}</span> <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           )}
           <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto mt-2 sm:mt-0">
               <Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto">
-                <Download className="mr-2 h-4 w-4" /> Export CSV
+                <Download className="mr-2 h-4 w-4" /> {t('inventory_export_csv_button')}
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -607,23 +608,23 @@ export default function InventoryPage() {
                     ) : (
                       <Trash2 className="mr-2 h-4 w-4" />
                     )}
-                    Delete All
+                    {t('inventory_delete_all_button')}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogTitle>{t('inventory_delete_all_confirm_title')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete all inventory items.
+                      {t('inventory_delete_all_confirm_desc')}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
                     <AlertDialogAction onClick={handleDeleteAllInventory} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                       {isDeleting ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : null}
-                      Yes, delete all
+                      {t('inventory_delete_all_confirm_action')}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -634,4 +635,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-
