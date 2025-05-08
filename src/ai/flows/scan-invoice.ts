@@ -181,15 +181,23 @@ const scanInvoiceFlow = ai.defineFlow<
             .map((rawProduct: z.infer<typeof ExtractedProductSchema>) => {
                 const quantity = rawProduct.quantity ?? 0;
                 const lineTotal = rawProduct.total ?? 0;
-                const purchasePrice = rawProduct.purchase_price ?? 0;
+                const aiExtractedUnitPrice = rawProduct.purchase_price; // This is what AI extracts as unit price (optional)
                 const salePrice = rawProduct.sale_price; 
 
-                let unitPrice = 0;
+                let finalUnitPrice = 0; // Default unit price
+
                 if (quantity !== 0 && lineTotal !== 0) {
-                    unitPrice = parseFloat((lineTotal / quantity).toFixed(2));
-                } else if (purchasePrice !== 0) {
-                    unitPrice = purchasePrice;
+                    // Prioritize calculation if quantity and lineTotal are valid
+                    finalUnitPrice = parseFloat((lineTotal / quantity).toFixed(2));
+                    if (aiExtractedUnitPrice !== undefined && Math.abs(finalUnitPrice - aiExtractedUnitPrice) > 0.01) {
+                        console.warn(`[ScanInvoiceFlow] Unit price discrepancy for product "${rawProduct.product_name || rawProduct.catalog_number}". AI extracted: ${aiExtractedUnitPrice}, Calculated: ${finalUnitPrice}. Using calculated value.`);
+                    }
+                } else if (aiExtractedUnitPrice !== undefined && aiExtractedUnitPrice !== 0) {
+                    // Fallback to AI extracted unit price if calculation is not possible
+                    finalUnitPrice = aiExtractedUnitPrice;
+                    console.log(`[ScanInvoiceFlow] Using AI extracted unit price for product "${rawProduct.product_name || rawProduct.catalog_number}" as calculation from total/quantity was not possible.`);
                 }
+                // If neither calculation is possible nor AI provided a unit price, finalUnitPrice remains 0.
 
                 const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
@@ -200,9 +208,9 @@ const scanInvoiceFlow = ai.defineFlow<
                     description: description,
                     shortName: shortName,
                     quantity: quantity,
-                    unitPrice: unitPrice, 
+                    unitPrice: finalUnitPrice, 
                     salePrice: salePrice,
-                    lineTotal: lineTotal,
+                    lineTotal: lineTotal, // Keep the lineTotal as extracted by AI
                     minStockLevel: undefined,
                     maxStockLevel: undefined,
                 };
