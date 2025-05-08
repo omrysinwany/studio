@@ -47,6 +47,12 @@ const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImagePrevie
 const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
+// Constants for localStorage limits
+const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; // 0.5MB
+const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; // 0.25MB
+const MAX_SCAN_RESULTS_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+
+
 const initialMockInventory: Product[] = [
    { id: 'prod1', catalogNumber: '12345', barcode: '7290012345011', description: 'Sample Product 1 (Mock)', shortName: 'Sample 1', quantity: 10, unitPrice: 9.99, salePrice: 12.99, lineTotal: 99.90, minStockLevel: 5, maxStockLevel: 20 },
    { id: 'prod2', catalogNumber: '67890', barcode: '7290067890012', description: 'Sample Product 2 (Mock)', shortName: 'Sample 2', quantity: 5, unitPrice: 19.99, salePrice: 24.99, lineTotal: 99.95, minStockLevel: 2, maxStockLevel: 10 },
@@ -213,7 +219,7 @@ export async function finalizeSaveProductsService(
     tempInvoiceId?: string, 
     invoiceDataUriToSave?: string,
     extractedInvoiceNumber?: string,
-    finalSupplierName?: string, // Changed from extractedSupplierName
+    finalSupplierName?: string, 
     extractedTotalAmount?: number
 ): Promise<void> {
     console.log(`Finalizing save for products: ${fileName} (source: ${source}, tempInvoiceId: ${tempInvoiceId}) Image URI to save: ${invoiceDataUriToSave ? 'Exists' : 'Does not exist'}`, productsToFinalizeSave);
@@ -254,14 +260,11 @@ export async function finalizeSaveProductsService(
 
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
+                // If product exists, only update quantity, barcode (if new one provided), and salePrice (if new one provided)
+                // Keep existing description, shortName, catalogNumber, unitPrice, minStockLevel, maxStockLevel
                 existingProduct.quantity += quantityToAdd;
-                // Keep existing product's unitPrice, salePrice, minStockLevel, maxStockLevel unless explicitly changed
-                // Only update description, shortName, catalogNumber, barcode from the new data IF PROVIDED
-                existingProduct.description = productToSave.description || existingProduct.description;
-                existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
-                existingProduct.catalogNumber = (productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A') ? productToSave.catalogNumber : existingProduct.catalogNumber;
-                existingProduct.barcode = productToSave.barcode || existingProduct.barcode;
-                
+                existingProduct.barcode = productToSave.barcode || existingProduct.barcode; // Update barcode if new one is provided
+                existingProduct.salePrice = productToSave.salePrice !== undefined ? productToSave.salePrice : existingProduct.salePrice; // Update sale price if new one is provided
                 // Recalculate lineTotal based on potentially new quantity and existing unitPrice
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
 
@@ -649,7 +652,7 @@ export async function getSupplierSummariesService(): Promise<SupplierSummary[]> 
         existing.count += 1;
         existing.total += (invoice.totalAmount || 0);
       } else {
-        // Supplier from invoice not in storedSuppliers, add them
+        // Supplier from invoice not in storedSuppliers, add them (without contact initially)
         supplierMap.set(invoice.supplier, { count: 1, total: (invoice.totalAmount || 0) });
       }
     }
@@ -669,6 +672,45 @@ export async function getSupplierSummariesService(): Promise<SupplierSummary[]> 
   return summaries.sort((a,b) => b.totalSpent - a.totalSpent); 
 }
 
+// Create a new supplier
+export async function createSupplierService(name: string, contactInfo: { phone?: string; email?: string }): Promise<SupplierSummary> {
+  console.log(`Creating new supplier: ${name}`, contactInfo);
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, []);
+  
+  // Check if supplier already exists
+  if (suppliers.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+    throw new Error(`Supplier with name "${name}" already exists.`);
+  }
+
+  const newSupplier = { name, ...contactInfo };
+  suppliers.push(newSupplier);
+  saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers);
+
+  console.log("New supplier created and saved to localStorage.");
+  return { name, invoiceCount: 0, totalSpent: 0, ...contactInfo };
+}
+
+// Delete a supplier
+export async function deleteSupplierService(supplierName: string): Promise<void> {
+  console.log(`Deleting supplier: ${supplierName}`);
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY, []);
+  const initialLength = suppliers.length;
+  suppliers = suppliers.filter(s => s.name !== supplierName);
+
+  if (suppliers.length === initialLength) {
+    throw new Error(`Supplier with name "${supplierName}" not found.`);
+  }
+
+  saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers);
+  console.log(`Supplier "${supplierName}" deleted from localStorage.`);
+  // Note: This does not remove invoices associated with the supplier.
+  // A more robust solution might archive the supplier or reassign invoices.
+}
+
 
 export async function updateSupplierContactInfoService(supplierName: string, contactInfo: { phone?: string; email?: string }): Promise<void> {
   console.log(`Updating contact info for supplier: ${supplierName}`, contactInfo);
@@ -682,8 +724,50 @@ export async function updateSupplierContactInfoService(supplierName: string, con
     suppliers[supplierIndex] = { ...suppliers[supplierIndex], ...contactInfo, name: supplierName };
   } else {
     // Add new supplier if only name is provided (or other contact info)
+    // This path might not be hit if createSupplierService is used consistently
     suppliers.push({ name: supplierName, ...contactInfo });
   }
   saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers);
   console.log("Supplier contact info saved to localStorage.");
+}
+
+// Function to clear specific temporary localStorage items
+export function clearTemporaryScanData(dataKey: string, originalImageKey?: string, compressedImageKey?: string) {
+    if (typeof window === 'undefined') return;
+    console.log(`[LocalStorageCleanup] Clearing temporary data for key: ${dataKey}`);
+    localStorage.removeItem(dataKey);
+    if (originalImageKey) {
+        localStorage.removeItem(originalImageKey);
+        console.log(`[LocalStorageCleanup] Cleared original image preview: ${originalImageKey}`);
+    }
+    if (compressedImageKey) {
+        localStorage.removeItem(compressedImageKey);
+        console.log(`[LocalStorageCleanup] Cleared compressed image: ${compressedImageKey}`);
+    }
+}
+
+// Function to clear old temporary localStorage items
+export function clearOldTemporaryScanData() {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000; // Milliseconds in a day
+  let itemsCleared = 0;
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith(TEMP_DATA_KEY_PREFIX) || key.startsWith(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX) || key.startsWith(TEMP_COMPRESSED_IMAGE_KEY_PREFIX))) {
+      const parts = key.split('_'); // Assuming format like 'prefix_timestamp_filename'
+      if (parts.length > 1) {
+        const timestamp = parseInt(parts[1], 10);
+        if (!isNaN(timestamp) && (now - timestamp > oneDay)) {
+          localStorage.removeItem(key);
+          itemsCleared++;
+          console.log(`[LocalStorageCleanup] Auto-cleared old item: ${key}`);
+        }
+      }
+    }
+  }
+  if (itemsCleared > 0) {
+    console.log(`[LocalStorageCleanup] Auto-cleared ${itemsCleared} old temporary scan data items.`);
+  }
 }

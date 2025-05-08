@@ -6,8 +6,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, ExternalLink, Phone, Mail, BarChart3, ListChecks, Edit, Save, X } from 'lucide-react';
+import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
+import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import {
@@ -24,6 +24,19 @@ import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import CreateSupplierSheet from '@/components/create-supplier-sheet';
+
 
 const ITEMS_PER_PAGE = 10;
 
@@ -102,37 +115,40 @@ export default function SuppliersPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
   const [selectedSupplierInvoices, setSelectedSupplierInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [monthlySpendingData, setMonthlySpendingData] = useState<MonthlySpendingData[]>([]);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
   const [isSavingContact, setIsSavingContact] = useState(false);
+  const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
 
 
   const { toast } = useToast();
   const router = useRouter();
 
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [summaries, invoicesData] = await Promise.all([
+        getSupplierSummariesService(),
+        getInvoicesService()
+      ]);
+      setSuppliers(summaries);
+      setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
+    } catch (error) {
+      console.error("Failed to fetch supplier data:", error);
+      toast({
+        title: "Error Loading Data",
+        description: "Could not load supplier information.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [summaries, invoicesData] = await Promise.all([
-          getSupplierSummariesService(),
-          getInvoicesService()
-        ]);
-        setSuppliers(summaries);
-        setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
-      } catch (error) {
-        console.error("Failed to fetch supplier data:", error);
-        toast({
-          title: "Error Loading Data",
-          description: "Could not load supplier information.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchData();
   }, [toast]);
 
@@ -214,12 +230,12 @@ export default function SuppliersPage() {
       .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
     setMonthlySpendingData(chartData);
 
-    setIsSheetOpen(true);
+    setIsDetailSheetOpen(true);
   };
   
   const navigateToInvoiceDetails = (invoiceId: string) => {
     router.push(`/invoices?viewInvoiceId=${invoiceId}`);
-    setIsSheetOpen(false);
+    setIsDetailSheetOpen(false);
   };
 
   const handleSaveContactInfo = async () => {
@@ -232,13 +248,44 @@ export default function SuppliersPage() {
       setSelectedSupplier(prev => prev ? {...prev, ...editedContactInfo} : null);
       toast({ title: "Contact Info Updated", description: `Contact details for ${selectedSupplier.name} saved.` });
       setIsEditingContact(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update contact info:", error);
-      toast({ title: "Update Failed", description: "Could not save contact information.", variant: "destructive" });
+      toast({ title: "Update Failed", description: `Could not save contact information: ${error.message}`, variant: "destructive" });
     } finally {
       setIsSavingContact(false);
     }
   };
+
+  const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string }) => {
+    try {
+      const newSupplier = await createSupplierService(name, contactInfo);
+      setSuppliers(prev => [newSupplier, ...prev]); // Add to the beginning for immediate visibility
+      toast({ title: "Supplier Created", description: `Supplier "${name}" added successfully.` });
+      setIsCreateSheetOpen(false);
+    } catch (error: any) {
+      console.error("Failed to create supplier:", error);
+      toast({ title: "Create Failed", description: `Could not create supplier: ${error.message}`, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSupplier = async (supplierName: string) => {
+    setIsDeletingSupplier(true);
+    try {
+      await deleteSupplierService(supplierName);
+      setSuppliers(prev => prev.filter(s => s.name !== supplierName));
+      toast({ title: "Supplier Deleted", description: `Supplier "${supplierName}" has been deleted.` });
+      if (selectedSupplier?.name === supplierName) {
+        setIsDetailSheetOpen(false);
+        setSelectedSupplier(null);
+      }
+    } catch (error: any) {
+      console.error("Failed to delete supplier:", error);
+      toast({ title: "Delete Failed", description: `Could not delete supplier: ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsDeletingSupplier(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -252,10 +299,17 @@ export default function SuppliersPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-            <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Suppliers Overview
-          </CardTitle>
-          <CardDescription>Manage and review your suppliers and their order history.</CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Suppliers Overview
+              </CardTitle>
+              <CardDescription>Manage and review your suppliers and their order history.</CardDescription>
+            </div>
+            <Button onClick={() => setIsCreateSheetOpen(true)} className="w-full sm:w-auto">
+              <PlusCircle className="mr-2 h-4 w-4" /> Add New Supplier
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6">
@@ -296,10 +350,32 @@ export default function SuppliersPage() {
                     <TableRow key={supplier.name} className="hover:bg-muted/50">
                       <TableCell className="font-medium">{supplier.name}</TableCell>
                       <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
-                       <TableCell className="text-center">
+                       <TableCell className="text-center space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={`View details for ${supplier.name}`}>
                           <Info className="h-4 w-4 text-primary" />
                         </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" title={`Delete ${supplier.name}`} disabled={isDeletingSupplier}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the supplier "{supplier.name}" and all associated data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel disabled={isDeletingSupplier}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(isDeletingSupplier && "opacity-50")}>
+                                {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Delete Supplier
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </TableCell>
                     </TableRow>
                   ))
@@ -334,7 +410,7 @@ export default function SuppliersPage() {
         </CardContent>
       </Card>
 
-      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+      <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl flex flex-col p-0">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
             <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || 'Supplier Details'}</SheetTitle>
@@ -476,6 +552,12 @@ export default function SuppliersPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <CreateSupplierSheet
+        isOpen={isCreateSheetOpen}
+        onOpenChange={setIsCreateSheetOpen}
+        onCreateSupplier={handleCreateSupplier}
+      />
     </div>
   );
 }
