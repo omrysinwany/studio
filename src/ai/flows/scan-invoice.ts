@@ -46,29 +46,28 @@ const prompt = ai.definePrompt({
     schema: PromptOutputSchema
   },
   prompt: `
-    Analyze the following image and extract information.
+    Analyze the following image and extract information for ALL distinct products found.
     Provide the extracted data as a JSON **object**.
 
     This JSON object should have a key named "products" whose value is a JSON **array** (list) of JSON objects.
     Each JSON object in the "products" array should represent a single product. 
     
     For each product, ALWAYS include the following keys:
-    "product_name" (string),
-    "catalog_number" (string, if not found, provide an empty string "").
+    "product_name" (string, or provide a relevant short description if no explicit name),
+    "catalog_number" (string, if not found, provide an empty string "" or "N/A". Do not use values from 'Reference 2' or 'אסמכתא 2' for this field.),
+    "quantity" (number),
+    "purchase_price" (number, this is the unit cost price if available),
+    "sale_price" (number, include this key only if a sale price is clearly present for that specific product),
+    "total" (number, this is the line total for the product: quantity * purchase_price).
 
     Also include these keys if the information is present:
-    "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product),
-    "quantity" (number),
-    "purchase_price" (number),
-    "sale_price" (number, include this key only if a sale price is clearly present for that specific product),
-    "total" (number),
-    "description" (string, include this key only if a description is clearly present for that specific product).
-
+    "barcode" (EAN or UPC, include this key only if a barcode is clearly visible for that specific product).
+    
     **IMPORTANT for "quantity":** If there are multiple columns indicating quantity (e.g., one for "Units"/'יח'/'כמות' and another for "Cases"/'ארגזים'/'קרטונים'), ALWAYS extract the value from the column representing **individual units**.
 
     For the keys "quantity", "purchase_price", "sale_price", and "total", extract ONLY the numerical value (integers or decimals).
-    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys. If the value is not found for "purchase_price", "sale_price", or "total", you can omit the key or provide a value of 0. For "quantity", if not found, provide 0.
-
+    **DO NOT** include any currency symbols (like $, ₪, EUR), commas (unless they are decimal separators if applicable), or any other non-numeric text in the values for these four keys. 
+    If the value is not found for "purchase_price", "sale_price", or "total", you can omit the key or provide a value of 0. For "quantity", if not found, provide 0.
 
     Include a key \`short_product_name\` containing a very brief (max 3-4 words) summary or key identifier for the product. If you cannot create a meaningful short name, provide 1-2 relevant keywords instead.
     
@@ -76,7 +75,7 @@ const prompt = ai.definePrompt({
     The value of "invoice_details" should be a JSON object containing the following optional keys:
     "invoice_number" (string, the invoice number from the document),
     "supplier_name" (string, the supplier's name identified on the document),
-    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה". Extract ONLY the numerical value, no currency symbols).
+    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה", "סה''כ כולל מע''מ". Extract ONLY the numerical value, no currency symbols).
 
     Ensure the entire output is a valid JSON object.
     If no products are found, "products" should be an empty array: \`{"products": []}\`.
@@ -181,23 +180,24 @@ const scanInvoiceFlow = ai.defineFlow<
             .map((rawProduct: z.infer<typeof ExtractedProductSchema>) => {
                 const quantity = rawProduct.quantity ?? 0;
                 const lineTotal = rawProduct.total ?? 0;
-                const aiExtractedUnitPrice = rawProduct.purchase_price; // This is what AI extracts as unit price (optional)
+                const aiExtractedPurchasePrice = rawProduct.purchase_price; 
                 const salePrice = rawProduct.sale_price; 
 
-                let finalUnitPrice = 0; // Default unit price
+                let finalUnitPrice = 0; 
 
-                if (quantity !== 0 && lineTotal !== 0) {
-                    // Prioritize calculation if quantity and lineTotal are valid
+                if (quantity > 0 && lineTotal !== 0) { // Ensure quantity is positive for meaningful calculation
                     finalUnitPrice = parseFloat((lineTotal / quantity).toFixed(2));
-                    if (aiExtractedUnitPrice !== undefined && Math.abs(finalUnitPrice - aiExtractedUnitPrice) > 0.01) {
-                        console.warn(`[ScanInvoiceFlow] Unit price discrepancy for product "${rawProduct.product_name || rawProduct.catalog_number}". AI extracted: ${aiExtractedUnitPrice}, Calculated: ${finalUnitPrice}. Using calculated value.`);
+                    if (aiExtractedPurchasePrice !== undefined && Math.abs(finalUnitPrice - aiExtractedPurchasePrice) > 0.01) {
+                        console.warn(`[ScanInvoiceFlow] Unit price discrepancy for "${rawProduct.product_name || rawProduct.catalog_number}". Calculated from total/qty: ${finalUnitPrice}, AI extracted purchase_price: ${aiExtractedPurchasePrice}. Prioritizing calculated value.`);
                     }
-                } else if (aiExtractedUnitPrice !== undefined && aiExtractedUnitPrice !== 0) {
-                    // Fallback to AI extracted unit price if calculation is not possible
-                    finalUnitPrice = aiExtractedUnitPrice;
-                    console.log(`[ScanInvoiceFlow] Using AI extracted unit price for product "${rawProduct.product_name || rawProduct.catalog_number}" as calculation from total/quantity was not possible.`);
+                } else if (aiExtractedPurchasePrice !== undefined && aiExtractedPurchasePrice !== 0) {
+                    finalUnitPrice = aiExtractedPurchasePrice;
+                     console.log(`[ScanInvoiceFlow] Using AI extracted purchase_price (${finalUnitPrice}) for "${rawProduct.product_name || rawProduct.catalog_number}" as total/quantity calculation was not possible (qty: ${quantity}, total: ${lineTotal}).`);
+                } else {
+                     console.warn(`[ScanInvoiceFlow] Could not determine unit price for "${rawProduct.product_name || rawProduct.catalog_number}". Qty: ${quantity}, Total: ${lineTotal}, AI Purchase Price: ${aiExtractedPurchasePrice}. Setting to 0.`);
+                    finalUnitPrice = 0;
                 }
-                // If neither calculation is possible nor AI provided a unit price, finalUnitPrice remains 0.
+
 
                 const description = rawProduct.product_name || rawProduct.description || rawProduct.catalog_number || 'Unknown Product';
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
@@ -210,7 +210,7 @@ const scanInvoiceFlow = ai.defineFlow<
                     quantity: quantity,
                     unitPrice: finalUnitPrice, 
                     salePrice: salePrice,
-                    lineTotal: lineTotal, // Keep the lineTotal as extracted by AI
+                    lineTotal: lineTotal, 
                     minStockLevel: undefined,
                     maxStockLevel: undefined,
                 };
@@ -238,4 +238,3 @@ const scanInvoiceFlow = ai.defineFlow<
          return { products: [], error: `Error processing AI data: ${(processingError as Error).message || 'Unknown processing error'}` };
     }
 });
-
