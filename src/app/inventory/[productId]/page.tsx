@@ -67,7 +67,10 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    return formatDisplayNumber(value, { decimals: 0, useGrouping: true });
+    if (value === null || value === undefined || isNaN(value)) {
+        return formatDisplayNumber(0, { decimals: 0, useGrouping: false });
+    }
+    return formatDisplayNumber(Math.round(value), { decimals: 0, useGrouping: true });
 };
 
 export default function ProductDetailPage() {
@@ -283,7 +286,7 @@ export default function ProductDetailPage() {
             displayValue = value || (isBarcode || isStockLevel ? 'Not set' : '-');
         }
      } else {
-        displayValue = (isBarcode || isStockLevel || (label === "Sale Price" && isCurrency)) ? 'Not set' : '-';
+        displayValue = (isBarcode || isStockLevel || (label === "Sale Price (₪)" && isCurrency) || (label === "Unit Price (Cost)" && isCurrency)) ? 'Not set' : '-';
      }
 
 
@@ -516,7 +519,6 @@ export default function ProductDetailPage() {
                     {renderViewItem(Barcode, "Barcode", product.barcode, false, false, true)}
                     {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
                     {renderViewItem(Tag, "Unit Price (Cost)", product.unitPrice, true)}
-                    {renderViewItem(DollarSign, "Sale Price", product.salePrice, true)}
                     {renderViewItem(DollarSign, "Line Total (Cost)", product.lineTotal, true)}
                     {renderViewItem(TrendingDown, "Min Stock Level", product.minStockLevel, false, false, false, true)}
                     {renderViewItem(TrendingUp, "Max Stock Level", product.maxStockLevel, false, false, false, true)}

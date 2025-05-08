@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, DollarSign } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -73,7 +73,13 @@ const formatDisplayNumber = (
 const formatIntegerQuantity = (
     value: number | undefined | null
 ): string => {
-    return formatDisplayNumber(value, { decimals: 0, useGrouping: true });
+    // Ensure that if a number has decimals (e.g., 13.8), it's rounded for display as integer
+    // but the actual value remains for calculations if needed elsewhere.
+    if (value === null || value === undefined || isNaN(value)) {
+        return formatDisplayNumber(0, { decimals: 0, useGrouping: false }); // Display '0' if not a number
+    }
+    // Round to nearest integer for display
+    return formatDisplayNumber(Math.round(value), { decimals: 0, useGrouping: true });
 };
 
 
@@ -86,12 +92,12 @@ export default function InventoryPage() {
     actions: true,
     id: false,
     description: false, // Default false
-    shortName: true,
-    catalogNumber: false, // Default false
+    shortName: true, // Product column (short name)
+    catalogNumber: true, // Default true
     barcode: false,
     quantity: true,
-    unitPrice: false, // Default false
-    salePrice: true,
+    unitPrice: true, // Unit Price (Cost)
+    salePrice: false, // Sale Price - now defaults to false
     lineTotal: false,
     minStockLevel: false, // Default false
     maxStockLevel: false, // Default false
@@ -152,8 +158,8 @@ export default function InventoryPage() {
      if (shouldRefresh) {
         const current = new URLSearchParams(Array.from(searchParams.entries()));
         current.delete('refresh');
-        const search = current.toString();
-        const query = search ? `?${search}` : "";
+        const searchString = current.toString();
+        const query = searchString ? `?${searchString}` : "";
         router.replace(`${pathname}${query}`, { scroll: false });
      }
    }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]);
@@ -520,10 +526,10 @@ export default function InventoryPage() {
                                   <p>{item.barcode}</p>
                                 </>
                               )}
-                              {item.salePrice !== undefined && (
+                              {item.unitPrice !== undefined && (
                                 <>
-                                  <p className="font-semibold mt-2">Sale Price:</p>
-                                  <p>₪{formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}</p>
+                                  <p className="font-semibold mt-2">Unit Price (Cost):</p>
+                                  <p>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</p>
                                 </>
                               )}
                             </PopoverContent>
@@ -531,9 +537,9 @@ export default function InventoryPage() {
                         </TableCell>
                       )}
                       {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
-                      {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
-                      {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
-                      {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
+                      {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
+                      {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
+                      {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                       {visibleColumns.quantity && (
                         <TableCell className="text-center px-2 sm:px-4 py-2">
                           <span>{formatIntegerQuantity(item.quantity)}</span>
@@ -629,3 +635,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
