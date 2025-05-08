@@ -1,7 +1,7 @@
 
 'use client';
 
- import React, { useState, useEffect, useMemo, useCallback } from 'react';
+ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'; // Added useRef
  import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
  import {
@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Languages } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import { DateRange } from 'react-day-picker';
@@ -57,7 +57,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '../../hooks/useSmartTouch';
+import { useSmartTouch } from '@/hooks/useSmartTouch';
 
 
 const formatNumber = (
@@ -278,9 +278,10 @@ export default function InvoicesPage() {
       { key: 'totalAmount', label: 'Total (₪)', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', label: 'Error Message', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
       { key: 'invoiceDataUri', label: 'Image URI', sortable: false, className: 'hidden' },
+       { key: 'originalImagePreviewUri', label: 'Preview URI', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'id' && h.key !== 'errorMessage');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return 'N/A';
@@ -344,7 +345,6 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            invoiceDataUri: selectedInvoiceDetails.invoiceDataUri,
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -353,13 +353,13 @@ export default function InvoicesPage() {
             description: "Invoice details saved successfully.",
         });
         setIsEditingDetails(false);
+        // Refresh the specific invoice details in the sheet
         const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
         if (refreshedInvoice) {
-            setSelectedInvoiceDetails({
-                ...refreshedInvoice,
-                invoiceDataUri: refreshedInvoice.invoiceDataUri
-            });
+            setSelectedInvoiceDetails(refreshedInvoice);
         } else {
+           // If not found (e.g., deleted by another process), close sheet and refetch all
+           setShowDetailsSheet(false);
            fetchInvoices();
         }
 
@@ -640,14 +640,14 @@ export default function InvoicesPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label="Toggle column visibility" >
-                      <Info className="mr-2 h-4 w-4" /> View
+                      <Eye className="mr-2 h-4 w-4" /> View
                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'actions').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -793,9 +793,9 @@ export default function InvoicesPage() {
                 filteredAndSortedInvoices.map((item) => (
                   <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                     <CardHeader className="p-0 relative aspect-[4/3]">
-                      {isValidImageSrc(item.invoiceDataUri) ? (
+                      {isValidImageSrc(item.originalImagePreviewUri || item.invoiceDataUri) ? (
                         <NextImage
-                          src={item.invoiceDataUri}
+                          src={item.originalImagePreviewUri || item.invoiceDataUri!}
                           alt={`Preview of ${item.fileName}`}
                           layout="fill"
                           objectFit="cover"
@@ -891,9 +891,9 @@ export default function InvoicesPage() {
                   )}
                   <Separator className="my-4"/>
                   <div className="overflow-auto max-h-[calc(85vh-280px)] sm:max-h-[calc(90vh-300px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.invoiceDataUri) ? (
+                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.invoiceDataUri) ? (
                     <NextImage
-                        src={selectedInvoiceDetails.invoiceDataUri}
+                        src={selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.invoiceDataUri!}
                         alt={`Scanned image for ${selectedInvoiceDetails.fileName}`}
                         width={800}
                         height={1100}
@@ -910,22 +910,21 @@ export default function InvoicesPage() {
             </ScrollArea>
           )}
           <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
-                {isEditingDetails ? (
-                    <>
-                        <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
-                        <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
-                            {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            Save Changes
+            {selectedInvoiceDetails && (
+                <>
+                    {isEditingDetails ? (
+                        <>
+                            <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>Cancel</Button>
+                            <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
+                                {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                Save Changes
+                            </Button>
+                        </>
+                    ) : (
+                        <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
+                            <Edit className="mr-2 h-4 w-4" /> Edit Details
                         </Button>
-                    </>
-                ) : (
-                   selectedInvoiceDetails && (
-                    <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
-                        <Edit className="mr-2 h-4 w-4" /> Edit Details
-                    </Button>
-                   )
-                )}
-                 {selectedInvoiceDetails && (
+                    )}
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
@@ -948,7 +947,11 @@ export default function InvoicesPage() {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                     </AlertDialog>
-                 )}
+                </>
+            )}
+            <SheetClose asChild>
+                 <Button variant="outline" className="sm:ml-auto">Close</Button>
+            </SheetClose>
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -956,4 +959,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-
