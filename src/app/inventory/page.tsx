@@ -51,9 +51,10 @@ const ITEMS_PER_PAGE = 10;
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-const formatDisplayNumber = (
+// Helper to format numbers for display (using t from useTranslation)
+const formatDisplayNumberWithTranslation = (
     value: number | undefined | null,
-    t: (key: string) => string, // Added t parameter
+    t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
@@ -75,13 +76,14 @@ const formatDisplayNumber = (
     return currency ? `${t('currency_symbol')}${formatted}` : formatted;
 };
 
-const formatIntegerQuantity = (
+const formatIntegerQuantityWithTranslation = (
     value: number | undefined | null,
+    t: (key: string) => string // Added t parameter
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return '0';
+        return formatDisplayNumberWithTranslation(0, t, { decimals: 0, useGrouping: false });
     }
-    return Math.round(value).toLocaleString(undefined, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return formatDisplayNumberWithTranslation(Math.round(value), t, { decimals: 0, useGrouping: true });
 };
 
 
@@ -93,14 +95,14 @@ export default function InventoryPage() {
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     actions: true,
     id: false,
-    shortName: true,
+    shortName: true, // Product Name - Visible by default
     description: false,
-    catalogNumber: true,
+    catalogNumber: false,
     barcode: false,
-    quantity: true,
-    unitPrice: false,
-    salePrice: true,
-    lineTotal: false, // Hide lineTotal by default
+    quantity: true, // Quantity - Visible by default
+    unitPrice: false, // Unit Price - Hidden by default
+    salePrice: true, // Sale Price - Visible by default
+    lineTotal: false, // Total - Hidden by default
     minStockLevel: false,
     maxStockLevel: false,
   });
@@ -112,7 +114,7 @@ export default function InventoryPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
 
@@ -210,7 +212,7 @@ export default function InventoryPage() {
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
-                comparison = valA.localeCompare(valB);
+                comparison = valA.localeCompare(valB, locale); // Use locale for sorting
            } else {
               if (valA == null && valB != null) comparison = -1;
               else if (valA != null && valB == null) comparison = 1;
@@ -233,7 +235,7 @@ export default function InventoryPage() {
      });
 
      return result;
-      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection]);
+      }, [inventory, searchTerm, filterStockLevel, sortKey, sortDirection, locale]);
 
     const totalItems = filteredAndSortedInventory.length;
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
@@ -258,7 +260,7 @@ export default function InventoryPage() {
         { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'description', labelKey: 'inventory_col_description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden md:table-cell px-2 sm:px-4 py-2' },
         { key: 'id', labelKey: 'inventory_col_id', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' }, // Always visible for sm+
+        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
@@ -276,7 +278,7 @@ export default function InventoryPage() {
           return '';
         }
         if (typeof value === 'number') {
-            return formatDisplayNumber(value, t, { decimals: 2, useGrouping: false });
+            return formatDisplayNumberWithTranslation(value, t, { decimals: 2, useGrouping: false });
         }
         let stringValue = String(value);
         if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
@@ -459,7 +461,7 @@ export default function InventoryPage() {
                       className={cn(
                         header.className,
                         header.headerClassName,
-                        "text-center", 
+                        "text-center",
                         header.sortable && "cursor-pointer hover:bg-muted/50",
                         header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                       )}
@@ -532,8 +534,8 @@ export default function InventoryPage() {
                                 </>
                               )}
                                <>
-                                <p className="font-semibold mt-2">{t('inventory_popover_unit_price')}:</p>
-                                <p>{formatDisplayNumber(item.unitPrice, t, { currency: true })}</p>
+                                <p className="font-semibold mt-2">{t('inventory_col_unit_price', { currency_symbol: t('currency_symbol')})}:</p>
+                                <p>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true })}</p>
                                </>
                             </PopoverContent>
                           </Popover>
@@ -545,7 +547,7 @@ export default function InventoryPage() {
                       {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
                       {visibleColumns.quantity && (
                         <TableCell className="text-center px-2 sm:px-4 py-2">
-                          <span>{formatIntegerQuantity(item.quantity)}</span>
+                          <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
                           {item.quantity === 0 && (
                             <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">{t('inventory_badge_out_of_stock')}</Badge>
                           )}
@@ -557,11 +559,11 @@ export default function InventoryPage() {
                           )}
                         </TableCell>
                       )}
-                      {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumber(item.unitPrice, t, { currency: true })}</TableCell>}
-                      {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? formatDisplayNumber(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
-                      {visibleColumns.lineTotal && <TableCell className="text-center px-2 sm:px-4 py-2">{formatDisplayNumber(item.lineTotal, t, { currency: true })}</TableCell>}
-                      {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
-                      {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
+                      {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true })}</TableCell>}
+                      {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
+                      {visibleColumns.lineTotal && <TableCell className="text-center px-2 sm:px-4 py-2">{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true })}</TableCell>}
+                      {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.minStockLevel, t) : '-'}</TableCell>}
+                      {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.maxStockLevel, t) : '-'}</TableCell>}
                     </TableRow>
                   ))
                 )}
@@ -639,3 +641,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
