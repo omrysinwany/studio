@@ -17,7 +17,7 @@ import type { Product, ProductPriceDiscrepancy } from '@/services/backend';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface UnitPriceConfirmationDialogProps {
   discrepancies: ProductPriceDiscrepancy[];
@@ -27,7 +27,7 @@ interface UnitPriceConfirmationDialogProps {
 type PriceDecision = 'keep_old' | 'update_new';
 
 const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = ({ discrepancies, onComplete }) => {
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
   const [priceDecisions, setPriceDecisions] = useState<Record<string, PriceDecision>>(
     discrepancies.reduce((acc, d) => {
       acc[d.id] = 'keep_old';
@@ -60,7 +60,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (!open) {
-      onComplete(null);
+      onComplete(null); // Call onComplete with null if dialog is closed by clicking outside or X button
     }
   };
 

@@ -1,3 +1,4 @@
+
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -269,7 +270,7 @@
   "inventory_filter_over_stock": "עודף מלאי",
   "inventory_view_button": "תצוגה",
   "inventory_toggle_columns_label": "הצג/הסתר עמודות",
-  "inventory_col_actions": "צפייה",
+  "inventory_col_actions": "פעולות",
   "inventory_col_product": "מוצר",
   "inventory_col_description": "תיאור",
   "inventory_col_id": "מזהה",
@@ -557,6 +558,9 @@
   "barcode_prompt_details_set_desc": "הפרטים עבור \"{{productName}}\" מוכנים.",
   "barcode_prompt_incomplete_details_title": "פרטים חסרים",
   "barcode_prompt_incomplete_details_desc": "אנא ודא שלכל המוצרים הנותרים (כמו \"{{productName}}\") יש מחיר מכירה תקין, או אשר כל אחד בנפרד.",
+  "barcode_prompt_item_skipped_title": "פריט דולג",
+  "barcode_prompt_item_skipped_desc": "הברקוד/מחיר מכירה של המוצר \"{{productName}}\" לא יעודכן כעת.",
+  "barcode_prompt_skip_button": "דלג על מוצר זה",
   "barcode_scanner_error_library_load": "טעינת ספריית סריקת ברקודים נכשלה.",
   "barcode_scanner_error_library_unavailable": "ספריית סריקת ברקודים לא זמינה.",
   "barcode_scanner_error_no_devices_found": "לא נמצאו התקני מצלמה.",

@@ -18,8 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { SupplierSummary } from '@/services/backend';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
-import { toast } from '@/hooks/use-toast'; // Import toast for alerts
+import { useTranslation } from '@/hooks/useTranslation';
+import { toast } from '@/hooks/use-toast';
 
 interface SupplierConfirmationDialogProps {
   potentialSupplierName: string;
@@ -40,7 +40,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
   isOpen,
   onOpenChange,
 }) => {
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
   const [selectedOption, setSelectedOption] = useState<SupplierOption>('use_new');
   const [renamedSupplier, setRenamedSupplier] = useState(potentialSupplierName);
   const [chosenExistingSupplier, setChosenExistingSupplier] = useState<string>('');
@@ -49,7 +49,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
     setRenamedSupplier(potentialSupplierName);
     setSelectedOption('use_new');
     setChosenExistingSupplier('');
-  }, [potentialSupplierName]);
+  }, [potentialSupplierName, isOpen]); // Reset state when dialog opens or potential name changes
 
   const handleConfirm = () => {
     let confirmedName: string | null = null;
@@ -77,7 +77,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
   };
 
   const handleDialogCancel = () => {
-    onCancel();
+    onCancel(); // Call the original cancel handler
     onOpenChange(false);
   };
 

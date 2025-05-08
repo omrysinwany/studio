@@ -1,3 +1,4 @@
+
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -269,7 +270,7 @@
   "inventory_filter_over_stock": "Over Stock",
   "inventory_view_button": "View",
   "inventory_toggle_columns_label": "Toggle Columns",
-  "inventory_col_actions": "View",
+  "inventory_col_actions": "Actions",
   "inventory_col_product": "Product",
   "inventory_col_description": "Description",
   "inventory_col_id": "ID",
@@ -557,6 +558,9 @@
   "barcode_prompt_details_set_desc": "Details for \"{{productName}}\" are ready.",
   "barcode_prompt_incomplete_details_title": "Incomplete Details",
   "barcode_prompt_incomplete_details_desc": "Please ensure all remaining products (like \"{{productName}}\") have a valid sale price, or confirm each one individually.",
+  "barcode_prompt_item_skipped_title": "Item Skipped",
+  "barcode_prompt_item_skipped_desc": "Product \"{{productName}}\" will not have its barcode/sale price updated now.",
+  "barcode_prompt_skip_button": "Skip This Product",
   "barcode_scanner_error_library_load": "Barcode scanning library failed to load.",
   "barcode_scanner_error_library_unavailable": "Barcode scanning library not available.",
   "barcode_scanner_error_no_devices_found": "No camera devices found.",

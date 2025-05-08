@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface BarcodePromptDialogProps {
   products: Product[];
@@ -46,7 +46,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
   isOpen,
   onOpenChange,
 }) => {
-  const { t } = useTranslation(); // Initialize useTranslation
+  const { t } = useTranslation();
   const [initialProducts, setInitialProducts] = useState<Product[]>([...initialProductsFromProps]);
   const [productsToDisplay, setProductsToDisplay] = useState<Product[]>([...initialProductsFromProps]);
   const [productInputStates, setProductInputStates] = useState<Record<string, ProductInputState>>(
@@ -139,7 +139,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     if (state.salePrice === undefined || state.salePrice === null || isNaN(Number(state.salePrice)) || Number(state.salePrice) <= 0) {
       toast({
         title: t('barcode_prompt_invalid_sale_price_title'),
-        description: t('barcode_prompt_invalid_sale_price_desc', { productName: product.shortName || product.description }),
+        description: t('barcode_prompt_invalid_sale_price_desc', { productName: product.shortName || product.description || '' }),
         variant: 'destructive',
       });
       return false;
@@ -165,7 +165,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
       if (!validateProductInputs(product.id)) {
         toast({
           title: t('barcode_prompt_incomplete_details_title'),
-          description: t('barcode_prompt_incomplete_details_desc', { productName: product.shortName || product.description }),
+          description: t('barcode_prompt_incomplete_details_desc', { productName: product.shortName || product.description || '' }),
           variant: 'destructive',
           duration: 7000,
         });
@@ -191,6 +191,17 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     onComplete(null);
     onOpenChange(false);
   };
+  
+  const handleRemoveFromList = (productId: string) => {
+    setProductsToDisplay(prev => prev.filter(p => p.id !== productId));
+     const product = initialProducts.find(p => p.id === productId);
+    toast({
+        title: t('barcode_prompt_item_skipped_title'),
+        description: t('barcode_prompt_item_skipped_desc', { productName: product?.shortName || product?.description || ''}),
+        variant: 'default'
+    });
+  };
+
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
@@ -253,7 +264,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                             onChange={(e) => handleInputChange(product.id, 'barcode', e.target.value)}
                             placeholder={t('barcode_prompt_barcode_placeholder')}
                             className="h-9 text-sm"
-                            aria-label={t('barcode_prompt_barcode_aria', { productName: product.shortName || product.description })}
+                            aria-label={t('barcode_prompt_barcode_aria', { productName: product.shortName || product.description || '' })}
                           />
                           <Button
                             type="button"
@@ -261,7 +272,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                             size="icon"
                             onClick={() => handleScanClick(product.id)}
                             className="h-9 w-9 shrink-0"
-                            aria-label={t('barcode_prompt_scan_aria', { productName: product.shortName || product.description })}
+                            aria-label={t('barcode_prompt_scan_aria', { productName: product.shortName || product.description || '' })}
                           >
                             <Camera className="h-4 w-4" />
                           </Button>
@@ -289,7 +300,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                       {state.salePriceMethod === 'manual' && (
                         <div>
                           <Label htmlFor={`salePrice-${product.id}`} className="text-xs sm:text-sm font-medium">
-                            {t('barcode_prompt_sale_price_label', { currency_symbol: t('currency_symbol') })} <span className="text-destructive">*</span>
+                            {t('barcode_prompt_sale_price_label', { currency_symbol: t('currency_symbol')})} <span className="text-destructive">*</span>
                           </Label>
                           <Input
                             id={`salePrice-${product.id}`}
@@ -300,7 +311,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                             min="0.01"
                             step="0.01"
                             className="h-9 text-sm mt-1"
-                            aria-label={t('barcode_prompt_sale_price_aria', { productName: product.shortName || product.description })}
+                            aria-label={t('barcode_prompt_sale_price_aria', { productName: product.shortName || product.description || '' })}
                             required
                           />
                         </div>
@@ -322,7 +333,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                                 min="0"
                                 step="0.1"
                                 className="h-9 text-sm pl-3 pr-7"
-                                aria-label={t('barcode_prompt_profit_margin_aria', { productName: product.shortName || product.description })}
+                                aria-label={t('barcode_prompt_profit_margin_aria', { productName: product.shortName || product.description || '' })}
                                 required
                               />
                               <Percent className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -332,22 +343,33 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
                             <Label className="text-xs sm:text-sm font-medium">{t('barcode_prompt_calculated_sale_price_label')}</Label>
                             <Input
                               type="text"
-                              value={state.salePrice === undefined ? 'N/A' : `${t('currency_symbol')}${state.salePrice.toFixed(2)}`}
+                              value={state.salePrice === undefined ? t('invoices_na') : `${t('currency_symbol')}${state.salePrice.toFixed(2)}`}
                               readOnly
                               disabled
                               className="h-9 text-sm mt-1 bg-muted/50"
-                              aria-label={t('barcode_prompt_calculated_sale_price_aria', { productName: product.shortName || product.description })}
+                              aria-label={t('barcode_prompt_calculated_sale_price_aria', { productName: product.shortName || product.description || '' })}
                             />
                           </div>
                         </div>
                       )}
-                      <div className="pt-2">
+                      <div className="pt-2 flex gap-2">
+                         <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRemoveFromList(product.id)}
+                          className="w-1/2 text-xs sm:text-sm h-9"
+                        >
+                          <Trash2 className="mr-1.5 h-4 w-4" />
+                          {t('barcode_prompt_skip_button')}
+                        </Button>
                         <Button
                           type="button"
                           variant="default"
                           size="sm"
                           onClick={() => handleConfirmProduct(product.id)}
-                          className="w-full text-xs sm:text-sm h-9 bg-primary hover:bg-primary/90"
+                          className="w-1/2 text-xs sm:text-sm h-9 bg-primary hover:bg-primary/90"
+                          disabled={state.salePrice === undefined || isNaN(Number(state.salePrice)) || Number(state.salePrice) <= 0}
                         >
                           <CheckCircle className="mr-1.5 h-4 w-4" />
                           {t('barcode_prompt_confirm_button')}
