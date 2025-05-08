@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -94,7 +93,7 @@ function EditInvoiceContent() {
     }
 
     if (uniqueIdToClear) {
-        clearTemporaryScanData(uniqueScanIdToClear);
+        clearTemporaryScanData(uniqueIdToClear); // Corrected variable name here
         console.log(`[EditInvoice] Triggered cleanup for scan result associated with unique ID: ${uniqueIdToClear}`);
     } else {
         console.log("[EditInvoice] cleanupTemporaryDataLocal called, but no dataKey or relevant tempInvoiceId found to clear.");
@@ -363,7 +362,7 @@ function EditInvoiceContent() {
       setIsSaving(true);
       try {
           const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => rest);
-          
+
           let imageForFinalInvoiceRecord: string | undefined = undefined;
 
           if (compressedImageKeyFromParam) {
@@ -484,7 +483,9 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
             const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
 
-            return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && (p.salePrice === undefined || p.salePrice === null);
+            // Prompt if it's a new product OR an existing product MISSING a sale price
+            const needsSalePrice = p.salePrice === undefined || p.salePrice === null;
+            return isProductConsideredNew || needsSalePrice;
         });
 
         if (newProductsNeedingDetails.length > 0) {
