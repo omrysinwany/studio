@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -11,7 +12,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Calendar as CalendarIcon from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -29,10 +30,10 @@ import { useTranslation } from '@/hooks/useTranslation';
 
 const formatNumber = (
     value: number | undefined | null,
-    t: (key: string, params?: Record<string, string | number>) => string, 
+    t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {}; // Default useGrouping to true
+    const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -82,7 +83,7 @@ interface StockAlert {
 
 
 export default function ReportsPage() {
-  const { t } = useTranslation(); 
+  const { t } = useTranslation();
   const [kpis, setKpis] = useState<any | null>(null);
   const [valueOverTime, setValueOverTime] = useState<any[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
@@ -302,6 +303,7 @@ export default function ReportsPage() {
                mode="range"
                defaultMonth={dateRange?.from}
                selected={dateRange}
+               onSelect={setDateRange}
                numberOfMonths={isMobile ? 1 : 2}
              />
             {dateRange && (
@@ -481,7 +483,7 @@ export default function ReportsPage() {
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, t, { currency: true, decimals: 0})} />
-                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} /> {}
+                                    <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}

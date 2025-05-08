@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2 } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import {
@@ -531,9 +531,9 @@ export default function SuppliersPage() {
                                     {invoice.fileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
                                   </Button>
                                 </p>
-                                <p className="text-xs text-muted-foreground">
+                                <div className="text-xs text-muted-foreground">
                                   {t('suppliers_invoice_total')}: {formatCurrency(invoice.totalAmount)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status, t)}
-                                </p>
+                                </div>
                               </div>
                             </div>
                           </React.Fragment>
@@ -563,3 +563,4 @@ export default function SuppliersPage() {
     </div>
   );
 }
+
