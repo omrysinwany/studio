@@ -1,38 +1,38 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
+ import React, { useState, useEffect, useMemo, useCallback } from 'react';
+ import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileText as FileTextIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
-import { DateRange } from 'react-day-picker';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
-import { Badge } from '@/components/ui/badge';
-import {
+ import {
+   Table,
+   TableBody,
+   TableCell,
+   TableHead,
+   TableHeader,
+   TableRow,
+ } from '@/components/ui/table';
+ import {
+   DropdownMenu,
+   DropdownMenuCheckboxItem,
+   DropdownMenuContent,
+   DropdownMenuLabel,
+   DropdownMenuSeparator,
+   DropdownMenuTrigger,
+ } from '@/components/ui/dropdown-menu';
+ import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Languages } from 'lucide-react';
+ import { useRouter } from 'next/navigation';
+ import { useToast } from '@/hooks/use-toast';
+ import { DateRange } from 'react-day-picker';
+ import { Calendar } from '@/components/ui/calendar';
+ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+ import { format } from 'date-fns';
+ import { cn } from '@/lib/utils';
+ import { Calendar as CalendarIcon } from 'lucide-react';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
+ import { Badge } from '@/components/ui/badge';
+ import {
     Sheet,
     SheetContent,
     SheetHeader,
@@ -40,7 +40,7 @@ import {
     SheetDescription,
     SheetFooter,
     SheetClose,
-} from '@/components/ui/sheet'; 
+} from '@/components/ui/sheet';
 import NextImage from 'next/image';
 import {
   AlertDialog,
@@ -57,7 +57,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch';
+import { useSmartTouch } from '../../hooks/useSmartTouch';
 
 
 const formatNumber = (
@@ -83,6 +83,7 @@ const formatNumber = (
 
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
+  // Allow data URIs and regular URLs
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
@@ -95,8 +96,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'viewDetails', boolean>>({
-    viewDetails: true,
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
+    actions: true,
     id: false,
     fileName: true,
     uploadTime: false,
@@ -105,7 +106,7 @@ export default function InvoicesPage() {
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    invoiceDataUri: false,
+    invoiceDataUri: false, // Not directly displayed in table, but used for preview
     originalImagePreviewUri: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -115,31 +116,30 @@ export default function InvoicesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const router = useRouter();
   const { toast } = useToast();
-  const [showDetailsSheet, setShowDetailsSheet] = useState(false); 
+  const [showDetailsSheet, setShowDetailsSheet] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid view
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  const smartTouchProps = useSmartTouch({
-    onTap: () => {
-      // This will only be called if it's a tap, not a scroll
-      // For dropdowns, Radix might handle its own open/close.
-      // If manual control is needed:
-      // const trigger = dropdownTriggerRef.current;
-      // if (trigger) {
-      //   trigger.click(); // Simulate a click to open/close
-      // }
-    },
-    // Adjust thresholds if needed
-    moveThreshold: 15, // Pixels
-    timeThreshold: 250 // Milliseconds
+  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
+    onTap: (e) => {
+      // This will only be called for genuine taps, not scrolls
+      // We need to check if the tap was on a dropdown trigger
+      const target = e.target as HTMLElement;
+      const trigger = target.closest('[data-radix-dropdown-menu-trigger]');
+      if (trigger && dropdownTriggerRef.current && dropdownTriggerRef.current.contains(trigger)) {
+        // Programmatically open/close dropdown if it's a tap
+        // This logic might need adjustment based on how Radix UI handles triggers
+      }
+    }
   });
+
 
   const fetchSuppliers = useCallback(async () => {
     try {
@@ -164,24 +164,25 @@ export default function InvoicesPage() {
       setIsLoading(true);
       try {
         let fetchedData = await getInvoicesService();
-        
-        let uniqueInvoices = new Map<string, InvoiceHistoryItem>();
+
+        let uniqueInvoicesMap = new Map<string, InvoiceHistoryItem>();
         fetchedData.forEach(invoice => {
-            const existing = uniqueInvoices.get(invoice.id);
+            const existing = uniqueInvoicesMap.get(invoice.id);
             if (existing) {
-                if ((invoice.invoiceDataUri && !existing.invoiceDataUri) || 
+                if ((invoice.invoiceDataUri && !existing.invoiceDataUri) ||
                     (invoice.invoiceDataUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
-                    uniqueInvoices.set(invoice.id, invoice);
+                    uniqueInvoicesMap.set(invoice.id, invoice);
                 } else if (!invoice.invoiceDataUri && existing.invoiceDataUri) {
+                    // Keep existing if it has an image and the new one doesn't
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
-                     uniqueInvoices.set(invoice.id, invoice);
+                     uniqueInvoicesMap.set(invoice.id, invoice); // Otherwise, take the newer one
                 }
             } else {
-                uniqueInvoices.set(invoice.id, invoice);
+                uniqueInvoicesMap.set(invoice.id, invoice);
             }
         });
-        
-        let filteredData = Array.from(uniqueInvoices.values());
+
+        let filteredData = Array.from(uniqueInvoicesMap.values());
 
 
         if (filterSupplier) {
@@ -266,8 +267,8 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm]);
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'viewDetails'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'viewDetails', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; label: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'actions', label: 'Details', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
       { key: 'id', label: 'ID', sortable: true, className: "hidden" },
       { key: 'fileName', label: 'File Name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', label: 'Upload Date', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
@@ -295,15 +296,15 @@ export default function InvoicesPage() {
      }
    };
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'viewDetails') => {
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-    setSelectedInvoiceDetails(invoice); 
+    setSelectedInvoiceDetails(invoice);
     setEditedInvoiceData({ ...invoice });
     setIsEditingDetails(false);
-    setShowDetailsSheet(true); 
+    setShowDetailsSheet(true);
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -314,8 +315,8 @@ export default function InvoicesPage() {
             title: "Invoice Deleted",
             description: "The invoice has been successfully deleted.",
         });
-        fetchInvoices(); 
-        setShowDetailsSheet(false); 
+        fetchInvoices();
+        setShowDetailsSheet(false);
         setSelectedInvoiceDetails(null);
     } catch (error) {
         console.error("Failed to delete invoice:", error);
@@ -343,7 +344,7 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            invoiceDataUri: editedInvoiceData.invoiceDataUri ?? selectedInvoiceDetails.invoiceDataUri, 
+            invoiceDataUri: selectedInvoiceDetails.invoiceDataUri,
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
@@ -356,10 +357,10 @@ export default function InvoicesPage() {
         if (refreshedInvoice) {
             setSelectedInvoiceDetails({
                 ...refreshedInvoice,
-                invoiceDataUri: refreshedInvoice.invoiceDataUri 
+                invoiceDataUri: refreshedInvoice.invoiceDataUri
             });
         } else {
-           fetchInvoices(); 
+           fetchInvoices();
         }
 
     } catch (error) {
@@ -479,7 +480,11 @@ export default function InvoicesPage() {
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Uploaded Invoices
             </CardTitle>
-            <div className="flex items-center gap-2" {...smartTouchProps}>
+            <div className="flex items-center gap-2"
+                 onTouchStart={onTouchStart}
+                 onTouchMove={onTouchMove}
+                 onTouchEnd={onTouchEnd}
+            >
                 <Button
                     variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                     size="icon"
@@ -503,7 +508,11 @@ export default function InvoicesPage() {
           <CardDescription>View and manage your processed invoices and delivery notes.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap" {...smartTouchProps}>
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+          >
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -514,7 +523,11 @@ export default function InvoicesPage() {
                 aria-label="Search invoices"
               />
             </div>
-            <div className="flex gap-2 flex-wrap justify-start md:justify-end" {...smartTouchProps}>
+            <div className="flex gap-2 flex-wrap justify-start md:justify-end"
+                 onTouchStart={onTouchStart}
+                 onTouchMove={onTouchMove}
+                 onTouchEnd={onTouchEnd}
+            >
                  <Popover>
                    <PopoverTrigger asChild>
                      <Button
@@ -523,10 +536,11 @@ export default function InvoicesPage() {
                        variant={"outline"}
                        className={cn(
                          "w-full sm:w-[260px] justify-start text-left font-normal",
-                         !dateRange && "text-muted-foreground"
+                         !dateRange && "text-muted-foreground",
+                         "touch-manipulation"
                        )}
                        aria-label="Select date range for filtering invoices"
-                       
+
                      >
                        <CalendarIcon className="mr-2 h-4 w-4" />
                        {dateRange?.from ? (
@@ -550,7 +564,7 @@ export default function InvoicesPage() {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden"
+                       className="sm:block hidden" // Show 1 month on small screens
                      />
                        <Calendar
                         initialFocus
@@ -558,7 +572,7 @@ export default function InvoicesPage() {
                         defaultMonth={dateRange?.from}
                         selected={dateRange}
                         onSelect={setDateRange}
-                        numberOfMonths={2}
+                        numberOfMonths={2} // Show 2 months on larger screens
                         className="hidden sm:block"
                      />
                      {dateRange && (
@@ -571,8 +585,8 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`} >
-                    <Filter className="mr-2 h-4 w-4" />
+                  <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={`Filter by supplier. Current filter: ${filterSupplier || 'All Suppliers'}`} >
+                    <Briefcase className="mr-2 h-4 w-4" />
                     {existingSuppliers.find(s => s.name === filterSupplier)?.name || 'Supplier'}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
@@ -600,7 +614,7 @@ export default function InvoicesPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`} >
+                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={`Filter by status. Current filter: ${filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'All Statuses'}`} >
                     <Filter className="mr-2 h-4 w-4" />
                     {filterStatus ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1) : 'Status'}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
@@ -625,7 +639,7 @@ export default function InvoicesPage() {
              {viewMode === 'list' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial" aria-label="Toggle column visibility" >
+                    <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label="Toggle column visibility" >
                       <Info className="mr-2 h-4 w-4" /> View
                       <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                     </Button>
@@ -633,7 +647,7 @@ export default function InvoicesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'viewDetails').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'actions').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -674,7 +688,7 @@ export default function InvoicesPage() {
                             header.sortable && "cursor-pointer hover:bg-muted/50",
                             header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                             'px-2 sm:px-4 py-2',
-                            header.key === 'viewDetails' && 'sticky left-0 bg-card z-10'
+                            header.key === 'actions' && 'sticky left-0 bg-card z-10' // Keep 'actions' sticky
                         )}
                         onClick={() => header.sortable && handleSort(header.key as SortKey)}
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -710,8 +724,8 @@ export default function InvoicesPage() {
                   ) : (
                     filteredAndSortedInvoices.map((item) => (
                       <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                          {visibleColumns.viewDetails && (
-                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'viewDetails')?.className)}>
+                          {visibleColumns.actions && ( // 'actions' is the first column now
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                  <Button
                                      variant="ghost"
                                      size="icon"
@@ -845,7 +859,8 @@ export default function InvoicesPage() {
                         <Label htmlFor="editTotalAmount">Total Amount (₪)</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
-                    {selectedInvoiceDetails.status === 'error' && editedInvoiceData.status === 'error' && ( 
+                    {/* Status is not editable by user */}
+                    {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">Error Message</Label>
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
