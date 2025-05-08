@@ -16,8 +16,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
-import { Progress } from "@/components/ui/progress"; // Assuming Progress is correctly styled
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
+import { Progress } from "@/components/ui/progress";
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 interface KpiData {
@@ -69,7 +69,7 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { t } = useTranslation(); // Use the translation hook
+  const { t } = useTranslation();
 
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
@@ -259,7 +259,7 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
