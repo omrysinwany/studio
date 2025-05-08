@@ -94,7 +94,7 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false,
+    unitPrice: false, // Default to hidden
     salePrice: true,
     lineTotal: false,
     minStockLevel: false,
@@ -454,6 +454,7 @@ export default function InventoryPage() {
                       className={cn(
                         header.className,
                         header.headerClassName,
+                        "text-center", // Center all header text
                         header.sortable && "cursor-pointer hover:bg-muted/50",
                         header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                       )}
@@ -507,7 +508,7 @@ export default function InventoryPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
-                              {item.description && item.description !== (item.shortName || item.description?.split(' ').slice(0,3).join(' ')) && (
+                              {item.description && (
                                 <>
                                   <p className="font-semibold">Description:</p>
                                   <p>{item.description}</p>
@@ -553,7 +554,7 @@ export default function InventoryPage() {
                       )}
                       {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>₪{formatDisplayNumber(item.unitPrice, { decimals: 2, useGrouping: true })}</TableCell>}
                       {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? `₪${formatDisplayNumber(item.salePrice, { decimals: 2, useGrouping: true })}` : '-'}</TableCell>}
-                      {visibleColumns.lineTotal && <TableCell className="text-right px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
+                      {visibleColumns.lineTotal && <TableCell className="text-center px-2 sm:px-4 py-2">₪{formatDisplayNumber(item.lineTotal, { decimals: 2, useGrouping: true })}</TableCell>}
                       {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantity(item.minStockLevel) : '-'}</TableCell>}
                       {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantity(item.maxStockLevel) : '-'}</TableCell>}
                     </TableRow>
@@ -633,3 +634,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
