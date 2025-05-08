@@ -7,9 +7,9 @@
     @RestController
     public class Controller {
 
-        @GetMapping("/login")
-        public String login() {
-            return "login";
+        @GetMapping("/test")
+        public String testEndpoint() {
+            return "Test endpoint hit!";
         }
     }
     
