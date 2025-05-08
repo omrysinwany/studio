@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -22,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/useTranslation';
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -40,6 +39,7 @@ export default function RegisterPage() {
   const { register, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -54,15 +54,15 @@ export default function RegisterPage() {
     try {
       await register(values);
       toast({
-        title: "Registration Successful",
-        description: "Your account has been created. Welcome!",
+        title: t('register_toast_success_title'),
+        description: t('register_toast_success_desc'),
       });
       router.push('/'); // Redirect to home page after successful registration
     } catch (error) {
       console.error("Registration failed:", error);
        toast({
-         title: "Registration Failed",
-         description: "Could not create account. Please check your details or try again later.",
+         title: t('register_toast_fail_title'),
+         description: t('register_toast_fail_desc'),
          variant: "destructive",
        });
     }
@@ -72,8 +72,8 @@ export default function RegisterPage() {
     <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-lg scale-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">Create Account</CardTitle>
-          <CardDescription>Sign up to start tracking your inventory.</CardDescription>
+          <CardTitle className="text-2xl font-bold text-primary">{t('register_title')}</CardTitle>
+          <CardDescription>{t('register_description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -83,9 +83,9 @@ export default function RegisterPage() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel>{t('register_username_label')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Choose a username" {...field} />
+                      <Input placeholder={t('register_username_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -96,9 +96,9 @@ export default function RegisterPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>{t('register_email_label')}</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="Enter your email" {...field} />
+                      <Input type="email" placeholder={t('register_email_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -109,23 +109,23 @@ export default function RegisterPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>{t('register_password_label')}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Create a password" {...field} />
+                      <Input type="password" placeholder={t('register_password_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                {loading ? 'Creating Account...' : <><UserPlus className="mr-2 h-4 w-4" /> Register</>}
+                {loading ? t('register_button_loading') : <><UserPlus className="mr-2 h-4 w-4" /> {t('register_button')}</>}
               </Button>
             </form>
           </Form>
            <div className="mt-6 text-center text-sm">
-            Already have an account?{' '}
+            {t('register_has_account')}{' '}
             <Link href="/login" className="font-medium text-accent hover:underline">
-              Login here
+              {t('register_login_link')}
             </Link>
           </div>
         </CardContent>

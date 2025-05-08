@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -22,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import { LogIn } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 const formSchema = z.object({
@@ -38,6 +37,7 @@ export default function LoginPage() {
   const { login, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -51,15 +51,15 @@ export default function LoginPage() {
     try {
       await login(values);
       toast({
-        title: "Login Successful",
-        description: "Welcome back!",
+        title: t('login_toast_success_title'),
+        description: t('login_toast_success_desc'),
       });
       router.push('/'); // Redirect to home page after successful login
     } catch (error) {
        console.error("Login failed:", error);
        toast({
-         title: "Login Failed",
-         description: "Invalid username or password. Please try again.",
+         title: t('login_toast_fail_title'),
+         description: t('login_toast_fail_desc'),
          variant: "destructive",
        });
        // Reset password field for security
@@ -71,8 +71,8 @@ export default function LoginPage() {
     <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-lg scale-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">Login to InvoTrack</CardTitle>
-          <CardDescription>Enter your credentials to access your account.</CardDescription>
+          <CardTitle className="text-2xl font-bold text-primary">{t('login_title')}</CardTitle>
+          <CardDescription>{t('login_description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -82,9 +82,9 @@ export default function LoginPage() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel>{t('login_username_label')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter your username" {...field} />
+                      <Input placeholder={t('login_username_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -95,23 +95,23 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>{t('login_password_label')}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Enter your password" {...field} />
+                      <Input type="password" placeholder={t('login_password_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                {loading ? 'Logging in...' : <><LogIn className="mr-2 h-4 w-4" /> Login</>}
+                {loading ? t('login_button_loading') : <><LogIn className="mr-2 h-4 w-4" /> {t('login_button')}</>}
               </Button>
             </form>
           </Form>
           <div className="mt-6 text-center text-sm">
-            Don't have an account?{' '}
+            {t('login_no_account')}{' '}
             <Link href="/register" className="font-medium text-accent hover:underline">
-              Register here
+              {t('login_register_link')}
             </Link>
           </div>
         </CardContent>

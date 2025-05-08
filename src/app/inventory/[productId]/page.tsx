@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 // Helper to format numbers for display
@@ -77,6 +78,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [product, setProduct] = useState<Product | null>(null);
   const [editedProduct, setEditedProduct] = useState<Partial<Product>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -99,25 +101,25 @@ export default function ProductDetailPage() {
         setProduct(data);
         setEditedProduct({ ...data }); // Initialize editedProduct with fetched data
       } else {
-        setError("Product not found.");
+        setError(t('product_detail_error_not_found'));
          toast({
-           title: "Error",
-           description: "Could not find the specified product.",
+           title: t('error_title'),
+           description: t('product_detail_toast_error_not_found_desc'),
            variant: "destructive",
          });
       }
     } catch (err) {
       console.error("Failed to fetch product details:", err);
-      setError("Failed to load product details. Please try again.");
+      setError(t('product_detail_error_load_failed'));
       toast({
-        title: "Error",
-        description: "An error occurred while loading product details.",
+        title: t('error_title'),
+        description: t('product_detail_toast_error_load_failed_desc'),
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [productId, toast]);
+  }, [productId, toast, t]);
 
 
   useEffect(() => {
@@ -158,24 +160,24 @@ export default function ProductDetailPage() {
     // Validate Sale Price
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
-            title: "Missing or Invalid Sale Price",
-            description: "Please enter a valid sale price for the product.",
+            title: t('product_detail_toast_invalid_sale_price_title'),
+            description: t('product_detail_toast_invalid_sale_price_desc'),
             variant: "destructive"
         });
         return;
     }
     // Validate Min Stock Level (must be number if not empty, or empty)
     if (editedProduct.minStockLevel !== undefined && editedProduct.minStockLevel !== null && (isNaN(Number(editedProduct.minStockLevel)) || Number(editedProduct.minStockLevel) < 0)) {
-      toast({ title: "Invalid Min Stock", description: "Minimum stock level must be a non-negative number.", variant: "destructive" });
+      toast({ title: t('product_detail_toast_invalid_min_stock_title'), description: t('product_detail_toast_invalid_min_stock_desc'), variant: "destructive" });
       return;
     }
     // Validate Max Stock Level
     if (editedProduct.maxStockLevel !== undefined && editedProduct.maxStockLevel !== null && (isNaN(Number(editedProduct.maxStockLevel)) || Number(editedProduct.maxStockLevel) < 0)) {
-      toast({ title: "Invalid Max Stock", description: "Maximum stock level must be a non-negative number.", variant: "destructive" });
+      toast({ title: t('product_detail_toast_invalid_max_stock_title'), description: t('product_detail_toast_invalid_max_stock_desc'), variant: "destructive" });
       return;
     }
     if (editedProduct.minStockLevel !== undefined && editedProduct.maxStockLevel !== undefined && Number(editedProduct.minStockLevel) > Number(editedProduct.maxStockLevel)) {
-        toast({ title: "Invalid Stock Levels", description: "Minimum stock cannot be greater than maximum stock.", variant: "destructive" });
+        toast({ title: t('product_detail_toast_invalid_stock_levels_title'), description: t('product_detail_toast_invalid_stock_levels_desc'), variant: "destructive" });
         return;
     }
 
@@ -197,16 +199,16 @@ export default function ProductDetailPage() {
 
       await updateProductService(product.id, productToSave);
       toast({
-        title: "Product Updated",
-        description: "Changes saved successfully.",
+        title: t('product_detail_toast_updated_title'),
+        description: t('product_detail_toast_updated_desc'),
       });
       setIsEditing(false);
       await loadProduct();
     } catch (err) {
       console.error("Failed to save product:", err);
       toast({
-        title: "Save Failed",
-        description: "Could not save product changes.",
+        title: t('product_detail_toast_save_failed_title'),
+        description: t('product_detail_toast_save_failed_desc'),
         variant: "destructive",
       });
     } finally {
@@ -220,15 +222,15 @@ export default function ProductDetailPage() {
     try {
       await deleteProductService(product.id);
       toast({
-        title: "Product Deleted",
-        description: `Product "${product.shortName || product.description}" has been deleted.`,
+        title: t('product_detail_toast_deleted_title'),
+        description: t('product_detail_toast_deleted_desc', { productName: product.shortName || product.description }),
       });
       router.push('/inventory?refresh=true');
     } catch (err) {
       console.error("Failed to delete product:", err);
       toast({
-        title: "Delete Failed",
-        description: "Could not delete the product.",
+        title: t('product_detail_toast_delete_failed_title'),
+        description: t('product_detail_toast_delete_failed_desc'),
         variant: "destructive",
       });
     } finally {
@@ -248,8 +250,8 @@ export default function ProductDetailPage() {
         setEditedProduct({ ...product }); // Reset to original product data
         setIsEditing(false);
         toast({
-            title: "Edit Cancelled",
-            description: "Your changes were not saved.",
+            title: t('product_detail_toast_edit_cancelled_title'),
+            description: t('product_detail_toast_edit_cancelled_desc'),
             variant: "default",
         });
     }
@@ -267,13 +269,13 @@ export default function ProductDetailPage() {
        handleInputChange('barcode', barcodeValue);
        setIsScanning(false);
        toast({
-           title: "Barcode Scanned",
-           description: `Barcode set to: ${barcodeValue}`,
+           title: t('product_detail_toast_barcode_scanned_title'),
+           description: t('product_detail_toast_barcode_scanned_desc', { barcode: barcodeValue }),
        });
    };
 
 
-   const renderViewItem = (icon: React.ElementType, label: string, value: string | number | undefined | null, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
+   const renderViewItem = (icon: React.ElementType, labelKey: string, value: string | number | undefined | null, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
      const IconComponent = icon;
      let displayValue: string | React.ReactNode = '-';
 
@@ -283,10 +285,10 @@ export default function ProductDetailPage() {
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value);
             else displayValue = formatDisplayNumber(value, { decimals: 2, useGrouping: true });
         } else {
-            displayValue = value || (isBarcode || isStockLevel ? 'Not set' : '-');
+            displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
      } else {
-        displayValue = (isBarcode || isStockLevel || (label === "Sale Price (₪)" && isCurrency) || (label === "Unit Price (Cost)" && isCurrency)) ? 'Not set' : '-';
+        displayValue = (isBarcode || isStockLevel || (labelKey === "product_detail_label_sale_price" && isCurrency) || (labelKey === "product_detail_label_unit_price_cost" && isCurrency)) ? t('product_detail_not_set') : '-';
      }
 
 
@@ -294,14 +296,14 @@ export default function ProductDetailPage() {
        <div className="flex items-start space-x-3 py-2">
          <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
          <div className="flex-grow">
-           <p className="text-sm font-medium text-muted-foreground">{label}</p>
+           <p className="text-sm font-medium text-muted-foreground">{t(labelKey)}</p>
            <p className="text-base font-semibold">{displayValue}</p>
          </div>
        </div>
      );
    };
 
-    const renderEditItem = (icon: React.ElementType, label: string, value: string | number | undefined | null, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
+    const renderEditItem = (icon: React.ElementType, labelKey: string, value: string | number | undefined | null, fieldKey: keyof Product, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
         const IconComponent = icon;
         const inputType =
           fieldKey === 'quantity' || fieldKey === 'unitPrice' || fieldKey === 'salePrice' || fieldKey === 'lineTotal' || fieldKey === 'minStockLevel' || fieldKey === 'maxStockLevel'
@@ -321,7 +323,7 @@ export default function ProductDetailPage() {
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
             <div className="flex-grow">
               <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">
-                {label} {isSalePriceField && <span className="text-destructive">*</span>}
+                {t(labelKey)} {isSalePriceField && <span className="text-destructive">*</span>}
               </Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -333,7 +335,7 @@ export default function ProductDetailPage() {
                     step={inputType === 'number' ? (isCurrency ? '0.01' : '1') : undefined}
                     min={inputType === 'number' ? (isSalePriceField ? '0.01' : (isStockLevel ? "0" : "0")) : undefined}
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
-                    placeholder={isStockLevel ? "Optional" : (isSalePriceField ? "Required" : "")}
+                    placeholder={isStockLevel ? t('optional_placeholder') : (isSalePriceField ? t('required_placeholder') : "")}
                     required={isSalePriceField}
                   />
                   {isBarcode && (
@@ -344,7 +346,7 @@ export default function ProductDetailPage() {
                         className="mt-1 h-9 w-9 flex-shrink-0"
                         onClick={handleScanBarcode}
                         disabled={isSaving || isDeleting}
-                        aria-label="Scan Barcode"
+                        aria-label={t('product_detail_scan_barcode_button_aria')}
                     >
                         <Camera className="h-4 w-4" />
                     </Button>
@@ -370,7 +372,7 @@ export default function ProductDetailPage() {
          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
         <p className="text-xl text-destructive mb-4">{error}</p>
         <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+          <ArrowLeft className="mr-2 h-4 w-4" /> {t('go_back_button')}
         </Button>
       </div>
     );
@@ -379,9 +381,9 @@ export default function ProductDetailPage() {
   if (!product) {
      return (
        <div className="container mx-auto p-4 md:p-8 text-center">
-         <p>Product not found.</p>
+         <p>{t('product_not_found')}</p>
          <Button variant="outline" onClick={handleBack} className="mt-4">
-           <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+           <ArrowLeft className="mr-2 h-4 w-4" /> {t('go_back_button')}
          </Button>
        </div>
      );
@@ -392,17 +394,17 @@ export default function ProductDetailPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
          <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting}>
-           <ArrowLeft className="mr-2 h-4 w-4" /> Back
+           <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
          </Button>
          <div className="flex gap-2">
              {isEditing ? (
                  <>
                      <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving || isDeleting}>
-                         <X className="mr-2 h-4 w-4" /> Cancel
+                         <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
                      </Button>
                      <Button onClick={handleSave} disabled={isSaving || isDeleting}>
                          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                         Save Changes
+                         {isSaving ? t('saving_button') : t('save_changes_button')}
                      </Button>
                  </>
              ) : (
@@ -411,28 +413,28 @@ export default function ProductDetailPage() {
                          <AlertDialogTrigger asChild>
                             <Button variant="destructive" disabled={isDeleting}>
                                 {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                                Delete
+                                {isDeleting ? t('deleting_button') : t('delete_button')}
                             </Button>
                          </AlertDialogTrigger>
                          <AlertDialogContent>
                             <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogTitle>{t('product_detail_delete_confirm_title')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                               This action cannot be undone. This will permanently delete the product "{product.shortName || product.description}".
+                               {t('product_detail_delete_confirm_desc', { productName: product.shortName || product.description })}
                             </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
                             <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                               Yes, Delete Product
+                               {t('product_detail_delete_confirm_action')}
                             </AlertDialogAction>
                             </AlertDialogFooter>
                          </AlertDialogContent>
                       </AlertDialog>
 
                      <Button onClick={handleEdit}>
-                         <Pencil className="mr-2 h-4 w-4" /> Edit
+                         <Pencil className="mr-2 h-4 w-4" /> {t('edit_button')}
                      </Button>
                  </>
              )}
@@ -443,7 +445,7 @@ export default function ProductDetailPage() {
         <CardHeader>
            {isEditing ? (
              <>
-                <Label htmlFor="shortName" className="text-sm font-medium text-muted-foreground">Product Name</Label>
+                <Label htmlFor="shortName" className="text-sm font-medium text-muted-foreground">{t('product_detail_label_product_name')}</Label>
                 <Input
                     id="shortName"
                     value={editedProduct.shortName || ''}
@@ -451,7 +453,7 @@ export default function ProductDetailPage() {
                     className="text-2xl sm:text-3xl font-bold h-auto p-0 border-0 shadow-none focus-visible:ring-0"
                     disabled={isSaving || isDeleting}
                     />
-                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground pt-2">Full Description</Label>
+                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_full_description')}</Label>
                 <Input
                     id="description"
                     value={editedProduct.description || ''}
@@ -459,7 +461,7 @@ export default function ProductDetailPage() {
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
                   />
-                 <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2">Catalog Number</Label>
+                 <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_catalog_number')}</Label>
                  <Input
                     id="catalogNumber"
                     value={editedProduct.catalogNumber || ''}
@@ -484,19 +486,19 @@ export default function ProductDetailPage() {
            {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && !isEditing && (
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
-                    Low Stock
+                    {t('product_detail_low_stock_badge')}
                 </span>
             )}
             {product.quantity === 0 && !isEditing && (
                  <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
-                    Out of Stock
+                    {t('product_detail_out_of_stock_badge')}
                 </span>
             )}
              {product.maxStockLevel !== undefined && product.quantity > product.maxStockLevel && !isEditing && (
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
-                    Over Stock
+                    {t('product_detail_over_stock_badge')}
                 </span>
             )}
         </CardHeader>
@@ -506,22 +508,23 @@ export default function ProductDetailPage() {
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
              {isEditing ? (
                  <>
-                    {renderEditItem(Barcode, "Barcode", editedProduct.barcode, 'barcode', false, false, true)}
-                    {renderEditItem(Layers, "Quantity", editedProduct.quantity, 'quantity', false, true)}
-                    {renderEditItem(Tag, "Unit Price (Cost)", editedProduct.unitPrice, 'unitPrice', true)}
-                    {renderEditItem(DollarSign, "Sale Price (₪)", editedProduct.salePrice, 'salePrice', true)}
-                    {renderEditItem(DollarSign, "Line Total (Cost)", editedProduct.lineTotal, 'lineTotal', true)}
-                    {renderEditItem(TrendingDown, "Min Stock Level", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
-                    {renderEditItem(TrendingUp, "Max Stock Level", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
+                    {renderEditItem(Barcode, "product_detail_label_barcode", editedProduct.barcode, 'barcode', false, false, true)}
+                    {renderEditItem(Layers, "product_detail_label_quantity", editedProduct.quantity, 'quantity', false, true)}
+                    {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
+                    {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
+                    {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true)}
+                    {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
+                    {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                  </>
              ) : (
                  <>
-                    {renderViewItem(Barcode, "Barcode", product.barcode, false, false, true)}
-                    {renderViewItem(Layers, "Quantity", product.quantity, false, true)}
-                    {renderViewItem(Tag, "Unit Price (Cost)", product.unitPrice, true)}
-                    {renderViewItem(DollarSign, "Line Total (Cost)", product.lineTotal, true)}
-                    {renderViewItem(TrendingDown, "Min Stock Level", product.minStockLevel, false, false, false, true)}
-                    {renderViewItem(TrendingUp, "Max Stock Level", product.maxStockLevel, false, false, false, true)}
+                    {renderViewItem(Barcode, "product_detail_label_barcode", product.barcode, false, false, true)}
+                    {renderViewItem(Layers, "product_detail_label_quantity", product.quantity, false, true)}
+                    {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, true)}
+                    {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, true)}
+                    {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, true)}
+                    {renderViewItem(TrendingDown, "product_detail_label_min_stock", product.minStockLevel, false, false, false, true)}
+                    {renderViewItem(TrendingUp, "product_detail_label_max_stock", product.maxStockLevel, false, false, false, true)}
                  </>
              )}
           </div>

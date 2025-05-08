@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -21,21 +20,22 @@ import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, Refres
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from '@/components/ui/separator'; // Import Separator
-import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/useTranslation';
+
 
 type PosSystemInfo = { systemId: string; systemName: string };
 
-const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label: string; type: string; tooltip?: string }[]> = {
+const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; labelKey: string; type: string; tooltipKey?: string }[]> = {
   caspit: [
-    { key: 'user', label: 'Caspit Username', type: 'text', tooltip: 'Your Caspit login username.' },
-    { key: 'pwd', label: 'Caspit Password', type: 'password', tooltip: 'Your Caspit login password.' },
-    { key: 'osekMorshe', label: 'Business ID (Osek Morshe)', type: 'text', tooltip: 'Your Caspit business identifier (עוסק מורשה).' },
+    { key: 'user', labelKey: 'pos_config_caspit_user', type: 'text', tooltipKey: 'pos_config_caspit_user_tooltip' },
+    { key: 'pwd', labelKey: 'pos_config_caspit_pwd', type: 'password', tooltipKey: 'pos_config_caspit_pwd_tooltip' },
+    { key: 'osekMorshe', labelKey: 'pos_config_caspit_osek', type: 'text', tooltipKey: 'pos_config_caspit_osek_tooltip' },
   ],
   hashavshevet: [
-     { key: 'apiKey', label: 'Hashavshevet API Key', type: 'password', tooltip: 'Your unique API key for Hashavshevet.' },
-     { key: 'apiSecret', label: 'Hashavshevet API Secret (Optional)', type: 'password', tooltip: 'Your API Secret, if required by Hashavshevet.' },
-     { key: 'companyId', label: 'Hashavshevet Company ID', type: 'text', tooltip: 'Your specific company identifier in Hashavshevet.' },
-     { key: 'endpointUrl', label: 'Hashavshevet API URL (Optional)', type: 'text', tooltip: 'Override the default API URL if needed.' },
+     { key: 'apiKey', labelKey: 'pos_config_hash_apikey', type: 'password', tooltipKey: 'pos_config_hash_apikey_tooltip' },
+     { key: 'apiSecret', labelKey: 'pos_config_hash_apisecret', type: 'password', tooltipKey: 'pos_config_hash_apisecret_tooltip' },
+     { key: 'companyId', labelKey: 'pos_config_hash_companyid', type: 'text', tooltipKey: 'pos_config_hash_companyid_tooltip' },
+     { key: 'endpointUrl', labelKey: 'pos_config_hash_endpoint', type: 'text', tooltipKey: 'pos_config_hash_endpoint_tooltip' },
   ],
 };
 
@@ -51,6 +51,7 @@ export default function PosIntegrationSettingsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const loadInitialData = useCallback(async () => {
     setIsLoading(true);
@@ -66,14 +67,14 @@ export default function PosIntegrationSettingsPage() {
     } catch (error) {
       console.error("Error loading POS settings:", error);
       toast({
-        title: "Error Loading Settings",
-        description: "Could not load POS integration settings.",
+        title: t('pos_toast_error_loading_title'),
+        description: t('pos_toast_error_loading_desc'),
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     loadInitialData();
@@ -90,7 +91,7 @@ export default function PosIntegrationSettingsPage() {
     }).catch(error => {
         console.error("Error fetching settings on system change:", error);
         setConfigValues({});
-        toast({ title: "Error", description: "Could not load settings for the selected system.", variant: "destructive" });
+        toast({ title: t('error_title'), description: t('pos_toast_error_system_change'), variant: "destructive" });
     });
     setTestResult(null);
     setSyncResults([]);
@@ -113,17 +114,17 @@ export default function PosIntegrationSettingsPage() {
        result = await testPosConnection(selectedSystemId, configValues);
        setTestResult(result);
        toast({
-         title: result.success ? 'Connection Test Succeeded' : 'Connection Test Failed',
-         description: result.message,
+         title: result.success ? t('pos_toast_test_success_title') : t('pos_toast_test_fail_title'),
+         description: result.message, // Message from action is already potentially translated or generic
          variant: result.success ? 'default' : 'destructive',
        });
      } catch (error: any) {
         console.error("[POS Page] Error during test connection call:", error);
-        const errorMessage = `Error: ${error.message || 'Unknown error during test'}`;
+        const errorMessage = t('pos_toast_test_error_desc', { message: error.message || t('pos_unknown_error')});
         result = { success: false, message: errorMessage };
         setTestResult(result);
        toast({
-         title: 'Connection Test Error',
+         title: t('pos_toast_test_error_title'),
          description: errorMessage,
          variant: 'destructive',
        });
@@ -139,16 +140,16 @@ export default function PosIntegrationSettingsPage() {
     try {
       await savePosSettingsService(selectedSystemId, configValues);
       toast({
-        title: "Settings Saved",
-        description: `POS integration settings for ${availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || 'system'} saved successfully.`,
+        title: t('pos_toast_save_success_title'),
+        description: t('pos_toast_save_success_desc', { systemName: availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || 'system' }),
       });
        setTestResult(null);
        setSyncResults([]);
     } catch (error: any) {
       console.error("Error saving settings:", error);
       toast({
-        title: "Save Failed",
-        description: `Could not save settings: ${error.message || 'Unknown error'}`,
+        title: t('pos_toast_save_fail_title'),
+        description: t('pos_toast_save_fail_desc', { message: error.message || t('pos_unknown_error')}),
         variant: "destructive",
       });
     } finally {
@@ -161,7 +162,7 @@ export default function PosIntegrationSettingsPage() {
 
      setIsSyncing(true);
      setSyncResults([]);
-     toast({ title: "Inventory Sync Started", description: `Starting inventory sync with ${selectedSystemId}...` });
+     toast({ title: t('pos_toast_sync_start_title'), description: t('pos_toast_sync_start_desc', { systemId: selectedSystemId }) });
 
      try {
          console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
@@ -173,33 +174,33 @@ export default function PosIntegrationSettingsPage() {
                  console.log(`[POS Page] Saving ${inventoryResult.products.length} synced products...`);
                  await finalizeSaveProductsService(inventoryResult.products, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
                  console.log(`[POS Page] Successfully saved synced products.`);
-                 setSyncResults(prev => [...prev, { success: true, message: `Saved ${inventoryResult.products?.length ?? 0} products to inventory.` }]);
+                 setSyncResults(prev => [...prev, { success: true, message: t('pos_toast_sync_save_products_desc', { count: inventoryResult.products?.length ?? 0 }) }]);
                  toast({
-                    title: "Inventory Sync Completed",
-                    description: `Successfully synced and saved ${inventoryResult.products.length} products from ${selectedSystemId}.`,
+                    title: t('pos_toast_sync_complete_title'),
+                    description: t('pos_toast_sync_complete_desc', { count: inventoryResult.products.length, systemId: selectedSystemId }),
                  });
              } catch (saveError: any) {
                  console.error("[POS Page] Error saving synced products:", saveError);
-                 setSyncResults(prev => [...prev, { success: false, message: `Failed to save products: ${saveError.message}` }]);
+                 setSyncResults(prev => [...prev, { success: false, message: t('pos_toast_sync_save_fail_desc_products', { message: saveError.message }) }]);
                  toast({
-                     title: "Product Save Failed",
-                     description: `Could not save synced products: ${saveError.message || 'Unknown error'}`,
+                     title: t('pos_toast_sync_save_fail_title_products'),
+                     description: t('pos_toast_sync_save_fail_desc_products_generic', { message: saveError.message || t('pos_unknown_error') }),
                      variant: "destructive",
                  });
              }
          } else {
             toast({
-                title: "Inventory Sync Failed",
-                description: inventoryResult.message || `Failed to sync inventory with ${selectedSystemId}.`,
+                title: t('pos_toast_sync_fail_title_inventory'),
+                description: inventoryResult.message || t('pos_toast_sync_fail_desc_inventory_generic', { systemId: selectedSystemId }),
                 variant: "destructive",
             });
          }
      } catch (error: any) {
          console.error(`[POS Page] Error during ${selectedSystemId} inventory sync process:`, error);
-         setSyncResults([{ success: false, message: `Inventory sync failed: ${error.message || 'Unknown error'}` }]);
+         setSyncResults([{ success: false, message: t('pos_toast_sync_error_desc_process', { message: error.message || t('pos_unknown_error') }) }]);
          toast({
-             title: "Inventory Sync Error",
-             description: `An error occurred during inventory synchronization: ${error.message || 'Unknown error'}`,
+             title: t('pos_toast_sync_error_title_process'),
+             description: t('pos_toast_sync_error_desc_process_generic', { message: error.message || t('pos_unknown_error') }),
              variant: "destructive",
          });
      } finally {
@@ -211,21 +212,21 @@ export default function PosIntegrationSettingsPage() {
     if (!selectedSystemId) return null;
     const fields = systemConfigFields[selectedSystemId] || [];
     if (fields.length === 0) {
-        return <p className="text-sm text-muted-foreground">No specific configuration needed for this system, or configuration fields not yet defined.</p>;
+        return <p className="text-sm text-muted-foreground">{t('pos_no_config_needed')}</p>;
     }
     return (
         <TooltipProvider>
             {fields.map(field => (
                 <div key={field.key} className="space-y-2">
                     <Label htmlFor={field.key} className="flex items-center">
-                    {field.label}
-                    {field.tooltip && (
+                    {t(field.labelKey)}
+                    {field.tooltipKey && (
                         <Tooltip delayDuration={100}>
                         <TooltipTrigger asChild>
                             <HelpCircle className="ml-1.5 h-3.5 w-3.5 text-muted-foreground cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{field.tooltip}</p>
+                            <p>{t(field.tooltipKey)}</p>
                         </TooltipContent>
                         </Tooltip>
                     )}
@@ -235,7 +236,7 @@ export default function PosIntegrationSettingsPage() {
                     type={field.type}
                     value={configValues[field.key] || ''}
                     onChange={(e) => handleInputChange(field.key, e.target.value)}
-                    placeholder={`Enter ${field.label}`}
+                    placeholder={t('pos_placeholder_enter_field', { fieldLabel: t(field.labelKey) })}
                     />
                 </div>
             ))}
@@ -256,16 +257,16 @@ export default function PosIntegrationSettingsPage() {
       <Card className="shadow-md scale-fade-in">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-            <Plug className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> Point of Sale (POS) Integration
+            <Plug className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('pos_title')}
           </CardTitle>
-          <CardDescription>Connect InvoTrack to your POS system to synchronize data.</CardDescription>
+          <CardDescription>{t('pos_description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="pos-system">Select POS System</Label>
+            <Label htmlFor="pos-system">{t('pos_select_system_label')}</Label>
             <Select value={selectedSystemId} onValueChange={handleSystemChange}>
               <SelectTrigger id="pos-system" className="w-full md:w-[300px]">
-                <SelectValue placeholder="Choose a system..." />
+                <SelectValue placeholder={t('pos_select_system_placeholder')} />
               </SelectTrigger>
               <SelectContent>
                 {availableSystems.length > 0 ? (
@@ -275,7 +276,7 @@ export default function PosIntegrationSettingsPage() {
                     </SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="none" disabled>No systems available</SelectItem>
+                  <SelectItem value="none" disabled>{t('pos_no_systems_available')}</SelectItem>
                 )}
               </SelectContent>
             </Select>
@@ -284,7 +285,7 @@ export default function PosIntegrationSettingsPage() {
           {selectedSystemId && (
             <Card className="bg-muted/30 p-4 md:p-6 space-y-4 border scale-fade-in" style={{animationDelay: '0.1s'}}>
                 <h3 className="text-lg font-medium mb-4">
-                    Configure {availableSystems.find(s => s.systemId === selectedSystemId)?.systemName}
+                    {t('pos_configure_system_title', { systemName: availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || '' })}
                 </h3>
                 {renderConfigFields()}
 
@@ -296,9 +297,9 @@ export default function PosIntegrationSettingsPage() {
                         className="w-full sm:w-auto"
                     >
                         {isTesting ? (
-                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Testing...</>
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('pos_testing_button')}...</>
                         ) : (
-                            <>Test Connection</>
+                            <>{t('pos_test_connection_button')}</>
                         )}
                     </Button>
                     {testResult && (
@@ -315,9 +316,9 @@ export default function PosIntegrationSettingsPage() {
                          className="w-full sm:w-auto"
                      >
                      {isSaving ? (
-                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving_button')}...</>
                      ) : (
-                         <><Save className="mr-2 h-4 w-4" /> Save Settings</>
+                         <><Save className="mr-2 h-4 w-4" /> {t('pos_save_settings_button')}</>
                      )}
                      </Button>
                  </div>
@@ -326,7 +327,7 @@ export default function PosIntegrationSettingsPage() {
 
            {selectedSystemId && (
                <Card className="p-4 md:p-6 space-y-4 border scale-fade-in" style={{animationDelay: '0.2s'}}>
-                   <h3 className="text-lg font-medium">Manual Inventory Synchronization</h3>
+                   <h3 className="text-lg font-medium">{t('pos_manual_sync_title')}</h3>
                    <Separator />
                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                        <Button
@@ -335,9 +336,9 @@ export default function PosIntegrationSettingsPage() {
                            className="w-full sm:w-auto"
                        >
                            {isSyncing ? (
-                               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Syncing Inventory...</>
+                               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('pos_syncing_button')}...</>
                            ) : (
-                               <><RefreshCw className="mr-2 h-4 w-4" /> Sync Inventory Now</>
+                               <><RefreshCw className="mr-2 h-4 w-4" /> {t('pos_sync_now_button')}</>
                            )}
                        </Button>
                        {syncResults.length > 0 && (
@@ -345,31 +346,31 @@ export default function PosIntegrationSettingsPage() {
                                {syncResults.map((result, index) => (
                                    <div key={index} className={`flex items-center ${result.success ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
                                        {result.success ? <CheckCircle className="mr-1 h-4 w-4 flex-shrink-0" /> : <XCircle className="mr-1 h-4 w-4 flex-shrink-0" />}
-                                       <span>{result.message} {result.itemsSynced !== undefined ? `(${result.itemsSynced} items)` : ''}</span>
+                                       <span>{result.message} {result.itemsSynced !== undefined ? `(${result.itemsSynced} ${t('pos_items_synced_label')})` : ''}</span>
                                    </div>
                                ))}
                            </div>
                        )}
                    </div>
-                    <p className="text-xs text-muted-foreground">Manually synchronizes product data from the selected POS system.</p>
-                    <p className="text-xs text-muted-foreground mt-2">Note: Automatic daily sync requires additional setup (e.g., Cron Jobs).</p>
+                    <p className="text-xs text-muted-foreground">{t('pos_manual_sync_desc')}</p>
+                    <p className="text-xs text-muted-foreground mt-2">{t('pos_auto_sync_note')}</p>
                </Card>
            )}
 
 
           {!selectedSystemId && availableSystems.length > 0 && (
             <Alert className="scale-fade-in" style={{animationDelay: '0.1s'}}>
-              <AlertTitle>Select a System</AlertTitle>
+              <AlertTitle>{t('pos_alert_select_system_title')}</AlertTitle>
               <AlertDescription>
-                Please choose a POS system from the list above to configure the integration.
+                {t('pos_alert_select_system_desc')}
               </AlertDescription>
             </Alert>
           )}
             {!selectedSystemId && availableSystems.length === 0 && (
             <Alert variant="destructive" className="scale-fade-in" style={{animationDelay: '0.1s'}}>
-              <AlertTitle>No Adapters Available</AlertTitle>
+              <AlertTitle>{t('pos_alert_no_adapters_title')}</AlertTitle>
               <AlertDescription>
-                No POS system adapters are currently configured in the application. Add adapters in the code to enable integration.
+                {t('pos_alert_no_adapters_desc')}
               </AlertDescription>
             </Alert>
           )}

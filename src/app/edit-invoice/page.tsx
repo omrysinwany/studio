@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -28,6 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
 import SupplierConfirmationDialog from '@/components/supplier-confirmation-dialog';
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 interface EditableProduct extends Product {
@@ -52,6 +52,7 @@ function EditInvoiceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
   const [originalFileName, setOriginalFileName] = useState<string>(''); 
@@ -124,7 +125,7 @@ function EditInvoiceContent() {
     if (nameParam) {
       setOriginalFileName(decodeURIComponent(nameParam)); 
     } else {
-        setOriginalFileName('Unknown Document');
+        setOriginalFileName(t('edit_invoice_unknown_document'));
     }
 
     if (key) {
@@ -132,11 +133,11 @@ function EditInvoiceContent() {
         const storedData = localStorage.getItem(key);
 
         if (!storedData) {
-            setErrorLoading("Scan results not found. They might have expired or been cleared.");
+            setErrorLoading(t('edit_invoice_error_scan_results_not_found'));
             setProducts([]);
             toast({
-              title: "Error Loading Data",
-              description: "Could not load the invoice data for editing. Scan results not found or expired.",
+              title: t('edit_invoice_toast_error_loading_title'),
+              description: t('edit_invoice_toast_error_loading_desc_not_found'),
               variant: "destructive",
             });
             cleanupTemporaryData(); 
@@ -151,10 +152,10 @@ function EditInvoiceContent() {
         } catch (jsonParseError) {
              console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
              cleanupTemporaryData(); 
-             setErrorLoading("Invalid JSON structure received from storage.");
+             setErrorLoading(t('edit_invoice_error_invalid_json'));
               toast({
-                  title: "Error Loading Data",
-                  description: "Could not load the invoice data for editing. Invalid data format.",
+                  title: t('edit_invoice_toast_error_loading_title'),
+                  description: t('edit_invoice_toast_error_loading_desc_invalid_format'),
                   variant: "destructive",
               });
             setProducts([]);
@@ -192,21 +193,21 @@ function EditInvoiceContent() {
         } else if (!parsedData.error) {
           console.error("Parsed data is missing 'products' array or is invalid:", parsedData);
           cleanupTemporaryData(); 
-           setErrorLoading("Invalid data structure received after parsing.");
+           setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
            toast({
-               title: "Error Loading Data",
-               description: "Could not load the invoice data for editing. Invalid data structure.",
+               title: t('edit_invoice_toast_error_loading_title'),
+               description: t('edit_invoice_toast_error_loading_desc_invalid_structure'),
                variant: "destructive",
            });
           setProducts([]);
         }
     } else if (!initialDataLoaded) {
        hasAttemptedLoad = true;
-       setErrorLoading("No invoice data key provided in the URL.");
+       setErrorLoading(t('edit_invoice_error_no_key'));
        setProducts([]);
        toast({
-          title: "No Data Found",
-          description: "No invoice data key provided for editing.",
+          title: t('edit_invoice_toast_no_data_title'),
+          description: t('edit_invoice_toast_no_data_desc'),
           variant: "destructive",
         });
     }
@@ -215,7 +216,7 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryData]);
+  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryData, t]);
 
 
   const checkSupplier = async (scannedSupplierName?: string) => {
@@ -236,7 +237,7 @@ function EditInvoiceContent() {
       }
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
-      toast({ title: "Error fetching suppliers", variant: "destructive" });
+      toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
       setExtractedSupplierName(scannedSupplierName); 
       setIsSupplierConfirmed(true);
     }
@@ -249,10 +250,10 @@ function EditInvoiceContent() {
       if (isNew) {
         try {
           await updateSupplierContactInfoService(confirmedSupplierName, {}); 
-          toast({ title: "New Supplier Added", description: `${confirmedSupplierName} has been added to your supplier list.` });
+          toast({ title: t('edit_invoice_toast_new_supplier_added_title'), description: t('edit_invoice_toast_new_supplier_added_desc', { supplierName: confirmedSupplierName }) });
         } catch (error) {
           console.error("Failed to add new supplier:", error);
-          toast({ title: "Failed to Add Supplier", variant: "destructive" });
+          toast({ title: t('edit_invoice_toast_fail_add_supplier_title'), variant: "destructive" });
         }
       }
     } else {
@@ -319,8 +320,8 @@ function EditInvoiceContent() {
   const handleRemoveRow = (id: string) => {
     setProducts(prevProducts => prevProducts.filter(product => product.id !== id));
      toast({
-        title: "Row Removed",
-        description: "Product row has been removed.",
+        title: t('edit_invoice_toast_row_removed_title'),
+        description: t('edit_invoice_toast_row_removed_desc'),
         variant: "default",
      });
   };
@@ -365,16 +366,16 @@ function EditInvoiceContent() {
 
 
           toast({
-              title: "Products Saved",
-              description: "Your changes have been saved successfully.",
+              title: t('edit_invoice_toast_products_saved_title'),
+              description: t('edit_invoice_toast_products_saved_desc'),
           });
           router.push('/inventory?refresh=true');
 
       } catch (error) {
           console.error("Failed to finalize save products:", error);
           toast({
-              title: "Save Failed",
-              description: `Could not save the product data after all checks. ${ (error as Error).message || 'Please try again.'}`,
+              title: t('edit_invoice_toast_save_failed_title'),
+              description: t('edit_invoice_toast_save_failed_desc_finalize', { message: (error as Error).message || t('edit_invoice_try_again')}),
               variant: "destructive",
           });
       } finally {
@@ -386,7 +387,7 @@ function EditInvoiceContent() {
  const handleSave = async () => {
     if (!isSupplierConfirmed) {
         setShowSupplierDialog(true); 
-        toast({ title: "Supplier Not Confirmed", description: "Please confirm the supplier before saving.", variant: "default" });
+        toast({ title: t('edit_invoice_toast_supplier_not_confirmed_title'), description: t('edit_invoice_toast_supplier_not_confirmed_desc'), variant: "default" });
         return;
     }
 
@@ -406,8 +407,8 @@ function EditInvoiceContent() {
     } catch (error) {
         console.error("Error during initial save checks:", error);
         toast({
-            title: "Error Preparing Save",
-            description: `Could not prepare data for saving: ${(error as Error).message}. Please try again.`,
+            title: t('edit_invoice_toast_error_preparing_save_title'),
+            description: t('edit_invoice_toast_error_preparing_save_desc', { message: (error as Error).message}),
             variant: "destructive",
         });
         setIsSaving(false);
@@ -436,7 +437,7 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
             
             // A product needs details if it's new OR if it's marked with '-new' (an explicitly added row)
             // AND it doesn't have a sale price yet (assuming sale price is mandatory for new items)
-            return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && p.salePrice === undefined;
+            return (isProductConsideredNew || (p.id && p.id.includes('-new'))) && (p.salePrice === undefined || p.salePrice === null);
         });
 
         if (newProductsNeedingDetails.length > 0) {
@@ -450,8 +451,8 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
     } catch (error) {
         console.error("Error checking inventory for new product details prompt:", error);
         toast({
-            title: "Error Preparing New Product Details",
-            description: "Could not check for new products needing details.",
+            title: t('edit_invoice_toast_error_new_product_details_title'),
+            description: t('edit_invoice_toast_error_new_product_details_desc'),
             variant: "destructive",
         });
         setIsSaving(false);
@@ -470,8 +471,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         checkForNewProductsAndDetails(allProductsAfterPriceCheck);
     } else {
         toast({
-            title: "Save Cancelled",
-            description: "Price confirmation was cancelled. No changes were saved.",
+            title: t('edit_invoice_toast_save_cancelled_title'),
+            description: t('edit_invoice_toast_save_cancelled_desc_price'),
             variant: "default",
         });
         setIsSaving(false);
@@ -497,8 +498,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
          proceedWithFinalSave(finalProductsToSave);
      } else {
          toast({
-             title: "Save Process Incomplete",
-             description: "New product detail entry was cancelled. Changes were not fully saved.",
+             title: t('edit_invoice_toast_save_incomplete_title'),
+             description: t('edit_invoice_toast_save_incomplete_desc_details'),
              variant: "default",
          });
           setIsSaving(false);
@@ -515,7 +516,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
      return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-           <span className="ml-2">Loading data...</span>
+           <span className="ml-2">{t('loading_data')}...</span>
         </div>
      );
    }
@@ -524,11 +525,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         return (
             <div className="container mx-auto p-4 md:p-8 space-y-4">
                 <Alert variant="destructive">
-                    <AlertTitle>Error Loading Invoice Data</AlertTitle>
+                    <AlertTitle>{t('edit_invoice_error_loading_title')}</AlertTitle>
                     <AlertDescription>{errorLoading}</AlertDescription>
                 </Alert>
                 <Button variant="outline" onClick={handleGoBack}>
-                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
+                   <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
                 </Button>
             </div>
         );
@@ -538,38 +539,38 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
          return (
              <div className="container mx-auto p-4 md:p-8 space-y-4">
                  <Alert variant="default">
-                     <AlertTitle>No Products Found</AlertTitle>
+                     <AlertTitle>{t('edit_invoice_no_products_found_title')}</AlertTitle>
                      <AlertDescription>
-                        The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.
+                        {t('edit_invoice_no_products_found_desc')}
                      </AlertDescription>
                  </Alert>
                  <Card className="shadow-md scale-fade-in">
                      <CardHeader>
-                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
+                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">{t('edit_invoice_add_manually_title')}</CardTitle>
                          <CardDescription>
-                            File: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
+                            {t('edit_invoice_file')}: <span className="font-medium">{originalFileName || t('edit_invoice_unknown_document')}</span>
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
                            <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
                              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
-                               <PlusCircle className="mr-2 h-4 w-4" /> Add Row
+                               <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                              </Button>
                              <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                               {isSaving ? (
                                  <>
-                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...
                                  </>
                               ) : (
                                  <>
-                                   <Save className="mr-2 h-4 w-4" /> Save Changes
+                                   <Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}
                                  </>
                                )}
                              </Button>
                          </div>
                            <div className="mt-6">
                                <Button variant="outline" onClick={handleGoBack}>
-                                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
+                                   <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
                                </Button>
                            </div>
                       </CardContent>
@@ -582,38 +583,38 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         return (
             <div className="container mx-auto p-4 md:p-8 space-y-4">
                 <Alert variant="destructive">
-                    <AlertTitle>Scan Process Error</AlertTitle>
+                    <AlertTitle>{t('edit_invoice_scan_process_error_title')}</AlertTitle>
                     <AlertDescription>
-                        {`The document scan encountered an issue: ${scanProcessError}. You can try adding rows manually or go back and upload again.`}
+                        {t('edit_invoice_scan_process_error_desc', { error: scanProcessError })}
                     </AlertDescription>
                 </Alert>
                  <Card className="shadow-md scale-fade-in">
                      <CardHeader>
-                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Add Invoice Data Manually</CardTitle>
+                         <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">{t('edit_invoice_add_manually_title')}</CardTitle>
                          <CardDescription>
-                            File: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
+                           {t('edit_invoice_file')}: <span className="font-medium">{originalFileName || t('edit_invoice_unknown_document')}</span>
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
                            <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
                              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
-                               <PlusCircle className="mr-2 h-4 w-4" /> Add Row
+                               <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                              </Button>
                              <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
                               {isSaving ? (
                                  <>
-                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...
                                  </>
                               ) : (
                                  <>
-                                   <Save className="mr-2 h-4 w-4" /> Save Changes
+                                   <Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}
                                  </>
                                )}
                              </Button>
                          </div>
                            <div className="mt-6">
                                <Button variant="outline" onClick={handleGoBack}>
-                                   <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
+                                   <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
                                </Button>
                            </div>
                       </CardContent>
@@ -627,10 +628,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     <div className="container mx-auto p-4 md:p-8 space-y-6">
       <Card className="shadow-md scale-fade-in">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">Edit Invoice Data</CardTitle>
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">{t('edit_invoice_title')}</CardTitle>
           <CardDescription>
-             Review and edit the extracted data for: <span className="font-medium">{originalFileName || 'Unknown Document'}</span>
-             {extractedSupplierName && ` | Supplier: ${extractedSupplierName}`}
+             {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
+             {extractedSupplierName && ` | ${t('edit_invoice_supplier', { supplierName: extractedSupplierName })}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -638,14 +639,12 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             <Table className="min-w-[600px]"> 
               <TableHeader>
                 <TableRow>
-                  <TableHead className="px-2 sm:px-4 py-2">Catalog #</TableHead>
-                  <TableHead className="px-2 sm:px-4 py-2">Description</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Qty</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Unit Price (₪)</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Line Total (₪)</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Min Stock</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Max Stock</TableHead>
-                  <TableHead className="text-right px-2 sm:px-4 py-2">Actions</TableHead>
+                  <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
+                  <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_description')}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price')}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total')}</TableHead>
+                  <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -656,7 +655,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         value={product.catalogNumber || ''}
                         onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
                         className="min-w-[100px] h-9"
-                        aria-label={`Catalog number for ${product.description}`}
+                        aria-label={t('edit_invoice_aria_catalog', { description: product.description || '' })}
                       />
                     </TableCell>
                     <TableCell className="px-2 sm:px-4 py-2">
@@ -664,7 +663,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         value={product.description || ''}
                         onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
                         className="min-w-[150px] sm:min-w-[200px] h-9"
-                        aria-label={`Description for catalog number ${product.catalogNumber}`}
+                        aria-label={t('edit_invoice_aria_description', { catalogNumber: product.catalogNumber || '' })}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
@@ -675,7 +674,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         className="w-20 sm:w-24 text-right h-9"
                         min="0"
                         step="any"
-                        aria-label={`Quantity for ${product.description}`}
+                        aria-label={t('edit_invoice_aria_qty', { description: product.description || '' })}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
@@ -686,7 +685,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         className="w-24 sm:w-28 text-right h-9"
                         step="0.01"
                         min="0"
-                        aria-label={`Unit price for ${product.description}`}
+                        aria-label={t('edit_invoice_aria_unit_price', { description: product.description || '' })}
                       />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
@@ -697,30 +696,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         className="w-24 sm:w-28 text-right h-9"
                         step="0.01"
                          min="0"
-                         aria-label={`Line total for ${product.description}`}
+                         aria-label={t('edit_invoice_aria_line_total', { description: product.description || '' })}
                       />
-                    </TableCell>
-                     <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <Input
-                            type="number"
-                            value={formatInputValue(product.minStockLevel, 'stockLevel')}
-                            onChange={(e) => handleInputChange(product.id, 'minStockLevel', e.target.value)}
-                            className="w-20 sm:w-24 text-right h-9"
-                            min="0"
-                            placeholder="Optional"
-                            aria-label={`Minimum stock level for ${product.description}`}
-                        />
-                    </TableCell>
-                    <TableCell className="text-right px-2 sm:px-4 py-2">
-                        <Input
-                            type="number"
-                            value={formatInputValue(product.maxStockLevel, 'stockLevel')}
-                            onChange={(e) => handleInputChange(product.id, 'maxStockLevel', e.target.value)}
-                            className="w-20 sm:w-24 text-right h-9"
-                            min="0"
-                            placeholder="Optional"
-                            aria-label={`Maximum stock level for ${product.description}`}
-                        />
                     </TableCell>
                     <TableCell className="text-right px-2 sm:px-4 py-2">
                       <Button
@@ -728,7 +705,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         size="icon"
                         onClick={() => handleRemoveRow(product.id)}
                         className="text-destructive hover:text-destructive/80 h-8 w-8"
-                         aria-label={`Remove row for ${product.description}`}
+                         aria-label={t('edit_invoice_aria_remove_row', { description: product.description || '' })}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -740,23 +717,23 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </div>
           <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
              <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
-               <PlusCircle className="mr-2 h-4 w-4" /> Add Row
+               <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
              </Button>
              <Button onClick={handleSave} disabled={isSaving || products.length === 0 || !isSupplierConfirmed} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
               {isSaving ? (
                  <>
-                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...
                  </>
               ) : (
                  <>
-                   <Save className="mr-2 h-4 w-4" /> Save Changes
+                   <Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}
                  </>
                )}
              </Button>
           </div>
              <div className="mt-6">
                  <Button variant="outline" onClick={handleGoBack}>
-                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Upload
+                     <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
                  </Button>
              </div>
         </CardContent>
@@ -790,10 +767,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         <UnitPriceConfirmationDialog
           discrepancies={priceDiscrepancies}
           onComplete={handlePriceConfirmationComplete}
-          isOpen={!!priceDiscrepancies}
-          onOpenChange={(open) => {
-            if (!open) setPriceDiscrepancies(null);
-          }}
         />
       )}
     </div>
@@ -801,15 +774,15 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 }
 
 export default function EditInvoicePage() {
+  const { t } = useTranslation();
   return (
     <Suspense fallback={
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-           <span className="ml-2">Loading editor...</span>
+           <span className="ml-2">{t('loading_editor')}...</span>
         </div>
     }>
       <EditInvoiceContent />
     </Suspense>
   );
 }
-
