@@ -51,11 +51,12 @@ export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri
 
 
 // Constants for localStorage limits
-const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
-const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024;
 export const MAX_SCAN_RESULTS_SIZE_BYTES = 1 * 1024 * 1024; 
 
 
+// Remove initial mock data to start with a clean slate for new users
 const initialMockInventory: Product[] = [];
 const initialMockInvoices: InvoiceHistoryItem[] = [];
 const initialMockSuppliers: { name: string; phone?: string; email?: string }[] = [];
@@ -92,30 +93,24 @@ const getStoredData = <T extends {id?: string; name?: string}>(key: string, init
           id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
       }));
     } else {
-      
-      const dataWithIds = initialDataIfKeyMissing.map((item, index) => ({
-        ...item,
-        id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
-      }));
-      
-      if (dataWithIds.length > 0 && key !== INVENTORY_STORAGE_KEY && key !== SUPPLIERS_STORAGE_KEY && key !== INVOICES_STORAGE_KEY) {
-         localStorage.setItem(key, JSON.stringify(dataWithIds));
-      } else if (key === INVENTORY_STORAGE_KEY && initialMockInventory.length > 0 && initialDataIfKeyMissing.length > 0) {
-        localStorage.setItem(key, JSON.stringify(dataWithIds));
-      } else if (key === SUPPLIERS_STORAGE_KEY && initialMockSuppliers.length > 0 && initialDataIfKeyMissing.length > 0) {
-        localStorage.setItem(key, JSON.stringify(dataWithIds));
-      } else if (key === INVOICES_STORAGE_KEY && initialMockInvoices.length > 0 && initialDataIfKeyMissing.length > 0) {
-        localStorage.setItem(key, JSON.stringify(dataWithIds));
+      // Only set initial data if it's actually provided, and not for the main data stores
+      // which should start empty for a new user.
+      if (initialDataIfKeyMissing.length > 0 && 
+          key !== INVENTORY_STORAGE_KEY && 
+          key !== SUPPLIERS_STORAGE_KEY && 
+          key !== INVOICES_STORAGE_KEY) {
+          const dataWithIds = initialDataIfKeyMissing.map((item, index) => ({
+            ...item,
+            id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
+          }));
+          localStorage.setItem(key, JSON.stringify(dataWithIds));
+          return dataWithIds;
       }
-      return dataWithIds;
+      return []; // Return empty array for main data stores if nothing is stored
     }
   } catch (error) {
     console.error(`Error reading ${key} from localStorage:`, error);
-    
-    return initialDataIfKeyMissing.map((item, index) => ({
-        ...item,
-        id: item.id || (item.name ? `${key}-${item.name.replace(/\s+/g, '_')}-${index}` : `${key}-item-${Date.now()}-${index}`)
-    }));
+    return []; // Return empty array on error for main data stores
   }
 };
 
@@ -166,7 +161,7 @@ export async function checkProductPricesBeforeSaveService(
     console.log(`Checking product prices before save. Products to check:`, productsToCheck, `(tempId: ${tempId})`);
     await new Promise(resolve => setTimeout(resolve, 50)); 
 
-    const currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+    const currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY); // Use empty array as default
     const productsToSaveDirectly: Product[] = [];
     const priceDiscrepancies: ProductPriceDiscrepancy[] = [];
 
@@ -237,8 +232,8 @@ export async function finalizeSaveProductsService(
     console.log(`Extracted Invoice Details: Number=${extractedInvoiceNumber}, Supplier=${finalSupplierName}, Total=${extractedTotalAmount}`);
     await new Promise(resolve => setTimeout(resolve, 100)); 
 
-    let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
-    let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+    let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY);
+    let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY);
 
     let calculatedInvoiceTotalAmountFromProducts = 0;
     let productsProcessedSuccessfully = true;
@@ -272,11 +267,11 @@ export async function finalizeSaveProductsService(
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
                 existingProduct.quantity += quantityToAdd;
-                
-                existingProduct.unitPrice = unitPrice || existingProduct.unitPrice; 
+                // Keep existing product details if scanned product's corresponding field is missing/empty
+                existingProduct.unitPrice = unitPrice || existingProduct.unitPrice;
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
-                existingProduct.barcode = productToSave.barcode || existingProduct.barcode; 
+                existingProduct.barcode = productToSave.barcode || existingProduct.barcode;
                 existingProduct.catalogNumber = productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A' ? productToSave.catalogNumber : existingProduct.catalogNumber;
                 existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
                 existingProduct.minStockLevel = productToSave.minStockLevel !== undefined ? productToSave.minStockLevel : existingProduct.minStockLevel;
@@ -326,10 +321,6 @@ export async function finalizeSaveProductsService(
         let invoiceIdToUse: string;
         let existingInvoiceIndex = -1;
 
-        if (tempInvoiceId) {
-            existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempInvoiceId);
-        }
-
         let finalFileName = originalFileName;
         if (finalSupplierName) {
             finalFileName = finalSupplierName;
@@ -338,6 +329,11 @@ export async function finalizeSaveProductsService(
             }
         } else if (extractedInvoiceNumber) {
             finalFileName = `Invoice_${extractedInvoiceNumber}`;
+        }
+
+
+        if (tempInvoiceId) {
+            existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempInvoiceId);
         }
 
 
@@ -352,6 +348,7 @@ export async function finalizeSaveProductsService(
                 supplier: finalSupplierName || existingRecord.supplier, 
                 totalAmount: finalInvoiceTotalAmount, 
                 invoiceDataUri: invoiceDataUriToSave, 
+                originalImagePreviewUri: existingRecord.originalImagePreviewUri, // Preserve preview URI
                 errorMessage: errorMessage,
             };
             console.log(`Updated invoice record ID: ${invoiceIdToUse} with final data. New FileName: ${finalFileName}`);
@@ -367,6 +364,7 @@ export async function finalizeSaveProductsService(
                 supplier: finalSupplierName,
                 totalAmount: finalInvoiceTotalAmount,
                 invoiceDataUri: invoiceDataUriToSave, 
+                // originalImagePreviewUri will be set by the upload process if available
                 errorMessage: errorMessage,
             };
             currentInvoices = [newInvoiceRecord, ...currentInvoices]; 
@@ -397,7 +395,7 @@ export async function finalizeSaveProductsService(
 export async function getProductsService(): Promise<Product[]> {
   console.log("getProductsService called");
   await new Promise(resolve => setTimeout(resolve, 50)); 
-  const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY);
   const inventoryWithDefaults = inventory.map(item => {
       const quantity = Number(item.quantity) || 0;
       const unitPrice = Number(item.unitPrice) || 0;
@@ -421,7 +419,7 @@ export async function getProductsService(): Promise<Product[]> {
 export async function getProductByIdService(productId: string): Promise<Product | null> {
    console.log(`getProductByIdService called for ID: ${productId}`);
    await new Promise(resolve => setTimeout(resolve, 50)); 
-   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY);
    const product = inventory.find(p => p.id === productId);
    if (product) {
         const quantity = Number(product.quantity) || 0;
@@ -447,7 +445,7 @@ export async function updateProductService(productId: string, updatedData: Parti
   console.log(`updateProductService called for ID: ${productId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100)); 
 
-  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY);
   const productIndex = currentInventory.findIndex(p => p.id === productId);
 
   if (productIndex === -1) {
@@ -494,7 +492,7 @@ export async function deleteProductService(productId: string): Promise<void> {
   console.log(`deleteProductService called for ID: ${productId}`);
   await new Promise(resolve => setTimeout(resolve, 100)); 
 
-  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY, initialMockInventory);
+  let currentInventory = getStoredData<Product>(INVENTORY_STORAGE_KEY);
   const initialLength = currentInventory.length;
   const updatedInventory = currentInventory.filter(p => p.id !== productId);
 
@@ -510,7 +508,7 @@ export async function deleteProductService(productId: string): Promise<void> {
 export async function getInvoicesService(): Promise<InvoiceHistoryItem[]> {
   console.log("getInvoicesService called");
   await new Promise(resolve => setTimeout(resolve, 50)); 
-  const invoicesRaw = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+  const invoicesRaw = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY);
   const invoices = invoicesRaw.map(inv => ({
     ...inv,
     id: inv.id || `inv-get-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, 
@@ -524,7 +522,7 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
   console.log(`updateInvoiceService called for ID: ${invoiceId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY);
   const invoiceIndex = currentInvoices.findIndex(inv => inv.id === invoiceId);
 
   if (invoiceIndex === -1) {
@@ -540,6 +538,7 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     uploadTime: originalInvoice.uploadTime, 
     invoiceDataUri: updatedData.invoiceDataUri === null ? undefined : (updatedData.invoiceDataUri ?? originalInvoice.invoiceDataUri),
     status: updatedData.status || originalInvoice.status, 
+    originalImagePreviewUri: updatedData.originalImagePreviewUri === null ? undefined : (updatedData.originalImagePreviewUri ?? originalInvoice.originalImagePreviewUri),
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;
@@ -553,7 +552,7 @@ export async function deleteInvoiceService(invoiceId: string): Promise<void> {
   console.log(`deleteInvoiceService called for ID: ${invoiceId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY, initialMockInvoices);
+  let currentInvoices = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY);
   const initialLength = currentInvoices.length;
   const updatedInvoices = currentInvoices.filter(inv => inv.id !== invoiceId);
 
@@ -674,6 +673,16 @@ export async function getSupplierSummariesService(): Promise<SupplierSummary[]> 
       if (existingSupplierSummary) {
         existingSupplierSummary.invoiceCount += 1;
         existingSupplierSummary.totalSpent += (invoice.totalAmount || 0);
+      } else {
+        // If a supplier from an invoice doesn't exist in the main suppliers list,
+        // create a summary for them. This handles cases where suppliers might only exist in invoice data.
+        supplierMap.set(invoice.supplier, {
+          name: invoice.supplier,
+          invoiceCount: 1,
+          totalSpent: invoice.totalAmount || 0,
+          phone: undefined, // No contact info from invoice alone
+          email: undefined
+        });
       }
     }
   });
@@ -710,8 +719,6 @@ export async function deleteSupplierService(supplierName: string): Promise<void>
 
   if (suppliers.length === initialLength) {
     console.warn(`Supplier with name "${supplierName}" not found for deletion (might be already deleted).`);
-    // To prevent error in UI if trying to delete non-existent, we can just return successfully
-    // or throw new Error(`Supplier with name "${supplierName}" not found.`); 
   }
 
   saveStoredData(SUPPLIERS_STORAGE_KEY, suppliers); 
