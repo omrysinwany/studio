@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogIn, UserPlus, Package } from 'lucide-react';
+import { LogIn, UserPlus, Package, ScanLine, BarChart2 } from 'lucide-react'; // Added ScanLine and BarChart2
 import Link from 'next/link';
 import { useTranslation } from '@/hooks/useTranslation';
 
