@@ -26,6 +26,8 @@
   "english": "English",
   "hebrew": "Hebrew",
   "pos_integration": "POS Integration",
+  "nav_toggle_navigation": "Toggle Navigation",
+  "nav_menu": "Navigation Menu",
   "kpi_total_items": "Total Items",
   "kpi_total_items_desc": "Currently in stock",
   "kpi_inventory_value": "Inventory Value",

@@ -26,6 +26,8 @@
   "english": "אנגלית",
   "hebrew": "עברית",
   "pos_integration": "סנכרון קופות",
+  "nav_toggle_navigation": "החלף ניווט",
+  "nav_menu": "תפריט ניווט",
   "kpi_total_items": "סה\"כ פריטים",
   "kpi_total_items_desc": "במלאי כרגע",
   "kpi_inventory_value": "ערך מלאי",

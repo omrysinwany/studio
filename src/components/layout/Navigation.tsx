@@ -1,9 +1,8 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText, LogIn, UserPlus, LogOut, Plug, Languages } from 'lucide-react'; // Added Languages icon
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -20,29 +19,42 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
-import { useLanguage, Locale } from '@/context/LanguageContext'; // Import useLanguage
-import { useTranslation } from '@/hooks/useTranslation'; // Import useTranslation
+import { useLanguage, Locale } from '@/context/LanguageContext';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { user, logout, loading } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { locale, setLocale } = useLanguage(); // Get locale and setLocale
-  const { t } = useTranslation(); // Get translation function
+  const { locale, setLocale } = useLanguage();
+  const { t } = useTranslation();
 
   const navItems = [
     { href: '/', labelKey: 'nav_home', icon: Home },
     { href: '/upload', labelKey: 'nav_upload', icon: ScanLine },
     { href: '/inventory', labelKey: 'nav_inventory', icon: Package },
-    { href: '/invoices', labelKey: 'nav_invoices', icon: FileText },
+    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon },
     { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase },
     { href: '/reports', labelKey: 'nav_reports', icon: BarChart2 },
     { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon },
   ];
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    const publicPaths = ['/', '/login', '/register'];
+    const isPublicPath = publicPaths.some(publicPath => pathname === publicPath || pathname.startsWith(`${publicPath}/`));
+
+    if (!user && !isPublicPath) {
+      router.push('/login');
+    }
+  }, [user, authLoading, pathname, router]);
+
 
   const handleLogout = () => {
     logout();
@@ -68,11 +80,13 @@ export default function Navigation() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
+        {/* Logo/Brand */}
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
           <span className="text-primary">{t('app_title')}</span>
         </Link>
 
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {navItems.map((item) => (
             <Link
@@ -92,7 +106,9 @@ export default function Navigation() {
           ))}
         </nav>
 
+        {/* Right side controls: Theme, Language, Auth */}
         <div className="flex items-center gap-2">
+           {/* Theme Switcher (Desktop) */}
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
                <Button variant="ghost" size="icon" className='hidden md:inline-flex'>
@@ -135,8 +151,9 @@ export default function Navigation() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+          {/* Desktop Auth Controls */}
           <div className="hidden md:flex items-center gap-2">
-              {loading ? (
+              {authLoading ? (
                 <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
               ) : user ? (
                  <DropdownMenu>
@@ -170,30 +187,38 @@ export default function Navigation() {
                 </DropdownMenu>
               ) : (
                 <>
-                  <Link href="/login" passHref legacyBehavior>
-                    <Button variant="ghost" size="sm" as="a" className="flex items-center">
-                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                    </Button>
-                  </Link>
-                  <Link href="/register" passHref legacyBehavior>
-                    <Button size="sm" as="a" className="flex items-center">
-                        <UserPlus className="mr-1 h-4 w-4" /> {t('nav_register')}
-                    </Button>
-                  </Link>
+                   {/* Apply button styles directly to Link */}
+                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
+                    <Link href="/login">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
+                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                       </span>
+                    </Link>
+                   </Button>
+                  <Button asChild size="sm">
+                    <Link href="/register">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
+                         <UserPlus className="mr-1 h-4 w-4" /> {t('nav_register')}
+                       </span>
+                    </Link>
+                  </Button>
                 </>
               )}
           </div>
 
+            {/* Mobile Menu Trigger */}
             <div className="md:hidden">
               <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon">
                     <Menu className="h-6 w-6" />
-                     <span className="sr-only">Toggle Navigation</span>
+                     <span className="sr-only">{t('nav_toggle_navigation')}</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col">
-                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                    <SheetTitle className="sr-only">{t('nav_menu')}</SheetTitle>
                    <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
@@ -214,9 +239,10 @@ export default function Navigation() {
                         ))}
                       </nav>
 
+                    {/* Mobile Auth, Theme, Language in Footer */}
                     <div className="mt-auto border-t p-4 space-y-4">
                          <div>
-                           {loading ? (
+                           {authLoading ? (
                               <div className="h-10 w-full animate-pulse rounded-md bg-muted"></div>
                            ) : user ? (
                                <div className="flex flex-col gap-2">
@@ -254,7 +280,7 @@ export default function Navigation() {
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3">
-                                  <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{theme}</span>
+                                  <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
                                </Button>
                              </DropdownMenuTrigger>
                              <DropdownMenuPortal>
