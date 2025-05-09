@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -48,9 +49,12 @@ export default function Navigation() {
       return;
     }
     const publicPaths = ['/', '/login', '/register'];
-    const isPublicPath = publicPaths.some(publicPath => pathname === publicPath || pathname.startsWith(`${publicPath}/`));
+    // Check if the current path is one of the public paths or starts with /settings
+    // Settings page itself is accessible, but its sub-pages like /settings/pos-integration might be protected
+    const isPublicOrSettingsPath = publicPaths.some(publicPath => pathname === publicPath || pathname.startsWith(`${publicPath}/`)) || pathname === '/settings';
 
-    if (!user && !isPublicPath) {
+
+    if (!user && !isPublicOrSettingsPath) {
       router.push('/login');
     }
   }, [user, authLoading, pathname, router]);
@@ -188,9 +192,8 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
+                   <Button variant="ghost" size="sm" asChild>
                     <Link href="/login">
-                       {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                          <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
@@ -198,7 +201,6 @@ export default function Navigation() {
                    </Button>
                   <Button asChild size="sm">
                     <Link href="/register">
-                       {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                          <UserPlus className="mr-1 h-4 w-4" /> {t('nav_register')}
                        </span>
@@ -218,6 +220,7 @@ export default function Navigation() {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col">
+                    {/* Visually hidden title for accessibility, but kept for structure */}
                     <SheetTitle className="sr-only">{t('nav_menu')}</SheetTitle>
                    <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
