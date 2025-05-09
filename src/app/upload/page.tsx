@@ -20,9 +20,10 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
-const INVOICES_STORAGE_KEY = 'mockInvoicesData'; 
+const INVOICES_STORAGE_KEY = 'mockInvoicesData';
 
 const formatDisplayNumber = (
     value: number | undefined | null,
@@ -84,6 +85,10 @@ async function compressImage(base64Str: string, quality = 0.7, maxWidth = 1024, 
 
 
 export default function UploadPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { t } = useTranslation();
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -92,13 +97,20 @@ export default function UploadPage() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { t } = useTranslation();
-  const router = useRouter();
 
   const [showDetailsModal, setShowDetailsModal] = useState<boolean>(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
 
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+
   const fetchHistory = useCallback(async () => {
+     if (!user) return; // Don't fetch if not authenticated
      setIsLoadingHistory(true);
      try {
         const history = await getInvoicesService();
@@ -115,11 +127,13 @@ export default function UploadPage() {
      } finally {
        setIsLoadingHistory(false);
      }
-  }, [toast, t]);
+  }, [toast, t, user]);
 
    useEffect(() => {
-     fetchHistory();
-   }, [fetchHistory]);
+     if(user) { // Only fetch if user is authenticated
+        fetchHistory();
+     }
+   }, [fetchHistory, user]);
 
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,20 +180,17 @@ export default function UploadPage() {
     const timestamp = Date.now();
     const originalFileName = selectedFile.name;
     const uniqueScanId = `${timestamp}_${originalFileName.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-    
+
     const dataKey = `${TEMP_DATA_KEY_PREFIX}${uniqueScanId}`;
     const originalImagePreviewKey = `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${uniqueScanId}`;
     const compressedImageKey = `${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${uniqueScanId}`;
     const tempInvoiceId = `pending-inv-${uniqueScanId}`;
 
     let scanResult: ScanInvoiceOutput = { products: [] };
-    let scanDataSavedForEdit = false; 
+    let scanDataSavedForEdit = false;
     let originalImagePreviewUriSaved = false;
-    let compressedImageForFinalSaveUriSaved = false; 
+    let compressedImageForFinalSaveUriSaved = false;
     let originalBase64Data = '';
-    let imageToStoreForScan: string | undefined = undefined;
-    let imageToStoreForFinalSave: string | undefined = undefined; 
-    let imageToStoreForPreview: string | undefined = undefined;
 
 
    try {
@@ -199,7 +210,7 @@ export default function UploadPage() {
                  fileName: originalFileName,
                  uploadTime: new Date().toISOString(),
                  status: 'pending',
-                 invoiceDataUri: undefined, 
+                 invoiceDataUri: undefined, // Will be updated if successfully saved
              };
             let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(INVOICES_STORAGE_KEY) || '[]');
             currentInvoices = [pendingInvoice, ...currentInvoices];
@@ -217,67 +228,72 @@ export default function UploadPage() {
             }
          }
 
+        let imageForScan: string | undefined = undefined;
+        let imageForFinalSave: string | undefined = undefined;
+        let imageForPreviewOnEditPage: string | undefined = undefined;
+
         try {
-            imageToStoreForScan = await compressImage(originalBase64Data, 0.7, 1024, 1024); 
-            console.log(`[UploadPage] Image compressed for scan. Original size: ${(originalBase64Data.length / 1024).toFixed(2)}KB, Compressed size: ${(imageToStoreForScan.length / 1024).toFixed(2)}KB`);
-            
-            imageToStoreForFinalSave = await compressImage(originalBase64Data, 0.5, 800, 800); // More compression for final save
-            console.log(`[UploadPage] Image compressed for final save. Final Save size: ${(imageToStoreForFinalSave.length / 1024).toFixed(2)}KB`);
-            
-            imageToStoreForPreview = await compressImage(originalBase64Data, 0.8, 1280, 1280); // Higher quality for preview
-            console.log(`[UploadPage] Image compressed for preview. Preview size: ${(imageToStoreForPreview.length / 1024).toFixed(2)}KB`);
+            console.log(`[UploadPage] Original image size: ${(originalBase64Data.length / (1024*1024)).toFixed(2)}MB`);
+            // Compress for AI Scan (more aggressive compression)
+            imageForScan = await compressImage(originalBase64Data, 0.6, 1000, 1000);
+            console.log(`[UploadPage] Compressed image for scan size: ${(imageForScan.length / (1024*1024)).toFixed(2)}MB`);
+
+            // Compress for final invoice record (very aggressive if original is large, less if small)
+            const finalSaveQuality = originalBase64Data.length > MAX_COMPRESSED_IMAGE_STORAGE_BYTES * 2 ? 0.4 : 0.6;
+            imageForFinalSave = await compressImage(originalBase64Data, finalSaveQuality, 800, 800);
+            console.log(`[UploadPage] Compressed image for final save size: ${(imageForFinalSave.length / (1024*1024)).toFixed(2)}MB`);
 
 
-            if (imageToStoreForFinalSave) {
-                if (imageToStoreForFinalSave.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
-                    try {
-                       localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
-                       compressedImageForFinalSaveUriSaved = true;
-                       console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
-                    } catch (storageError: any) {
-                       console.warn(`[UploadPage] Failed to store compressed image URI for final save (key: ${compressedImageKey}):`, storageError.message);
-                    }
-                } else {
-                    console.warn(`[UploadPage] Compressed image for final save is too large for localStorage (${(imageToStoreForFinalSave.length / (1024*1024)).toFixed(2)}MB). It will not be stored for the final invoice record.`);
-                    imageToStoreForFinalSave = undefined; 
+            // Compress for edit page preview (less aggressive, better quality)
+            const previewQuality = originalBase64Data.length > MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES * 1.5 ? 0.7 : 0.8;
+            imageForPreviewOnEditPage = await compressImage(originalBase64Data, previewQuality, 1280, 1280);
+            console.log(`[UploadPage] Compressed image for edit page preview size: ${(imageForPreviewOnEditPage.length / (1024*1024)).toFixed(2)}MB`);
+
+
+             if (imageForFinalSave && imageForFinalSave.length <= MAX_COMPRESSED_IMAGE_STORAGE_BYTES) {
+                 try {
+                    localStorage.setItem(compressedImageKey, imageForFinalSave);
+                    compressedImageForFinalSaveUriSaved = true;
+                    console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
+                 } catch (storageError: any) {
+                    console.warn(`[UploadPage] Failed to store compressed image URI for final save (key: ${compressedImageKey}):`, storageError.message);
+                 }
+             } else {
+                console.warn(`[UploadPage] Compressed image for FINAL SAVE is too large (${(imageForFinalSave?.length || 0 / (1024*1024)).toFixed(2)}MB > ${(MAX_COMPRESSED_IMAGE_STORAGE_BYTES / (1024*1024)).toFixed(2)}MB ) or missing. It will not be stored for the final invoice record.`);
+                imageForFinalSave = undefined; // Ensure it's not used if too large
+             }
+
+
+            if (imageForPreviewOnEditPage && imageForPreviewOnEditPage.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                try {
+                    localStorage.setItem(originalImagePreviewKey, imageForPreviewOnEditPage);
+                    originalImagePreviewUriSaved = true;
+                    console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
+                } catch (storageError: any) {
+                    console.warn(`[UploadPage] Failed to store image for edit page preview (key: ${originalImagePreviewKey}):`, storageError.message);
+                    // If storing preview fails due to quota, log but don't halt; preview is optional.
                 }
+            } else {
+                console.warn(`[UploadPage] Compressed image for PREVIEW on edit page is too large (${(imageForPreviewOnEditPage?.length || 0 / (1024*1024)).toFixed(2)}MB > ${(MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES/(1024*1024)).toFixed(2)}MB) or missing. Preview on edit page might be missing or use a lower quality fallback.`);
             }
 
-            if (imageToStoreForPreview) {
-                if (imageToStoreForPreview.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                    try {
-                        localStorage.setItem(originalImagePreviewKey, imageToStoreForPreview);
-                        originalImagePreviewUriSaved = true;
-                        console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
-                    } catch (storageError: any) {
-                        console.warn(`[UploadPage] Failed to store image for edit page preview (key: ${originalImagePreviewKey}):`, storageError.message);
-                    }
-                } else {
-                    console.warn(`[UploadPage] Compressed image for preview is too large for localStorage (${(imageToStoreForPreview.length / (1024*1024)).toFixed(2)}MB). Preview on edit page might be missing.`);
-                }
-            }
         } catch (compressionError) {
             console.error("[UploadPage] Image compression failed:", compressionError, ". Using original for scan if possible.");
-            imageToStoreForScan = originalBase64Data; 
-            imageToStoreForFinalSave = undefined; 
-            imageToStoreForPreview = undefined;
-            
-            // Attempt to store original as preview if it fits and no other preview is set
+            imageForScan = originalBase64Data; // Fallback to original for scan
+            imageForFinalSave = undefined; // Don't attempt to save original if compression failed
+            imageForPreviewOnEditPage = undefined;
+
+            // Fallback: if original image is small enough for preview and no other preview is set
             if (!originalImagePreviewUriSaved && originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                 try { 
-                    localStorage.setItem(originalImagePreviewKey, originalBase64Data); 
-                    originalImagePreviewUriSaved = true; 
-                    imageToStoreForPreview = originalBase64Data;
-                    console.log(`[UploadPage] Fallback: Original image stored for preview.`);
-                 } catch (e) {
-                    console.warn(`[UploadPage] Fallback: Failed to store original image for preview.`);
-                 }
+                 try { localStorage.setItem(originalImagePreviewKey, originalBase64Data); originalImagePreviewUriSaved = true; console.log(`[UploadPage] Fallback: Original image stored for preview as it fits.`); }
+                 catch (e) { console.warn(`[UploadPage] Fallback: Failed to store original image for preview.`); }
             }
         }
 
+
          try {
              console.log(`[UploadPage] Calling scanInvoice for file: ${originalFileName}`);
-             scanResult = await scanInvoice({ invoiceDataUri: imageToStoreForScan || originalBase64Data });
+             scanResult = await scanInvoice({ invoiceDataUri: imageForScan || originalBase64Data });
              console.log('[UploadPage] AI Scan Result:', scanResult);
 
             if (scanResult.error) {
@@ -292,11 +308,18 @@ export default function UploadPage() {
             try {
                 const scanResultString = JSON.stringify(scanResult);
                 if (scanResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
-                    throw new Error(t('upload_toast_scan_results_too_large_error', { size: (scanResultString.length / (1024*1024)).toFixed(2) }));
+                    const errorMsg = t('upload_toast_scan_results_too_large_error', { size: (scanResultString.length / (1024*1024)).toFixed(2) });
+                    console.error(`[UploadPage] ${errorMsg}`);
+                    scanResult = { products: [], error: errorMsg }; // Update scanResult to reflect this specific error
+                    // Still attempt to save this error state to localStorage if it fits.
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
+                    scanDataSavedForEdit = true; // Mark as saved, even if it's an error state for "too large"
+                     toast({ title: t('upload_toast_critical_error_save_scan_title'), description: errorMsg, variant: 'destructive', duration: 10000 });
+                } else {
+                    localStorage.setItem(dataKey, scanResultString);
+                    scanDataSavedForEdit = true;
+                    console.log(`[UploadPage] Scan results (products/error) saved to localStorage with key: ${dataKey}`);
                 }
-                localStorage.setItem(dataKey, scanResultString);
-                scanDataSavedForEdit = true; 
-                console.log(`[UploadPage] Scan results (products/error) saved to localStorage with key: ${dataKey}`);
             } catch (storageError: any) {
                  console.error(`[UploadPage] Error saving scan results to localStorage for key ${dataKey}:`, storageError);
                  toast({
@@ -305,12 +328,13 @@ export default function UploadPage() {
                      variant: 'destructive',
                      duration: 10000,
                  });
+                 // Critical failure, cannot proceed to edit page without scan data
                  setIsProcessing(false);
                  setSelectedFile(null);
                  if (fileInputRef.current) fileInputRef.current.value = '';
-                 clearTemporaryScanData(uniqueScanId);
-                 fetchHistory();
-                 return;
+                 clearTemporaryScanData(uniqueScanId); // Cleanup after critical failure
+                 fetchHistory(); // Refresh history to show pending possibly failed
+                 return; // Exit early
             }
 
              if (!scanResult.error && scanDataSavedForEdit) {
@@ -324,15 +348,19 @@ export default function UploadPage() {
              console.error('[UploadPage] AI processing failed:', aiError);
              const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error') });
              toast({ title: t('upload_toast_ai_processing_error_title'), description: errorMessage, variant: 'destructive', duration: 8000 });
-             scanResult = { ...scanResult, error: errorMessage }; 
+             scanResult = { ...scanResult, products: [], error: errorMessage }; // Ensure products is empty on AI error
 
             try {
                 const errorResultString = JSON.stringify(scanResult);
                  if (errorResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
-                    throw new Error(t('upload_toast_error_scan_results_too_large_error'));
-                }
-                localStorage.setItem(dataKey, errorResultString);
-                scanDataSavedForEdit = true;
+                     const errorMsg = t('upload_toast_error_scan_results_too_large_error');
+                     console.error(`[UploadPage] ${errorMsg}`);
+                     scanResult = { products: [], error: errorMsg };
+                     localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Save this "too large" error
+                 } else {
+                    localStorage.setItem(dataKey, errorResultString);
+                 }
+                scanDataSavedForEdit = true; // Data (even if error) saved
             } catch (storageError: any) {
                 console.error(`[UploadPage] Critical Error: Error saving error scan results to localStorage for key ${dataKey} after AI error:`, storageError);
                 toast({
@@ -344,30 +372,28 @@ export default function UploadPage() {
                 setIsProcessing(false);
                 setSelectedFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
-                clearTemporaryScanData(uniqueScanId);
+                clearTemporaryScanData(uniqueScanId); // Cleanup after critical failure
                 fetchHistory();
-                return;
+                return; // Exit early
             }
           } finally {
-            if (scanDataSavedForEdit) { 
+             if (scanDataSavedForEdit) { // Proceed if scan data (or error state) was saved
                  const queryParams = new URLSearchParams({
-                     key: dataKey, 
-                     fileName: originalFileName, 
+                     key: dataKey,
+                     fileName: encodeURIComponent(originalFileName), // Ensure filename is URL safe
                      tempInvoiceId: tempInvoiceId,
                  });
-                 if (originalImagePreviewUriSaved) {
+                  if (originalImagePreviewUriSaved) { // Only add if it was successfully saved
                      queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
                  }
-                 if (compressedImageForFinalSaveUriSaved) { 
+                 if (compressedImageForFinalSaveUriSaved) { // Only add if it was successfully saved
                      queryParams.append('compressedImageKey', compressedImageKey);
                  }
                  router.push(`/edit-invoice?${queryParams.toString()}`);
              } else {
+                 // This case should ideally be caught by earlier returns if localStorage.setItem for dataKey fails
                  console.error("[UploadPage] Critical: Scan data was not saved to localStorage. Aborting navigation to edit page.");
-                 clearTemporaryScanData(uniqueScanId); 
-                 setIsProcessing(false);
-                 setSelectedFile(null);
-                 if (fileInputRef.current) fileInputRef.current.value = '';
+                 clearTemporaryScanData(uniqueScanId); // Cleanup
                  toast({
                     title: t('upload_toast_processing_failed_title'),
                     description: t('upload_toast_processing_failed_desc'),
@@ -392,7 +418,7 @@ export default function UploadPage() {
            description: t('upload_toast_upload_failed_read_desc'),
            variant: 'destructive',
          });
-         clearTemporaryScanData(uniqueScanId);
+         clearTemporaryScanData(uniqueScanId); // Ensure cleanup
        };
 
     } catch (error) {
@@ -404,22 +430,22 @@ export default function UploadPage() {
          description: t('upload_toast_upload_failed_unexpected_desc', { message: (error as Error).message }),
          variant: 'destructive',
        });
-       clearTemporaryScanData(uniqueScanId);
+       clearTemporaryScanData(uniqueScanId); // Ensure cleanup
      }
   };
 
 
    const formatDate = (date: Date | string | undefined) => {
-     if (!date) return 'N/A';
+     if (!date) return t('invoices_na');
      try {
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        if (isNaN(dateObj.getTime())) return 'Invalid Date';
+        if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
         return window.innerWidth < 640
              ? format(dateObj, 'dd/MM/yy')
              : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
      } catch (e) {
        console.error("Error formatting date:", e, "Input:", date);
-       return 'Invalid Date';
+       return t('invoices_invalid_date');
      }
    };
 
@@ -466,6 +492,26 @@ export default function UploadPage() {
             </Badge>
          );
     };
+
+
+  if (authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">{t('loading_data')}</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    // This part will ideally not be reached if redirection works correctly,
+    // but it's a good fallback.
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
+            <p>{t('settings_login_required')}</p>
+        </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -597,8 +643,8 @@ export default function UploadPage() {
             </DialogDescription>
           </DialogHeader>
           {selectedInvoiceDetails && (
-             <ScrollArea className="flex-grow p-0"> 
-              <div className="p-4 sm:p-6 space-y-4"> 
+             <ScrollArea className="flex-grow p-0">
+              <div className="p-4 sm:p-6 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
@@ -608,9 +654,9 @@ export default function UploadPage() {
                        </div>
                     </div>
                     <div>
-                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || 'N/A'}</p>
-                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || 'N/A'}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `₪${formatDisplayNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : 'N/A'}</p>
+                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? `${t('currency_symbol')}${formatDisplayNumber(selectedInvoiceDetails.totalAmount, { useGrouping: true })}` : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (

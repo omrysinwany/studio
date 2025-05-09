@@ -8,20 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager';
-// Corrected imports to use the actual exported names with 'Service' suffix
 import {
     savePosSettingsService,
     getPosSettingsService,
     finalizeSaveProductsService
 } from '@/services/backend';
-import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
-import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the inventory sync action
-import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
+import { syncInventoryAction } from '@/actions/sync-inventory-action';
+import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator'; // Import Separator
-import { useAuth } from '@/context/AuthContext'; // Import useAuth
-import { useRouter } from 'next/navigation'; // Import useRouter for redirection
+import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/hooks/useTranslation';
 
 
@@ -43,6 +42,10 @@ const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label
 
 
 export default function PosIntegrationSettingsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { t } = useTranslation();
+
   const [availableSystems, setAvailableSystems] = useState<PosSystemInfo[]>([]);
   const [selectedSystemId, setSelectedSystemId] = useState<string>('');
   const [configValues, setConfigValues] = useState<PosConnectionConfig>({});
@@ -53,18 +56,15 @@ export default function PosIntegrationSettingsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const { toast } = useToast();
-  const { user, loading: authLoading } = useAuth(); // Get user and authLoading state
-  const router = useRouter(); // Initialize router
-  const { t } = useTranslation();
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login'); // Redirect to login if not authenticated
+      router.push('/login');
     }
   }, [user, authLoading, router]);
 
   const loadInitialData = useCallback(async () => {
-    if (!user) return; // Don't load data if user is not authenticated
+    if (!user) return;
 
     setIsLoading(true);
     try {
@@ -89,7 +89,7 @@ export default function PosIntegrationSettingsPage() {
   }, [toast, user, t]);
 
   useEffect(() => {
-    if (user) { // Only load initial data if user is authenticated
+    if (user) {
         loadInitialData();
     }
   }, [loadInitialData, user]);
@@ -129,7 +129,7 @@ export default function PosIntegrationSettingsPage() {
        setTestResult(result);
        toast({
          title: result.success ? t('pos_toast_test_success_title') : t('pos_toast_test_fail_title'),
-         description: result.message, // Message from action is already potentially translated or generic
+         description: result.message,
          variant: result.success ? 'default' : 'destructive',
        });
      } catch (error: any) {
@@ -180,8 +180,7 @@ export default function PosIntegrationSettingsPage() {
 
      try {
          console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
-         // Pass user.id if available, otherwise null or handle error (though page should redirect if no user)
-         const currentUserId = user ? user.id : undefined; 
+         const currentUserId = user ? user.id : undefined;
          if (!currentUserId) {
             throw new Error("User not authenticated for sync operation.");
          }
@@ -264,15 +263,16 @@ export default function PosIntegrationSettingsPage() {
     );
   };
 
-  if (authLoading || isLoading) { // Show loader if either auth or data is loading
+  if (authLoading || isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
       </div>
     );
   }
 
-  if (!user && !authLoading) { // If done loading auth and still no user, content handled by redirect, but can show message
+  if (!user && !authLoading) {
     return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
             <p>{t('settings_login_required')}</p>

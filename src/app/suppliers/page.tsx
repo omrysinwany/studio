@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
@@ -38,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -103,7 +103,10 @@ interface MonthlySpendingData {
 }
 
 export default function SuppliersPage() {
+  const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
+  const router = useRouter();
+
   const formatCurrency = (value: number | undefined | null): string => {
     if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
     return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -120,7 +123,7 @@ export default function SuppliersPage() {
   const [monthlySpendingData, setMonthlySpendingData] = useState<MonthlySpendingData[]>([]);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
-  
+
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
   const [isSavingContact, setIsSavingContact] = useState(false);
@@ -128,9 +131,15 @@ export default function SuppliersPage() {
 
 
   const { toast } = useToast();
-  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
 
   const fetchData = async () => {
+    if(!user) return;
     setIsLoading(true);
     try {
       const [summaries, invoicesData] = await Promise.all([
@@ -152,8 +161,10 @@ export default function SuppliersPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [toast, t]); // Added t to dependencies
+    if(user){
+        fetchData();
+    }
+  }, [toast, t, user]); // Added t to dependencies
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -235,7 +246,7 @@ export default function SuppliersPage() {
 
     setIsDetailSheetOpen(true);
   };
-  
+
   const navigateToInvoiceDetails = (invoiceId: string) => {
     router.push(`/invoices?viewInvoiceId=${invoiceId}`);
     setIsDetailSheetOpen(false);
@@ -289,12 +300,17 @@ export default function SuppliersPage() {
   };
 
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (
@@ -371,7 +387,7 @@ export default function SuppliersPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(isDeletingSupplier && "opacity-50")}>
+                              <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
                                 {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 {t('suppliers_delete_confirm_action')}
                               </AlertDialogAction>
@@ -509,15 +525,15 @@ export default function SuppliersPage() {
                         )}
                     </CardContent>
                 </Card>
-                
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base flex items-center"><ListChecks className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_activity_timeline_title')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {selectedSupplierInvoices.length > 0 ? (
-                      <div className="space-y-3 max-h-96 overflow-y-auto_ pr-2">
-                        {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => ( 
+                      <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                        {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => (
                           <React.Fragment key={invoice.id}>
                             <div className="flex items-start space-x-3">
                               <div className="flex flex-col items-center">
@@ -563,4 +579,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-

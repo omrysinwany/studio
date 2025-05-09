@@ -27,6 +27,7 @@ import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
 import SupplierConfirmationDialog from '@/components/supplier-confirmation-dialog';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 interface EditableProduct extends Product {
@@ -48,6 +49,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
 
 
 function EditInvoiceContent() {
+  const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
@@ -55,7 +57,7 @@ function EditInvoiceContent() {
 
   const [products, setProducts] = useState<EditableProduct[]>([]);
   const [originalFileName, setOriginalFileName] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // For initial data load
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
@@ -84,6 +86,14 @@ function EditInvoiceContent() {
   const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
   const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
 
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+
    const cleanupTemporaryDataLocal = useCallback(() => {
     let uniqueIdToClear: string | null = null;
     if (dataKey?.startsWith(TEMP_DATA_KEY_PREFIX)) {
@@ -93,7 +103,7 @@ function EditInvoiceContent() {
     }
 
     if (uniqueIdToClear) {
-        clearTemporaryScanData(uniqueIdToClear); // Corrected variable name here
+        clearTemporaryScanData(uniqueIdToClear);
         console.log(`[EditInvoice] Triggered cleanup for scan result associated with unique ID: ${uniqueIdToClear}`);
     } else {
         console.log("[EditInvoice] cleanupTemporaryDataLocal called, but no dataKey or relevant tempInvoiceId found to clear.");
@@ -102,14 +112,15 @@ function EditInvoiceContent() {
 
 
   useEffect(() => {
+    if (!user) return; // Don't process if not authenticated
     const key = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
-    const compressedKeyParam = searchParams.get('compressedImageKey'); // Get compressed image key
+    const compressedKeyParam = searchParams.get('compressedImageKey');
 
     setDataKey(key);
     setTempInvoiceId(tempInvIdParam);
-    setCompressedImageKeyFromParam(compressedKeyParam); // Store compressed image key
+    setCompressedImageKeyFromParam(compressedKeyParam);
 
 
     let uniquePart: string | null = null;
@@ -220,7 +231,7 @@ function EditInvoiceContent() {
     if (hasAttemptedLoad) {
         setInitialDataLoaded(true);
     }
-  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryDataLocal, t]);
+  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryDataLocal, t, user]); // Added user
 
 
   const checkSupplier = async (scannedSupplierName?: string) => {
@@ -286,21 +297,20 @@ function EditInvoiceContent() {
             }
             (updatedProduct as any)[field] = numericValue;
           } else {
-            (updatedProduct as any)[field] = value; // For string fields like catalogNumber, description
+            (updatedProduct as any)[field] = value;
           }
 
           let currentQuantity = Number(updatedProduct.quantity) || 0;
           let currentUnitPrice = (updatedProduct.unitPrice !== undefined && updatedProduct.unitPrice !== null && !isNaN(Number(updatedProduct.unitPrice))) ? Number(updatedProduct.unitPrice) : 0;
           let currentLineTotal = Number(updatedProduct.lineTotal) || 0;
 
-          // Recalculate dependent fields based on which field was edited
+
           if (field === 'quantity' || field === 'unitPrice') {
-             if (currentQuantity > 0 && currentUnitPrice !== 0) { // Only calculate if both are positive
+             if (currentQuantity > 0 && currentUnitPrice !== 0) {
                 currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
              } else if (currentQuantity === 0 || currentUnitPrice === 0) {
-                currentLineTotal = 0; // If either is zero, total is zero
+                currentLineTotal = 0;
              }
-             // else, if one is non-zero and the other is zero, lineTotal might have been manually set, so respect it unless it was just calculated.
             updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
             if (currentQuantity > 0) {
@@ -311,18 +321,16 @@ function EditInvoiceContent() {
             }
           }
 
-          // Ensure unitPrice is always total/quantity if quantity > 0 and lineTotal is meaningful
+
           if (currentQuantity > 0 && currentLineTotal !== 0) {
             const derivedUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
             if (Math.abs(derivedUnitPrice - currentUnitPrice) > 0.001 && field !== 'unitPrice') {
-                 console.log(`[EditInvoice] Recalculating unitPrice for ${updatedProduct.description}. Original: ${currentUnitPrice}, New derived: ${derivedUnitPrice}`);
                  updatedProduct.unitPrice = derivedUnitPrice;
             }
-          } else if (currentQuantity === 0 && currentLineTotal === 0) { // if both are zero, unit price is zero
+          } else if (currentQuantity === 0 && currentLineTotal === 0) {
             updatedProduct.unitPrice = 0;
           }
-          // If qty is 0 and lineTotal is non-zero, unitPrice might have been manually entered, so keep it.
-          // If unitPrice was manually entered and qty is >0, lineTotal gets updated above.
+
 
           return updatedProduct;
         }
@@ -483,7 +491,6 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
             const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
 
-            // Prompt if it's a new product OR an existing product MISSING a sale price
             const needsSalePrice = p.salePrice === undefined || p.salePrice === null;
             return isProductConsideredNew || needsSalePrice;
         });
@@ -560,13 +567,17 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         router.push('/upload');
     };
 
-   if (isLoading && !initialDataLoaded) {
+   if (authLoading || (isLoading && !initialDataLoaded)) {
      return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
            <span className="ml-2">{t('loading_data')}...</span>
         </div>
      );
+   }
+
+   if (!user && !authLoading) {
+    return null;
    }
 
     if (errorLoading) {
@@ -683,9 +694,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardDescription>
         </CardHeader>
         <CardContent>
-           {/* Wrap table in div for overflow */}
           <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -795,7 +805,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onConfirm={handleSupplierConfirmation}
           onCancel={() => {
             setShowSupplierDialog(false);
-            setIsSupplierConfirmed(true); // Assume user proceeds with scanned name if cancelled
+            setIsSupplierConfirmed(true);
             setExtractedSupplierName(aiScannedSupplierName);
           }}
           isOpen={showSupplierDialog}
@@ -835,4 +845,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

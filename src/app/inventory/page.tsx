@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -44,6 +43,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -51,7 +51,6 @@ const ITEMS_PER_PAGE = 10;
 type SortKey = keyof Product | '';
 type SortDirection = 'asc' | 'desc';
 
-// Helper to format numbers for display (using t from useTranslation)
 const formatDisplayNumberWithTranslation = (
     value: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
@@ -78,16 +77,24 @@ const formatDisplayNumberWithTranslation = (
 
 const formatIntegerQuantityWithTranslation = (
     value: number | undefined | null,
-    t: (key: string) => string // Added t parameter
+    t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return formatDisplayNumberWithTranslation(0, t, { decimals: 0, useGrouping: false });
+        // Use formatDisplayNumberWithTranslation for consistency, ensuring no currency symbol for plain quantity
+        return formatDisplayNumberWithTranslation(0, t, { decimals: 0, useGrouping: false, currency: false });
     }
-    return formatDisplayNumberWithTranslation(Math.round(value), t, { decimals: 0, useGrouping: true });
+    return formatDisplayNumberWithTranslation(Math.round(value), t, { decimals: 0, useGrouping: true, currency: false });
 };
 
 
 export default function InventoryPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const { toast } = useToast();
+  const { t, locale } = useTranslation();
+
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -95,14 +102,14 @@ export default function InventoryPage() {
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' , boolean>>({
     actions: true,
     id: false,
-    shortName: true, // Product Name - Visible by default
+    shortName: true,
     description: false,
     catalogNumber: false,
     barcode: false,
-    quantity: true, // Quantity - Visible by default
-    unitPrice: false, // Unit Price - Hidden by default
-    salePrice: true, // Sale Price - Visible by default
-    lineTotal: false, // Total - Hidden by default
+    quantity: true,
+    unitPrice: false,
+    salePrice: true,
+    lineTotal: false,
     minStockLevel: false,
     maxStockLevel: false,
   });
@@ -110,16 +117,19 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const { toast } = useToast();
-  const { t, locale } = useTranslation();
+
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
 
     const fetchInventory = useCallback(async () => {
+      if (!user) return;
       setIsLoading(true);
       try {
         const data = await getProductsService();
@@ -148,24 +158,26 @@ export default function InventoryPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [toast, t]);
+    }, [toast, t, user]);
 
 
    useEffect(() => {
-     fetchInventory();
+     if(user){
+        fetchInventory();
 
-     if (initialFilter === 'low' && filterStockLevel === 'all') {
-       setFilterStockLevel('low');
-     }
+        if (initialFilter === 'low' && filterStockLevel === 'all') {
+        setFilterStockLevel('low');
+        }
 
-     if (shouldRefresh) {
-        const current = new URLSearchParams(Array.from(searchParams.entries()));
-        current.delete('refresh');
-        const searchString = current.toString();
-        const query = searchString ? `?${searchString}` : "";
-        router.replace(`${pathname}${query}`, { scroll: false });
+        if (shouldRefresh) {
+            const current = new URLSearchParams(Array.from(searchParams.entries()));
+            current.delete('refresh');
+            const searchString = current.toString();
+            const query = searchString ? `?${searchString}` : "";
+            router.replace(`${pathname}${query}`, { scroll: false });
+        }
      }
-   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]);
+   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname, user]);
 
 
   const handleSort = (key: SortKey) => {
@@ -212,7 +224,7 @@ export default function InventoryPage() {
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
-                comparison = valA.localeCompare(valB, locale); // Use locale for sorting
+                comparison = valA.localeCompare(valB, locale);
            } else {
               if (valA == null && valB != null) comparison = -1;
               else if (valA != null && valB == null) comparison = 1;
@@ -310,7 +322,7 @@ export default function InventoryPage() {
         });
 
         const csvContent = [headers, ...rows].join('\n');
-        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel
+        const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
 
@@ -348,12 +360,17 @@ export default function InventoryPage() {
     };
 
 
-    if (isLoading) {
+    if (authLoading || isLoading) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
        </div>
      );
+   }
+
+   if (!user) {
+    return null; // Or a message encouraging login
    }
 
   return (
@@ -541,10 +558,10 @@ export default function InventoryPage() {
                           </Popover>
                         </TableCell>
                       )}
-                      {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || 'N/A'}</TableCell>}
-                      {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || 'N/A'}</TableCell>}
-                      {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || 'N/A'}</TableCell>}
-                      {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || 'N/A'}</TableCell>}
+                      {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || t('invoices_na')}</TableCell>}
+                      {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || t('invoices_na')}</TableCell>}
+                      {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || t('invoices_na')}</TableCell>}
+                      {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || t('invoices_na')}</TableCell>}
                       {visibleColumns.quantity && (
                         <TableCell className="text-center px-2 sm:px-4 py-2">
                           <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
@@ -641,4 +658,3 @@ export default function InventoryPage() {
     </div>
   );
 }
-

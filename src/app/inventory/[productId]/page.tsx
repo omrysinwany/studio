@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -25,18 +24,19 @@ import {
 import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 // Helper to format numbers for display
 const formatDisplayNumber = (
     value: number | undefined | null,
-    t: (key: string) => string, // Added t parameter
+    t: (key: string) => string,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(undefined, { 
+        const zeroFormatted = (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -62,13 +62,13 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return String(value); 
+    return String(value);
 };
 
 
 const formatIntegerQuantity = (
     value: number | undefined | null,
-    t: (key: string) => string // Added t parameter
+    t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
         return formatDisplayNumber(0, t, { decimals: 0, useGrouping: false });
@@ -77,6 +77,7 @@ const formatIntegerQuantity = (
 };
 
 export default function ProductDetailPage() {
+  const { user, loading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
@@ -92,8 +93,14 @@ export default function ProductDetailPage() {
 
   const productId = params.productId as string;
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
    const loadProduct = useCallback(async () => {
-    if (!productId) return;
+    if (!productId || !user) return;
 
     setIsLoading(true);
     setError(null);
@@ -101,7 +108,7 @@ export default function ProductDetailPage() {
       const data = await getProductByIdService(productId);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data }); 
+        setEditedProduct({ ...data });
       } else {
         setError(t('product_detail_error_not_found'));
          toast({
@@ -121,20 +128,22 @@ export default function ProductDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [productId, toast, t]);
+  }, [productId, toast, t, user]);
 
 
   useEffect(() => {
-     loadProduct();
-  }, [loadProduct]);
+    if(user) {
+        loadProduct();
+    }
+  }, [loadProduct, user]);
 
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
-      let numericValue: number | string | null | undefined = value; 
+      let numericValue: number | string | null | undefined = value;
       if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
           const stringValue = String(value);
           if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
-              numericValue = undefined; 
+              numericValue = undefined;
           } else {
             numericValue = parseFloat(stringValue.replace(/,/g, ''));
             if (isNaN(numericValue as number)) {
@@ -190,7 +199,7 @@ export default function ProductDetailPage() {
         barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
-        salePrice: Number(editedProduct.salePrice), 
+        salePrice: Number(editedProduct.salePrice),
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === undefined ? undefined : Number(editedProduct.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === undefined ? undefined : Number(editedProduct.maxStockLevel),
@@ -246,7 +255,7 @@ export default function ProductDetailPage() {
 
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product }); 
+        setEditedProduct({ ...product });
         setIsEditing(false);
         toast({
             title: t('product_detail_toast_edit_cancelled_title'),
@@ -357,12 +366,17 @@ export default function ProductDetailPage() {
       };
 
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
       </div>
     );
+  }
+
+  if (!user) {
+     return null;
   }
 
   if (error) {

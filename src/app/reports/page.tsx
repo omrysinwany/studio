@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -27,8 +26,9 @@ import {
     calculateTotalPotentialGrossProfit
 } from '@/lib/kpi-calculations';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
-const formatNumber = (
+const formatNumberWithTranslation = (
     value: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
@@ -83,7 +83,10 @@ interface StockAlert {
 
 
 export default function ReportsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { t } = useTranslation();
+
   const [kpis, setKpis] = useState<any | null>(null);
   const [valueOverTime, setValueOverTime] = useState<any[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
@@ -103,6 +106,14 @@ export default function ReportsPage() {
   const { toast } = useToast();
   const [isMobile, setIsMobile] = useState(false);
 
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -113,6 +124,7 @@ export default function ReportsPage() {
 
     useEffect(() => {
         const fetchInitialData = async () => {
+            if(!user) return;
             setIsLoading(true);
             try {
                 const [inventoryData, invoicesData] = await Promise.all([
@@ -134,13 +146,14 @@ export default function ReportsPage() {
                 setIsLoading(false);
             }
         };
-
-        fetchInitialData();
-    }, [toast, t]);
+        if(user) {
+            fetchInitialData();
+        }
+    }, [toast, t, user]);
 
    useEffect(() => {
      const generateReports = () => {
-       if (isLoading || inventory.length === 0) return;
+       if (isLoading || inventory.length === 0 || !user) return;
 
        const filteredInvoices = invoices.filter(invoice => {
          const invoiceDate = new Date(invoice.uploadTime);
@@ -252,8 +265,10 @@ export default function ReportsPage() {
 
      };
 
-     generateReports();
-   }, [dateRange, toast, inventory, invoices, isLoading, isMobile, t]);
+     if (user) {
+        generateReports();
+     }
+   }, [dateRange, toast, inventory, invoices, isLoading, isMobile, t, user]);
 
    const pieChartData = useMemo(() => categoryDistribution, [categoryDistribution]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
@@ -261,13 +276,19 @@ export default function ReportsPage() {
    const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
-   if (isLoading && !inventory.length && !invoices.length) {
+   if (authLoading || (isLoading && !inventory.length && !invoices.length)) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
        </div>
      );
    }
+
+   if (!user) {
+    return null;
+   }
+
 
   return (
     <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
@@ -323,10 +344,10 @@ export default function ReportsPage() {
                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalValue, t, { currency: true })}</div>
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalValue, t, { currency: true })}</div>
                  <p className={cn("text-[10px] sm:text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
                    {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" /> : <TrendingDown className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
-                   {formatNumber(Math.abs(kpis.valueChangePercent), t, { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
+                   {formatNumberWithTranslation(Math.abs(kpis.valueChangePercent), t, { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
                  </p>
                </CardContent>
              </Card>
@@ -336,7 +357,7 @@ export default function ReportsPage() {
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalItems, t, { decimals: 0, useGrouping: true })}</div>
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalItems, t, { decimals: 0, useGrouping: true })}</div>
                  <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_unique_skus')}</p>
                </CardContent>
              </Card>
@@ -346,7 +367,7 @@ export default function ReportsPage() {
                     <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.totalPotentialGrossProfit, t, { currency: true })}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalPotentialGrossProfit, t, { currency: true })}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_potential_from_stock')}</p>
                 </CardContent>
             </Card>
@@ -356,7 +377,7 @@ export default function ReportsPage() {
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.grossProfitMargin, t, { decimals: 1 })}%</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.grossProfitMargin, t, { decimals: 1 })}%</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_estimate')}</p>
                 </CardContent>
             </Card>
@@ -366,7 +387,7 @@ export default function ReportsPage() {
                     <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.inventoryTurnoverRate, t, { decimals: 1 })}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.inventoryTurnoverRate, t, { decimals: 1 })}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_times_per_period')}</p>
                 </CardContent>
             </Card>
@@ -376,7 +397,7 @@ export default function ReportsPage() {
                     <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumber(kpis.averageOrderValue, t, { currency: true, decimals: 2, useGrouping: false})}</div>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.averageOrderValue, t, { currency: true, decimals: 2, useGrouping: false})}</div>
                     <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_from_invoices')}</p>
                 </CardContent>
             </Card>
@@ -410,13 +431,13 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value / 1000, t, { decimals: 0})}k`}
+                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumberWithTranslation(value / 1000, t, { decimals: 0})}k`}
                                         width={isMobile ? 30 : 40}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
+                                        formatter={(value: number) => formatNumberWithTranslation(value, t, { currency: true })}
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.labelKey)}/>
                                 </LineChart>
@@ -454,13 +475,13 @@ export default function ReportsPage() {
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
+                                        tickFormatter={(value) => formatNumberWithTranslation(value, t, { decimals: 0, useGrouping: true })}
                                         width={isMobile ? 25 : 30}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
+                                        formatter={(value: number) => formatNumberWithTranslation(value, t, { decimals: 0, useGrouping: true })}
                                      />
                                     <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined} name={t(chartConfig.documents.labelKey)}/>
                                 </BarChart>
@@ -482,12 +503,12 @@ export default function ReportsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByCategoryBarData} layout="vertical" margin={{ top: 5, right: isMobile ? 10 : 15, left: isMobile ? 5 : 10, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumber(value, t, { currency: true, decimals: 0})} />
+                                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} tickFormatter={(value) => formatNumberWithTranslation(value, t, { currency: true, decimals: 0})} />
                                     <YAxis dataKey="category" type="category" stroke="hsl(var(--muted-foreground))" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} width={isMobile ? 50 : 60} />
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" />}
-                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
+                                        formatter={(value: number) => formatNumberWithTranslation(value, t, { currency: true })}
                                     />
                                     <Bar dataKey="sales" fill="var(--color-sales)" radius={isMobile ? 2 : 3} barSize={isMobile ? 8 : undefined} name={t(chartConfig.sales.labelKey)}>
                                         {salesByCategoryBarData.map((entry, index) => (
@@ -515,7 +536,7 @@ export default function ReportsPage() {
                                     <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                        formatter={(value: number, name) => `${name}: ${formatNumber(value, t, { currency: true })}`}
+                                        formatter={(value: number, name) => `${name}: ${formatNumberWithTranslation(value, t, { currency: true })}`}
                                     />
                                     <Pie
                                          data={pieChartData}
@@ -587,8 +608,8 @@ export default function ReportsPage() {
                                     {topSellingProductsBarData.map((product, index) => (
                                         <TableRow key={product.id || index}>
                                             <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{product.name}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, t, { decimals: 0 })}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, t, { currency: true })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(product.quantitySold, t, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(product.totalValue, t, { currency: true })}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -624,13 +645,13 @@ export default function ReportsPage() {
                                         <TableRow key={alert.id}>
                                             <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{alert.name}</TableCell>
                                             <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.catalogNumber}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, t, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(alert.quantity, t, { decimals: 0 })}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
-                                                    ? `${formatNumber(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
-                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, t, { decimals: 0 }) : '-')}
+                                                    ? `${formatNumberWithTranslation(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
+                                                    : (alert.minStock !== undefined ? formatNumberWithTranslation(alert.minStock, t, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumberWithTranslation(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
@@ -658,4 +679,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
