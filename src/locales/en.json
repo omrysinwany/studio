@@ -1,8 +1,8 @@
-
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
   "welcome_message": "Welcome to InvoTrack",
+  "welcome_message_app": "Welcome to InvoTrack",
   "greeting_user": "Hello, {{username}}! Manage your inventory efficiently.",
   "greeting_guest": "Streamlining your inventory management.",
   "scan_document": "Scan Document",
@@ -36,6 +36,7 @@
   "kpi_gross_profit_tooltip": "Total potential gross profit if all current inventory is sold at its sale price.",
   "kpi_docs_30d": "Docs (30d)",
   "kpi_docs_30d_last": "Last: {{latestDocName}}",
+  "kpi_latest_doc_processed": "Latest document processed",
   "kpi_docs_30d_tooltip": "Number of documents processed in the last 30 days.",
   "kpi_low_stock": "Low Stock",
   "kpi_low_stock_desc": "Items needing attention",
@@ -622,5 +623,19 @@
   "unit_price_confirmation_option_keep_old": "Keep Old Price ({{price}})",
   "unit_price_confirmation_option_update_new": "Update to New Price ({{price}})",
   "unit_price_confirmation_cancel_button": "Cancel Save",
-  "unit_price_confirmation_confirm_button": "Confirm Prices & Save"
+  "unit_price_confirmation_confirm_button": "Confirm Prices & Save",
+  "number_suffix_k": "K",
+  "number_suffix_m": "M",
+  "number_suffix_b": "B",
+  "number_suffix_t": "T",
+  "guest_home_description": "Efficiently manage your inventory, scan invoices, and gain valuable insights into your business operations. Sign up or log in to get started.",
+  "guest_home_get_started_title": "Get Started with InvoTrack",
+  "guest_home_get_started_desc": "Create an account or log in to access all features.",
+  "guest_home_features_title": "Key Features",
+  "guest_home_feature_scan_title": "Effortless Scanning",
+  "guest_home_feature_scan_desc": "Quickly digitize invoices and delivery notes using your device's camera.",
+  "guest_home_feature_inventory_title": "Smart Inventory",
+  "guest_home_feature_inventory_desc": "Keep track of your stock levels, costs, and sale prices with ease.",
+  "guest_home_feature_insights_title": "Actionable Insights",
+  "guest_home_feature_insights_desc": "Generate reports and understand your business performance better."
 }

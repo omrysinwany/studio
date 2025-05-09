@@ -1,11 +1,10 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, Palette, Sun, Moon, Settings as SettingsIcon, HandCoins } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, HandCoins } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -15,10 +14,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useTheme } from "next-themes";
 import { Progress } from "@/components/ui/progress";
 import { useTranslation } from '@/hooks/useTranslation';
-
+import GuestHomePage from '@/components/GuestHomePage'; // Import the new GuestHomePage component
 
 interface KpiData {
   totalItems: number;
@@ -34,7 +32,7 @@ interface KpiData {
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
   const { t } = useTranslation(); // For currency symbol
   if (!data || data.length === 0) {
-    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">No trend data</div>;
+    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('reports_chart_no_value_trend_data')}</div>;
   }
   return (
     <ResponsiveContainer width="100%" height={40}>
@@ -48,7 +46,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
             padding: "0.25rem 0.5rem",
           }}
           formatter={(value: number, name: string) => {
-             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, "Value"];
+             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
              return [value.toLocaleString(), name];
           }}
           labelFormatter={() => ''}
@@ -78,7 +76,7 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchKpiData() {
-      if (authLoading) return;
+      if (!user || authLoading) return; // Only fetch if user is authenticated
 
       setIsLoadingKpis(true);
       setKpiError(null);
@@ -126,19 +124,22 @@ export default function Home() {
 
       } catch (error) {
         console.error("Failed to fetch KPI data:", error);
-        setKpiError("Could not load dashboard data. Please try again later.");
+        setKpiError(t('reports_toast_error_fetch_desc'));
         toast({
-          title: "Error Loading Dashboard",
-          description: "Failed to fetch key performance indicators.",
+          title: t('reports_toast_error_fetch_title'),
+          description: t('reports_toast_error_fetch_desc'),
           variant: "destructive",
         });
       } finally {
         setIsLoadingKpis(false);
       }
     }
-
-    fetchKpiData();
-  }, [authLoading, toast]);
+    if (user) { // Fetch data only if user is logged in
+      fetchKpiData();
+    } else {
+      setIsLoadingKpis(false); // If no user, no KPIs to load
+    }
+  }, [user, authLoading, toast, t]);
 
 
   const handleScanClick = () => {
@@ -169,10 +170,10 @@ export default function Home() {
 
     const si = [
         { value: 1, symbol: "" },
-        { value: 1E3, symbol: "K" },
-        { value: 1E6, symbol: "M" },
-        { value: 1E9, symbol: "B" },
-        { value: 1E12, symbol: "T" }
+        { value: 1E3, symbol: t('number_suffix_k') || "K" },
+        { value: 1E6, symbol: t('number_suffix_m') || "M" },
+        { value: 1E9, symbol: t('number_suffix_b') || "B" },
+        { value: 1E12, symbol: t('number_suffix_t') || "T" }
     ];
     const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
     let i;
@@ -190,41 +191,46 @@ export default function Home() {
   };
 
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
-    if (isLoadingKpis) {
+    if (isLoadingKpis && user) { // Show loader only if KPIs are expected
       return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
     }
-    if (kpiError) return <span className="text-destructive text-lg">-</span>;
+    if (kpiError && user) return <span className="text-destructive text-lg">-</span>;
     if (value === undefined || value === null || isNaN(value)) return isCurrency ? `${t('currency_symbol')}-` : '-';
 
     return formatLargeNumber(value, isInteger ? 0 : (isCurrency ? 2 : 1), isCurrency);
   };
 
   const renderKpiText = (text: string | undefined) => {
-    if (isLoadingKpis) {
+    if (isLoadingKpis && user) {
       return <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />;
     }
-    if (kpiError) return <span className="text-destructive text-xs">-</span>;
+    if (kpiError && user) return <span className="text-destructive text-xs">-</span>;
     return text || '-';
   };
 
-   if (authLoading && !kpiData) {
+   if (authLoading) {
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-         <p className="mt-4 text-muted-foreground">Loading...</p>
+         <p className="mt-4 text-muted-foreground">{t('loading_data')}</p>
        </div>
      );
    }
 
+  if (!user) {
+    return <GuestHomePage />; // Render guest home page if no user
+  }
+
+  // Authenticated user home page
   return (
     <div className="flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('welcome_message')}
+            {t('welcome_message_app')}
           </h1>
           <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in" style={{ animationDelay: '0.1s' }}>
-            {user ? t('greeting_user', { username: user.username }) : t('greeting_guest')}
+            {t('greeting_user', { username: user.username })}
           </p>
 
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
@@ -260,7 +266,7 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
@@ -277,7 +283,7 @@ export default function Home() {
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Total number of individual items in your inventory.</p>
+                  <p>{t('kpi_total_items_tooltip')}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -345,7 +351,7 @@ export default function Home() {
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || 'Latest document processed'}>
+                        <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || t('kpi_latest_doc_processed')}>
                           {t('kpi_docs_30d_last', { latestDocName: renderKpiText(kpiData?.latestDocName) })}
                         </p>
                       </CardContent>

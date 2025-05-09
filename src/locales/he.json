@@ -1,8 +1,8 @@
-
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
   "welcome_message": "ברוכים הבאים לאינבוטרק",
+  "welcome_message_app": "ברוכים הבאים לאינבוטרק",
   "greeting_user": "שלום, {{username}}! נהל את המלאי שלך ביעילות.",
   "greeting_guest": "מייעלים את ניהול המלאי שלך.",
   "scan_document": "סרוק מסמך",
@@ -36,6 +36,7 @@
   "kpi_gross_profit_tooltip": "הרווח הגולמי הפוטנציאלי הכולל אם כל המלאי הנוכחי יימכר במחיר המכירה שלו.",
   "kpi_docs_30d": "מסמכים (30 ימים)",
   "kpi_docs_30d_last": "אחרון: {{latestDocName}}",
+  "kpi_latest_doc_processed": "מסמך אחרון שעובד",
   "kpi_docs_30d_tooltip": "מספר המסמכים שעובדו ב-30 הימים האחרונים.",
   "kpi_low_stock": "מלאי נמוך",
   "kpi_low_stock_desc": "פריטים הדורשים תשומת לב",
@@ -622,5 +623,19 @@
   "unit_price_confirmation_option_keep_old": "שמור על מחיר ישן ({{price}})",
   "unit_price_confirmation_option_update_new": "עדכן למחיר חדש ({{price}})",
   "unit_price_confirmation_cancel_button": "בטל שמירה",
-  "unit_price_confirmation_confirm_button": "אשר מחירים ושמור"
+  "unit_price_confirmation_confirm_button": "אשר מחירים ושמור",
+  "number_suffix_k": "א'",
+  "number_suffix_m": "מ'",
+  "number_suffix_b": "מ\"ל",
+  "number_suffix_t": "ט'",
+  "guest_home_description": "נהל ביעילות את המלאי שלך, סרוק חשבוניות, וקבל תובנות חשובות על הפעילות העסקית שלך. הירשם או התחבר כדי להתחיל.",
+  "guest_home_get_started_title": "התחל עם אינבוטרק",
+  "guest_home_get_started_desc": "צור חשבון או התחבר כדי לגשת לכל התכונות.",
+  "guest_home_features_title": "תכונות עיקריות",
+  "guest_home_feature_scan_title": "סריקה ללא מאמץ",
+  "guest_home_feature_scan_desc": "הפוך חשבוניות ותעודות משלוח לדיגיטליות במהירות באמצעות מצלמת המכשיר שלך.",
+  "guest_home_feature_inventory_title": "מלאי חכם",
+  "guest_home_feature_inventory_desc": "עקוב אחר רמות המלאי, העלויות ומחירי המכירה שלך בקלות.",
+  "guest_home_feature_insights_title": "תובנות מעשיות",
+  "guest_home_feature_insights_desc": "הפק דוחות והבן טוב יותר את ביצועי העסק שלך."
 }
