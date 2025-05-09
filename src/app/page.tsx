@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -16,7 +17,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { useTranslation } from '@/hooks/useTranslation';
-import GuestHomePage from '@/components/GuestHomePage'; // Import the new GuestHomePage component
+import GuestHomePage from '@/components/GuestHomePage';
 
 interface KpiData {
   totalItems: number;
@@ -30,7 +31,7 @@ interface KpiData {
 }
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
-  const { t } = useTranslation(); // For currency symbol
+  const { t } = useTranslation();
   if (!data || data.length === 0) {
     return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('reports_chart_no_value_trend_data')}</div>;
   }
@@ -76,7 +77,7 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchKpiData() {
-      if (!user || authLoading) return; // Only fetch if user is authenticated
+      if (!user || authLoading) return;
 
       setIsLoadingKpis(true);
       setKpiError(null);
@@ -102,6 +103,12 @@ export default function Home() {
         const latestDoc = invoices.length > 0
           ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
           : null;
+        
+        let latestDocName = latestDoc?.fileName;
+        if (latestDocName && latestDocName.length > 20) {
+            latestDocName = `${latestDocName.substring(0, 17)}...`;
+        }
+
 
         const mockInventoryValueTrend = [
           { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
@@ -116,7 +123,7 @@ export default function Home() {
           inventoryValue,
           docsProcessedLast30Days,
           lowStockItemsCount,
-          latestDocName: latestDoc?.fileName.length > 15 ? `${latestDoc.fileName.substring(0,12)}...` : latestDoc?.fileName,
+          latestDocName: latestDocName,
           inventoryValueTrend: mockInventoryValueTrend,
           inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
           grossProfit,
@@ -134,10 +141,10 @@ export default function Home() {
         setIsLoadingKpis(false);
       }
     }
-    if (user) { // Fetch data only if user is logged in
+    if (user) {
       fetchKpiData();
-    } else {
-      setIsLoadingKpis(false); // If no user, no KPIs to load
+    } else if (!authLoading) { // Only set loading to false if not auth loading and no user
+      setIsLoadingKpis(false);
     }
   }, [user, authLoading, toast, t]);
 
@@ -158,40 +165,54 @@ export default function Home() {
     if (num === undefined || num === null || isNaN(num)) {
       return isCurrency ? `${t('currency_symbol')}-` : '-';
     }
-
+  
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
-
-    if (Math.abs(num) < 1000) {
-        return prefix + num.toLocaleString(undefined, {
-            minimumFractionDigits: isCurrency ? 2 : 0,
-            maximumFractionDigits: isCurrency ? 2 : 0
-        });
+  
+    const absNum = Math.abs(num);
+  
+    if (absNum < 1000) {
+      return prefix + num.toLocaleString(undefined, {
+        minimumFractionDigits: isCurrency ? 2 : (Number.isInteger(num) ? 0 : decimals),
+        maximumFractionDigits: isCurrency ? 2 : decimals
+      });
     }
-
+  
     const si = [
-        { value: 1, symbol: "" },
-        { value: 1E3, symbol: t('number_suffix_k') || "K" },
-        { value: 1E6, symbol: t('number_suffix_m') || "M" },
-        { value: 1E9, symbol: t('number_suffix_b') || "B" },
-        { value: 1E12, symbol: t('number_suffix_t') || "T" }
+      { value: 1, symbol: "" },
+      { value: 1E3, symbol: t('number_suffix_k') || "K" },
+      { value: 1E6, symbol: t('number_suffix_m') || "M" },
+      { value: 1E9, symbol: t('number_suffix_b') || "B" },
+      { value: 1E12, symbol: t('number_suffix_t') || "T" }
     ];
     const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
     let i;
     for (i = si.length - 1; i > 0; i--) {
-        if (Math.abs(num) >= si[i].value) {
-            break;
-        }
+      if (absNum >= si[i].value) {
+        break;
+      }
     }
+  
+    // Determine number of decimal places for suffixes
+    // For currency, show 2 decimal places if it's not a whole number after division by suffix value
+    // For non-currency, use specified decimals, or 0 if it's an integer after division.
+    let numDecimals;
+    const valAfterSuffix = num / si[i].value;
+  
+    if (isCurrency) {
+      numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : 2;
+    } else {
+      numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals;
+    }
+     if (si[i].value === 1) numDecimals = isCurrency ? 2 : (Number.isInteger(num) ? 0 : decimals) ;
 
-    let numDecimals = isCurrency ? ( (num / si[i].value) % 1 === 0 ? 0 : 2) : decimals;
-    if (si[i].value === 1) numDecimals = isCurrency ? 2 : 0;
 
-    const formattedNum = (num / si[i].value).toFixed(numDecimals).replace(rx, "$1");
+    const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
   };
+  
 
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
-    if (isLoadingKpis && user) { // Show loader only if KPIs are expected
+    if (isLoadingKpis && user) {
       return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
     }
     if (kpiError && user) return <span className="text-destructive text-lg">-</span>;
@@ -217,8 +238,8 @@ export default function Home() {
      );
    }
 
-  if (!user) {
-    return <GuestHomePage />; // Render guest home page if no user
+  if (!user && !authLoading) { // Ensure authLoading is false before rendering GuestHomePage
+    return <GuestHomePage />;
   }
 
   // Authenticated user home page
@@ -227,13 +248,13 @@ export default function Home() {
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('welcome_message_app')}
+            {t('welcome_message')}
           </h1>
-          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in" style={{ animationDelay: '0.1s' }}>
-            {t('greeting_user', { username: user.username })}
+          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
+            {t('greeting_user', { username: user?.username || 'User' })}
           </p>
 
-           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in" style={{ animationDelay: '0.2s' }}>
+           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
             <Button
               size="lg"
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
@@ -259,14 +280,14 @@ export default function Home() {
             </Button>
           </div>
 
-          {kpiError && !isLoadingKpis && (
+          {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>{kpiError}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in delay-300">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
@@ -374,7 +395,7 @@ export default function Home() {
                           <CardContent className="pb-4 px-4">
                               <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.lowStockItemsCount, false, true)}</div>
                               <p className="text-xs text-muted-foreground pt-1">{t('kpi_low_stock_desc')}</p>
-                              {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
+                              {kpiData && typeof kpiData.totalItems === 'number' && kpiData.totalItems > 0 && typeof kpiData.lowStockItemsCount === 'number' && kpiData.lowStockItemsCount >= 0 && (
                                   <Progress
                                       value={(kpiData.lowStockItemsCount / kpiData.totalItems) * 100}
                                       className="h-2 mt-2 bg-muted/50"
@@ -392,7 +413,7 @@ export default function Home() {
                   </TooltipTrigger>
                   <TooltipContent>
                       <p>{t('kpi_low_stock_tooltip')}</p>
-                      {kpiData && kpiData.totalItems > 0 && kpiData.lowStockItemsCount >= 0 && (
+                      {kpiData && typeof kpiData.totalItems === 'number' && kpiData.totalItems > 0 && typeof kpiData.lowStockItemsCount === 'number' && kpiData.lowStockItemsCount >= 0 && (
                           <p className="text-xs">
                               {t('kpi_low_stock_percentage_desc', {percentage: ((kpiData.lowStockItemsCount / kpiData.totalItems) * 100).toFixed(1)})}
                           </p>
