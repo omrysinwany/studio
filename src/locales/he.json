@@ -44,6 +44,7 @@
   "kpi_low_stock_desc": "פריטים הדורשים תשומת לב",
   "kpi_low_stock_tooltip": "מספר הפריטים שנמצאים ברמת המלאי המינימלית שלהם או מתחתיה.",
   "kpi_low_stock_percentage_desc": "{{percentage}}% מכלל הפריטים נמצאים במלאי נמוך.",
+  "kpi_avg_order_value": "שווי הזמנה ממוצע",
   "login_title": "התחברות לאינבוטרק",
   "login_description": "הכנס את פרטיך כדי לגשת לחשבון שלך.",
   "login_username_label": "שם משתמש",

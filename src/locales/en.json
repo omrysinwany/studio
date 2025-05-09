@@ -44,6 +44,7 @@
   "kpi_low_stock_desc": "Items needing attention",
   "kpi_low_stock_tooltip": "Number of items at or below their minimum stock level.",
   "kpi_low_stock_percentage_desc": "{{percentage}}% of total items are low on stock.",
+  "kpi_avg_order_value": "Avg. Order Value",
   "login_title": "Login to InvoTrack",
   "login_description": "Enter your credentials to access your account.",
   "login_username_label": "Username",

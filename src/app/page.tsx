@@ -1,16 +1,21 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, HandCoins } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, HandCoins, ShoppingCart } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getProductsService, InvoiceHistoryItem, getInvoicesService } from '@/services/backend';
-import { calculateInventoryValue, calculateTotalItems, getLowStockItems, calculateTotalPotentialGrossProfit } from '@/lib/kpi-calculations';
+import {
+  calculateInventoryValue,
+  calculateTotalItems,
+  getLowStockItems,
+  calculateTotalPotentialGrossProfit,
+  calculateAverageOrderValue
+} from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
@@ -28,6 +33,7 @@ interface KpiData {
   inventoryValueTrend?: { name: string; value: number }[];
   inventoryValuePrevious?: number;
   grossProfit: number;
+  averageOrderValue: number;
 }
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
@@ -91,6 +97,8 @@ export default function Home() {
         const inventoryValue = calculateInventoryValue(products);
         const lowStockItemsCount = getLowStockItems(products).length;
         const grossProfit = calculateTotalPotentialGrossProfit(products);
+        const averageOrderValue = calculateAverageOrderValue(invoices.filter(inv => inv.status === 'completed'));
+
 
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -127,6 +135,7 @@ export default function Home() {
           inventoryValueTrend: mockInventoryValueTrend,
           inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
           grossProfit,
+          averageOrderValue,
         });
 
       } catch (error) {
@@ -143,7 +152,7 @@ export default function Home() {
     }
     if (user) {
       fetchKpiData();
-    } else if (!authLoading) { // Only set loading to false if not auth loading and no user
+    } else if (!authLoading) { 
       setIsLoadingKpis(false);
     }
   }, [user, authLoading, toast, t]);
@@ -192,9 +201,6 @@ export default function Home() {
       }
     }
   
-    // Determine number of decimal places for suffixes
-    // For currency, show 2 decimal places if it's not a whole number after division by suffix value
-    // For non-currency, use specified decimals, or 0 if it's an integer after division.
     let numDecimals;
     const valAfterSuffix = num / si[i].value;
   
@@ -238,17 +244,16 @@ export default function Home() {
      );
    }
 
-  if (!user && !authLoading) { // Ensure authLoading is false before rendering GuestHomePage
+  if (!user && !authLoading) { 
     return <GuestHomePage />;
   }
 
-  // Authenticated user home page
   return (
     <div className="flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('welcome_message')}
+            {t('app_title')}
           </h1>
           <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
             {t('greeting_user', { username: user?.username || 'User' })}
@@ -287,7 +292,7 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 scale-fade-in delay-300">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
@@ -359,6 +364,26 @@ export default function Home() {
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>{t('kpi_gross_profit_tooltip')}</p>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/reports" className="block hover:no-underline">
+                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('reports_kpi_avg_order_value')}</CardTitle>
+                        <ShoppingCart className="h-5 w-5 text-accent" />
+                      </CardHeader>
+                      <CardContent className="pb-4 px-4">
+                        <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.averageOrderValue, true)}</div>
+                        <p className="text-xs text-muted-foreground pt-1">{t('reports_kpi_from_invoices')}</p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('kpi_avg_order_value')}</p> {/* You might want a specific tooltip for AOV */}
                 </TooltipContent>
               </Tooltip>
 
