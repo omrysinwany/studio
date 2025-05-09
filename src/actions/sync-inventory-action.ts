@@ -1,6 +1,7 @@
 'use server';
 
-import { syncCaspitProductsAction } from '@/actions/caspit-actions'; // Action to fetch products from Caspit
+import { syncCaspitProductsAction } from '@/actions/caspit-actions';
+import { syncHashavshevetProductsAction } from '@/actions/hashavshevet-actions';
 import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
 
 /**
@@ -9,10 +10,21 @@ import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration
  * because the current backend service uses localStorage.
  * @param config The POS connection configuration.
  * @param systemId The ID of the POS system (used to determine which sync action to call).
+ * @param userId The ID of the authenticated user initiating the sync.
  * @returns A promise resolving to the SyncResult from the product sync operation.
  */
-export async function syncInventoryAction(config: PosConnectionConfig, systemId: string): Promise<SyncResult> {
-    console.log(`[syncInventoryAction] Starting manual sync for ${systemId}...`);
+export async function syncInventoryAction(
+    config: PosConnectionConfig,
+    systemId: string,
+    userId?: string // Added userId for authentication check
+): Promise<SyncResult> {
+    console.log(`[syncInventoryAction] Starting manual sync for ${systemId} by user ${userId || 'unknown'}...`);
+
+    // Authentication check
+    if (!userId) {
+        console.error("[syncInventoryAction] User not authenticated for sync operation.");
+        return { success: false, message: "User not authenticated. Please log in to perform this action." };
+    }
 
     // Validate config
     if (!config || Object.keys(config).length === 0) {
@@ -28,10 +40,10 @@ export async function syncInventoryAction(config: PosConnectionConfig, systemId:
                 console.log(`[syncInventoryAction] Calling syncCaspitProductsAction with config...`);
                 productSyncResult = await syncCaspitProductsAction(config);
                 break;
-            // case 'hashavshevet':
-            //     console.log(`[syncInventoryAction] Calling syncHashavshevetProductsAction with config...`);
-            //     productSyncResult = await syncHashavshevetProductsAction(config); // Assuming this exists
-            //     break;
+            case 'hashavshevet': // Ensure Hashavshevet case is handled
+                console.log(`[syncInventoryAction] Calling syncHashavshevetProductsAction with config...`);
+                productSyncResult = await syncHashavshevetProductsAction(config);
+                break;
             default:
                  return { success: false, message: `Manual sync currently not supported for ${systemId}.` };
         }
@@ -40,7 +52,7 @@ export async function syncInventoryAction(config: PosConnectionConfig, systemId:
         console.log(`[syncInventoryAction] Raw product sync result for ${systemId}:`, productSyncResult);
 
         // 3. Return the result (including products if fetched) to the client.
-        // The client will handle saving the products using `saveProducts`.
+        // The client will handle saving the products using `finalizeSaveProductsService`.
         if (!productSyncResult.success) {
              console.error(`[syncInventoryAction] Failed to fetch products from ${systemId}: ${productSyncResult.message}`);
         } else {
@@ -53,13 +65,4 @@ export async function syncInventoryAction(config: PosConnectionConfig, systemId:
         console.error(`[syncInventoryAction] Error during sync execution for ${systemId}:`, error);
         return { success: false, message: `Sync action failed unexpectedly: ${error.message || 'Unknown error'}` };
     }
-
-    // Note on Scheduled Sync:
-    // A real scheduled daily sync (like a cron job) cannot be reliably implemented
-    // purely within a standard Next.js deployment model (especially serverless).
-    // This typically requires:
-    // 1. An external scheduling service (e.g., Vercel Cron Jobs, Google Cloud Scheduler, AWS EventBridge).
-    // 2. An API endpoint (e.g., a Next.js API route or another backend service) that the scheduler calls.
-    // 3. This endpoint would then execute logic similar to this server action.
-    // The simulation here focuses on the manual trigger and the core sync logic.
 }

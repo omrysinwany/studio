@@ -20,6 +20,8 @@ import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, Refres
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from '@/components/ui/separator'; // Import Separator
+import { useAuth } from '@/context/AuthContext'; // Import useAuth
+import { useRouter } from 'next/navigation'; // Import useRouter for redirection
 import { useTranslation } from '@/hooks/useTranslation';
 
 
@@ -51,9 +53,19 @@ export default function PosIntegrationSettingsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth(); // Get user and authLoading state
+  const router = useRouter(); // Initialize router
   const { t } = useTranslation();
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login'); // Redirect to login if not authenticated
+    }
+  }, [user, authLoading, router]);
+
   const loadInitialData = useCallback(async () => {
+    if (!user) return; // Don't load data if user is not authenticated
+
     setIsLoading(true);
     try {
       const systems = getAvailablePosSystems();
@@ -74,11 +86,13 @@ export default function PosIntegrationSettingsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast, t]);
+  }, [toast, user, t]);
 
   useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+    if (user) { // Only load initial data if user is authenticated
+        loadInitialData();
+    }
+  }, [loadInitialData, user]);
 
   const handleSystemChange = (systemId: string) => {
     setSelectedSystemId(systemId);
@@ -166,7 +180,13 @@ export default function PosIntegrationSettingsPage() {
 
      try {
          console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
-         const inventoryResult = await syncInventoryAction(configValues, selectedSystemId);
+         // Pass user.id if available, otherwise null or handle error (though page should redirect if no user)
+         const currentUserId = user ? user.id : undefined; 
+         if (!currentUserId) {
+            throw new Error("User not authenticated for sync operation.");
+         }
+         const inventoryResult = await syncInventoryAction(configValues, selectedSystemId, currentUserId);
+
          setSyncResults([inventoryResult]);
 
          if (inventoryResult.success && inventoryResult.products) {
@@ -244,13 +264,22 @@ export default function PosIntegrationSettingsPage() {
     );
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading) { // Show loader if either auth or data is loading
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
+
+  if (!user && !authLoading) { // If done loading auth and still no user, content handled by redirect, but can show message
+    return (
+        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
+            <p>{t('settings_login_required')}</p>
+        </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
