@@ -27,6 +27,8 @@ import {
 } from '@/lib/kpi-calculations';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
+
 
 const formatNumberWithTranslation = (
     value: number | undefined | null,
@@ -276,17 +278,13 @@ export default function ReportsPage() {
    const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
-   if (authLoading || (isLoading && !inventory.length && !invoices.length)) {
+   if (authLoading || (isLoading && !inventory.length && !invoices.length) || !user) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
          <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
        </div>
      );
-   }
-
-   if (!user) {
-    return null;
    }
 
 

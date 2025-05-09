@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react'; // Added useEffect
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -15,14 +15,14 @@ export default function SettingsPage() {
     const router = useRouter();
     const { t } = useTranslation();
 
-    React.useEffect(() => {
+    useEffect(() => { // Added useEffect for redirection logic
         if (!authLoading && !user) {
           router.push('/login');
         }
     }, [user, authLoading, router]);
 
 
-     if (authLoading) {
+     if (authLoading || !user) { // Show loading if auth is loading OR user is not available yet (covers initial load)
       return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -31,9 +31,6 @@ export default function SettingsPage() {
       );
     }
 
-    if (!user) {
-        return null;
-    }
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">

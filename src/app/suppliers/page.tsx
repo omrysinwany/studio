@@ -300,7 +300,7 @@ export default function SuppliersPage() {
   };
 
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoading || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -309,9 +309,6 @@ export default function SuppliersPage() {
     );
   }
 
-  if (!user) {
-    return null;
-  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">

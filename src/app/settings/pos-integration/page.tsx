@@ -8,17 +8,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager';
+// Corrected imports to use the actual exported names with 'Service' suffix
 import {
     savePosSettingsService,
     getPosSettingsService,
     finalizeSaveProductsService
 } from '@/services/backend';
-import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
-import { syncInventoryAction } from '@/actions/sync-inventory-action';
-import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react';
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
+import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the inventory sync action
+import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from '@/components/ui/separator'; // Import Separator
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -263,7 +264,7 @@ export default function PosIntegrationSettingsPage() {
     );
   };
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoading || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -271,15 +272,6 @@ export default function PosIntegrationSettingsPage() {
       </div>
     );
   }
-
-  if (!user && !authLoading) {
-    return (
-        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-            <p>{t('settings_login_required')}</p>
-        </div>
-    );
-  }
-
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
