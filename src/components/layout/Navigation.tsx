@@ -35,13 +35,13 @@ export default function Navigation() {
   const { t } = useTranslation();
 
   const navItems = [
-    { href: '/', labelKey: 'nav_home', icon: Home },
-    { href: '/upload', labelKey: 'nav_upload', icon: ScanLine },
-    { href: '/inventory', labelKey: 'nav_inventory', icon: Package },
-    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon },
-    { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase },
-    { href: '/reports', labelKey: 'nav_reports', icon: BarChart2 },
-    { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon },
+    { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
+    { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
+    { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
+    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon, animationDelay: '0.4s' },
+    { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
+    { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
+    { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
   ];
 
   useEffect(() => {
@@ -49,12 +49,9 @@ export default function Navigation() {
       return;
     }
     const publicPaths = ['/', '/login', '/register'];
-    // Check if the current path is one of the public paths or starts with /settings
-    // Settings page itself is accessible, but its sub-pages like /settings/pos-integration might be protected
-    const isPublicOrSettingsPath = publicPaths.some(publicPath => pathname === publicPath || pathname.startsWith(`${publicPath}/`)) || pathname === '/settings';
+    const isPublicPath = publicPaths.includes(pathname);
 
-
-    if (!user && !isPublicOrSettingsPath) {
+    if (!user && !isPublicPath && pathname !== '/settings') { // Allow /settings for guests as per previous logic
       router.push('/login');
     }
   }, [user, authLoading, pathname, router]);
@@ -85,7 +82,7 @@ export default function Navigation() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         {/* Logo/Brand */}
-        <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
+        <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity scale-fade-in">
           <Package className="h-6 w-6 text-primary" />
           <span className="text-primary">{t('app_title')}</span>
         </Link>
@@ -97,11 +94,12 @@ export default function Navigation() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-in-out",
+                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-in-out hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 scale-fade-in hover:scale-105",
                 pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted"
               )}
+               style={{ animationDelay: item.animationDelay }}
                aria-current={pathname === item.href ? 'page' : undefined}
             >
               <item.icon className="h-4 w-4" />
@@ -111,11 +109,11 @@ export default function Navigation() {
         </nav>
 
         {/* Right side controls: Theme, Language, Auth */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
            {/* Theme Switcher (Desktop) */}
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
-               <Button variant="ghost" size="icon" className='hidden md:inline-flex'>
+               <Button variant="ghost" size="icon" className='hidden md:inline-flex transition-transform hover:scale-110'>
                   <Palette className="h-[1.2rem] w-[1.2rem]" />
                   <span className="sr-only">{t('theme')}</span>
                </Button>
@@ -140,7 +138,7 @@ export default function Navigation() {
             {/* Language Switcher (Desktop) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="hidden md:inline-flex">
+                <Button variant="ghost" size="icon" className="hidden md:inline-flex transition-transform hover:scale-110">
                   <Languages className="h-[1.2rem] w-[1.2rem]" />
                   <span className="sr-only">{t('language')}</span>
                 </Button>
@@ -162,9 +160,9 @@ export default function Navigation() {
               ) : user ? (
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="text-xs">{getInitials(user.username)}</AvatarFallback>
+                    <Button variant="ghost" className="relative h-9 w-9 rounded-full transition-transform hover:scale-110">
+                      <Avatar className="h-9 w-9 border-2 border-primary/50">
+                        <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{getInitials(user.username)}</AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
@@ -178,12 +176,12 @@ export default function Navigation() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')}>
+                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')} className="cursor-pointer">
                        <Plug className="mr-2 h-4 w-4" />
                        <span>{t('pos_integration')}</span>
                      </DropdownMenuItem>
                      <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                    <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
                       <span>{t('nav_logout')}</span>
                     </DropdownMenuItem>
@@ -193,17 +191,15 @@ export default function Navigation() {
                 <>
                    {/* Apply button styles directly to Link */}
                    <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">
-                       <span className="flex items-center">
-                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                       </span>
-                    </Link>
+                     <Link href="/login" className="flex items-center transition-colors hover:text-primary">
+                       <LogIn className="mr-1 h-4 w-4" />
+                       {t('nav_login')}
+                     </Link>
                    </Button>
-                  <Button asChild size="sm">
-                    <Link href="/register">
-                       <span className="flex items-center">
-                         <UserPlus className="mr-1 h-4 w-4" /> {t('nav_register')}
-                       </span>
+                  <Button asChild size="sm" className="transition-transform hover:scale-105">
+                    <Link href="/register" className="flex items-center">
+                      <UserPlus className="mr-1 h-4 w-4" />
+                      {t('nav_register')}
                     </Link>
                   </Button>
                 </>
@@ -214,13 +210,12 @@ export default function Navigation() {
             <div className="md:hidden">
               <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" className="transition-transform hover:scale-110">
                     <Menu className="h-6 w-6" />
                      <span className="sr-only">{t('nav_toggle_navigation')}</span>
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col">
-                    {/* Visually hidden title for accessibility, but kept for structure */}
+                <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col bg-background">
                     <SheetTitle className="sr-only">{t('nav_menu')}</SheetTitle>
                    <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
@@ -228,12 +223,12 @@ export default function Navigation() {
                           <span className="text-primary">{t('app_title')}</span>
                       </Link>
                     </div>
-                    <nav className="flex-grow overflow-y-auto p-4">
+                    <nav className="flex-grow overflow-y-auto p-4 space-y-1">
                         {navItems.map((item) => (
                           <Button
                              key={item.href}
                              variant={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost'}
-                             className="w-full justify-start gap-2 text-base py-3 mb-1"
+                             className="w-full justify-start gap-2 text-base py-3 h-auto"
                              onClick={() => handleMobileNavClick(item.href)}
                           >
                              <item.icon className="h-5 w-5" />
@@ -250,29 +245,29 @@ export default function Navigation() {
                            ) : user ? (
                                <div className="flex flex-col gap-2">
                                    <div className="flex items-center gap-2 mb-2 border-b pb-2">
-                                        <Avatar className="h-8 w-8">
-                                            <AvatarFallback className="text-xs">{getInitials(user.username)}</AvatarFallback>
+                                        <Avatar className="h-8 w-8 border-2 border-primary/50">
+                                            <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{getInitials(user.username)}</AvatarFallback>
                                         </Avatar>
                                         <div className="flex flex-col">
                                             <p className="text-sm font-medium leading-none">{user.username}</p>
                                             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                                         </div>
                                     </div>
-                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
+                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
                                        <Plug className="h-5 w-5" />
                                        {t('pos_integration')}
                                     </Button>
-                                   <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3" onClick={handleLogout}>
+                                   <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
                                       {t('nav_logout')}
                                    </Button>
                                </div>
                            ) : (
                                <div className="flex flex-col gap-2">
-                                   <Button variant="outline" className="justify-center text-base py-3" onClick={() => handleMobileNavClick('/login')}>
+                                   <Button variant="outline" className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/login')}>
                                       <LogIn className="mr-2 h-5 w-5" /> {t('nav_login')}
                                    </Button>
-                                   <Button className="justify-center text-base py-3" onClick={() => handleMobileNavClick('/register')}>
+                                   <Button className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/register')}>
                                       <UserPlus className="mr-2 h-5 w-5" /> {t('nav_register')}
                                    </Button>
                                </div>
@@ -282,7 +277,7 @@ export default function Navigation() {
                          <div className="border-t pt-4">
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
-                               <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3">
+                               <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
                                   <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
                                </Button>
                              </DropdownMenuTrigger>
@@ -308,7 +303,7 @@ export default function Navigation() {
                            {/* Language Switcher (Mobile) */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3">
+                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
                                   <Languages className="h-5 w-5" /> {t('language')}: <span className="ml-auto capitalize font-medium">{locale === 'he' ? t('hebrew') : t('english')}</span>
                                 </Button>
                               </DropdownMenuTrigger>
