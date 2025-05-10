@@ -20,16 +20,16 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, CreditCard } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
- import { DateRange } from 'react-day-picker';
+ import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
  import { format, parseISO } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -45,11 +45,11 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent, 
-  AlertDialogDescription as AlertDialogDescriptionComponent, 
-  AlertDialogFooter as AlertDialogFooterComponent, 
-  AlertDialogHeader as AlertDialogHeaderComponent, 
-  AlertDialogTitle as AlertDialogTitleComponent, 
+  AlertDialogContent as AlertDialogContentComponent,
+  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogFooter as AlertDialogFooterComponent,
+  AlertDialogHeader as AlertDialogHeaderComponent,
+  AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
@@ -58,6 +58,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 const formatNumber = (
@@ -65,13 +66,13 @@ const formatNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {}; // Default useGrouping to true
+    const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, 
+            useGrouping: useGrouping,
         });
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
@@ -79,7 +80,7 @@ const formatNumber = (
     const formattedValue = value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, 
+        useGrouping: useGrouping,
     });
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
@@ -95,6 +96,7 @@ type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 export default function PaidInvoicesPage() {
+  const { user } = useAuth();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -104,15 +106,16 @@ export default function PaidInvoicesPage() {
     id: false,
     fileName: true,
     uploadTime: false,
-    status: true,
+    status: true, // Scan status
+    paymentStatus: false, // Payment status is implicitly 'paid' on this page
     invoiceNumber: false,
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    invoiceDataUri: false,
     originalImagePreviewUri: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
+  // Filter by scan status might still be useful for paid invoices (e.g., completed scan vs error)
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [sortKey, setSortKey] = useState<SortKey>('uploadTime');
@@ -135,15 +138,15 @@ export default function PaidInvoicesPage() {
       const target = e.target as HTMLElement;
       const trigger = target.closest('[data-radix-dropdown-menu-trigger]');
       if (trigger && dropdownTriggerRef.current && dropdownTriggerRef.current.contains(trigger)) {
-        // Logic to handle tap if needed, though Radix UI usually handles this
       }
     }
   });
 
 
   const fetchSuppliers = useCallback(async () => {
+    if (!user) return;
     try {
-      const summaries = await getSupplierSummariesService();
+      const summaries = await getSupplierSummariesService(user.id);
       setExistingSuppliers(summaries);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
@@ -153,21 +156,24 @@ export default function PaidInvoicesPage() {
         variant: "destructive",
       });
     }
-  }, [toast, t]);
+  }, [toast, t, user]);
 
   useEffect(() => {
-    fetchSuppliers();
-  }, [fetchSuppliers]);
+    if (user) {
+      fetchSuppliers();
+    }
+  }, [fetchSuppliers, user]);
 
 
     const fetchInvoices = useCallback(async () => {
+      if (!user) return;
       setIsLoading(true);
       try {
-        let fetchedData = await getInvoicesService();
+        let fetchedData = await getInvoicesService(user.id);
 
-        // TODO: Filter for PAID invoices only. For now, shows all.
-        // Example: fetchedData = fetchedData.filter(inv => inv.paymentStatus === 'paid');
-        // This requires a 'paymentStatus' field or similar in InvoiceHistoryItem.
+        // Filter for PAID invoices only.
+        fetchedData = fetchedData.filter(inv => inv.paymentStatus === 'paid');
+
 
         let uniqueInvoicesMap = new Map<string, InvoiceHistoryItem>();
         fetchedData.forEach(invoice => {
@@ -177,7 +183,6 @@ export default function PaidInvoicesPage() {
                     (invoice.originalImagePreviewUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
                     uniqueInvoicesMap.set(invoice.id, invoice);
                 } else if (!invoice.originalImagePreviewUri && existing.originalImagePreviewUri) {
-                    // Keep existing if it has an image and the new one doesn't
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
                      uniqueInvoicesMap.set(invoice.id, invoice);
                 }
@@ -192,7 +197,7 @@ export default function PaidInvoicesPage() {
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
         }
-        if (filterStatus) {
+        if (filterStatus) { // Filter by scan status
            filteredData = filteredData.filter(inv => inv.status === filterStatus);
         }
          if (dateRange?.from) {
@@ -229,7 +234,7 @@ export default function PaidInvoicesPage() {
          }
         setInvoices(filteredData);
       } catch (error) {
-        console.error("Failed to fetch invoices:", error);
+        console.error("Failed to fetch paid invoices:", error);
         toast({
           title: t('invoices_toast_error_fetch_invoices_title'),
           description: t('invoices_toast_error_fetch_invoices_desc'),
@@ -239,12 +244,14 @@ export default function PaidInvoicesPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t]);
+    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t, user]);
 
 
    useEffect(() => {
+    if(user) {
      fetchInvoices();
-   }, [fetchInvoices]);
+    }
+   }, [fetchInvoices, user]);
 
 
   const handleSort = (key: SortKey) => {
@@ -281,14 +288,13 @@ export default function PaidInvoicesPage() {
       { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-      { key: 'invoiceDataUri', labelKey: 'invoices_col_image_uri', sortable: false, className: 'hidden' },
       { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentStatus');
 
    const formatDate = (date: Date | string | undefined) => {
-     if (!date) return t('edit_invoice_unknown_document'); 
+     if (!date) return t('edit_invoice_unknown_document');
      try {
         const dateObj = typeof date === 'string' ? parseISO(date) : date;
         if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
@@ -313,9 +319,10 @@ export default function PaidInvoicesPage() {
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
+    if(!user) return;
     setIsDeleting(true);
     try {
-        await deleteInvoiceService(invoiceId);
+        await deleteInvoiceService(invoiceId, user.id);
         toast({
             title: t('invoices_toast_deleted_title'),
             description: t('invoices_toast_deleted_desc'),
@@ -340,7 +347,7 @@ export default function PaidInvoicesPage() {
   };
 
   const handleSaveInvoiceDetails = async () => {
-    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id) return;
+    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id || !user) return;
     setIsSavingDetails(true);
     try {
         const updatedInvoice: Partial<InvoiceHistoryItem> = {
@@ -349,20 +356,21 @@ export default function PaidInvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
+            // Payment status should not be editable from here, it's 'paid'
         };
 
-        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
+        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice, user.id);
         toast({
             title: t('invoices_toast_updated_title'),
             description: t('invoices_toast_updated_desc'),
         });
         setIsEditingDetails(false);
-        const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
+        const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id && inv.paymentStatus === 'paid'));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
         } else {
            setShowDetailsSheet(false);
-           fetchInvoices(); 
+           fetchInvoices();
         }
 
     } catch (error) {
@@ -388,41 +396,63 @@ export default function PaidInvoicesPage() {
   }
 
 
-  const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
-     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
-     let className = '';
-     let icon = null;
+  const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
+    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+    let className = '';
+    let icon = null;
+    let labelKey = '';
 
-     switch (status) {
-         case 'completed':
-             variant = 'secondary';
-             className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-             icon = <CheckCircle className="mr-1 h-3 w-3" />;
-             break;
-         case 'processing':
-              variant = 'secondary';
-             className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
-             icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
-             break;
-         case 'pending':
-              variant = 'secondary';
-             className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
-             icon = <Clock className="mr-1 h-3 w-3" />;
-             break;
-         case 'error':
-             variant = 'destructive';
-             icon = <XCircle className="mr-1 h-3 w-3" />;
-             break;
-         default:
-             variant = 'outline';
-             icon = null;
-             break;
+     if (type === 'scan') {
+        switch (status as InvoiceHistoryItem['status']) {
+            case 'completed':
+                variant = 'secondary';
+                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+                icon = <CheckCircle className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_completed';
+                break;
+            case 'processing':
+                variant = 'secondary';
+                className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
+                icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
+                labelKey = 'invoice_status_processing';
+                break;
+            case 'pending':
+                variant = 'secondary';
+                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
+                icon = <Clock className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_pending';
+                break;
+            case 'error':
+                variant = 'destructive';
+                icon = <XCircle className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_error';
+                break;
+            default:
+                variant = 'outline';
+                icon = null;
+                labelKey = String(status);
+                break;
+        }
+     } else if (type === 'payment') {
+         switch (status as InvoiceHistoryItem['paymentStatus']) {
+            case 'paid':
+                variant = 'secondary';
+                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+                icon = <CreditCard className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_payment_status_paid';
+                break;
+            // Other payment statuses are not relevant for this page
+            default:
+                variant = 'outline';
+                icon = null;
+                labelKey = String(status);
+         }
      }
 
      return (
         <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
-            {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
+            {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
         </Badge>
      );
   };
@@ -451,7 +481,7 @@ export default function PaidInvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
         ];
         const headers = exportColumns
             .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
@@ -465,7 +495,7 @@ export default function PaidInvoicesPage() {
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', 'paid_invoices_export.csv'); // Changed filename
+        link.setAttribute('download', 'paid_invoices_export.csv');
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -588,7 +618,7 @@ export default function PaidInvoicesPage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_filter_supplier_aria', { filterSupplier: filterSupplier || t('invoices_filter_supplier_all')})} >
-                    <Filter className="mr-2 h-4 w-4" /> {/* Changed icon */}
+                    <Briefcase className="mr-2 h-4 w-4" />
                     {existingSuppliers.find(s => s.name === filterSupplier)?.name || t('invoice_details_supplier_label')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
@@ -649,7 +679,7 @@ export default function PaidInvoicesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'paymentStatus').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -755,7 +785,7 @@ export default function PaidInvoicesPage() {
                          {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
                          {visibleColumns.status && (
                            <TableCell className="px-2 sm:px-4 py-2">
-                              {renderStatusBadge(item.status)}
+                              {renderStatusBadge(item.status, 'scan')}
                            </TableCell>
                          )}
                          {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
@@ -809,8 +839,9 @@ export default function PaidInvoicesPage() {
                           <ImageIcon className="h-12 w-12 text-muted-foreground" />
                         </div>
                       )}
-                       <div className="absolute top-2 right-2">
-                          {renderStatusBadge(item.status)}
+                       <div className="absolute top-2 right-2 flex flex-col gap-1">
+                          {renderStatusBadge(item.status, 'scan')}
+                          {renderStatusBadge('paid', 'payment')} {/* All invoices on this page are 'paid' */}
                        </div>
                     </CardHeader>
                     <CardContent className="p-3 flex-grow">
@@ -859,7 +890,7 @@ export default function PaidInvoicesPage() {
                     </div>
                     <div>
                         <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
-                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
+                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
@@ -875,13 +906,16 @@ export default function PaidInvoicesPage() {
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
                       <div className="flex items-center">
-                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
                       </div>
+                       <div className="flex items-center mt-1">
+                        <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge('paid', 'payment')}
+                       </div>
                     </div>
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: false }) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: true }) : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -891,7 +925,7 @@ export default function PaidInvoicesPage() {
                     </div>
                   )}
                   <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[calc(85vh-280px)] sm:max-h-[calc(90vh-300px)]">
+                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
                   {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.originalImagePreviewUri}

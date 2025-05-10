@@ -18,18 +18,20 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuLabel,
    DropdownMenuSeparator,
    DropdownMenuTrigger,
+   DropdownMenuRadioGroup,
+   DropdownMenuRadioItem,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye, CreditCard } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
- import { DateRange } from 'react-day-picker';
+ import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
  import { format, parseISO } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -45,11 +47,11 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent, 
-  AlertDialogDescription as AlertDialogDescriptionComponent, 
-  AlertDialogFooter as AlertDialogFooterComponent, 
-  AlertDialogHeader as AlertDialogHeaderComponent, 
-  AlertDialogTitle as AlertDialogTitleComponent, 
+  AlertDialogContent as AlertDialogContentComponent,
+  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogFooter as AlertDialogFooterComponent,
+  AlertDialogHeader as AlertDialogHeaderComponent,
+  AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
@@ -58,6 +60,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useAuth } from '@/context/AuthContext';
 
 
 const formatNumber = (
@@ -65,13 +68,13 @@ const formatNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {}; // Default useGrouping to true
+    const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-            useGrouping: useGrouping, 
+            useGrouping: useGrouping,
         });
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
@@ -79,7 +82,7 @@ const formatNumber = (
     const formattedValue = value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
-        useGrouping: useGrouping, 
+        useGrouping: useGrouping,
     });
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
@@ -95,6 +98,7 @@ type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 export default function InvoicesPage() {
+  const { user } = useAuth();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,11 +113,12 @@ export default function InvoicesPage() {
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    invoiceDataUri: false,
     originalImagePreviewUri: false,
+    paymentStatus: true,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<InvoiceHistoryItem['paymentStatus'] | ''>('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [sortKey, setSortKey] = useState<SortKey>('uploadTime');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -142,8 +147,9 @@ export default function InvoicesPage() {
 
 
   const fetchSuppliers = useCallback(async () => {
+    if (!user) return;
     try {
-      const summaries = await getSupplierSummariesService();
+      const summaries = await getSupplierSummariesService(user.id);
       setExistingSuppliers(summaries);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
@@ -153,17 +159,20 @@ export default function InvoicesPage() {
         variant: "destructive",
       });
     }
-  }, [toast, t]);
+  }, [toast, t, user]);
 
   useEffect(() => {
-    fetchSuppliers();
-  }, [fetchSuppliers]);
+    if (user) {
+      fetchSuppliers();
+    }
+  }, [fetchSuppliers, user]);
 
 
     const fetchInvoices = useCallback(async () => {
+      if(!user) return;
       setIsLoading(true);
       try {
-        let fetchedData = await getInvoicesService();
+        let fetchedData = await getInvoicesService(user.id);
 
         let uniqueInvoicesMap = new Map<string, InvoiceHistoryItem>();
         fetchedData.forEach(invoice => {
@@ -190,6 +199,9 @@ export default function InvoicesPage() {
         }
         if (filterStatus) {
            filteredData = filteredData.filter(inv => inv.status === filterStatus);
+        }
+        if (filterPaymentStatus) {
+            filteredData = filteredData.filter(inv => inv.paymentStatus === filterPaymentStatus);
         }
          if (dateRange?.from) {
             const startDate = new Date(dateRange.from);
@@ -235,12 +247,14 @@ export default function InvoicesPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t]);
+    }, [filterSupplier, filterStatus, filterPaymentStatus, dateRange, toast, sortKey, sortDirection, t, user]);
 
 
    useEffect(() => {
+    if (user) {
      fetchInvoices();
-   }, [fetchInvoices]);
+    }
+   }, [fetchInvoices, user]);
 
 
   const handleSort = (key: SortKey) => {
@@ -273,18 +287,18 @@ export default function InvoicesPage() {
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
+      { key: 'paymentStatus', labelKey: 'invoice_payment_status_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-      { key: 'invoiceDataUri', labelKey: 'invoices_col_image_uri', sortable: false, className: 'hidden' },
       { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
 
    const formatDate = (date: Date | string | undefined) => {
-     if (!date) return t('edit_invoice_unknown_document'); 
+     if (!date) return t('edit_invoice_unknown_document');
      try {
         const dateObj = typeof date === 'string' ? parseISO(date) : date;
         if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
@@ -309,9 +323,10 @@ export default function InvoicesPage() {
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!user) return;
     setIsDeleting(true);
     try {
-        await deleteInvoiceService(invoiceId);
+        await deleteInvoiceService(invoiceId, user.id);
         toast({
             title: t('invoices_toast_deleted_title'),
             description: t('invoices_toast_deleted_desc'),
@@ -336,7 +351,7 @@ export default function InvoicesPage() {
   };
 
   const handleSaveInvoiceDetails = async () => {
-    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id) return;
+    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id || !user) return;
     setIsSavingDetails(true);
     try {
         const updatedInvoice: Partial<InvoiceHistoryItem> = {
@@ -345,21 +360,21 @@ export default function InvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            // Status and originalImagePreviewUri are not user-editable here
+            paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
         };
 
-        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice);
+        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice, user.id);
         toast({
             title: t('invoices_toast_updated_title'),
             description: t('invoices_toast_updated_desc'),
         });
         setIsEditingDetails(false);
-        const refreshedInvoice = await getInvoicesService().then(all => all.find(inv => inv.id === selectedInvoiceDetails.id));
+        const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
         } else {
-           setShowDetailsSheet(false);
-           fetchInvoices(); 
+           setShowDetailsSheet(false); // Close sheet if invoice somehow disappeared
+           fetchInvoices(); // Refresh list
         }
 
     } catch (error) {
@@ -375,6 +390,36 @@ export default function InvoicesPage() {
     }
   };
 
+  const handlePaymentStatusChange = async (invoiceId: string, newStatus: InvoiceHistoryItem['paymentStatus']) => {
+    if (!user) return;
+    const originalInvoice = invoices.find(inv => inv.id === invoiceId);
+    if (!originalInvoice) return;
+
+    // Optimistic UI update
+    setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus} : null);
+    setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus} : inv));
+
+    try {
+        await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id);
+        toast({
+            title: t('toast_invoice_payment_status_updated_title'),
+            description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
+        });
+        // Re-fetch to ensure data consistency, or update local state more deeply if preferred
+        fetchInvoices(); // This will re-filter based on the new status if the main filter is set
+    } catch (error) {
+        console.error("Failed to update payment status:", error);
+        // Revert optimistic update
+        setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus} : null);
+        setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: originalInvoice.paymentStatus} : inv));
+        toast({
+            title: t('toast_invoice_payment_status_update_fail_title'),
+            description: t('toast_invoice_payment_status_update_fail_desc'),
+            variant: "destructive",
+        });
+    }
+};
+
 
   if (isLoading) {
     return (
@@ -385,41 +430,75 @@ export default function InvoicesPage() {
   }
 
 
-  const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
+  const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
      let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
      let className = '';
      let icon = null;
+     let labelKey = '';
 
-     switch (status) {
-         case 'completed':
-             variant = 'secondary';
-             className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-             icon = <CheckCircle className="mr-1 h-3 w-3" />;
-             break;
-         case 'processing':
-              variant = 'secondary';
-             className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
-             icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
-             break;
-         case 'pending':
-              variant = 'secondary';
-             className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
-             icon = <Clock className="mr-1 h-3 w-3" />;
-             break;
-         case 'error':
-             variant = 'destructive';
-             icon = <XCircle className="mr-1 h-3 w-3" />;
-             break;
-         default:
-             variant = 'outline';
-             icon = null;
-             break;
+     if (type === 'scan') {
+        switch (status as InvoiceHistoryItem['status']) {
+            case 'completed':
+                variant = 'secondary';
+                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+                icon = <CheckCircle className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_completed';
+                break;
+            case 'processing':
+                variant = 'secondary';
+                className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
+                icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
+                labelKey = 'invoice_status_processing';
+                break;
+            case 'pending':
+                variant = 'secondary';
+                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
+                icon = <Clock className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_pending';
+                break;
+            case 'error':
+                variant = 'destructive';
+                icon = <XCircle className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_status_error';
+                break;
+            default:
+                variant = 'outline';
+                icon = null;
+                labelKey = String(status);
+                break;
+        }
+     } else if (type === 'payment') {
+         switch (status as InvoiceHistoryItem['paymentStatus']) {
+            case 'paid':
+                variant = 'secondary';
+                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
+                icon = <CreditCard className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_payment_status_paid';
+                break;
+            case 'unpaid':
+                variant = 'secondary';
+                className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80';
+                icon = <CreditCard className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_payment_status_unpaid';
+                break;
+            case 'pending_payment':
+                variant = 'secondary';
+                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
+                icon = <Clock className="mr-1 h-3 w-3" />;
+                labelKey = 'invoice_payment_status_pending_payment';
+                break;
+            default:
+                variant = 'outline';
+                icon = null;
+                labelKey = String(status);
+         }
      }
+
 
      return (
         <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
-            {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
+            {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
         </Badge>
      );
   };
@@ -448,7 +527,7 @@ export default function InvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
         ];
         const headers = exportColumns
             .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
@@ -563,7 +642,7 @@ export default function InvoicesPage() {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden"
+                       className="sm:block hidden" // Changed from block to sm:block
                      />
                        <Calendar
                         initialFocus
@@ -572,7 +651,7 @@ export default function InvoicesPage() {
                         selected={dateRange}
                         onSelect={setDateRange}
                         numberOfMonths={2}
-                        className="hidden sm:block"
+                        className="hidden sm:block" // Keep this as hidden sm:block
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -635,6 +714,31 @@ export default function InvoicesPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
+             <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_filter_payment_status_aria', { paymentStatus: filterPaymentStatus ? t(`invoice_payment_status_${filterPaymentStatus}` as any) : t('invoices_filter_payment_status_all')})} >
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    {filterPaymentStatus ? t(`invoice_payment_status_${filterPaymentStatus}` as any) : t('invoice_payment_status_label')}
+                    <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
+                  {(['paid', 'unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
+                    <DropdownMenuCheckboxItem
+                      key={pStatus}
+                      checked={filterPaymentStatus === pStatus}
+                      onCheckedChange={() => setFilterPaymentStatus(pStatus)}
+                    >
+                      {t(`invoice_payment_status_${pStatus}` as any)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+
              {viewMode === 'list' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -646,7 +750,7 @@ export default function InvoicesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'invoiceDataUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -752,7 +856,12 @@ export default function InvoicesPage() {
                          {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.uploadTime)}</TableCell>}
                          {visibleColumns.status && (
                            <TableCell className="px-2 sm:px-4 py-2">
-                              {renderStatusBadge(item.status)}
+                              {renderStatusBadge(item.status, 'scan')}
+                           </TableCell>
+                         )}
+                          {visibleColumns.paymentStatus && (
+                           <TableCell className="px-2 sm:px-4 py-2">
+                              {renderStatusBadge(item.paymentStatus, 'payment')}
                            </TableCell>
                          )}
                          {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
@@ -806,8 +915,9 @@ export default function InvoicesPage() {
                           <ImageIcon className="h-12 w-12 text-muted-foreground" />
                         </div>
                       )}
-                       <div className="absolute top-2 right-2">
-                          {renderStatusBadge(item.status)}
+                       <div className="absolute top-2 right-2 flex flex-col gap-1">
+                          {renderStatusBadge(item.status, 'scan')}
+                          {renderStatusBadge(item.paymentStatus, 'payment')}
                        </div>
                     </CardHeader>
                     <CardContent className="p-3 flex-grow">
@@ -856,7 +966,7 @@ export default function InvoicesPage() {
                     </div>
                     <div>
                         <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
-                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount || 0} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
+                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
@@ -872,13 +982,16 @@ export default function InvoicesPage() {
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
                       <div className="flex items-center">
-                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
                       </div>
+                       <div className="flex items-center mt-1">
+                        <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
+                       </div>
                     </div>
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: false }) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: true }) : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -888,7 +1001,28 @@ export default function InvoicesPage() {
                     </div>
                   )}
                   <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[calc(85vh-280px)] sm:max-h-[calc(90vh-300px)]">
+                   <div className="mb-4">
+                        <Label className="text-sm font-medium">{t('invoice_payment_status_label')}</Label>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="w-full mt-1 justify-start">
+                                    {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
+                                    <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width]">
+                                <DropdownMenuRadioGroup
+                                    value={selectedInvoiceDetails.paymentStatus}
+                                    onValueChange={(value) => handlePaymentStatusChange(selectedInvoiceDetails.id, value as InvoiceHistoryItem['paymentStatus'])}
+                                >
+                                    <DropdownMenuRadioItem value="paid">{t('invoice_mark_as_paid_button')}</DropdownMenuRadioItem>
+                                    <DropdownMenuRadioItem value="unpaid">{t('invoice_mark_as_unpaid_button')}</DropdownMenuRadioItem>
+                                    <DropdownMenuRadioItem value="pending_payment">{t('invoice_mark_as_pending_button')}</DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
                   {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.originalImagePreviewUri}
@@ -957,4 +1091,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-
