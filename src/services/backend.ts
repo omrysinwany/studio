@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
@@ -25,8 +26,8 @@ export interface InvoiceHistoryItem {
   supplier?: string;
   totalAmount?: number;
   errorMessage?: string;
-  originalImagePreviewUri?: string; // For display on edit/details page
-  compressedImageForFinalRecordUri?: string; // For storage with final invoice record
+  originalImagePreviewUri?: string; 
+  compressedImageForFinalRecordUri?: string; 
   paymentStatus: 'paid' | 'unpaid' | 'pending_payment';
 }
 
@@ -50,9 +51,9 @@ export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImag
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.7 * 1024 * 1024; // 0.7MB
-export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; // 0.25MB
-export const MAX_SCAN_RESULTS_SIZE_BYTES = 1 * 1024 * 1024; // 1MB For the JSON data
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.7 * 1024 * 1024; 
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 1 * 1024 * 1024; 
 export const MAX_INVENTORY_ITEMS = 1000;
 export const MAX_INVOICE_HISTORY_ITEMS = 100;
 
@@ -75,8 +76,8 @@ export interface PriceCheckResult {
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
-    console.warn(`[getStorageKey Backend] Attempted to get storage key for base "${baseKey}" without a userId. This will use a generic key.`);
-    return baseKey;
+    console.warn(`[getStorageKey Backend] Attempted to get storage key for base "${baseKey}" without a userId. This will use a generic key, which might lead to data inconsistencies for multi-user scenarios.`);
+    return baseKey; // Fallback to a generic key, NOT recommended for production
   }
   return `${baseKey}_${userId}`;
 };
@@ -89,17 +90,22 @@ const getStoredData = <T extends {id?: string; name?: string}>(keyBase: string, 
     const stored = localStorage.getItem(storageKey);
     if (stored) {
       const parsedData = JSON.parse(stored) as T[];
-      // Ensure IDs for items loaded from storage
       return parsedData.map((item, index) => ({
           ...item,
-          id: item.id || (item.name ? `${keyBase}-${item.name.replace(/\s+/g, '_')}-${index}` : `${keyBase}-item-${Date.now()}-${index}`)
+          id: item.id || (item.name ? `${keyBase}-item-${item.name.replace(/\s+/g, '_')}-${index}` : `${keyBase}-item-${Date.now()}-${index}`)
       }));
     }
-    // If no data, initialize with empty array to avoid issues later
+    // If no data, initialize with empty array
     localStorage.setItem(storageKey, JSON.stringify([])); 
     return [];
   } catch (error) {
     console.error(`Error reading ${storageKey} from localStorage:`, error);
+    // Initialize with empty array on error as well to prevent crashes
+    try {
+        localStorage.setItem(storageKey, JSON.stringify([]));
+    } catch (initError) {
+        console.error(`Failed to initialize empty array for ${storageKey} after read error:`, initError);
+    }
     return [];
   }
 };
@@ -160,7 +166,7 @@ export async function checkProductPricesBeforeSaveService(
     console.log(`[checkProductPricesBeforeSaveService] Products to check: ${productsToCheck.length}, UserID: ${userId}, TempID: ${tempId}`);
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const currentInventory = await getProductsService(userId); // Pass userId
+    const currentInventory = await getProductsService(userId); 
     const productsToSaveDirectly: Product[] = [];
     const priceDiscrepancies: ProductPriceDiscrepancy[] = [];
 
@@ -180,7 +186,6 @@ export async function checkProductPricesBeforeSaveService(
         if (existingIndex === -1 && scannedProduct.barcode && scannedProduct.barcode.trim() !== '') {
             existingIndex = currentInventory.findIndex(p => p.barcode === scannedProduct.barcode);
         }
-        // More robust ID check, ensure it's not a temporary ID before matching by ID
         if (existingIndex === -1 && scannedProduct.id && !scannedProduct.id.startsWith('prod-temp-') && !scannedProduct.id.includes('-new')) {
             existingIndex = currentInventory.findIndex(p => p.id === scannedProduct.id);
         }
@@ -203,7 +208,7 @@ export async function checkProductPricesBeforeSaveService(
                 productsToSaveDirectly.push({
                     ...scannedProduct,
                     id: existingProduct.id, 
-                    unitPrice: existingUnitPrice, // Keep existing unit price if no discrepancy or new price is 0
+                    unitPrice: existingUnitPrice,
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
                 });
             }
@@ -232,16 +237,16 @@ export async function finalizeSaveProductsService(
     const uniqueScanIdToClear = (tempInvoiceId && userId) ? tempInvoiceId.replace(`pending-inv-${userId}_`, '') : undefined;
 
     console.log(`[finalizeSaveProductsService] START. UserID: "${userId}", TempInvoiceID: "${tempInvoiceId}", Source: "${source}", File: "${originalFileName}"`);
-    console.log(`[finalizeSaveProductsService] Received productsToFinalizeSave (count: ${productsToFinalizeSave.length}):`, JSON.stringify(productsToFinalizeSave.slice(0, 2), null, 2)); // Log first 2 products for brevity
+    console.log(`[finalizeSaveProductsService] Received productsToFinalizeSave (count: ${productsToFinalizeSave.length}):`, JSON.stringify(productsToFinalizeSave.slice(0, 2), null, 2)); 
     
     if ((source === 'upload' || source.endsWith('_sync')) && !userId) {
       console.error("[finalizeSaveProductsService] UserID is required for this operation but was not provided.");
       const authError = new Error("User authentication is required to save products and invoice history.");
-      (authError as any).uniqueScanIdToClear = uniqueScanIdToClear;
+      if(uniqueScanIdToClear) (authError as any).uniqueScanIdToClear = uniqueScanIdToClear;
       throw authError;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate async operation
+    await new Promise(resolve => setTimeout(resolve, 100)); 
 
     let currentInventory = await getProductsService(userId);
     let currentInvoices = await getInvoicesService(userId);
@@ -251,7 +256,7 @@ export async function finalizeSaveProductsService(
     let calculatedInvoiceTotalAmountFromProducts = 0;
     let productsProcessedSuccessfully = true;
     let inventoryPruned = false;
-    let updatedInventory = [...currentInventory]; // Make a mutable copy
+    let updatedInventory = [...currentInventory]; 
 
     try {
         if (productsToFinalizeSave.length === 0 && source === 'upload') {
@@ -265,7 +270,6 @@ export async function finalizeSaveProductsService(
             const salePrice = productToSave.salePrice !== undefined && !isNaN(parseFloat(String(productToSave.salePrice))) ? parseFloat(String(productToSave.salePrice)) : undefined;
             let lineTotal = parseFloat(String(productToSave.lineTotal)) || 0;
 
-            // Recalculate unitPrice or lineTotal if one is missing but others are present
             if (quantityToAdd !== 0 && unitPrice !== 0 && lineTotal === 0) { 
                 lineTotal = parseFloat((quantityToAdd * unitPrice).toFixed(2));
                  console.log(`[finalizeSaveProductsService] Product ${productToSave.id || productToSave.catalogNumber}: Calculated lineTotal: ${lineTotal}`);
@@ -279,7 +283,6 @@ export async function finalizeSaveProductsService(
             }
 
             let existingIndex = -1;
-            // Prioritize matching by actual ID if available (e.g., from POS sync where ID is stable, or if product was previously saved)
             if (productToSave.id && !productToSave.id.startsWith('prod-temp-') && !productToSave.id.includes('-new')) {
                  existingIndex = updatedInventory.findIndex(p => p.id === productToSave.id);
                  if(existingIndex !== -1) console.log(`[finalizeSaveProductsService] Matched by ID: ${productToSave.id}`);
@@ -298,32 +301,30 @@ export async function finalizeSaveProductsService(
                 const existingProduct = updatedInventory[existingIndex];
                 console.log(`[finalizeSaveProductsService] Updating existing product ID ${existingProduct.id}. Current Qty: ${existingProduct.quantity}, Qty to Add: ${quantityToAdd}, New UnitPrice: ${unitPrice}`);
                 
-                // Preserve existing data unless explicitly overridden by productToSave
-                existingProduct.quantity += quantityToAdd; // Add to existing quantity
-                existingProduct.unitPrice = unitPrice; // Always update with the price from the invoice (could be from discrepancy resolution)
+                existingProduct.quantity += quantityToAdd; 
+                existingProduct.unitPrice = unitPrice; 
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
-                existingProduct.barcode = productToSave.barcode || existingProduct.barcode; // Keep existing if new is empty
+                existingProduct.barcode = productToSave.barcode || existingProduct.barcode; 
                 existingProduct.catalogNumber = (productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A') ? productToSave.catalogNumber : existingProduct.catalogNumber;
                 existingProduct.salePrice = salePrice !== undefined ? salePrice : existingProduct.salePrice;
                 existingProduct.minStockLevel = productToSave.minStockLevel !== undefined ? productToSave.minStockLevel : existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel !== undefined ? productToSave.maxStockLevel : existingProduct.maxStockLevel;
-                existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2)); // Recalculate based on total quantity and current unit price
+                existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2)); 
                 console.log(`[finalizeSaveProductsService] Product ${existingProduct.id} updated. New Qty: ${existingProduct.quantity}, New LineTotal: ${existingProduct.lineTotal}`);
             } else {
-                // Product is new, add it to inventory
                 if (!productToSave.catalogNumber && !productToSave.description && !productToSave.barcode) {
                      console.warn("[finalizeSaveProductsService] Skipping adding product with no identifier:", productToSave);
-                    return; // Skip this product if it has no identifiers
+                    return; 
                 }
                 const newId = `prod-${Date.now()}-${userId ? userId.slice(0,3) : 'guest'}-${Math.random().toString(36).substring(2, 7)}`;
                 const newProductEntry: Product = {
-                    ...productToSave, // spread productToSave first to get all its properties
-                    id: newId, // then override id
+                    ...productToSave, 
+                    id: newId, 
                     quantity: quantityToAdd,
                     unitPrice: unitPrice,
                     salePrice: salePrice,
-                    lineTotal: lineTotal, // Use calculated/provided lineTotal for a new product
+                    lineTotal: lineTotal, 
                     catalogNumber: productToSave.catalogNumber || 'N/A',
                     description: productToSave.description || 'No Description',
                     shortName: productToSave.shortName || (productToSave.description || 'No Description').split(' ').slice(0, 3).join(' '),
@@ -339,8 +340,7 @@ export async function finalizeSaveProductsService(
         console.log(`[finalizeSaveProductsService] Updated inventory content (first 2 items):`, JSON.stringify(updatedInventory.slice(0,2), null, 2));
         
         if (updatedInventory.length > MAX_INVENTORY_ITEMS) {
-            // Optional: sort by a meaningful field before slicing if needed
-            updatedInventory.sort((a, b) => (b.quantity || 0) - (a.quantity || 0)); // Example: keep most stocked items
+            updatedInventory.sort((a, b) => (b.quantity || 0) - (a.quantity || 0)); 
             updatedInventory = updatedInventory.slice(0, MAX_INVENTORY_ITEMS);
             inventoryPruned = true;
              console.warn(`[finalizeSaveProductsService] Inventory pruned to ${MAX_INVENTORY_ITEMS} items for user ${userId}.`);
@@ -351,25 +351,22 @@ export async function finalizeSaveProductsService(
             productsProcessedSuccessfully = false;
             console.error(`[finalizeSaveProductsService] FAILED to save updated inventory for user ${userId}.`);
             const inventorySaveError = new Error("Failed to save updated inventory data to storage.");
-            (inventorySaveError as any).uniqueScanIdToClear = uniqueScanIdToClear;
+            if(uniqueScanIdToClear) (inventorySaveError as any).uniqueScanIdToClear = uniqueScanIdToClear;
             throw inventorySaveError;
         }
         console.log(`[finalizeSaveProductsService] Successfully saved updated inventory for user ${userId}. Final count: ${updatedInventory.length}`);
 
     } catch (error) {
         console.error(`[finalizeSaveProductsService] Error during product processing or inventory save for user ${userId}:`, error);
-        productsProcessedSuccessfully = false; // Mark as failed if any error occurs in the try block
-        // Ensure uniqueScanIdToClear is attached to the error object before re-throwing
+        productsProcessedSuccessfully = false; 
         const processingError = error instanceof Error ? error : new Error(`Failed to process/save products: Unknown error`);
-        if (!(processingError as any).uniqueScanIdToClear) { // Check if it's already set
+        if (uniqueScanIdToClear && !(processingError as any).uniqueScanIdToClear) {
             (processingError as any).uniqueScanIdToClear = uniqueScanIdToClear;
         }
         throw processingError;
     }
 
-    // Handle invoice record saving only if the source is 'upload' and userId is present
-    if (source === 'upload' && userId) { // Ensure userId is present for invoice operations
-        // Determine final status based on product processing success and if any products were expected
+    if (source === 'upload' && userId) { 
         const finalStatus = productsToFinalizeSave.length === 0 && !extractedTotalAmount ? 'error' : (productsProcessedSuccessfully ? 'completed' : 'error');
         const errorMessageOnProductFail = !productsProcessedSuccessfully ? 'Failed to process some products into inventory. Invoice may be incomplete.' : (productsToFinalizeSave.length === 0 && !extractedTotalAmount ? 'No products found in scan and no total amount provided.' : undefined);
         
@@ -388,19 +385,16 @@ export async function finalizeSaveProductsService(
         }
 
 
-        if (!tempInvoiceId) { // tempInvoiceId should always be present for 'upload' source if userId is.
+        if (!tempInvoiceId) { 
             const msg = `CRITICAL: tempInvoiceId is missing for source 'upload', UserID: ${userId}. File: ${originalFileName}. Cannot update/create invoice status.`;
             console.error(`[finalizeSaveProductsService] ${msg}`);
-            // This scenario is critical, potentially indicating a flaw in how tempInvoiceId is passed.
-            // We still attempt to clear data if possible, but this needs investigation.
             const criticalError = new Error("Failed to finalize invoice record: Missing temporary ID. Inventory might be updated, but the document status is not. Please check manually.");
             (criticalError as any).isInvoiceSaveError = true;
-            (criticalError as any).uniqueScanIdToClear = uniqueScanIdToClear;
+            if(uniqueScanIdToClear) (criticalError as any).uniqueScanIdToClear = uniqueScanIdToClear;
             throw criticalError;
         }
 
         const existingInvoiceIndex = currentInvoices.findIndex(inv => inv.id === tempInvoiceId);
-        // Retrieve URIs from localStorage using the uniqueScanIdToClear
         const imagePreviewUri = uniqueScanIdToClear ? (localStorage.getItem(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${userId}_${uniqueScanIdToClear}`) || undefined) : undefined;
         const compressedImageUri = uniqueScanIdToClear ? (localStorage.getItem(`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${userId}_${uniqueScanIdToClear}`) || undefined) : undefined;
 
@@ -409,25 +403,24 @@ export async function finalizeSaveProductsService(
             const existingRecord = currentInvoices[existingInvoiceIndex];
             currentInvoices[existingInvoiceIndex] = {
                 ...existingRecord,
-                fileName: finalGeneratedFileName, // Update with potentially new name
+                fileName: finalGeneratedFileName, 
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber || existingRecord.invoiceNumber,
                 supplier: finalSupplierName || existingRecord.supplier,
                 totalAmount: finalInvoiceTotalAmount,
-                originalImagePreviewUri: imagePreviewUri, // Use retrieved or existing
-                compressedImageForFinalRecordUri: compressedImageUri, // Use retrieved or existing
-                errorMessage: errorMessageOnProductFail || existingRecord.errorMessage, // Prioritize new error message
-                paymentStatus: existingRecord.paymentStatus || 'unpaid', // Ensure paymentStatus is preserved or defaulted
+                originalImagePreviewUri: imagePreviewUri, 
+                compressedImageForFinalRecordUri: compressedImageUri, 
+                errorMessage: errorMessageOnProductFail || existingRecord.errorMessage, 
+                paymentStatus: existingRecord.paymentStatus || 'unpaid', 
             };
             console.log(`[finalizeSaveProductsService] Updated invoice record ID: ${tempInvoiceId} to status: ${finalStatus} for user ${userId}.`);
         } else {
-            // This case might happen if the pending record wasn't created due to an earlier error (e.g., quota)
             console.warn(`[finalizeSaveProductsService] Pending invoice with ID "${tempInvoiceId}" NOT found for user "${userId}". File: ${originalFileName}. Creating a new invoice record. This may indicate an earlier issue.`);
-            const newInvoiceId = `inv-${Date.now()}-${userId.slice(0,3)}-fallback`; // Ensure a unique ID
+            const newInvoiceId = `inv-${Date.now()}-${userId.slice(0,3)}-fallback`; 
             const newInvoiceRecord: InvoiceHistoryItem = {
                 id: newInvoiceId,
                 fileName: finalGeneratedFileName,
-                uploadTime: new Date().toISOString(), // Use current time for new record
+                uploadTime: new Date().toISOString(), 
                 status: finalStatus,
                 invoiceNumber: extractedInvoiceNumber,
                 supplier: finalSupplierName,
@@ -441,26 +434,23 @@ export async function finalizeSaveProductsService(
              console.log(`[finalizeSaveProductsService] Created NEW fallback invoice record ID: ${newInvoiceId} with status: ${finalStatus} for user ${userId}.`);
         }
 
-        // Prune invoice history if it exceeds the limit
         if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
             console.warn(`[finalizeSaveProductsService] Invoice history count (${currentInvoices.length}) exceeds limit (${MAX_INVOICE_HISTORY_ITEMS}) for user ${userId}. Pruning...`);
-            currentInvoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()); // Sort by most recent first
+            currentInvoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()); 
             currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
         }
 
         try {
             const invoiceSaveSuccess = saveStoredData(INVOICES_STORAGE_KEY_BASE, currentInvoices, userId);
             if(!invoiceSaveSuccess) {
-                // If invoice save fails, it's a critical issue. The inventory might have saved.
                 throw new Error("Failed to save updated invoice history to storage.");
             }
             console.log(`[finalizeSaveProductsService] Successfully updated invoice history for user ${userId}.`);
         } catch (storageError) {
             console.error(`[finalizeSaveProductsService] Critical error saving updated invoices to localStorage for user ${userId}:`, storageError);
-            // Attach uniqueScanIdToClear to the error so the caller can attempt cleanup
             const saveInvoiceError = new Error(`Failed to save invoice history: ${(storageError as Error).message}`);
-            (saveInvoiceError as any).isInvoiceSaveError = true; // Custom flag
-            (saveInvoiceError as any).uniqueScanIdToClear = uniqueScanIdToClear;
+            (saveInvoiceError as any).isInvoiceSaveError = true; 
+            if(uniqueScanIdToClear) (saveInvoiceError as any).uniqueScanIdToClear = uniqueScanIdToClear;
             throw saveInvoiceError;
         }
 
@@ -470,10 +460,9 @@ export async function finalizeSaveProductsService(
       console.log(`[finalizeSaveProductsService] Skipping invoice history update for source: ${source} (UserID: ${userId})`);
     }
     
-    // Clear temporary data associated with this scan, regardless of intermediate success/failure, if uniqueScanIdToClear is available
      if (uniqueScanIdToClear && userId) {
         console.log(`[finalizeSaveProductsService] About to call clearTemporaryScanData for UserID: ${userId}, UniqueScanID: ${uniqueScanIdToClear}`);
-        clearTemporaryScanData(uniqueScanIdToClear, userId); // This now uses userId too
+        clearTemporaryScanData(uniqueScanIdToClear, userId); 
     } else {
         console.warn(`[finalizeSaveProductsService] Not calling clearTemporaryScanData. uniqueScanIdToClear: ${uniqueScanIdToClear}, userId: ${userId}`);
     }
@@ -488,7 +477,6 @@ export async function getProductsService(userId?: string): Promise<Product[]> {
     console.warn("[getProductsService] Called without userId. Returning empty inventory. Ensure userId is passed for user-specific data.");
     return [];
   }
-  // console.log("[getProductsService] Called for userId:", userId);
   await new Promise(resolve => setTimeout(resolve, 50));
   const inventory = getStoredData<Product>(INVENTORY_STORAGE_KEY_BASE, userId);
   const inventoryWithDefaults = inventory.map(item => {
@@ -507,7 +495,7 @@ export async function getProductsService(userId?: string): Promise<Product[]> {
         maxStockLevel: item.maxStockLevel ?? undefined,
       };
   });
-  // console.log(`[getProductsService] Returning inventory for user ${userId}. Count: ${inventoryWithDefaults.length}`);
+  console.log(`[getProductsService] Returning inventory for user ${userId}. Count: ${inventoryWithDefaults.length}`);
   return inventoryWithDefaults;
 }
 
@@ -516,7 +504,6 @@ export async function getProductByIdService(productId: string, userId?: string):
     console.warn(`[getProductByIdService] Called for ID: ${productId} without userId. Cannot retrieve product.`);
     return null;
    }
-   // console.log(`[getProductByIdService] Called for ID: ${productId}, UserID: ${userId}`);
    await new Promise(resolve => setTimeout(resolve, 50));
    const inventory = await getProductsService(userId); 
    const product = inventory.find(p => p.id === productId);
@@ -529,7 +516,6 @@ export async function updateProductService(productId: string, updatedData: Parti
     console.error(`[updateProductService] UserID is required to update product ${productId}. Aborting.`);
     throw new Error("User authentication is required to update products.");
   }
-  // console.log(`[updateProductService] Called for ID: ${productId}, UserID: ${userId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let currentInventory = await getProductsService(userId); 
@@ -574,7 +560,6 @@ export async function updateProductService(productId: string, updatedData: Parti
   currentInventory[productIndex] = productAfterUpdateAttempt;
 
   saveStoredData(INVENTORY_STORAGE_KEY_BASE, currentInventory, userId);
-  // console.log(`[updateProductService] Product ${productId} updated successfully for user ${userId}.`);
 }
 
 export async function deleteProductService(productId: string, userId?: string): Promise<void> {
@@ -582,7 +567,6 @@ export async function deleteProductService(productId: string, userId?: string): 
     console.error(`[deleteProductService] UserID is required to delete product ${productId}. Aborting.`);
     throw new Error("User authentication is required to delete products.");
   }
-  // console.log(`[deleteProductService] Called for ID: ${productId}, UserID: ${userId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let currentInventory = await getProductsService(userId);
@@ -596,7 +580,6 @@ export async function deleteProductService(productId: string, userId?: string): 
   }
 
   saveStoredData(INVENTORY_STORAGE_KEY_BASE, updatedInventory, userId);
-  // console.log(`[deleteProductService] Product ${productId} delete attempt processed for user ${userId}. New count: ${updatedInventory.length}`);
 }
 
 
@@ -605,16 +588,15 @@ export async function getInvoicesService(userId?: string): Promise<InvoiceHistor
     console.warn("[getInvoicesService] Called without userId. Returning empty invoice list. Ensure userId is passed for user-specific data.");
     return [];
   }
-  // console.log("[getInvoicesService] Called for userId:", userId);
   await new Promise(resolve => setTimeout(resolve, 50));
   const invoicesRaw = getStoredData<InvoiceHistoryItem>(INVOICES_STORAGE_KEY_BASE, userId);
   const invoices = invoicesRaw.map(inv => ({
     ...inv,
     id: inv.id || `inv-get-${Date.now()}-${userId.slice(0,3)}-${Math.random().toString(36).substring(2, 9)}`,
     uploadTime: inv.uploadTime instanceof Date ? inv.uploadTime.toISOString() : new Date(inv.uploadTime).toISOString(),
-    paymentStatus: inv.paymentStatus || 'unpaid', // Default to unpaid if not set
+    paymentStatus: inv.paymentStatus || 'unpaid', 
   }));
-  // console.log(`[getInvoicesService] Returning invoices for user ${userId}. Count: ${invoices.length}`);
+  console.log(`[getInvoicesService] Returning invoices for user ${userId}. Count: ${invoices.length}`);
   return invoices;
 }
 
@@ -623,7 +605,6 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     console.error(`[updateInvoiceService] UserID is required to update invoice ${invoiceId}. Aborting.`);
     throw new Error("User authentication is required to update invoices.");
   }
-  // console.log(`[updateInvoiceService] Called for ID: ${invoiceId}, UserID: ${userId}`, updatedData);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let currentInvoices = await getInvoicesService(userId);
@@ -639,18 +620,16 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     ...originalInvoice,
     ...updatedData,
     id: invoiceId, 
-    uploadTime: originalInvoice.uploadTime, // Keep original upload time
-    // Ensure URIs are handled correctly: null means delete, undefined means keep, string means update
+    uploadTime: originalInvoice.uploadTime, 
     originalImagePreviewUri: updatedData.originalImagePreviewUri === null ? undefined : (updatedData.originalImagePreviewUri ?? originalInvoice.originalImagePreviewUri),
     compressedImageForFinalRecordUri: updatedData.compressedImageForFinalRecordUri === null ? undefined : (updatedData.compressedImageForFinalRecordUri ?? originalInvoice.compressedImageForFinalRecordUri),
-    status: updatedData.status || originalInvoice.status, // Keep original status if not provided
+    status: updatedData.status || originalInvoice.status, 
     paymentStatus: updatedData.paymentStatus || originalInvoice.paymentStatus || 'unpaid',
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;
 
   saveStoredData(INVOICES_STORAGE_KEY_BASE, currentInvoices, userId);
-  // console.log(`[updateInvoiceService] Invoice ${invoiceId} updated successfully for user ${userId}.`);
 }
 
 export async function updateInvoicePaymentStatusService(invoiceId: string, paymentStatus: InvoiceHistoryItem['paymentStatus'], userId?: string): Promise<void> {
@@ -658,7 +637,6 @@ export async function updateInvoicePaymentStatusService(invoiceId: string, payme
     console.error(`[updateInvoicePaymentStatusService] UserID is required to update payment status for invoice ${invoiceId}. Aborting.`);
     throw new Error("User authentication is required to update payment status.");
   }
-  // console.log(`[updateInvoicePaymentStatusService] Called for ID: ${invoiceId}, UserID: ${userId}, new status: ${paymentStatus}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let currentInvoices = await getInvoicesService(userId);
@@ -672,7 +650,6 @@ export async function updateInvoicePaymentStatusService(invoiceId: string, payme
   currentInvoices[invoiceIndex].paymentStatus = paymentStatus;
 
   saveStoredData(INVOICES_STORAGE_KEY_BASE, currentInvoices, userId);
-  // console.log(`[updateInvoicePaymentStatusService] Payment status for invoice ${invoiceId} updated to ${paymentStatus} for user ${userId}.`);
 }
 
 
@@ -681,7 +658,6 @@ export async function deleteInvoiceService(invoiceId: string, userId?: string): 
     console.error(`[deleteInvoiceService] UserID is required to delete invoice ${invoiceId}. Aborting.`);
     throw new Error("User authentication is required to delete invoices.");
   }
-  // console.log(`[deleteInvoiceService] Called for ID: ${invoiceId}, UserID: ${userId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let currentInvoices = await getInvoicesService(userId);
@@ -695,7 +671,6 @@ export async function deleteInvoiceService(invoiceId: string, userId?: string): 
   }
 
   saveStoredData(INVOICES_STORAGE_KEY_BASE, updatedInvoices, userId);
-  // console.log(`[deleteInvoiceService] Invoice ${invoiceId} delete attempt processed for user ${userId}. New count: ${updatedInvoices.length}`);
 }
 
 
@@ -704,10 +679,8 @@ export async function clearInventoryService(userId?: string): Promise<void> {
         console.error("[clearInventoryService] UserID is required to clear inventory. Aborting.");
         throw new Error("User authentication is required to clear inventory.");
     }
-    // console.log("[clearInventoryService] Called for userId:", userId);
     await new Promise(resolve => setTimeout(resolve, 100));
     saveStoredData(INVENTORY_STORAGE_KEY_BASE, [], userId);
-    // console.log("[clearInventoryService] Inventory cleared from localStorage for user:", userId);
 }
 
 
@@ -717,7 +690,6 @@ export async function savePosSettingsService(systemId: string, config: PosConnec
         console.error("[savePosSettingsService] UserID is required to save POS settings. Aborting.");
         throw new Error("User authentication is required to save POS settings.");
     }
-    // console.log(`[savePosSettingsService] Saving POS settings for ${systemId}, UserID: ${userId}`, config);
     await new Promise(resolve => setTimeout(resolve, 100));
     const settings: StoredPosSettings = { systemId, config };
     saveStoredData(POS_SETTINGS_STORAGE_KEY_BASE, settings, userId);
@@ -725,28 +697,24 @@ export async function savePosSettingsService(systemId: string, config: PosConnec
 
 export async function getPosSettingsService(userId?: string): Promise<StoredPosSettings | null> {
   if (typeof window === 'undefined') {
-    // console.warn("[getPosSettingsService] Called from server-side or without window. Returning null.");
     return null;
   }
   if (!userId) {
     console.warn("[getPosSettingsService] Called without userId. Returning null as POS settings are user-specific.");
     return null;
   }
-  // console.log("[getPosSettingsService] Retrieving POS settings for UserID:", userId);
   await new Promise(resolve => setTimeout(resolve, 50));
   return getStoredObject<StoredPosSettings>(POS_SETTINGS_STORAGE_KEY_BASE, userId);
 }
 
 export async function clearPosSettingsService(userId?: string): Promise<void> {
     if (typeof window === 'undefined') {
-        // console.warn("[clearPosSettingsService] localStorage not available. POS settings not cleared.");
         return;
     }
     if (!userId) {
         console.error("[clearPosSettingsService] UserID is required to clear POS settings. Aborting.");
         throw new Error("User authentication is required to clear POS settings.");
     }
-    // console.log("[clearPosSettingsService] Clearing POS settings for UserID:", userId);
     await new Promise(resolve => setTimeout(resolve, 50));
     const storageKey = getStorageKey(POS_SETTINGS_STORAGE_KEY_BASE, userId);
     localStorage.removeItem(storageKey);
@@ -766,7 +734,6 @@ export interface AuthResponse {
 }
 
 export async function registerService(userData: any): Promise<AuthResponse> {
-  // console.log("[registerService] Registering user (mock):", userData.username);
   await new Promise(resolve => setTimeout(resolve, 500));
   if (!userData.username || !userData.email || !userData.password) {
     throw new Error("Username, email, and password are required for registration.");
@@ -783,7 +750,6 @@ export async function registerService(userData: any): Promise<AuthResponse> {
 }
 
 export async function loginService(credentials: any): Promise<AuthResponse> {
-  // console.log("[loginService] Logging in user (mock):", credentials.username);
   await new Promise(resolve => setTimeout(resolve, 500));
   if (!credentials.username || !credentials.password) {
     throw new Error("Username and password are required.");
@@ -803,7 +769,6 @@ export async function loginService(credentials: any): Promise<AuthResponse> {
 // --- Supplier Management ---
 export async function getSupplierSummariesService(userId?: string): Promise<SupplierSummary[]> {
   if (!userId) {
-    // console.warn("[getSupplierSummariesService] Called without userId. Returning empty list.");
     return [];
   }
   const invoices = await getInvoicesService(userId);
@@ -847,10 +812,8 @@ export async function getSupplierSummariesService(userId?: string): Promise<Supp
 
 export async function createSupplierService(name: string, contactInfo: { phone?: string; email?: string }, userId?: string): Promise<SupplierSummary> {
   if (!userId) {
-    // console.error("[createSupplierService] UserID is required to create a supplier. Aborting.");
     throw new Error("User authentication is required to create suppliers.");
   }
-  // console.log(`[createSupplierService] Creating new supplier: ${name}, UserID: ${userId}`, contactInfo);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId);
@@ -868,10 +831,8 @@ export async function createSupplierService(name: string, contactInfo: { phone?:
 
 export async function deleteSupplierService(supplierName: string, userId?: string): Promise<void> {
   if (!userId) {
-    // console.error(`[deleteSupplierService] UserID is required to delete supplier ${supplierName}. Aborting.`);
     throw new Error("User authentication is required to delete suppliers.");
   }
-  // console.log(`[deleteSupplierService] Deleting supplier: ${supplierName}, UserID: ${userId}`);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId);
@@ -888,10 +849,8 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
 
 export async function updateSupplierContactInfoService(supplierName: string, contactInfo: { phone?: string; email?: string }, userId?: string): Promise<void> {
   if (!userId) {
-    // console.error(`[updateSupplierContactInfoService] UserID is required to update supplier ${supplierName}. Aborting.`);
     throw new Error("User authentication is required to update suppliers.");
   }
-  // console.log(`[updateSupplierContactInfoService] Updating contact info for supplier: ${supplierName}, UserID: ${userId}`, contactInfo);
   await new Promise(resolve => setTimeout(resolve, 100));
 
   let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId);
@@ -905,7 +864,6 @@ export async function updateSupplierContactInfoService(supplierName: string, con
       name: supplierName 
     };
   } else {
-    // console.log(`[updateSupplierContactInfoService] Supplier "${supplierName}" not found for user ${userId}, creating new entry.`);
     suppliers.push({ name: supplierName, ...contactInfo });
   }
   saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, suppliers, userId);
@@ -942,14 +900,14 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
   let itemsCleared = 0;
   const keysToRemove: string[] = [];
 
-  // console.log(`[clearOldTemporaryScanData] Starting cleanup. UserID specified: ${userId || 'No (checking all temp keys)'}. Emergency: ${emergencyClear}`);
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key) {
-        const belongsToUser = userId ? key.includes(`_${userId}_`) : true;
+        const isUserSpecificKey = userId ? key.includes(`_${userId}_`) : false;
+        const isGenericTempKey = !userId && (key.startsWith(TEMP_DATA_KEY_PREFIX) || key.startsWith(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX) || key.startsWith(TEMP_COMPRESSED_IMAGE_KEY_PREFIX));
 
-        if (belongsToUser && (key.startsWith(TEMP_DATA_KEY_PREFIX) || key.startsWith(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX) || key.startsWith(TEMP_COMPRESSED_IMAGE_KEY_PREFIX))) {
+        if (isUserSpecificKey || isGenericTempKey) {
             const parts = key.split('_'); 
             const timestampString = parts.find(part => /^\d{13,}$/.test(part)); 
             
@@ -969,12 +927,11 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
   keysToRemove.forEach(key => {
     localStorage.removeItem(key);
     itemsCleared++;
-    // console.log(`[clearOldTemporaryScanData] Cleared old/emergency temp item: ${key}`);
   });
 
   if (itemsCleared > 0) {
-    // console.log(`[clearOldTemporaryScanData] Cleared ${itemsCleared} old/emergency temporary scan data items (specific user: ${userId || 'N/A'}).`);
+    console.log(`[clearOldTemporaryScanData] Cleared ${itemsCleared} old/emergency temporary scan data items (specific user: ${userId || 'All Users'}).`);
   } else {
-    // console.log(`[clearOldTemporaryScanData] No old/emergency temporary scan data found to clear (specific user: ${userId || 'N/A'}).`);
+    console.log(`[clearOldTemporaryScanData] No old/emergency temporary scan data found to clear (specific user: ${userId || 'All Users'}).`);
   }
 }

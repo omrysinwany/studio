@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -24,7 +25,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Down
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend';
+import { Product, getProductsService, clearInventoryService } from '@/services/backend'; 
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -80,7 +81,6 @@ const formatIntegerQuantityWithTranslation = (
     t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        // Use formatDisplayNumberWithTranslation for consistency, ensuring no currency symbol for plain quantity
         return formatDisplayNumberWithTranslation(0, t, { decimals: 0, useGrouping: false, currency: false });
     }
     return formatDisplayNumberWithTranslation(Math.round(value), t, { decimals: 0, useGrouping: true, currency: false });
@@ -107,7 +107,7 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false,
+    unitPrice: false, 
     salePrice: true,
     lineTotal: false,
     minStockLevel: false,
@@ -121,18 +121,18 @@ export default function InventoryPage() {
   const shouldRefresh = searchParams.get('refresh');
   const initialFilter = searchParams.get('filter');
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
-
-
-    const fetchInventory = useCallback(async () => {
-      if (!user) return;
+  const fetchInventory = useCallback(async () => {
+      if (!user) {
+          console.log("[InventoryPage] fetchInventory called but no user, returning.");
+          setIsLoading(false); // Stop loading if no user
+          setInventory([]); // Clear inventory for non-logged-in state
+          return;
+      }
+      console.log("[InventoryPage] fetchInventory called for user:", user.id);
       setIsLoading(true);
       try {
-        const data = await getProductsService();
+        const data = await getProductsService(user.id); // Pass userId
+        console.log("[InventoryPage] Products received from getProductsService:", data.length, data.slice(0,2));
         const inventoryWithCorrectTotals = data.map(item => {
             const quantity = Number(item.quantity) || 0;
             const unitPrice = Number(item.unitPrice) || 0;
@@ -158,26 +158,34 @@ export default function InventoryPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [toast, t, user]);
+    }, [toast, t, user]); // Add user to dependencies
 
+  useEffect(() => {
+    if (authLoading) {
+        console.log("[InventoryPage] Auth is loading, waiting...");
+        return; // Wait for auth loading to complete
+    }
+    if (!user) {
+        console.log("[InventoryPage] No user, redirecting to login.");
+        router.push('/login');
+        return;
+    }
 
-   useEffect(() => {
-     if(user){
-        fetchInventory();
+    console.log("[InventoryPage] User detected, fetching inventory.");
+    fetchInventory();
 
-        if (initialFilter === 'low' && filterStockLevel === 'all') {
+    if (initialFilter === 'low' && filterStockLevel === 'all') {
         setFilterStockLevel('low');
-        }
+    }
 
-        if (shouldRefresh) {
-            const current = new URLSearchParams(Array.from(searchParams.entries()));
-            current.delete('refresh');
-            const searchString = current.toString();
-            const query = searchString ? `?${searchString}` : "";
-            router.replace(`${pathname}${query}`, { scroll: false });
-        }
-     }
-   }, [fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname, user]);
+    if (shouldRefresh) {
+        const current = new URLSearchParams(Array.from(searchParams.entries()));
+        current.delete('refresh');
+        const searchString = current.toString();
+        const query = searchString ? `?${searchString}` : "";
+        router.replace(`${pathname}${query}`, { scroll: false });
+    }
+   }, [authLoading, user, fetchInventory, shouldRefresh, initialFilter, filterStockLevel, router, searchParams, pathname]);
 
 
   const handleSort = (key: SortKey) => {
@@ -338,10 +346,11 @@ export default function InventoryPage() {
     };
 
     const handleDeleteAllInventory = async () => {
+        if (!user) return;
         setIsDeleting(true);
         try {
-            await clearInventoryService();
-            await fetchInventory();
+            await clearInventoryService(user.id); // Pass userId
+            await fetchInventory(); // Re-fetch after clearing
             setCurrentPage(1);
             toast({
                 title: t('inventory_toast_cleared_title'),
@@ -360,7 +369,7 @@ export default function InventoryPage() {
     };
 
 
-    if (authLoading || isLoading) {
+    if (authLoading || (isLoading && !inventory.length && !user)) { // Adjusted loading condition
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -369,8 +378,8 @@ export default function InventoryPage() {
      );
    }
 
-   if (!user) {
-    return null; // Or a message encouraging login
+   if (!user && !authLoading) { // Added this to prevent rendering if not logged in and not loading
+    return null; 
    }
 
   return (
