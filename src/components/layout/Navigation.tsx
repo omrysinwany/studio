@@ -1,9 +1,8 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -38,7 +37,8 @@ export default function Navigation() {
     { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
     { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
     { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
-    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon, animationDelay: '0.4s' },
+    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon, animationDelay: '0.4s' }, // Represents delivery notes / scanned documents
+    { href: '/paid-invoices', labelKey: 'nav_paid_invoices', icon: Receipt, animationDelay: '0.45s' }, // New page for paid invoices
     { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
     { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
     { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
@@ -51,7 +51,7 @@ export default function Navigation() {
     const publicPaths = ['/', '/login', '/register'];
     const isPublicPath = publicPaths.includes(pathname);
 
-    if (!user && !isPublicPath && pathname !== '/settings') { // Allow /settings for guests as per previous logic
+    if (!user && !isPublicPath) {
       router.push('/login');
     }
   }, [user, authLoading, pathname, router]);
@@ -82,7 +82,7 @@ export default function Navigation() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         {/* Logo/Brand */}
-        <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity scale-fade-in">
+        <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
           <span className="text-primary">{t('app_title')}</span>
         </Link>
@@ -190,14 +190,15 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild>
-                     <Link href="/login" className="flex items-center transition-colors hover:text-primary">
-                       <LogIn className="mr-1 h-4 w-4" />
-                       {t('nav_login')}
-                     </Link>
-                   </Button>
+                   <Link href="/login" passHref legacyBehavior>
+                        <Button variant="ghost" size="sm" asChild>
+                            <span className="flex items-center">
+                                <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                            </span>
+                        </Button>
+                    </Link>
                   <Button asChild size="sm" className="transition-transform hover:scale-105">
-                    <Link href="/register" className="flex items-center">
+                    <Link href="/register">
                       <UserPlus className="mr-1 h-4 w-4" />
                       {t('nav_register')}
                     </Link>
