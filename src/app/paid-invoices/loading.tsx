@@ -1,9 +1,9 @@
+
 'use client';
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Receipt, Loader2 } from 'lucide-react'; // Changed icon
+import { Receipt, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function PaidInvoicesLoading() {
@@ -15,7 +15,7 @@ export default function PaidInvoicesLoading() {
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
             <Receipt className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('paid_invoices_title')}
           </CardTitle>
-          <CardDescription>{t('paid_invoices_description')}</CardHeader>
+          <CardDescription>{t('paid_invoices_description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6">
