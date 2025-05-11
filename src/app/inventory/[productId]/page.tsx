@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -34,6 +35,7 @@ const formatDisplayNumber = (
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true } = options || {};
+    const shekelSymbol = "₪";
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -41,10 +43,10 @@ const formatDisplayNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return `${t('currency_symbol')}${zeroFormatted}`;
+        return `${shekelSymbol}${zeroFormatted}`;
     }
 
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, {
+    return `${shekelSymbol}${value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
@@ -105,7 +107,7 @@ export default function ProductDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getProductByIdService(productId);
+      const data = await getProductByIdService(productId, user.id);
       if (data) {
         setProduct(data);
         setEditedProduct({ ...data });
@@ -166,7 +168,7 @@ export default function ProductDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!product || !product.id) return;
+    if (!product || !product.id || !user) return;
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
@@ -184,7 +186,7 @@ export default function ProductDetailPage() {
       toast({ title: t('product_detail_toast_invalid_max_stock_title'), description: t('product_detail_toast_invalid_max_stock_desc'), variant: "destructive" });
       return;
     }
-    if (editedProduct.minStockLevel !== undefined && editedProduct.maxStockLevel !== undefined && Number(editedProduct.minStockLevel) > Number(editedProduct.maxStockLevel)) {
+    if (editedProduct.minStockLevel !== undefined && editedProduct.maxStockLevel !== undefined && editedProduct.minStockLevel !== null && editedProduct.maxStockLevel !== null && Number(editedProduct.minStockLevel) > Number(editedProduct.maxStockLevel)) {
         toast({ title: t('product_detail_toast_invalid_stock_levels_title'), description: t('product_detail_toast_invalid_stock_levels_desc'), variant: "destructive" });
         return;
     }
@@ -201,11 +203,11 @@ export default function ProductDetailPage() {
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
         salePrice: Number(editedProduct.salePrice),
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
-        minStockLevel: editedProduct.minStockLevel === undefined ? undefined : Number(editedProduct.minStockLevel),
-        maxStockLevel: editedProduct.maxStockLevel === undefined ? undefined : Number(editedProduct.maxStockLevel),
+        minStockLevel: editedProduct.minStockLevel === undefined || editedProduct.minStockLevel === null ? undefined : Number(editedProduct.minStockLevel),
+        maxStockLevel: editedProduct.maxStockLevel === undefined || editedProduct.maxStockLevel === null ? undefined : Number(editedProduct.maxStockLevel),
       };
 
-      await updateProductService(product.id, productToSave);
+      await updateProductService(product.id, productToSave, user.id);
       toast({
         title: t('product_detail_toast_updated_title'),
         description: t('product_detail_toast_updated_desc'),
@@ -225,10 +227,10 @@ export default function ProductDetailPage() {
   };
 
    const handleDelete = async () => {
-    if (!product || !product.id) return;
+    if (!product || !product.id || !user) return;
     setIsDeleting(true);
     try {
-      await deleteProductService(product.id);
+      await deleteProductService(product.id, user.id);
       toast({
         title: t('product_detail_toast_deleted_title'),
         description: t('product_detail_toast_deleted_desc', { productName: product.shortName || product.description }),
@@ -523,7 +525,7 @@ export default function ProductDetailPage() {
                     {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
                     {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
                     {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true)}
-                    {renderEditItem(TrendingUp, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
+                    {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                     {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                  </>
              ) : (
@@ -550,3 +552,4 @@ export default function ProductDetailPage() {
     </div>
   );
 }
+

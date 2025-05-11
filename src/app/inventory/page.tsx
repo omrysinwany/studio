@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Tag, Pencil } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -58,7 +58,7 @@ const formatDisplayNumberWithTranslation = (
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
-    const shekelSymbol = "₪"; // Always use Shekel symbol
+    const shekelSymbol = "₪";
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -498,7 +498,7 @@ export default function InventoryPage() {
                         {t(header.labelKey, { currency_symbol: "₪"})}
                         {header.sortable && sortKey === header.key && (
                           <span className="text-xs" aria-hidden="true">
-                            {sortDirection === 'asc' ? '▲' : '▼'}
+                            {sortDirection === 'asc' ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
                           </span>
                         )}
                       </div>
@@ -518,8 +518,7 @@ export default function InventoryPage() {
                     <TableRow key={item.id || item.catalogNumber} className="hover:bg-muted/50" data-testid={`inventory-item-${item.id}`}>
                       {visibleColumns.actions && (
                         <TableCell className={cn('text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2')}>
-                          <div className="flex gap-1 justify-center">
-                            <Button
+                           <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => item.id && router.push(`/inventory/${item.id}`)}
@@ -529,17 +528,6 @@ export default function InventoryPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                             <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => item.id && router.push(`/inventory/${item.id}?edit=true`)}
-                                disabled={!item.id}
-                                aria-label={t('edit_button')}
-                                className="h-8 w-8 text-amber-600 hover:text-amber-500"
-                            >
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                          </div>
                         </TableCell>
                       )}
                       {visibleColumns.shortName && (
@@ -547,7 +535,7 @@ export default function InventoryPage() {
                           <Popover>
                             <PopoverTrigger asChild>
                               <Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
-                                {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || 'N/A'}
+                                {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || t('invoices_na')}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent side="top" align="start" className="w-auto max-w-[300px] break-words p-3 text-sm shadow-lg space-y-1">
@@ -677,3 +665,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
