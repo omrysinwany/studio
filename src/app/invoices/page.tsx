@@ -3,7 +3,7 @@
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
  import { Input } from '@/components/ui/input';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
  import {
    Table,
    TableBody,
@@ -23,13 +23,13 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuRadioItem,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye, CreditCard, UploadCloud } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileTextIcon, Info, Download, Trash2, Edit, Save, CheckSquare, Square, Mail, Briefcase, Clock, XCircle, CheckCircle, MoreVertical, ImageIcon } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format, parseISO } from 'date-fns';
+ import { format, parseISO, subDays } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
  import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
@@ -48,11 +48,11 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent, // Renamed to avoid conflict
-  AlertDialogDescription as AlertDialogDescriptionComponent, // Renamed
-  AlertDialogFooter as AlertDialogFooterComponent, // Renamed
-  AlertDialogHeader as AlertDialogHeaderComponent, // Renamed
-  AlertDialogTitle as AlertDialogTitleComponent, // Renamed
+  AlertDialogContent as AlertDialogContentComponent,
+  AlertDialogDescription as AlertDialogDescriptionComponent,
+  AlertDialogFooter as AlertDialogFooterComponent,
+  AlertDialogHeader as AlertDialogHeaderComponent,
+  AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
@@ -63,6 +63,8 @@ import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 
 
 const formatNumber = (
@@ -78,7 +80,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : formattedValue;
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
     const formattedValue = value.toLocaleString(undefined, {
@@ -105,7 +107,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>>({
+    selection: true,
     actions: true,
     id: false,
     fileName: true,
@@ -116,9 +119,9 @@ export default function InvoicesPage() {
     totalAmount: true,
     errorMessage: false,
     originalImagePreviewUri: false,
+    compressedImageForFinalRecordUri: false,
+    paymentReceiptImageUri: false,
     paymentStatus: true,
-    compressedImageForFinalRecordUri: false, // Added to state
-    paymentReceiptImageUri: false, // Added to state
     paymentDueDate: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
@@ -136,19 +139,27 @@ export default function InvoicesPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
 
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
 
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [accountantEmail, setAccountantEmail] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
+  const smartTouchHandlers = useSmartTouch({
     onTap: (e) => {
       const target = e.target as HTMLElement;
       const trigger = target.closest('[data-radix-dropdown-menu-trigger]');
       if (trigger && dropdownTriggerRef.current && dropdownTriggerRef.current.contains(trigger)) {
-        // Logic to handle tap if needed, though Radix UI usually handles this
+        // This part is tricky, as Radix might handle its own open/close.
+        // For now, we'll rely on Radix's default behavior for tap on trigger.
+        // If specific control is needed, we might need to manage DropdownMenu's `open` state.
       }
     }
   });
@@ -189,11 +200,10 @@ export default function InvoicesPage() {
             const existing = uniqueInvoicesMap.get(invoice.id);
             if (existing) {
                 if ((invoice.originalImagePreviewUri && !existing.originalImagePreviewUri) ||
-                    (invoice.originalImagePreviewUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
+                    (invoice.originalImagePreviewUri && new Date(invoice.uploadTime as string).getTime() > new Date(existing.uploadTime as string).getTime())) {
                     uniqueInvoicesMap.set(invoice.id, invoice);
                 } else if (!invoice.originalImagePreviewUri && existing.originalImagePreviewUri) {
-                    // Keep existing if it has an image and the new one doesn't
-                } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
+                } else if (new Date(invoice.uploadTime as string).getTime() > new Date(existing.uploadTime as string).getTime()){
                      uniqueInvoicesMap.set(invoice.id, invoice);
                 }
             } else {
@@ -216,12 +226,12 @@ export default function InvoicesPage() {
          if (dateRange?.from) {
             const startDate = new Date(dateRange.from);
             startDate.setHours(0, 0, 0, 0);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime) >= startDate);
+            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) >= startDate);
          }
          if (dateRange?.to) {
             const endDate = new Date(dateRange.to);
             endDate.setHours(23, 59, 59, 999);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime) <= endDate);
+            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) <= endDate);
          }
 
          if (sortKey) {
@@ -229,9 +239,9 @@ export default function InvoicesPage() {
                  const valA = a[sortKey as keyof InvoiceHistoryItem];
                  const valB = b[sortKey as keyof InvoiceHistoryItem];
                  let comparison = 0;
-                 if (sortKey === 'uploadTime') {
-                     const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
-                     const dateB = valB instanceof Date ? valB.getTime() : new Date(valB as string).getTime();
+                 if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate') {
+                     const dateA = valA ? new Date(valA as string).getTime() : 0;
+                     const dateB = valB ? new Date(valB as string).getTime() : 0;
                      comparison = dateA - dateB;
                  } else if (typeof valA === 'number' && typeof valB === 'number') {
                      comparison = valA - valB;
@@ -291,13 +301,15 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm]);
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10' },
       { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
       { key: 'paymentStatus', labelKey: 'invoice_payment_status_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
+      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true},
       { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
@@ -305,10 +317,9 @@ export default function InvoicesPage() {
       { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
       { key: 'compressedImageForFinalRecordUri', labelKey: 'invoices_col_compressed_uri', sortable: false, className: 'hidden' },
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
-      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate' && h.key !== 'selection');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -324,7 +335,7 @@ export default function InvoicesPage() {
      }
    };
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions' | 'selection') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
@@ -360,7 +371,7 @@ export default function InvoicesPage() {
   };
 
   const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | Date | undefined ) => {
-     if (field === 'uploadTime' || field === 'status') return; // Prevent editing these fields
+     if (field === 'uploadTime' || field === 'status') return;
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -373,11 +384,9 @@ export default function InvoicesPage() {
             invoiceNumber: editedInvoiceData.invoiceNumber || undefined,
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
-            errorMessage: editedInvoiceData.errorMessage || undefined, // Error message can be cleared
+            errorMessage: editedInvoiceData.errorMessage || undefined,
             paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
             paymentDueDate: editedInvoiceData.paymentDueDate,
-            // originalImagePreviewUri and compressedImageForFinalRecordUri are usually set during upload/finalization, not manual edit.
-            // paymentReceiptImageUri is handled by a separate flow.
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
@@ -389,10 +398,10 @@ export default function InvoicesPage() {
         const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
-             fetchInvoices(); // Also refresh the main list
+             fetchInvoices();
         } else {
-           setShowDetailsSheet(false); // Close sheet if invoice somehow disappeared
-           fetchInvoices(); // Refresh list
+           setShowDetailsSheet(false);
+           fetchInvoices();
         }
 
     } catch (error) {
@@ -415,16 +424,14 @@ export default function InvoicesPage() {
         setInvoiceForReceiptUpload(selectedInvoiceDetails);
         setShowReceiptUploadDialog(true);
     } else {
-        // For 'unpaid' or 'pending_payment', update directly without receipt
         const originalInvoice = invoices.find(inv => inv.id === invoiceId);
         if (!originalInvoice) return;
 
-        // Optimistic UI update
         setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : null);
         setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : inv));
 
         try {
-            await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, undefined); // Pass undefined for receipt URI
+            await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, undefined);
             toast({
                 title: t('toast_invoice_payment_status_updated_title'),
                 description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
@@ -455,7 +462,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchInvoices(); // Refresh the main list
+        fetchInvoices();
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
              setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri } : null);
         }
@@ -468,18 +475,6 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
         });
     }
 };
-
-
-  if (isLoading && !user && authLoading) {
-    return (
-      <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  if (!user && !authLoading) {
-    return null; // Or some placeholder if you prefer
-  }
 
 
   const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
@@ -573,34 +568,71 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
         return stringValue;
       };
 
-    const handleExportInvoices = () => {
-        if (filteredAndSortedInvoices.length === 0) {
-            toast({ title: t('invoices_export_csv_no_data_title'), description: t('invoices_export_csv_no_data_desc') });
-            return;
-        }
-        const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage', 'paymentDueDate'
-        ];
-        const headers = exportColumns
-            .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
-            .map(escapeCsvValue)
-            .join(',');
-        const rows = filteredAndSortedInvoices.map(item => {
-            return exportColumns.map(key => escapeCsvValue(item[key])).join(',');
-        });
-        const csvContent = [headers, ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'invoices_export.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        toast({ title: t('invoices_export_csv_started_title'), description: t('invoices_export_csv_started_desc') });
-    };
+    const handleExportAndEmail = async () => {
+      if (!user || selectedInvoiceIds.length === 0) {
+          toast({ title: t('invoice_export_error_no_selection_title'), description: t('invoice_export_error_no_selection_desc'), variant: 'destructive' });
+          return;
+      }
+      if (!accountantEmail.trim() || !/\S+@\S+\.\S+/.test(accountantEmail)) {
+          toast({ title: t('invoice_export_error_invalid_email_title'), description: t('invoice_export_error_invalid_email_desc'), variant: 'destructive' });
+          return;
+      }
+
+      setIsExporting(true);
+      try {
+          const result = await generateAndEmailInvoicesAction(selectedInvoiceIds, accountantEmail, emailNote, user.id);
+          if (result.success) {
+              toast({ title: t('invoice_export_success_title'), description: result.message });
+              setShowExportDialog(false);
+              setAccountantEmail('');
+              setEmailNote('');
+              setSelectedInvoiceIds([]); // Clear selection after successful export
+          } else {
+              toast({ title: t('invoice_export_error_title'), description: result.message, variant: 'destructive' });
+          }
+      } catch (error: any) {
+          console.error("Error exporting invoices:", error);
+          toast({ title: t('invoice_export_error_unexpected_title'), description: error.message || t('invoice_export_error_unexpected_desc'), variant: 'destructive' });
+      } finally {
+          setIsExporting(false);
+      }
+  };
+
+  const handleInvoiceSelect = (invoiceId: string) => {
+    setSelectedInvoiceIds(prev =>
+        prev.includes(invoiceId) ? prev.filter(id => id !== invoiceId) : [...prev, invoiceId]
+    );
+  };
+
+  const handleSelectAllLastMonth = () => {
+    const thirtyDaysAgo = subDays(new Date(), 30);
+    const lastMonthInvoiceIds = invoices
+        .filter(inv => new Date(inv.uploadTime as string) >= thirtyDaysAgo)
+        .map(inv => inv.id);
+    setSelectedInvoiceIds(lastMonthInvoiceIds);
+    toast({title: t('invoice_export_selected_last_month_title'), description: t('invoice_export_selected_last_month_desc', {count: lastMonthInvoiceIds.length})});
+  };
+
+  const isAllSelectedLastMonth = useMemo(() => {
+    const thirtyDaysAgo = subDays(new Date(), 30);
+    const lastMonthInvoices = invoices.filter(inv => new Date(inv.uploadTime as string) >= thirtyDaysAgo);
+    if(lastMonthInvoices.length === 0) return false;
+    return lastMonthInvoices.every(inv => selectedInvoiceIds.includes(inv.id));
+  }, [invoices, selectedInvoiceIds]);
+
+
+  if (authLoading || (!user && !isLoading)) {
+     return (
+       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('invoices_loading')}</p>
+       </div>
+     );
+   }
+   if (!user && !authLoading) {
+    return null;
+   }
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -610,11 +642,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('invoices_title')}
             </CardTitle>
-            <div className="flex items-center gap-2"
-                 onTouchStart={onTouchStart}
-                 onTouchMove={onTouchMove}
-                 onTouchEnd={onTouchEnd}
-            >
+            <div className="flex items-center gap-2" {...smartTouchHandlers}>
                 <Button
                     variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                     size="icon"
@@ -638,11 +666,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
           <CardDescription>{t('invoices_description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-          >
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap" {...smartTouchHandlers}>
             <div className="relative w-full md:max-w-xs lg:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -653,11 +677,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                 aria-label={t('invoices_search_aria')}
               />
             </div>
-            <div className="flex gap-2 flex-wrap justify-start md:justify-end"
-                 onTouchStart={onTouchStart}
-                 onTouchMove={onTouchMove}
-                 onTouchEnd={onTouchEnd}
-            >
+            <div className="flex gap-2 flex-wrap justify-start md:justify-end" {...smartTouchHandlers}>
                  <Popover>
                    <PopoverTrigger asChild>
                      <Button
@@ -694,7 +714,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                        selected={dateRange}
                        onSelect={setDateRange}
                        numberOfMonths={1}
-                       className="sm:block hidden" // Changed from block to sm:block
+                       className="sm:block hidden"
                      />
                        <Calendar
                         initialFocus
@@ -703,7 +723,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                         selected={dateRange}
                         onSelect={setDateRange}
                         numberOfMonths={2}
-                        className="hidden sm:block" // Keep this as hidden sm:block
+                        className="hidden sm:block"
                      />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -802,7 +822,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate' && h.key !== 'selection').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -824,8 +844,11 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                 </DropdownMenu>
               )}
 
-               <Button variant="outline" onClick={handleExportInvoices} className="flex-1 md:flex-initial">
-                 <Download className="mr-2 h-4 w-4" /> {t('inventory_export_csv_button')}
+               <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
+                 <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
+               </Button>
+               <Button variant="default" onClick={() => setShowExportDialog(true)} disabled={selectedInvoiceIds.length === 0} className="flex-1 md:flex-initial bg-primary">
+                 <Mail className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')} ({selectedInvoiceIds.length})
                </Button>
             </div>
           </div>
@@ -843,7 +866,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                             header.sortable && "cursor-pointer hover:bg-muted/50",
                             header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                             'px-2 sm:px-4 py-2',
-                            header.key === 'actions' && 'sticky left-0 bg-card z-10'
+                             header.key === 'actions' ? 'sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10' : header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''
                         )}
                         onClick={() => header.sortable && handleSort(header.key as SortKey)}
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -878,9 +901,18 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     </TableRow>
                   ) : (
                     filteredAndSortedInvoices.map((item) => (
-                      <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                      <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`} data-selected={selectedInvoiceIds.includes(item.id)}>
+                         {visibleColumns.selection && (
+                           <TableCell className={cn("text-center px-1 sticky left-0 bg-card z-20", columnDefinitions.find(h=>h.key==='selection')?.className)}>
+                             <Checkbox
+                               checked={selectedInvoiceIds.includes(item.id)}
+                               onCheckedChange={() => handleInvoiceSelect(item.id)}
+                               aria-label={t('invoice_export_select_aria_label', {fileName: item.fileName})}
+                              />
+                           </TableCell>
+                         )}
                           {visibleColumns.actions && (
-                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                  <Button
                                      variant="ghost"
                                      size="icon"
@@ -889,7 +921,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                                      title={t('invoices_view_details_title', { fileName: item.fileName })}
                                      aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
                                  >
-                                     <Eye className="h-4 w-4" />
+                                     <MoreVertical className="h-4 w-4" />
                                  </Button>
                              </TableCell>
                          )}
@@ -916,6 +948,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                               {renderStatusBadge(item.paymentStatus, 'payment')}
                            </TableCell>
                          )}
+                         {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDate(item.paymentDueDate) : t('invoices_na')}</TableCell>}
                          {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                          {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                          {visibleColumns.totalAmount && (
@@ -980,7 +1013,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     </CardContent>
                      <CardFooter className="p-3 border-t">
                         <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
-                            <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
+                            <MoreVertical className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
                         </Button>
                      </CardFooter>
                   </Card>
@@ -1023,16 +1056,16 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
-                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
+                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value as string)} disabled={isSavingDetails}/>
                         </div>
                     )}
                      <div>
                         <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
-                        <Input 
-                            id="editPaymentDueDate" 
-                            type="date" 
-                            value={editedInvoiceData.paymentDueDate ? format(new Date(editedInvoiceData.paymentDueDate), 'yyyy-MM-dd') : ''} 
-                            onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? new Date(e.target.value) : undefined)} 
+                        <Input
+                            id="editPaymentDueDate"
+                            type="date"
+                            value={editedInvoiceData.paymentDueDate ? format(new Date(editedInvoiceData.paymentDueDate), 'yyyy-MM-dd') : ''}
+                            onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? new Date(e.target.value) : undefined)}
                             disabled={isSavingDetails}
                         />
                     </div>
@@ -1043,7 +1076,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     <div>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
-                      <div className="flex items-center">
+                       <div className="flex items-center">
                         <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
                       </div>
                        <div className="flex items-center mt-1">
@@ -1140,7 +1173,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                             </AlertDialogHeaderComponent>
                             <AlertDialogFooterComponent>
                                 <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                <AlertDialogAction onClick={() => selectedInvoiceDetails && handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
                                     {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                     {t('invoices_delete_confirm_action')}
                                 </AlertDialogAction>
@@ -1164,6 +1197,57 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
           onConfirmUpload={handleConfirmReceiptUpload}
         />
       )}
+
+    {showExportDialog && (
+      <Sheet open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <SheetContent side="bottom" className="h-auto max-h-[80vh] flex flex-col p-0 rounded-t-lg">
+          <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
+            <SheetTitle>{t('invoice_export_dialog_title')}</SheetTitle>
+            <SheetDescription>{t('invoice_export_dialog_desc', { count: selectedInvoiceIds.length })}</SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-grow">
+            <div className="p-4 sm:p-6 space-y-4">
+              <div>
+                <Label htmlFor="accountantEmail">{t('invoice_export_email_label')}</Label>
+                <Input
+                  id="accountantEmail"
+                  type="email"
+                  value={accountantEmail}
+                  onChange={(e) => setAccountantEmail(e.target.value)}
+                  placeholder={t('invoice_export_email_placeholder')}
+                  disabled={isExporting}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="emailNote">{t('invoice_export_note_label')}</Label>
+                <Textarea
+                  id="emailNote"
+                  value={emailNote}
+                  onChange={(e) => setEmailNote(e.target.value)}
+                  placeholder={t('invoice_export_note_placeholder')}
+                  disabled={isExporting}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </ScrollArea>
+          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
+            <Button variant="outline" onClick={() => setShowExportDialog(false)} disabled={isExporting}>
+              {t('cancel_button')}
+            </Button>
+            <Button onClick={handleExportAndEmail} disabled={isExporting || selectedInvoiceIds.length === 0 || !accountantEmail.trim()}>
+              {isExporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Mail className="mr-2 h-4 w-4" />
+              )}
+              {t('invoice_export_send_email_button')}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    )}
 
     </div>
   );
