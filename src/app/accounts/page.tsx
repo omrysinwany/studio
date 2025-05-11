@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
-import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid, isSameMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -31,8 +31,16 @@ export interface OtherExpense {
   date: string; // ISO date string
 }
 
-const EXPENSE_CATEGORIES_STORAGE_KEY = 'invoTrack_expenseCategories';
-const OTHER_EXPENSES_STORAGE_KEY = 'invoTrack_otherExpenses';
+const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
+const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
+
+const getStorageKey = (baseKey: string, userId?: string): string => {
+  if (!userId) {
+    console.warn(`[getStorageKey AccountsPage] Attempted to get storage key for base "${baseKey}" without a userId.`);
+    return baseKey; 
+  }
+  return `${baseKey}_${userId}`;
+};
 
 
 export default function AccountsPage() {
@@ -56,12 +64,14 @@ export default function AccountsPage() {
 
   // Load categories and expenses from localStorage
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedCategories = localStorage.getItem(EXPENSE_CATEGORIES_STORAGE_KEY);
+    if (typeof window !== 'undefined' && user) {
+      const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
+      const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
+
+      const storedCategories = localStorage.getItem(categoriesStorageKey);
       const defaultCategories = ['electricity', 'water', 'arnona'];
       if (storedCategories) {
         const parsedCategories = JSON.parse(storedCategories);
-        // Ensure default categories are present if local storage is empty or doesn't have them
         const finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
         setExpenseCategories(finalCategories);
         if (finalCategories.length > 0 && !activeExpenseTab) {
@@ -74,22 +84,24 @@ export default function AccountsPage() {
         }
       }
 
-      const storedExpenses = localStorage.getItem(OTHER_EXPENSES_STORAGE_KEY);
+      const storedExpenses = localStorage.getItem(expensesStorageKey);
       if (storedExpenses) {
         setOtherExpenses(JSON.parse(storedExpenses));
       }
     }
-  }, [activeExpenseTab]);
+  }, [user, activeExpenseTab]);
 
   const saveExpenseCategories = (categories: string[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(EXPENSE_CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+    if (typeof window !== 'undefined' && user) {
+      const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
+      localStorage.setItem(categoriesStorageKey, JSON.stringify(categories));
     }
   };
 
   const saveOtherExpenses = (expenses: OtherExpense[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(OTHER_EXPENSES_STORAGE_KEY, JSON.stringify(expenses));
+    if (typeof window !== 'undefined' && user) {
+      const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
+      localStorage.setItem(expensesStorageKey, JSON.stringify(expenses));
     }
   };
 
@@ -106,7 +118,7 @@ export default function AccountsPage() {
     const updatedCategories = [...expenseCategories, trimmedName];
     setExpenseCategories(updatedCategories);
     saveExpenseCategories(updatedCategories);
-    setActiveExpenseTab(trimmedName); // Switch to the new category
+    setActiveExpenseTab(trimmedName); 
     toast({ title: t('accounts_toast_category_added_title'), description: t('accounts_toast_category_added_desc', { categoryName: trimmedName }) });
     setShowAddCategoryDialog(false);
   };
@@ -167,11 +179,9 @@ export default function AccountsPage() {
     } else {
       fetchAccountData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    // Set active tab to the first category if categories are loaded and no tab is active
     if (expenseCategories.length > 0 && !activeExpenseTab) {
       setActiveExpenseTab(expenseCategories[0]);
     }
@@ -203,17 +213,34 @@ export default function AccountsPage() {
   }, [filteredInvoices]);
 
   const currentMonthExpenses = useMemo(() => {
-    const currentMonthStart = startOfMonth(new Date());
-    const currentMonthEnd = endOfMonth(new Date());
+    const currentMonth = new Date();
+    let totalExpenses = 0;
 
-    return allInvoices
-        .filter(invoice => {
-            if (!invoice.uploadTime) return false;
-            const invoiceDate = parseISO(invoice.uploadTime as string);
-            return invoiceDate >= currentMonthStart && invoiceDate <= currentMonthEnd;
-        })
-        .reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
-  }, [allInvoices]);
+    // Add invoice expenses
+    allInvoices.forEach(invoice => {
+        if (!invoice.uploadTime) return;
+        const invoiceDate = parseISO(invoice.uploadTime as string);
+        if (isSameMonth(invoiceDate, currentMonth)) {
+            totalExpenses += (invoice.totalAmount || 0);
+        }
+    });
+
+    // Add other expenses
+    const biMonthlyCategories = ['electricity', 'water', 'arnona']; 
+    otherExpenses.forEach(expense => {
+        if (!expense.date) return;
+        const expenseDate = parseISO(expense.date);
+        if (isSameMonth(expenseDate, currentMonth)) {
+            if (biMonthlyCategories.includes(expense.category.toLowerCase())) {
+                totalExpenses += (expense.amount / 2); // For bi-monthly, take half for the current month's display
+            } else {
+                totalExpenses += expense.amount; // For other (assumed monthly) categories, take full amount
+            }
+        }
+    });
+
+    return totalExpenses;
+  }, [allInvoices, otherExpenses]);
 
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
