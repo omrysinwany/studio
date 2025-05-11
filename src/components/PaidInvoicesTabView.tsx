@@ -20,7 +20,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIconLucide, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIconLucide, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail as MailIcon } from 'lucide-react'; // Renamed Mail to MailIcon
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -29,7 +29,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, getAccountantSettingsService } from '@/services/backend'; // Added getAccountantSettingsService
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -76,7 +76,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : formattedValue;
     }
 
     const formattedValue = value.toLocaleString(undefined, {
@@ -471,8 +471,8 @@ export default function PaidInvoicesTabView() {
     const allUserInvoices = await getInvoicesService(user.id);
     const paidUserInvoices = allUserInvoices.filter(inv => inv.paymentStatus === 'paid');
     const today = new Date();
-    const lastMonthStart = startOfMonth(subDays(today, today.getDate()));
-    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); // Correct way to get start of last month
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate())); // Correct way to get end of last month
 
     const lastMonthInvoices = paidUserInvoices.filter(invoice => {
       const uploadDate = new Date(invoice.uploadTime as string);
@@ -487,7 +487,7 @@ export default function PaidInvoicesTabView() {
   };
 
 
-  const handleOpenExportDialog = () => {
+  const handleOpenExportDialog = async () => {
     if (selectedInvoiceIds.length === 0) {
       toast({
         title: t('invoice_export_error_no_selection_title'),
@@ -496,17 +496,33 @@ export default function PaidInvoicesTabView() {
       });
       return;
     }
+    if (user) {
+        const settings = await getAccountantSettingsService(user.id);
+        if (settings && settings.email) {
+            setAccountantEmail(settings.email);
+        } else {
+            setAccountantEmail(''); // Clear if no saved email
+        }
+    }
     setShowExportDialog(true);
   };
 
  const handleExportSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user?.id) {
-        toast({ title: "User not authenticated", variant: "destructive" });
+        toast({ title: t("settings_login_required"), variant: "destructive" });
         return;
     }
     if (!accountantEmail.trim()) {
         toast({ title: t('invoice_export_error_invalid_email_title'), description: t('invoice_export_error_invalid_email_desc'), variant: "destructive" });
+        return;
+    }
+     if (accountantEmail.trim() && !/\S+@\S+\.\S+/.test(accountantEmail)) {
+        toast({
+            title: t('error_title'),
+            description: t('settings_accountant_toast_invalid_email_desc'),
+            variant: "destructive",
+        });
         return;
     }
 
@@ -517,8 +533,9 @@ export default function PaidInvoicesTabView() {
             toast({ title: t('invoice_export_success_title'), description: result.message });
             setShowExportDialog(false);
             setSelectedInvoiceIds([]);
-            setAccountantEmail('');
-            setEmailNote('');
+            // Do not clear accountantEmail and emailNote here, let them persist for next export if user wants.
+            // Or clear emailNote but keep accountantEmail if it was prefilled.
+            setEmailNote(''); 
         } else {
             toast({ title: t('invoice_export_error_title'), description: result.message, variant: "destructive" });
         }
@@ -696,7 +713,7 @@ export default function PaidInvoicesTabView() {
               <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
             </Button>
             <Button onClick={handleOpenExportDialog} disabled={selectedInvoiceIds.length === 0} className="bg-primary hover:bg-primary/90 flex-1 md:flex-initial">
-              <Mail className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
+              <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
             </Button>
           </div>
         </div>
@@ -806,7 +823,7 @@ export default function PaidInvoicesTabView() {
                             {renderStatusBadge(item.status, 'scan')}
                          </TableCell>
                        )}
-                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.paymentDueDate)}</TableCell>}
+                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.paymentDueDate as string)}</TableCell>}
                        {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                        {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
@@ -920,7 +937,7 @@ export default function PaidInvoicesTabView() {
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
-                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
+                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value as string)} disabled={isSavingDetails}/>
                         </div>
                     )}
                 </div>
@@ -937,7 +954,7 @@ export default function PaidInvoicesTabView() {
                         <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge('paid', 'payment')}
                        </div>
                        {selectedInvoiceDetails.paymentDueDate && (
-                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate)}</p>
+                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate as string)}</p>
                        )}
                     </div>
                     <div>
@@ -1069,7 +1086,7 @@ export default function PaidInvoicesTabView() {
                             </>
                         ) : (
                             <>
-                                <Mail className="mr-2 h-4 w-4" />
+                                <MailIcon className="mr-2 h-4 w-4" />
                                 {t('invoice_export_send_email_button')}
                             </>
                         )}

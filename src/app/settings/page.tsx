@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect } from 'react'; // Added useEffect
+import React, { useEffect } from 'react'; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, Settings as SettingsIcon, User, LogIn, Plug } from 'lucide-react';
+import { Loader2, Settings as SettingsIcon, User, LogIn, Plug, Mail } from 'lucide-react'; // Added Mail icon
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -15,14 +15,14 @@ export default function SettingsPage() {
     const router = useRouter();
     const { t } = useTranslation();
 
-    useEffect(() => { // Added useEffect for redirection logic
+    useEffect(() => { 
         if (!authLoading && !user) {
           router.push('/login');
         }
     }, [user, authLoading, router]);
 
 
-     if (authLoading || !user) { // Show loading if auth is loading OR user is not available yet (covers initial load)
+     if (authLoading || !user) { 
       return (
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -71,6 +71,24 @@ export default function SettingsPage() {
                          <Button asChild variant="outline">
                             <Link href="/settings/pos-integration">
                                 {t('settings_pos_integration_button')}
+                            </Link>
+                         </Button>
+                    </CardContent>
+                 </Card>
+
+                 <Card className="scale-fade-in" style={{animationDelay: '0.3s'}}>
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center">
+                            <Mail className="mr-2 h-5 w-5" /> {t('settings_accountant_details_title')}
+                        </CardTitle>
+                        <CardDescription>
+                            {t('settings_accountant_details_desc')}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                         <Button asChild variant="outline">
+                            <Link href="/settings/accountant">
+                                {t('settings_accountant_details_button')}
                             </Link>
                          </Button>
                     </CardContent>

@@ -1,9 +1,8 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Receipt, Search } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Mail as MailIcon } from 'lucide-react'; // Added MailIcon
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -34,16 +33,6 @@ export default function Navigation() {
   const { locale, setLocale } = useLanguage();
   const { t } = useTranslation();
 
-  const navItems = [
-    { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
-    { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
-    { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
-    { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
-    { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
-    { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
-    // { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
-  ];
-
    // Conditional nav items based on auth state
    const getNavItems = () => {
     if (!user) {
@@ -60,7 +49,6 @@ export default function Navigation() {
       { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
       { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
       { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
-      // Settings is usually in a dropdown or user menu for logged-in users
     ];
   };
 
@@ -75,8 +63,9 @@ export default function Navigation() {
     const isGuestPage = pathname === '/' && !user;
     const isAuthPage = publicPaths.includes(pathname);
 
+    // Redirect to login if not authenticated and trying to access a protected page
     if (!user && !isGuestPage && !isAuthPage) {
-      router.push('/login');
+        router.push('/login');
     }
   }, [user, authLoading, pathname, router]);
 
@@ -154,8 +143,7 @@ export default function Navigation() {
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
                    <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                 </DropdownMenuRadioItem>
-               </DropdownMenuRadioGroup>
+                 </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
 
@@ -204,6 +192,10 @@ export default function Navigation() {
                        <Plug className="mr-2 h-4 w-4" />
                        <span>{t('pos_integration')}</span>
                      </DropdownMenuItem>
+                     <DropdownMenuItem onClick={() => router.push('/settings/accountant')} className="cursor-pointer">
+                        <MailIcon className="mr-2 h-4 w-4" />
+                        <span>{t('settings_accountant_details_title')}</span>
+                    </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
                         <SettingsIcon className="mr-2 h-4 w-4" />
                         <span>{t('nav_settings')}</span>
@@ -219,18 +211,20 @@ export default function Navigation() {
                 <>
                    {/* Apply button styles directly to Link */}
                    <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login" legacyBehavior passHref>
-                      <a className="flex items-center">
+                    <Link href="/login">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                      </a>
+                       </span>
                     </Link>
                   </Button>
                   <Button asChild size="sm" className="transition-transform hover:scale-105">
-                    <Link href="/register" legacyBehavior passHref>
-                      <a className="flex items-center">
+                    <Link href="/register">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
                         {t('nav_register')}
-                      </a>
+                       </span>
                     </Link>
                   </Button>
                 </>
@@ -287,6 +281,10 @@ export default function Navigation() {
                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
                                        <Plug className="h-5 w-5" />
                                        {t('pos_integration')}
+                                    </Button>
+                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings/accountant')}>
+                                        <MailIcon className="h-5 w-5" />
+                                        {t('settings_accountant_details_title')}
                                     </Button>
                                      <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
