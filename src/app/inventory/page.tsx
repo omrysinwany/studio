@@ -21,11 +21,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Tag } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, Tag, Pencil } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService } from '@/services/backend'; 
+import { Product, getProductsService, clearInventoryService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -58,6 +58,7 @@ const formatDisplayNumberWithTranslation = (
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
+    const shekelSymbol = "₪"; // Always use Shekel symbol
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -65,7 +66,7 @@ const formatDisplayNumberWithTranslation = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
+        return currency ? `${shekelSymbol}${zeroFormatted}` : zeroFormatted;
     }
 
     const formatted = value.toLocaleString(undefined, {
@@ -73,17 +74,16 @@ const formatDisplayNumberWithTranslation = (
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
-    return currency ? `${t('currency_symbol')}${formatted}` : formatted;
+    return currency ? `${shekelSymbol}${formatted}` : formatted;
 };
 
 const formatIntegerQuantityWithTranslation = (
     value: number | undefined | null,
-    t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return formatDisplayNumberWithTranslation(0, t, { decimals: 0, useGrouping: false, currency: false });
+        return (0).toLocaleString(undefined, { decimals: 0, useGrouping: false });
     }
-    return formatDisplayNumberWithTranslation(Math.round(value), t, { decimals: 0, useGrouping: true, currency: false });
+    return Math.round(value).toLocaleString(undefined, { decimals: 0, useGrouping: true });
 };
 
 
@@ -107,7 +107,7 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false, 
+    unitPrice: false,
     salePrice: true,
     lineTotal: false,
     minStockLevel: false,
@@ -124,14 +124,14 @@ export default function InventoryPage() {
   const fetchInventory = useCallback(async () => {
       if (!user) {
           console.log("[InventoryPage] fetchInventory called but no user, returning.");
-          setIsLoading(false); // Stop loading if no user
-          setInventory([]); // Clear inventory for non-logged-in state
+          setIsLoading(false);
+          setInventory([]);
           return;
       }
       console.log("[InventoryPage] fetchInventory called for user:", user.id);
       setIsLoading(true);
       try {
-        const data = await getProductsService(user.id); // Pass userId
+        const data = await getProductsService(user.id);
         console.log("[InventoryPage] Products received from getProductsService:", data.length, data.slice(0,2));
         const inventoryWithCorrectTotals = data.map(item => {
             const quantity = Number(item.quantity) || 0;
@@ -158,14 +158,14 @@ export default function InventoryPage() {
       } finally {
         setIsLoading(false);
       }
-    }, [toast, t, user]); // Add user to dependencies
+    }, [toast, t, user]);
 
   useEffect(() => {
     if (authLoading) {
         console.log("[InventoryPage] Auth is loading, waiting...");
-        return; // Wait for auth loading to complete
+        return;
     }
-    if (!user) {
+    if (!user && !authLoading) {
         console.log("[InventoryPage] No user, redirecting to login.");
         router.push('/login');
         return;
@@ -319,7 +319,7 @@ export default function InventoryPage() {
         ];
 
         const headers = exportColumns
-            .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key))
+            .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key, { currency_symbol: "₪" }))
             .map(escapeCsvValue)
             .join(',');
 
@@ -349,8 +349,8 @@ export default function InventoryPage() {
         if (!user) return;
         setIsDeleting(true);
         try {
-            await clearInventoryService(user.id); // Pass userId
-            await fetchInventory(); // Re-fetch after clearing
+            await clearInventoryService(user.id);
+            await fetchInventory();
             setCurrentPage(1);
             toast({
                 title: t('inventory_toast_cleared_title'),
@@ -369,7 +369,7 @@ export default function InventoryPage() {
     };
 
 
-    if (authLoading || (isLoading && !inventory.length && !user)) { // Adjusted loading condition
+    if (authLoading || (isLoading && !user)) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -378,8 +378,8 @@ export default function InventoryPage() {
      );
    }
 
-   if (!user && !authLoading) { // Added this to prevent rendering if not logged in and not loading
-    return null; 
+   if (!user && !authLoading) {
+    return null;
    }
 
   return (
@@ -469,7 +469,7 @@ export default function InventoryPage() {
                       checked={visibleColumns[header.key]}
                       onCheckedChange={() => toggleColumnVisibility(header.key)}
                     >
-                      {t(header.labelKey)}
+                      {t(header.labelKey, { currency_symbol: "₪" })}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
@@ -495,7 +495,7 @@ export default function InventoryPage() {
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
                       <div className="flex items-center justify-center gap-1">
-                        {t(header.labelKey, { currency_symbol: t('currency_symbol')})}
+                        {t(header.labelKey, { currency_symbol: "₪"})}
                         {header.sortable && sortKey === header.key && (
                           <span className="text-xs" aria-hidden="true">
                             {sortDirection === 'asc' ? '▲' : '▼'}
@@ -529,6 +529,16 @@ export default function InventoryPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                             <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => item.id && router.push(`/inventory/${item.id}?edit=true`)}
+                                disabled={!item.id}
+                                aria-label={t('edit_button')}
+                                className="h-8 w-8 text-amber-600 hover:text-amber-500"
+                            >
+                                <Pencil className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       )}
@@ -560,7 +570,7 @@ export default function InventoryPage() {
                                 </>
                               )}
                                <>
-                                <p className="font-semibold mt-2">{t('inventory_col_unit_price', { currency_symbol: t('currency_symbol')})}:</p>
+                                <p className="font-semibold mt-2">{t('inventory_col_unit_price', { currency_symbol: "₪"})}:</p>
                                 <p>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true })}</p>
                                </>
                             </PopoverContent>
@@ -573,7 +583,7 @@ export default function InventoryPage() {
                       {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || t('invoices_na')}</TableCell>}
                       {visibleColumns.quantity && (
                         <TableCell className="text-center px-2 sm:px-4 py-2">
-                          <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
+                          <span>{formatIntegerQuantityWithTranslation(item.quantity)}</span>
                           {item.quantity === 0 && (
                             <Badge variant="destructive" className="ml-1 sm:ml-2 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5">{t('inventory_badge_out_of_stock')}</Badge>
                           )}
@@ -588,8 +598,8 @@ export default function InventoryPage() {
                       {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true })}</TableCell>}
                       {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
                       {visibleColumns.lineTotal && <TableCell className="text-center px-2 sm:px-4 py-2">{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true })}</TableCell>}
-                      {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.minStockLevel, t) : '-'}</TableCell>}
-                      {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.maxStockLevel, t) : '-'}</TableCell>}
+                      {visibleColumns.minStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.minStockLevel) : '-'}</TableCell>}
+                      {visibleColumns.maxStockLevel && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined ? formatIntegerQuantityWithTranslation(item.maxStockLevel) : '-'}</TableCell>}
                     </TableRow>
                   ))
                 )}
