@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -37,8 +38,7 @@ export default function Navigation() {
     { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
     { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
     { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
-    { href: '/invoices', labelKey: 'nav_invoices', icon: FileTextIcon, animationDelay: '0.4s' }, // Represents delivery notes / scanned documents
-    { href: '/paid-invoices', labelKey: 'nav_paid_invoices', icon: Receipt, animationDelay: '0.45s' }, // New page for paid invoices
+    { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
     { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
     { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
     { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
@@ -48,10 +48,11 @@ export default function Navigation() {
     if (authLoading) {
       return;
     }
-    const publicPaths = ['/', '/login', '/register'];
-    const isPublicPath = publicPaths.includes(pathname);
+    const publicPaths = ['/login', '/register'];
+    const isGuestPage = pathname === '/';
+    const isAuthPage = publicPaths.includes(pathname);
 
-    if (!user && !isPublicPath) {
+    if (!user && !isGuestPage && !isAuthPage) {
       router.push('/login');
     }
   }, [user, authLoading, pathname, router]);
@@ -89,7 +90,7 @@ export default function Navigation() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
-          {navItems.map((item) => (
+          {user && navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -103,7 +104,7 @@ export default function Navigation() {
                aria-current={pathname === item.href ? 'page' : undefined}
             >
               <item.icon className="h-4 w-4" />
-              {t(item.labelKey)}
+              {t(item.labelKey as any)}
             </Link>
           ))}
         </nav>
@@ -130,8 +131,7 @@ export default function Navigation() {
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
                    <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                 </DropdownMenuRadioItem>
-               </DropdownMenuRadioGroup>
+                 </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
 
@@ -190,13 +190,14 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Link href="/login" passHref legacyBehavior>
-                        <Button variant="ghost" size="sm" asChild>
-                            <span className="flex items-center">
-                                <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                            </span>
-                        </Button>
+                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
+                    <Link href="/login">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
+                           <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                       </span>
                     </Link>
+                  </Button>
                   <Button asChild size="sm" className="transition-transform hover:scale-105">
                     <Link href="/register">
                       <UserPlus className="mr-1 h-4 w-4" />
@@ -225,7 +226,7 @@ export default function Navigation() {
                       </Link>
                     </div>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
-                        {navItems.map((item) => (
+                        {user && navItems.map((item) => (
                           <Button
                              key={item.href}
                              variant={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost'}
@@ -233,7 +234,7 @@ export default function Navigation() {
                              onClick={() => handleMobileNavClick(item.href)}
                           >
                              <item.icon className="h-5 w-5" />
-                             {t(item.labelKey)}
+                             {t(item.labelKey as any)}
                           </Button>
                         ))}
                       </nav>
@@ -282,8 +283,8 @@ export default function Navigation() {
                                   <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
                                </Button>
                              </DropdownMenuTrigger>
-                             <DropdownMenuPortal>
-                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                             <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
+                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
                                    <DropdownMenuLabel>{t('theme')}</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
                                    <DropdownMenuRadioGroup value={theme} onValueChange={(newTheme) => { setTheme(newTheme); }}>
@@ -295,8 +296,7 @@ export default function Navigation() {
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="system">
                                        <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                                     </DropdownMenuRadioItem>
-                                   </DropdownMenuRadioGroup>
+                                     </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
                               </DropdownMenuPortal>
                            </DropdownMenu>
@@ -308,8 +308,8 @@ export default function Navigation() {
                                   <Languages className="h-5 w-5" /> {t('language')}: <span className="ml-auto capitalize font-medium">{locale === 'he' ? t('hebrew') : t('english')}</span>
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuPortal>
-                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                              <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
+                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
                                   <DropdownMenuLabel>{t('language')}</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
