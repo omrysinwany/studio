@@ -57,17 +57,21 @@ export default function Navigation() {
 
   useEffect(() => {
     if (authLoading) {
-      return;
+      return; // Wait for authentication to load
     }
+    // Define protected and public paths
     const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts'];
-    const publicPaths = ['/login', '/register'];
+    const publicPaths = ['/login', '/register']; // Add any other public paths like /about, /contact
     const isAuthPage = publicPaths.includes(pathname);
+    // Check if current path starts with any of the protected paths
     const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path));
 
 
     if (!user && isProtectedPage) {
+        // If user is not logged in and trying to access a protected page
         router.push('/login');
     } else if (user && isAuthPage) {
+        // If user is logged in and trying to access a login/register page
         router.push('/');
     }
   }, [user, authLoading, pathname, router]);
@@ -200,7 +204,7 @@ export default function Navigation() {
               ) : (
                 <>
                    <Button variant="ghost" size="sm" asChild>
-                     <Link href="/login">
+                    <Link href="/login">
                        <span className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
