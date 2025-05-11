@@ -143,8 +143,8 @@ export default function SuppliersPage() {
     setIsLoading(true);
     try {
       const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(),
-        getInvoicesService()
+        getSupplierSummariesService(user.id), // Pass userId here
+        getInvoicesService(user.id) // Pass userId here
       ]);
       setSuppliers(summaries);
       setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
@@ -164,7 +164,8 @@ export default function SuppliersPage() {
     if(user){
         fetchData();
     }
-  }, [toast, t, user]); // Added t to dependencies
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast, t, user]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -253,10 +254,10 @@ export default function SuppliersPage() {
   };
 
   const handleSaveContactInfo = async () => {
-    if (!selectedSupplier) return;
+    if (!selectedSupplier || !user) return;
     setIsSavingContact(true);
     try {
-      await updateSupplierContactInfoService(selectedSupplier.name, editedContactInfo);
+      await updateSupplierContactInfoService(selectedSupplier.name, editedContactInfo, user.id);
       setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, ...editedContactInfo} : s));
       setSelectedSupplier(prev => prev ? {...prev, ...editedContactInfo} : null);
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
@@ -270,8 +271,9 @@ export default function SuppliersPage() {
   };
 
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string }) => {
+    if(!user) return;
     try {
-      const newSupplier = await createSupplierService(name, contactInfo);
+      const newSupplier = await createSupplierService(name, contactInfo, user.id);
       setSuppliers(prev => [newSupplier, ...prev]);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
@@ -282,9 +284,10 @@ export default function SuppliersPage() {
   };
 
   const handleDeleteSupplier = async (supplierName: string) => {
+    if(!user) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierName);
+      await deleteSupplierService(supplierName, user.id); // Pass userId
       setSuppliers(prev => prev.filter(s => s.name !== supplierName));
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName }) });
       if (selectedSupplier?.name === supplierName) {
