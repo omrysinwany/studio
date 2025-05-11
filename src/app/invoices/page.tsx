@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileTextIcon, X, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileTextIcon as FileText, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -30,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, updateInvoicePaymentStatusService } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, updateInvoicePaymentStatusService, getAccountantSettingsService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -57,7 +57,6 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// import { useSmartTouch } from '@/hooks/useSmartTouch'; // Removed as it was causing issues
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
@@ -121,28 +120,13 @@ const ScannedDocsView = () => {
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  // const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
-  //   onTap: (e) => {
-  //     const target = e.target as HTMLElement;
-  //     if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(target)) {
-  //       // Logic to open dropdown
-  //     }
-  //   }
-  // });
+
 
   const fetchSuppliers = useCallback(async () => {
     if (!user) return;
     try {
-      // Fetch only explicitly managed suppliers for the filter
-      const managedSuppliersData = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, user.id, []);
-      const managedSuppliersSummaries: SupplierSummary[] = managedSuppliersData.map(s => ({
-        name: s.name,
-        invoiceCount: 0, // These will not be used for filter, only name matters
-        totalSpent: 0,   // These will not be used for filter, only name matters
-        phone: s.phone,
-        email: s.email,
-      }));
-      setExistingSuppliers(managedSuppliersSummaries);
+      const managedSuppliers = await getSupplierSummariesService(user.id);
+      setExistingSuppliers(managedSuppliers);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
       toast({
@@ -414,7 +398,7 @@ const ScannedDocsView = () => {
                 title: t('toast_invoice_payment_status_updated_title'),
                 description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
             });
-            fetchInvoices(); 
+            fetchInvoices();
         } catch (error) {
             console.error("Failed to update payment status:", error);
             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : null);
@@ -428,21 +412,21 @@ const ScannedDocsView = () => {
     }
 };
 
-const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
+const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     if (!invoiceForReceiptUpload || !user) return;
     const invoiceId = invoiceForReceiptUpload.id;
 
     try {
-        await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptImageUri);
+        await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptImageUriParam);
         toast({
             title: t('paid_invoices_toast_receipt_uploaded_title'),
             description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: invoiceForReceiptUpload.fileName }),
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchInvoices(); 
+        fetchInvoices();
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
-             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri } : null);
+             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri: receiptImageUriParam } : null);
         }
     } catch (error) {
         console.error("Failed to confirm receipt upload and update status:", error);
@@ -540,11 +524,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
 
    return (
      <>
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
-            // onTouchStart={onTouchStart}
-            // onTouchMove={onTouchMove}
-            // onTouchEnd={onTouchEnd}
-        >
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
           <div className="relative w-full md:max-w-xs lg:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -555,11 +535,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
               aria-label={t('invoices_search_aria')}
             />
           </div>
-          <div className="flex gap-2 flex-wrap justify-start md:justify-end"
-            //    onTouchStart={onTouchStart}
-            //    onTouchMove={onTouchMove}
-            //    onTouchEnd={onTouchEnd}
-          >
+          <div className="flex gap-2 flex-wrap justify-start md:justify-end">
                <Popover>
                  <PopoverTrigger asChild>
                    <Button
@@ -814,7 +790,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                             {renderStatusBadge(item.paymentStatus, 'payment')}
                          </TableCell>
                        )}
-                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDate(item.paymentDueDate) : t('invoices_na')}</TableCell>}
+                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDate(item.paymentDueDate as string) : t('invoices_na')}</TableCell>}
                        {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                        {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
@@ -1106,7 +1082,7 @@ export default function DocumentsPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
+                <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
@@ -1129,4 +1105,5 @@ export default function DocumentsPage() {
     </div>
   );
 }
+
 
