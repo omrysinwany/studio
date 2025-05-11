@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Mail as MailIcon } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Mail as MailIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -192,14 +192,6 @@ export default function Navigation() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                     <DropdownMenuItem onClick={() => router.push('/settings/pos-integration')} className="cursor-pointer">
-                       <Plug className="mr-2 h-4 w-4" />
-                       <span>{t('pos_integration')}</span>
-                     </DropdownMenuItem>
-                     <DropdownMenuItem onClick={() => router.push('/settings/accountant')} className="cursor-pointer">
-                        <MailIcon className="mr-2 h-4 w-4" />
-                        <span>{t('settings_accountant_details_title')}</span>
-                    </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
                         <SettingsIcon className="mr-2 h-4 w-4" />
                         <span>{t('nav_settings')}</span>
@@ -282,14 +274,6 @@ export default function Navigation() {
                                             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                                         </div>
                                     </div>
-                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings/pos-integration')}>
-                                       <Plug className="h-5 w-5" />
-                                       {t('pos_integration')}
-                                    </Button>
-                                    <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings/accountant')}>
-                                        <MailIcon className="h-5 w-5" />
-                                        {t('settings_accountant_details_title')}
-                                    </Button>
                                      <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
                                         {t('nav_settings')}
@@ -318,8 +302,8 @@ export default function Navigation() {
                                   <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
                                </Button>
                              </DropdownMenuTrigger>
-                             <DropdownMenuPortal>
-                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                             <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
+                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
                                    <DropdownMenuLabel>{t('theme')}</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
                                    <DropdownMenuRadioGroup value={theme} onValueChange={(newTheme) => { setTheme(newTheme); }}>
@@ -344,8 +328,8 @@ export default function Navigation() {
                                   <Languages className="h-5 w-5" /> {t('language')}: <span className="ml-auto capitalize font-medium">{locale === 'he' ? t('hebrew') : t('english')}</span>
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuPortal>
-                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                              <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
+                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
                                   <DropdownMenuLabel>{t('language')}</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
@@ -365,3 +349,4 @@ export default function Navigation() {
     </header>
   );
 }
+
