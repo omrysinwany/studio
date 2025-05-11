@@ -116,12 +116,12 @@ export default function Home() {
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const recentInvoices = invoices.filter(
-          (invoice) => new Date(invoice.uploadTime).getTime() >= thirtyDaysAgo.getTime()
+          (invoice) => new Date(invoice.uploadTime as string).getTime() >= thirtyDaysAgo.getTime()
         );
         const docsProcessedLast30Days = recentInvoices.length;
 
         const latestDoc = invoices.length > 0
-          ? invoices.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime())[0]
+          ? invoices.sort((a, b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime())[0]
           : null;
         
         let latestDocName = latestDoc?.fileName;
@@ -265,6 +265,13 @@ export default function Home() {
     <div className={cn(styles.homeContainer, "flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
+            {t('app_title')}
+          </h1>
+          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
+            {t('greeting_user', { username: user?.username || 'User' })}
+          </p>
+
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
             <Button
               size="lg"
@@ -290,12 +297,7 @@ export default function Home() {
               <BarChart2 className="mr-2 h-5 w-5" /> {t('view_reports')}
             </Button>
           </div>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('app_title')}
-          </h1>
-          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
-            {t('greeting_user', { username: user?.username || 'User' })}
-          </p>
+
 
            {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
@@ -304,7 +306,7 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
@@ -460,7 +462,7 @@ export default function Home() {
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Link href="/invoices?filter=unpaid" className="block hover:no-underline">
+                  <Link href="/accounts?filter=unpaid" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_amount_remaining_to_pay')}</CardTitle>
