@@ -1,37 +1,37 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Input } from '@/components/ui/input';
+ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+ import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileText as FileTextIcon, Info, Edit, Save, XCircle, CheckCircle, Clock, MoreVertical, ImageIcon, Briefcase, Receipt, CheckSquare, Mail } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
-import type { DateRange } from 'react-day-picker';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
-import { Badge } from '@/components/ui/badge';
-import {
+ import {
+   Table,
+   TableBody,
+   TableCell,
+   TableHead,
+   TableHeader,
+   TableRow,
+ } from '@/components/ui/table';
+ import {
+   DropdownMenu,
+   DropdownMenuCheckboxItem,
+   DropdownMenuContent,
+   DropdownMenuLabel,
+   DropdownMenuSeparator,
+   DropdownMenuTrigger,
+ } from '@/components/ui/dropdown-menu';
+ import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, List, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, Mail, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle } from 'lucide-react';
+ import { useRouter } from 'next/navigation';
+ import { useToast } from '@/hooks/use-toast';
+ import type { DateRange } from 'react-day-picker';
+ import { Calendar } from '@/components/ui/calendar';
+ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+ import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
+ import { cn } from '@/lib/utils';
+ import { Calendar as CalendarIcon } from 'lucide-react';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
+ import { Badge } from '@/components/ui/badge';
+ import {
     Sheet,
     SheetContent,
     SheetHeader,
@@ -120,7 +120,17 @@ const ScannedDocsView = () => {
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch();
+  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
+    onTap: (e) => {
+      // This will only be called for genuine taps, not scrolls
+      const target = e.target as HTMLElement;
+      // Check if the tap occurred on a dropdown trigger or its child
+      if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(target)) {
+        // Logic to open dropdown, or let the default browser behavior handle it
+        // For ShadCN DropdownMenu, onClick on Trigger already handles it.
+      }
+    }
+  });
 
   const fetchSuppliers = useCallback(async () => {
     if (!user) return;
@@ -308,11 +318,18 @@ const ScannedDocsView = () => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
-   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-    setSelectedInvoiceDetails(invoice);
-    setEditedInvoiceData({ ...invoice });
-    setIsEditingDetails(false);
-    setShowDetailsSheet(true);
+   const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
+    if (invoice) {
+        console.log("Opening details for:", invoice);
+        setSelectedInvoiceDetails(invoice);
+        setEditedInvoiceData({ ...invoice });
+        setIsEditingDetails(false);
+        setShowDetailsSheet(true);
+    } else {
+        console.log("handleViewDetails called with null invoice, sheet will not open.");
+        setSelectedInvoiceDetails(null);
+        setShowDetailsSheet(false);
+    }
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
@@ -531,7 +548,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
 
    return (
      <>
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6"
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
@@ -688,7 +705,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_view_aria')} >
-                    <Eye className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
+                    <Info className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -778,7 +795,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                                    title={t('invoices_view_details_title', { fileName: item.fileName })}
                                    aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
                                >
-                                   <MoreVertical className="h-4 w-4" />
+                                   <Info className="h-4 w-4" />
                                </Button>
                            </TableCell>
                        )}
@@ -870,7 +887,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                   </CardContent>
                    <CardFooter className="p-3 border-t">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
-                          <MoreVertical className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
+                          <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
                       </Button>
                    </CardFooter>
                 </Card>
@@ -914,6 +931,13 @@ export default function DocumentsPage() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Common Sheet for ScannedDocsView details - moved here to avoid conflicts */}
+      {/* This assumes ScannedDocsView's state and handlers are somehow passed down or managed globally/contextually */}
+      {/* For now, keeping detail sheet within ScannedDocsView to maintain encapsulation. */}
+      {/* If issues persist, a global modal/sheet context might be a solution. */}
+
     </div>
   );
 }
+
