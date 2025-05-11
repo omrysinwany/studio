@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIconLucide, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail as MailIcon } from 'lucide-react'; // Renamed Mail to MailIcon
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -30,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend'; // Added getAccountantSettingsService
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -57,11 +57,11 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
+import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 
 
 const formatNumber = (
@@ -77,7 +77,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : formattedValue;
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
     const formattedValue = value.toLocaleString(undefined, {
@@ -111,7 +111,7 @@ export default function PaidInvoicesTabView() {
     fileName: true,
     uploadTime: false,
     status: true,
-    paymentStatus: false,
+    paymentStatus: false, // Not needed in "Paid" tab, but kept for consistency if logic changes
     invoiceNumber: false,
     supplier: true,
     totalAmount: true,
@@ -143,25 +143,18 @@ export default function PaidInvoicesTabView() {
   const [accountantEmail, setAccountantEmail] = useState('');
   const [emailNote, setEmailNote] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
+  const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  // const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch();
 
 
   const fetchSuppliers = useCallback(async () => {
     if (!user) return;
     try {
-      // Fetch only explicitly managed suppliers for the filter
-      const managedSuppliersData = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, user.id, []);
-      const managedSuppliersSummaries: SupplierSummary[] = managedSuppliersData.map(s => ({
-        name: s.name,
-        invoiceCount: 0, // Not used for filter
-        totalSpent: 0,   // Not used for filter
-        phone: s.phone,
-        email: s.email,
-      }));
-      setExistingSuppliers(managedSuppliersSummaries);
+      const managedSuppliers = await getSupplierSummariesService(user.id);
+      setExistingSuppliers(managedSuppliers);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
       toast({
@@ -188,6 +181,7 @@ export default function PaidInvoicesTabView() {
                 if (invoice.paymentReceiptImageUri && !existing.paymentReceiptImageUri) {
                     uniqueInvoicesMap.set(invoice.id, invoice);
                 } else if (!invoice.paymentReceiptImageUri && existing.paymentReceiptImageUri) {
+                   // Keep existing if it has a receipt and the new one doesn't
                 } else if (new Date(invoice.uploadTime as string).getTime() > new Date(existing.uploadTime as string).getTime()){
                      uniqueInvoicesMap.set(invoice.id, invoice);
                 }
@@ -221,9 +215,9 @@ export default function PaidInvoicesTabView() {
                  const valA = a[sortKey as keyof InvoiceHistoryItem];
                  const valB = b[sortKey as keyof InvoiceHistoryItem];
                  let comparison = 0;
-                 if (sortKey === 'uploadTime') {
-                     const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
-                     const dateB = valB instanceof Date ? valB.getTime() : new Date(valA as string).getTime();
+                 if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate') {
+                     const dateA = valA ? new Date(valA as string).getTime() : 0;
+                     const dateB = valB ? new Date(valB as string).getTime() : 0;
                      comparison = dateA - dateB;
                  } else if (typeof valA === 'number' && typeof valB === 'number') {
                      comparison = valA - valB;
@@ -292,7 +286,7 @@ export default function PaidInvoicesTabView() {
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
-      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true},
       { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
@@ -351,7 +345,7 @@ export default function PaidInvoicesTabView() {
     }
   };
 
-  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number ) => {
+  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | Date | undefined ) => {
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -365,6 +359,8 @@ export default function PaidInvoicesTabView() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
+            paymentDueDate: editedInvoiceData.paymentDueDate,
+            // paymentReceiptImageUri is handled separately by its upload dialog
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice, user.id);
@@ -376,6 +372,7 @@ export default function PaidInvoicesTabView() {
         const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id && inv.paymentStatus === 'paid'));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
+            fetchInvoices(); // Also refetch the main list
         } else {
            setShowDetailsSheet(false);
            fetchInvoices();
@@ -454,7 +451,7 @@ export default function PaidInvoicesTabView() {
                 icon = <CreditCard className="mr-1 h-3 w-3" />;
                 labelKey = 'invoice_payment_status_paid';
                 break;
-            default:
+            default: // Only 'paid' status is relevant for this tab, other payment statuses are in ScannedDocsView
                 variant = 'outline';
                 icon = null;
                 labelKey = String(status);
@@ -480,8 +477,8 @@ export default function PaidInvoicesTabView() {
     const allUserInvoices = await getInvoicesService(user.id);
     const paidUserInvoices = allUserInvoices.filter(inv => inv.paymentStatus === 'paid');
     const today = new Date();
-    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); // Correct way to get start of last month
-    const lastMonthEnd = endOfMonth(subDays(today, today.getDate())); // Correct way to get end of last month
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); 
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate())); 
 
     const lastMonthInvoices = paidUserInvoices.filter(invoice => {
       const uploadDate = new Date(invoice.uploadTime as string);
@@ -510,7 +507,12 @@ export default function PaidInvoicesTabView() {
         if (settings && settings.email) {
             setAccountantEmail(settings.email);
         } else {
-            setAccountantEmail(''); // Clear if no saved email
+            setAccountantEmail(''); 
+            toast({
+                title: t('settings_accountant_toast_email_required_desc'),
+                description: t('settings_accountant_toast_email_required_desc_export'),
+                variant: "destructive"
+            })
         }
     }
     setShowExportDialog(true);
@@ -542,8 +544,6 @@ export default function PaidInvoicesTabView() {
             toast({ title: t('invoice_export_success_title'), description: result.message });
             setShowExportDialog(false);
             setSelectedInvoiceIds([]);
-            // Do not clear accountantEmail and emailNote here, let them persist for next export if user wants.
-            // Or clear emailNote but keep accountantEmail if it was prefilled.
             setEmailNote(''); 
         } else {
             toast({ title: t('invoice_export_error_title'), description: result.message, variant: "destructive" });
@@ -555,14 +555,21 @@ export default function PaidInvoicesTabView() {
     }
  };
 
+ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: string) => {
+    if (!user) return;
+    setShowReceiptUploadDialog(false);
+    setInvoiceForReceiptUpload(null);
+    toast({ title: t('paid_invoices_toast_receipt_uploaded_title'), description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: selectedInvoiceDetails?.fileName || 'Invoice' }) });
+    fetchInvoices();
+    if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
+        setSelectedInvoiceDetails(prev => prev ? {...prev, paymentReceiptImageUri: receiptUri } : null);
+    }
+};
+
 
   return (
     <>
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
-            // onTouchStart={onTouchStart}
-            // onTouchMove={onTouchMove}
-            // onTouchEnd={onTouchEnd}
-        >
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
           <div className="relative w-full md:max-w-xs lg:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -573,11 +580,7 @@ export default function PaidInvoicesTabView() {
               aria-label={t('invoices_search_aria')}
             />
           </div>
-          <div className="flex gap-2 flex-wrap justify-start md:justify-end"
-            //    onTouchStart={onTouchStart}
-            //    onTouchMove={onTouchMove}
-            //    onTouchEnd={onTouchEnd}
-          >
+          <div className="flex gap-2 flex-wrap justify-start md:justify-end">
                <Popover>
                  <PopoverTrigger asChild>
                    <Button
@@ -613,17 +616,7 @@ export default function PaidInvoicesTabView() {
                      defaultMonth={dateRange?.from}
                      selected={dateRange}
                      onSelect={setDateRange}
-                     numberOfMonths={1}
-                     className="sm:block hidden"
-                   />
-                     <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={dateRange?.from}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={2}
-                      className="hidden sm:block"
+                     numberOfMonths={1} // For mobile, show 1 month
                    />
                    {dateRange && (
                       <div className="p-2 border-t flex justify-end">
@@ -718,7 +711,7 @@ export default function PaidInvoicesTabView() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
+             <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
               <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
             </Button>
             <Button onClick={handleOpenExportDialog} disabled={selectedInvoiceIds.length === 0} className="bg-primary hover:bg-primary/90 flex-1 md:flex-initial">
@@ -832,7 +825,7 @@ export default function PaidInvoicesTabView() {
                             {renderStatusBadge(item.status, 'scan')}
                          </TableCell>
                        )}
-                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.paymentDueDate as string)}</TableCell>}
+                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDate(item.paymentDueDate as string) : t('invoices_na')}</TableCell>}
                        {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                        {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
@@ -878,14 +871,14 @@ export default function PaidInvoicesTabView() {
                       />
                   </div>
                   <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item)}>
-                    {isValidImageSrc(item.paymentReceiptImageUri) ? (
+                    {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (
                       <NextImage
-                        src={item.paymentReceiptImageUri}
+                        src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} // Fallback to original if receipt missing
                         alt={t('paid_invoices_receipt_image_alt', { fileName: item.fileName })}
                         layout="fill"
                         objectFit="cover"
                         className="rounded-t-lg"
-                        data-ai-hint="payment receipt"
+                        data-ai-hint="payment receipt document"
                       />
                     ) : (
                       <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
@@ -943,6 +936,10 @@ export default function PaidInvoicesTabView() {
                         <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
+                     <div>
+                        <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
+                        <Input id="editPaymentDueDate" type="date" value={editedInvoiceData.paymentDueDate ? format(parseISO(editedInvoiceData.paymentDueDate as string), 'yyyy-MM-dd') : ''} onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} disabled={isSavingDetails}/>
+                    </div>
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
@@ -980,9 +977,9 @@ export default function PaidInvoicesTabView() {
                   )}
                   <Separator className="my-4"/>
                   <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri) ? (
+                  {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
-                        src={selectedInvoiceDetails.paymentReceiptImageUri}
+                        src={selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri!}
                         alt={t('paid_invoices_receipt_image_alt', { fileName: selectedInvoiceDetails.fileName })}
                         width={800}
                         height={1100}
@@ -1039,6 +1036,17 @@ export default function PaidInvoicesTabView() {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                     </AlertDialog>
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            if(selectedInvoiceDetails) {
+                                setInvoiceForReceiptUpload(selectedInvoiceDetails);
+                                setShowReceiptUploadDialog(true);
+                            }
+                        }}
+                    >
+                       <Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_update_receipt_button')}
+                    </Button>
                 </>
             )}
             <SheetClose asChild>
@@ -1104,7 +1112,20 @@ export default function PaidInvoicesTabView() {
             </form>
         </AlertDialogContentComponent>
     </AlertDialog>
+
+    {showReceiptUploadDialog && invoiceForReceiptUpload && (
+        <PaymentReceiptUploadDialog
+            isOpen={showReceiptUploadDialog}
+            onOpenChange={(isOpen) => {
+                setShowReceiptUploadDialog(isOpen);
+                if (!isOpen) setInvoiceForReceiptUpload(null);
+            }}
+            invoiceFileName={invoiceForReceiptUpload.fileName}
+            onConfirmUpload={async (receiptUri) => {
+                await handlePaymentReceiptUploaded(invoiceForReceiptUpload.id, receiptUri);
+            }}
+        />
+    )}
     </>
   );
 }
-
