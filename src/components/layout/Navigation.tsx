@@ -1,9 +1,8 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2 } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -48,8 +47,9 @@ export default function Navigation() {
       { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
       { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
       { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
-      { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
-      { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
+      { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s' },
+      { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s' },
+      { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s' },
     ];
   };
 
@@ -59,7 +59,7 @@ export default function Navigation() {
     if (authLoading) {
       return;
     }
-    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices'];
+    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts'];
     const publicPaths = ['/login', '/register'];
     const isAuthPage = publicPaths.includes(pathname);
     const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path));
@@ -200,13 +200,13 @@ export default function Navigation() {
               ) : (
                 <>
                    <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">
+                     <Link href="/login">
                        <span className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
                     </Link>
                   </Button>
-                  <Button asChild size="sm" className="transition-transform hover:scale-105">
+                  <Button size="sm" className="transition-transform hover:scale-105" asChild>
                     <Link href="/register">
                        <span className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
