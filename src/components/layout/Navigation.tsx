@@ -49,7 +49,7 @@ export default function Navigation() {
       return;
     }
     const publicPaths = ['/login', '/register'];
-    const isGuestPage = pathname === '/';
+    const isGuestPage = pathname === '/'; // Assuming '/' is the guest home page
     const isAuthPage = publicPaths.includes(pathname);
 
     if (!user && !isGuestPage && !isAuthPage) {
@@ -131,7 +131,8 @@ export default function Navigation() {
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
                    <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                 </DropdownMenuRadioGroup>
+                 </DropdownMenuRadioItem>
+               </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
 
@@ -296,7 +297,8 @@ export default function Navigation() {
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="system">
                                        <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                                     </DropdownMenuRadioGroup>
+                                     </DropdownMenuRadioItem>
+                                   </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
                               </DropdownMenuPortal>
                            </DropdownMenu>
