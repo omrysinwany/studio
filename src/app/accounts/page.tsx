@@ -3,22 +3,23 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button'; 
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'; 
-import { Calendar } from '@/components/ui/calendar'; 
-import type { DateRange } from 'react-day-picker'; 
-import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth } from 'date-fns'; 
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import type { DateRange } from 'react-day-picker';
+import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon, TrendingUp as TrendingUpIcon, DollarSign, Info } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
+import { getInvoicesService, type InvoiceHistoryItem, getProductsService, type Product } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
 
 
 interface SupplierSpending {
@@ -28,7 +29,7 @@ interface SupplierSpending {
 
 const supplierChartConfig = {
   totalAmount: {
-    labelKey: 'accounts_total_amount_spent_short', 
+    labelKey: 'accounts_total_amount_spent_short',
     color: "hsl(var(--chart-1))",
   },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
@@ -40,6 +41,7 @@ export default function AccountsPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -50,13 +52,17 @@ export default function AccountsPage() {
     if (!user) return;
     setIsLoadingData(true);
     try {
-      const invoices = await getInvoicesService(user.id);
+      const [invoices, productsData] = await Promise.all([
+        getInvoicesService(user.id),
+        getProductsService(user.id)
+      ]);
       setAllInvoices(invoices);
+      setAllProducts(productsData);
     } catch (error) {
       console.error("Failed to fetch account data:", error);
       toast({
           title: t('error_title'),
-          description: t('reports_toast_error_fetch_desc'), 
+          description: t('reports_toast_error_fetch_desc'),
           variant: "destructive"
       });
     } finally {
@@ -74,7 +80,7 @@ export default function AccountsPage() {
   }, [user, authLoading, router]);
 
   const filteredInvoices = useMemo(() => {
-    if (!dateRange?.from) return allInvoices; 
+    if (!dateRange?.from) return allInvoices;
     const startDate = new Date(dateRange.from);
     startDate.setHours(0, 0, 0, 0);
     const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
@@ -126,10 +132,22 @@ export default function AccountsPage() {
         .reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
   }, [allInvoices]);
 
+  const potentialGrossProfitFromStock = useMemo(() => {
+    return allProducts.reduce((sum, product) => {
+        const cost = product.unitPrice || 0;
+        const sale = product.salePrice || 0;
+        const qty = product.quantity || 0;
+        if (sale > cost) {
+            sum += (sale - cost) * qty;
+        }
+        return sum;
+    },0);
+  }, [allProducts]);
+
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
     if (!dueDate) return null;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dueDateObj = parseISO(dueDate as string);
@@ -138,19 +156,19 @@ export default function AccountsPage() {
     if (isPast(dueDateObj) && !isToday(dueDateObj)) {
       return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle };
     }
-    
+
     const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-    if (daysUntilDue <= 0) { 
+    if (daysUntilDue <= 0) {
          return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
     }
     if (daysUntilDue <= 7) {
       return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock };
     }
-    
-    return null; 
+
+    return null;
   };
-  
+
   const formatDateDisplay = (dateString: string | Date | undefined, formatStr: string = 'PP') => {
     if (!dateString) return t('invoices_na');
     try {
@@ -285,24 +303,45 @@ export default function AccountsPage() {
           )}
         </CardContent>
       </Card>
-      
-      <Card className="shadow-md scale-fade-in delay-200">
-        <CardHeader>
-            <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
-            </CardTitle>
-            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-            {isLoadingData ? (
-                 <div className="flex justify-center items-center py-6">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                 </div>
-            ) : (
-                <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
-            )}
-        </CardContent>
-      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="shadow-md scale-fade-in delay-200">
+            <CardHeader>
+                <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
+                </CardTitle>
+                <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingData ? (
+                    <div className="flex justify-center items-center py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
+                )}
+            </CardContent>
+        </Card>
+
+        <Card className="shadow-md scale-fade-in delay-200">
+            <CardHeader>
+                <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                    <TrendingUpIcon className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_potential_profit_title')}
+                </CardTitle>
+                <CardDescription>{t('accounts_potential_profit_desc')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingData ? (
+                    <div className="flex justify-center items-center py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <p className="text-3xl font-bold">{formatCurrency(potentialGrossProfitFromStock)}</p>
+                )}
+            </CardContent>
+        </Card>
+      </div>
+
 
       <Card className="shadow-md scale-fade-in delay-300">
         <CardHeader>
@@ -330,7 +369,7 @@ export default function AccountsPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {supplierSpendingData.slice(0, 10).map(item => ( 
+                                {supplierSpendingData.slice(0, 10).map(item => (
                                     <TableRow key={item.name}>
                                         <TableCell className="font-medium">{item.name}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(item.totalAmount)}</TableCell>
@@ -339,7 +378,7 @@ export default function AccountsPage() {
                             </TableBody>
                         </Table>
                     </div>
-                    <div className="h-[300px] md:h-[350px]"> 
+                    <div className="h-[300px] md:h-[350px]">
                         <ChartContainer config={supplierChartConfig} className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: 30, left: 20, bottom: 20}}>
@@ -373,15 +412,31 @@ export default function AccountsPage() {
       <Card className="shadow-md scale-fade-in delay-400">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                  {t('accounts_cash_flow_title')}
+                <DollarSign className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}
               </CardTitle>
-              <CardDescription>{t('accounts_cash_flow_desc_period_placeholder')}</CardDescription>
+              <CardDescription>{t('accounts_cash_flow_profitability_desc')}</CardDescription>
           </CardHeader>
-          <CardContent>
-              <p className="text-muted-foreground text-center py-10">{t('settings_more_coming_soon')}</p>
+          <CardContent className="space-y-4">
+              <div>
+                  <h3 className="text-md font-semibold text-muted-foreground">{t('accounts_potential_gross_profit_stock_title')}</h3>
+                  {isLoadingData ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    ) : (
+                        <p className="text-2xl font-bold">{formatCurrency(potentialGrossProfitFromStock)}</p>
+                    )}
+              </div>
+              <Separator />
+              <div>
+                <h3 className="text-md font-semibold text-muted-foreground">{t('accounts_cash_flow_analysis_title')}</h3>
+                <p className="text-sm text-muted-foreground">{t('settings_more_coming_soon')}</p>
+              </div>
+              <Separator />
+              <div>
+                <h3 className="text-md font-semibold text-muted-foreground">{t('accounts_predictive_balance_title')}</h3>
+                <p className="text-sm text-muted-foreground">{t('settings_more_coming_soon')}</p>
+              </div>
           </CardContent>
       </Card>
     </div>
   );
 }
-
