@@ -157,4 +157,16 @@ body {
   .delay-200 { animation-delay: 0.2s !important; }
   .delay-300 { animation-delay: 0.3s !important; }
   .delay-400 { animation-delay: 0.4s !important; }
+
+  /* Ensure TabsContent only displays when active for fade-in */
+  [data-state="inactive"] > .tabs-content-fade-in {
+    display: none;
+    opacity: 0;
+  }
+
+  [data-state="active"] > .tabs-content-fade-in {
+    display: block; /* Or 'flex', 'grid' etc. depending on your layout */
+    animation: fadeInContent 0.5s ease-out forwards;
+    opacity: 0;
+  }
 }

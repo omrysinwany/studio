@@ -301,46 +301,49 @@ export default function AccountsPage() {
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Tabs defaultValue={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:h-10 sm:w-auto items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
-                {expenseCategories.map(category => (
-                    <TabsTrigger 
-                        key={category} 
-                        value={category} 
-                        className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
-                    >
-                      {t(`accounts_other_expenses_tab_${category}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
-                    </TabsTrigger>
-                ))}
-              </TabsList>
-              {expenseCategories.map(category => (
-                <TabsContent key={category} value={category}>
-                  <div className="mt-4 space-y-2">
-                    {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
-                      otherExpenses.filter(exp => exp.category === category)
-                        .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
-                        .map(expense => (
-                          <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-background shadow-sm hover:shadow-md transition-shadow">
-                            <div>
-                              <p className="text-sm font-medium">{expense.description}</p>
-                              <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
-                            </div>
-                            <p className="text-sm font-semibold">{formatCurrency(expense.amount)}</p>
-                          </div>
-                        ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">{t('accounts_other_expenses_no_expenses_in_category')}</p>
-                    )}
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
-            <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
-              <Button variant="outline" disabled>
-                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
+            <div className="flex items-center gap-2">
+              <Tabs defaultValue={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full sm:w-auto">
+                <TabsList className="inline-flex h-10 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+                  {expenseCategories.map(category => (
+                      <TabsTrigger
+                          key={category}
+                          value={category}
+                          className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none whitespace-nowrap"
+                      >
+                        {t(`accounts_other_expenses_tab_${category}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
+                      </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              <Button variant="outline" size="icon" disabled className="ml-2 flex-shrink-0">
+                <PlusCircle className="h-4 w-4" />
+                <span className="sr-only">{t('accounts_add_category_button')}</span>
               </Button>
-               <Button variant="outline" disabled>
-                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_category_button')}
+            </div>
+            {expenseCategories.map(category => (
+              <TabsContent key={category} value={category} className={cn(activeExpenseTab === category ? "block" : "hidden", "mt-4")}>
+                <div className="space-y-2">
+                  {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
+                    otherExpenses.filter(exp => exp.category === category)
+                      .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
+                      .map(expense => (
+                        <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-background shadow-sm hover:shadow-md transition-shadow">
+                          <div>
+                            <p className="text-sm font-medium">{expense.description}</p>
+                            <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
+                          </div>
+                          <p className="text-sm font-semibold">{formatCurrency(expense.amount)}</p>
+                        </div>
+                      ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">{t('accounts_other_expenses_no_expenses_in_category')}</p>
+                  )}
+                </div>
+              </TabsContent>
+            ))}
+            <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
+              <Button variant="outline" disabled className="w-full sm:w-auto">
+                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
               </Button>
             </div>
           </CardContent>
