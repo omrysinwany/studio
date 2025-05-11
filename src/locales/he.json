@@ -1,4 +1,3 @@
-
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -27,7 +26,7 @@
   "language": "שפה",
   "english": "אנגלית",
   "hebrew": "עברית",
-  "pos_integration": "סנכרון קופות",
+  "appearance_settings": "הגדרות תצוגה",
   "nav_toggle_navigation": "החלף ניווט",
   "nav_menu": "תפריט ניווט",
   "kpi_total_items": "סה\"כ פריטים",
@@ -283,7 +282,7 @@
   "pos_toast_sync_error_desc_process": "אירעה שגיאה במהלך סנכרון המלאי: {{message}}",
   "pos_toast_sync_error_desc_process_generic": "אירעה שגיאה במהלך סנכרון המלאי: {{message}}",
   "inventory_toast_error_fetch_title": "שגיאה באחזור מלאי",
-  "inventory_toast_error_fetch_desc": "לא ניתן לטעון את נתוני המלאי. אנא נסה שנית.",
+  "inventory_toast_error_fetch_desc": "לא ניתן לטעון את נתוני המלאי. אנא נסה שנית מאוחר יותר.",
   "inventory_title": "סקירת מלאי",
   "inventory_description": "עיין, חפש ונהל את פריטי המלאי שלך.",
   "inventory_search_placeholder": "חפש...",

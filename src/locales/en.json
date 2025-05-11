@@ -1,4 +1,3 @@
-
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -27,7 +26,7 @@
   "language": "Language",
   "english": "English",
   "hebrew": "Hebrew",
-  "pos_integration": "POS Integration",
+  "appearance_settings": "Appearance Settings",
   "nav_toggle_navigation": "Toggle Navigation",
   "nav_menu": "Navigation Menu",
   "kpi_total_items": "Total Items",

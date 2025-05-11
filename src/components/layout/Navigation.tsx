@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Mail as MailIcon } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -94,6 +94,11 @@ export default function Navigation() {
     if (isMobileSheetOpen) setIsMobileSheetOpen(false);
   };
 
+  const changeTheme = (newTheme: string) => {
+    setTheme(newTheme);
+    if (isMobileSheetOpen) setIsMobileSheetOpen(false);
+  }
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
@@ -124,20 +129,21 @@ export default function Navigation() {
           ))}
         </nav>
 
-        {/* Right side controls: Theme, Language, Auth */}
+        {/* Right side controls: Combined Appearance Settings, Auth */}
         <div className="flex items-center gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
-           {/* Theme Switcher (Desktop) */}
+           {/* Combined Appearance Settings Dropdown (Desktop) */}
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
                <Button variant="ghost" size="icon" className='hidden md:inline-flex transition-transform hover:scale-110'>
-                  <Palette className="h-[1.2rem] w-[1.2rem]" />
-                  <span className="sr-only">{t('theme')}</span>
+                  <Wand2 className="h-[1.2rem] w-[1.2rem]" />
+                  <span className="sr-only">{t('appearance_settings')}</span>
                </Button>
              </DropdownMenuTrigger>
-             <DropdownMenuContent align="end">
-               <DropdownMenuLabel>{t('theme')}</DropdownMenuLabel>
+             <DropdownMenuContent align="end" className="w-56">
+               <DropdownMenuLabel>{t('appearance_settings')}</DropdownMenuLabel>
                <DropdownMenuSeparator />
-               <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('theme')}</DropdownMenuLabel>
+               <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                  <DropdownMenuRadioItem value="light">
                    <Sun className="mr-2 h-4 w-4" /> {t('light_theme')}
                  </DropdownMenuRadioItem>
@@ -148,26 +154,14 @@ export default function Navigation() {
                    <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
                  </DropdownMenuRadioItem>
                </DropdownMenuRadioGroup>
-             </DropdownMenuContent>
-           </DropdownMenu>
-
-            {/* Language Switcher (Desktop) */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="hidden md:inline-flex transition-transform hover:scale-110">
-                  <Languages className="h-[1.2rem] w-[1.2rem]" />
-                  <span className="sr-only">{t('language')}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{t('language')}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
+               <DropdownMenuSeparator />
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('language')}</DropdownMenuLabel>
                 <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
                   <DropdownMenuRadioItem value="en">{t('english')}</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="he">{t('hebrew')}</DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+             </DropdownMenuContent>
+           </DropdownMenu>
 
           {/* Desktop Auth Controls */}
           <div className="hidden md:flex items-center gap-2">
@@ -205,10 +199,8 @@ export default function Navigation() {
                 </DropdownMenu>
               ) : (
                 <>
-                   {/* Apply button styles directly to Link */}
                    <Button variant="ghost" size="sm" asChild>
                     <Link href="/login">
-                       {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
@@ -216,7 +208,6 @@ export default function Navigation() {
                   </Button>
                   <Button asChild size="sm" className="transition-transform hover:scale-105">
                     <Link href="/register">
-                       {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
                         {t('nav_register')}
@@ -258,7 +249,7 @@ export default function Navigation() {
                         ))}
                       </nav>
 
-                    {/* Mobile Auth, Theme, Language in Footer */}
+                    {/* Mobile Auth, Appearance Settings in Footer */}
                     <div className="mt-auto border-t p-4 space-y-4">
                          <div>
                            {authLoading ? (
@@ -295,18 +286,20 @@ export default function Navigation() {
                            )}
                          </div>
 
+                         {/* Combined Appearance Settings Dropdown (Mobile) */}
                          <div className="border-t pt-4">
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
-                                  <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
+                                  <Wand2 className="h-5 w-5" /> {t('appearance_settings')}
                                </Button>
                              </DropdownMenuTrigger>
-                             <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
-                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
-                                   <DropdownMenuLabel>{t('theme')}</DropdownMenuLabel>
+                             <DropdownMenuPortal>
+                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                                   <DropdownMenuLabel>{t('appearance_settings')}</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
-                                   <DropdownMenuRadioGroup value={theme} onValueChange={(newTheme) => { setTheme(newTheme); }}>
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('theme')}</DropdownMenuLabel>
+                                   <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                                      <DropdownMenuRadioItem value="light">
                                        <Sun className="mr-2 h-4 w-4" /> {t('light_theme')}
                                      </DropdownMenuRadioItem>
@@ -317,28 +310,15 @@ export default function Navigation() {
                                        <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
                                      </DropdownMenuRadioItem>
                                    </DropdownMenuRadioGroup>
+                                   <DropdownMenuSeparator />
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('language')}</DropdownMenuLabel>
+                                    <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
+                                      <DropdownMenuRadioItem value="en">{t('english')}</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="he">{t('hebrew')}</DropdownMenuRadioItem>
+                                    </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
                               </DropdownMenuPortal>
                            </DropdownMenu>
-
-                           {/* Language Switcher (Mobile) */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
-                                  <Languages className="h-5 w-5" /> {t('language')}: <span className="ml-auto capitalize font-medium">{locale === 'he' ? t('hebrew') : t('english')}</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
-                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
-                                  <DropdownMenuLabel>{t('language')}</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
-                                    <DropdownMenuRadioItem value="en">{t('english')}</DropdownMenuRadioItem>
-                                    <DropdownMenuRadioItem value="he">{t('hebrew')}</DropdownMenuRadioItem>
-                                  </DropdownMenuRadioGroup>
-                                </DropdownMenuContent>
-                              </DropdownMenuPortal>
-                            </DropdownMenu>
                          </div>
                     </div>
                 </SheetContent>
@@ -349,4 +329,3 @@ export default function Navigation() {
     </header>
   );
 }
-
