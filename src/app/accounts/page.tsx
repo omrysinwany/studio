@@ -11,7 +11,7 @@ import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMon
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon, TrendingUp as TrendingUpIcon, DollarSign, Info, Landmark, PlusCircle } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, PlusCircle } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem, getProductsService, type Product } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -41,7 +41,7 @@ export default function AccountsPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  // Removed allProducts state as it's not used after removing potential gross profit
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -55,13 +55,9 @@ export default function AccountsPage() {
     if (!user) return;
     setIsLoadingData(true);
     try {
-      const [invoices, productsData] = await Promise.all([
-        getInvoicesService(user.id),
-        getProductsService(user.id)
-        // TODO: Fetch other expenses data here
-      ]);
+      const invoices = await getInvoicesService(user.id);
       setAllInvoices(invoices);
-      setAllProducts(productsData);
+      // Removed fetching products as potential gross profit is removed
     } catch (error) {
       console.error("Failed to fetch account data:", error);
       toast({
@@ -136,18 +132,7 @@ export default function AccountsPage() {
         .reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
   }, [allInvoices]);
 
-  const potentialGrossProfitFromStock = useMemo(() => {
-    return allProducts.reduce((sum, product) => {
-        const cost = product.unitPrice || 0;
-        const sale = product.salePrice || 0;
-        const qty = product.quantity || 0;
-        if (sale > cost) {
-            sum += (sale - cost) * qty;
-        }
-        return sum;
-    },0);
-  }, [allProducts]);
-
+  // Removed potentialGrossProfitFromStock as it's no longer displayed
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
     if (!dueDate) return null;
@@ -308,7 +293,7 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 gap-6"> {/* Changed to md:grid-cols-1 to make the remaining card full width */}
         <Card className="shadow-md scale-fade-in delay-200">
             <CardHeader>
                 <CardTitle className="text-xl font-semibold text-primary flex items-center">
@@ -327,23 +312,7 @@ export default function AccountsPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-md scale-fade-in delay-200">
-            <CardHeader>
-                <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <TrendingUpIcon className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_potential_profit_title')}
-                </CardTitle>
-                <CardDescription>{t('accounts_potential_profit_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {isLoadingData ? (
-                    <div className="flex justify-center items-center py-6">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    </div>
-                ) : (
-                    <p className="text-3xl font-bold">{formatCurrency(potentialGrossProfitFromStock)}</p>
-                )}
-            </CardContent>
-        </Card>
+        {/* Removed Potential Gross Profit Card */}
       </div>
 
 
@@ -441,15 +410,7 @@ export default function AccountsPage() {
               <CardDescription>{t('accounts_cash_flow_profitability_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-              <div>
-                  <h3 className="text-md font-semibold text-muted-foreground">{t('accounts_potential_gross_profit_stock_title')}</h3>
-                  {isLoadingData ? (
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                    ) : (
-                        <p className="text-2xl font-bold">{formatCurrency(potentialGrossProfitFromStock)}</p>
-                    )}
-              </div>
-              <Separator />
+              {/* Removed Potential Gross Profit from Stock section */}
               <div>
                 <h3 className="text-md font-semibold text-muted-foreground">{t('accounts_cash_flow_analysis_title')}</h3>
                 <p className="text-sm text-muted-foreground">{t('settings_more_coming_soon')}</p>
