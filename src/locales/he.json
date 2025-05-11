@@ -1,3 +1,4 @@
+
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -660,7 +661,7 @@
   "unit_price_confirmation_option_update_new": "עדכן למחיר חדש ({{price}})",
   "unit_price_confirmation_cancel_button": "בטל שמירה",
   "unit_price_confirmation_confirm_button": "אשר מחירים ושמור",
-  "payment_due_date_dialog_title": "קבע תאריך תשלום",
+  "payment_due_date_dialog_title": "תאריך יעד לתשלום",
   "payment_due_date_dialog_description": "מתי יש לשלם עבור חשבונית זו?",
   "payment_due_date_option_immediate": "מיידי",
   "payment_due_date_option_net30": "שוטף + 30",
@@ -674,7 +675,7 @@
   "number_suffix_m": "מ'",
   "number_suffix_b": "מ\"ל",
   "number_suffix_t": "ט'",
-  "guest_home_description": "נהל ביעילות את המלאי שלך, סרוק חשבוניות, וקבל תובנות חשובות על הפעילות העסקית שלך. הירשם או התחבר כדי להתחיל.",
+    "guest_home_description": "נהל ביעילות את המלאי שלך, סרוק חשבוניות, וקבל תובנות חשובות על הפעילות העסקית שלך. הירשם או התחבר כדי להתחיל.",
   "guest_home_get_started_title": "התחל עם אינבוטרק",
   "guest_home_get_started_desc": "צור חשבון או התחבר כדי לגשת לכל התכונות.",
   "guest_home_features_title": "תכונות עיקריות",
@@ -684,7 +685,7 @@
   "guest_home_feature_inventory_desc": "עקוב אחר רמות המלאי, העלויות ומחירי המכירה שלך בקלות.",
   "guest_home_feature_insights_title": "תובנות מעשיות",
   "guest_home_feature_insights_desc": "הפק דוחות והבן טוב יותר את ביצועי העסק שלך.",
-  "invoices_col_compressed_uri": "נתיב תמונה דחוסה",
+    "invoices_col_compressed_uri": "נתיב תמונה דחוסה",
   "paid_invoices_error_no_receipt_selected": "אנא בחר תמונת קבלה להעלאה.",
   "paid_invoices_error_processing_receipt": "שגיאה בעיבוד תמונת הקבלה",
   "paid_invoices_upload_receipt_title": "העלה קבלת תשלום עבור {{fileName}}",
@@ -724,5 +725,12 @@
   "invoice_export_error_unexpected_desc": "אירעה שגיאה לא צפויה במהלך תהליך הייצוא.",
   "sending": "שולח",
   "accounts_page_title": "חשבונות",
-  "accounts_page_description": "נהל את החשבונות והפרטים הפיננסיים שלך."
+  "accounts_page_description": "נהל את החשבונות והפרטים הפיננסיים שלך.",
+  "accounts_open_invoices_title": "חשבוניות פתוחות",
+  "accounts_open_invoices_desc": "צפה בחשבוניות שטרם שולמו או ממתינות לתשלום.",
+  "accounts_no_open_invoices": "אין חשבוניות פתוחות כרגע.",
+  "accounts_due_date_alert_column": "התראה",
+  "accounts_due_date_overdue": "איחור בתשלום",
+  "accounts_due_date_due_today": "תשלום היום",
+  "accounts_due_date_upcoming_soon": "תשלום בעוד {{days}} ימים"
 }

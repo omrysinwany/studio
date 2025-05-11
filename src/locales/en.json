@@ -1,3 +1,4 @@
+
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -660,7 +661,7 @@
   "unit_price_confirmation_option_update_new": "Update to New Price ({{price}})",
   "unit_price_confirmation_cancel_button": "Cancel Save",
   "unit_price_confirmation_confirm_button": "Confirm Prices & Save",
-  "payment_due_date_dialog_title": "Set Payment Due Date",
+  "payment_due_date_dialog_title": "Payment Due Date",
   "payment_due_date_dialog_description": "When is the payment for this invoice due?",
   "payment_due_date_option_immediate": "Immediate",
   "payment_due_date_option_net30": "Net 30 Days",
@@ -701,7 +702,7 @@
   "paid_invoices_toast_receipt_uploaded_desc": "Payment receipt for {{fileName}} uploaded and invoice marked as paid.",
   "paid_invoices_invalid_receipt_type_desc": "Please select a valid image (JPEG, PNG, GIF, WEBP) or PDF file for the receipt.",
   "paid_invoices_update_receipt_button": "Update Receipt",
-  "invoice_export_select_column_header": "Select",
+    "invoice_export_select_column_header": "Select",
   "invoice_export_select_aria": "Select invoice {{fileName}} for export",
   "invoice_export_select_all_last_month_button": "Select Last Month's",
   "invoice_export_selected_button": "Export to Accountant",
@@ -724,5 +725,12 @@
   "invoice_export_error_unexpected_desc": "An unexpected error occurred during the export process.",
   "sending": "Sending",
   "accounts_page_title": "Accounts",
-  "accounts_page_description": "Manage your accounts and financial details."
+  "accounts_page_description": "Manage your accounts and financial details.",
+  "accounts_open_invoices_title": "Open Invoices",
+  "accounts_open_invoices_desc": "View invoices that are currently unpaid or pending payment.",
+  "accounts_no_open_invoices": "No open invoices at the moment.",
+  "accounts_due_date_alert_column": "Alert",
+  "accounts_due_date_overdue": "Overdue",
+  "accounts_due_date_due_today": "Due Today",
+  "accounts_due_date_upcoming_soon": "Due in {{days}} days"
 }
