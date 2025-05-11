@@ -1,8 +1,9 @@
+
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Mail as MailIcon } from 'lucide-react'; // Added MailIcon
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Mail as MailIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -54,18 +55,20 @@ export default function Navigation() {
 
   const currentNavItems = getNavItems();
 
-
   useEffect(() => {
     if (authLoading) {
       return;
     }
+    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices'];
     const publicPaths = ['/login', '/register'];
-    const isGuestPage = pathname === '/' && !user;
     const isAuthPage = publicPaths.includes(pathname);
+    const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path));
 
-    // Redirect to login if not authenticated and trying to access a protected page
-    if (!user && !isGuestPage && !isAuthPage) {
+
+    if (!user && isProtectedPage) {
         router.push('/login');
+    } else if (user && isAuthPage) {
+        router.push('/');
     }
   }, [user, authLoading, pathname, router]);
 
@@ -143,7 +146,8 @@ export default function Navigation() {
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
                    <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
-                 </DropdownMenuRadioGroup>
+                 </DropdownMenuRadioItem>
+               </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
 
