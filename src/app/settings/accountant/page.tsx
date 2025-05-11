@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getAccountantSettingsService, saveAccountantSettingsService, AccountantSettings } from '@/services/backend';
+import { getAccountantSettingsService, saveAccountantSettingsService, type AccountantSettings } from '@/services/backend';
 import { Loader2, Mail, Save, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';

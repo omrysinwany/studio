@@ -877,7 +877,7 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
        throw new Error(`Failed to delete supplier "${supplierName}" due to an internal error.`);
     } else {
       // Supplier not found - no action needed, not an error.
-      // console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId} (key: ${storageKey}). No deletion occurred.`);
+       console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId} (key: ${storageKey}). No deletion occurred.`);
     }
   }
   
