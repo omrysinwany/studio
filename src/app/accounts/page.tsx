@@ -70,9 +70,10 @@ export default function AccountsPage() {
   };
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) return;
+    if (!user) {
       router.push('/login');
-    } else if (user) {
+    } else {
       fetchAccountData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,10 +304,16 @@ export default function AccountsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs defaultValue="electricity" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="electricity">{t('accounts_other_expenses_tab_electricity')}</TabsTrigger>
-                <TabsTrigger value="water">{t('accounts_other_expenses_tab_water')}</TabsTrigger>
-                <TabsTrigger value="arnona">{t('accounts_other_expenses_tab_arnona')}</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3 rounded-lg bg-muted p-1">
+                <TabsTrigger value="electricity" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+                  {t('accounts_other_expenses_tab_electricity')}
+                </TabsTrigger>
+                <TabsTrigger value="water" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+                  {t('accounts_other_expenses_tab_water')}
+                </TabsTrigger>
+                <TabsTrigger value="arnona" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+                  {t('accounts_other_expenses_tab_arnona')}
+                </TabsTrigger>
               </TabsList>
               {(['electricity', 'water', 'arnona'] as const).map(category => (
                 <TabsContent key={category} value={category}>
@@ -315,7 +322,7 @@ export default function AccountsPage() {
                       otherExpenses.filter(exp => exp.category === category)
                         .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
                         .map(expense => (
-                          <div key={expense.id} className="flex justify-between items-center p-2 border rounded-md">
+                          <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-background shadow-sm hover:shadow-md transition-shadow">
                             <div>
                               <p className="text-sm font-medium">{expense.description}</p>
                               <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
@@ -360,3 +367,4 @@ export default function AccountsPage() {
     </div>
   );
 }
+
