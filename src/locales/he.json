@@ -675,7 +675,7 @@
   "number_suffix_m": "מ'",
   "number_suffix_b": "מ\"ל",
   "number_suffix_t": "ט'",
-    "guest_home_description": "נהל ביעילות את המלאי שלך, סרוק חשבוניות, וקבל תובנות חשובות על הפעילות העסקית שלך. הירשם או התחבר כדי להתחיל.",
+  "guest_home_description": "נהל ביעילות את המלאי שלך, סרוק חשבוניות, וקבל תובנות חשובות על הפעילות העסקית שלך. הירשם או התחבר כדי להתחיל.",
   "guest_home_get_started_title": "התחל עם אינבוטרק",
   "guest_home_get_started_desc": "צור חשבון או התחבר כדי לגשת לכל התכונות.",
   "guest_home_features_title": "תכונות עיקריות",
@@ -685,7 +685,7 @@
   "guest_home_feature_inventory_desc": "עקוב אחר רמות המלאי, העלויות ומחירי המכירה שלך בקלות.",
   "guest_home_feature_insights_title": "תובנות מעשיות",
   "guest_home_feature_insights_desc": "הפק דוחות והבן טוב יותר את ביצועי העסק שלך.",
-    "invoices_col_compressed_uri": "נתיב תמונה דחוסה",
+  "invoices_col_compressed_uri": "נתיב תמונה דחוסה",
   "paid_invoices_error_no_receipt_selected": "אנא בחר תמונת קבלה להעלאה.",
   "paid_invoices_error_processing_receipt": "שגיאה בעיבוד תמונת הקבלה",
   "paid_invoices_upload_receipt_title": "העלה קבלת תשלום עבור {{fileName}}",
@@ -740,5 +740,7 @@
   "accounts_no_spending_data_period": "לא נמצאו נתוני הוצאות לפי ספק בתקופה שנבחרה.",
   "accounts_total_amount_spent_short": "סה\"כ הוצאה",
   "accounts_cash_flow_title": "תזרים מזומנים",
-  "accounts_cash_flow_desc_period_placeholder": "ניתוח תזרים מזומנים לתקופה שנבחרה (בקרוב)."
+  "accounts_cash_flow_desc_period_placeholder": "ניתוח תזרים מזומנים לתקופה שנבחרה (בקרוב).",
+  "accounts_current_month_expenses_title": "הוצאות החודש הנוכחי",
+  "accounts_current_month_expenses_desc": "סך כל החשבוניות לחודש זה."
 }

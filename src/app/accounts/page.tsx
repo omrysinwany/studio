@@ -11,7 +11,7 @@ import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMon
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -74,15 +74,14 @@ export default function AccountsPage() {
   }, [user, authLoading, router]);
 
   const filteredInvoices = useMemo(() => {
-    if (!dateRange?.from) return allInvoices; // Return all if no 'from' date
+    if (!dateRange?.from) return allInvoices; 
     const startDate = new Date(dateRange.from);
     startDate.setHours(0, 0, 0, 0);
-    // If 'to' date is not set, use today as the end of the range for filtering
     const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
     endDate.setHours(23, 59, 59, 999);
 
     return allInvoices.filter(invoice => {
-      if (!invoice.uploadTime) return false; // Skip invoices without uploadTime
+      if (!invoice.uploadTime) return false;
       const invoiceDate = parseISO(invoice.uploadTime as string);
       return invoiceDate >= startDate && invoiceDate <= endDate;
     });
@@ -93,8 +92,8 @@ export default function AccountsPage() {
     return filteredInvoices
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
-        const dateA = a.paymentDueDate ? new Date(a.paymentDueDate).getTime() : Infinity;
-        const dateB = b.paymentDueDate ? new Date(b.paymentDueDate).getTime() : Infinity;
+        const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string).getTime() : Infinity;
+        const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string).getTime() : Infinity;
         return dateA - dateB;
       });
   }, [filteredInvoices]);
@@ -102,7 +101,6 @@ export default function AccountsPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     filteredInvoices.forEach(invoice => {
-      // Ensure supplier is a string and totalAmount is a number
       if (invoice.supplier && typeof invoice.supplier === 'string' && invoice.totalAmount !== undefined && typeof invoice.totalAmount === 'number') {
         spendingMap.set(
           invoice.supplier,
@@ -114,6 +112,20 @@ export default function AccountsPage() {
       .map(([name, totalAmount]) => ({ name, totalAmount }))
       .sort((a, b) => b.totalAmount - a.totalAmount);
   }, [filteredInvoices]);
+
+  const currentMonthExpenses = useMemo(() => {
+    const currentMonthStart = startOfMonth(new Date());
+    const currentMonthEnd = endOfMonth(new Date());
+
+    return allInvoices
+        .filter(invoice => {
+            if (!invoice.uploadTime) return false;
+            const invoiceDate = parseISO(invoice.uploadTime as string);
+            return invoiceDate >= currentMonthStart && invoiceDate <= currentMonthEnd;
+        })
+        .reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
+  }, [allInvoices]);
+
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
     if (!dueDate) return null;
@@ -273,8 +285,26 @@ export default function AccountsPage() {
           )}
         </CardContent>
       </Card>
-
+      
       <Card className="shadow-md scale-fade-in delay-200">
+        <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
+            </CardTitle>
+            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+            {isLoadingData ? (
+                 <div className="flex justify-center items-center py-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                 </div>
+            ) : (
+                <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
+            )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-md scale-fade-in delay-300">
         <CardHeader>
             <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <BarChartHorizontalBig className="mr-2 h-5 w-5" /> {t('accounts_supplier_spending_title')}
@@ -291,7 +321,7 @@ export default function AccountsPage() {
                 <p className="text-muted-foreground text-center py-6">{t('accounts_no_spending_data_period')}</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="overflow-x-auto max-h-[350px]"> {/* Added max-h and overflow for table */}
+                    <div className="overflow-x-auto max-h-[350px]">
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -340,7 +370,7 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-md scale-fade-in delay-300">
+      <Card className="shadow-md scale-fade-in delay-400">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                   {t('accounts_cash_flow_title')}
@@ -351,8 +381,7 @@ export default function AccountsPage() {
               <p className="text-muted-foreground text-center py-10">{t('settings_more_coming_soon')}</p>
           </CardContent>
       </Card>
-
-
     </div>
   );
 }
+

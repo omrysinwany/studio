@@ -702,7 +702,7 @@
   "paid_invoices_toast_receipt_uploaded_desc": "Payment receipt for {{fileName}} uploaded and invoice marked as paid.",
   "paid_invoices_invalid_receipt_type_desc": "Please select a valid image (JPEG, PNG, GIF, WEBP) or PDF file for the receipt.",
   "paid_invoices_update_receipt_button": "Update Receipt",
-    "invoice_export_select_column_header": "Select",
+  "invoice_export_select_column_header": "Select",
   "invoice_export_select_aria": "Select invoice {{fileName}} for export",
   "invoice_export_select_all_last_month_button": "Select Last Month's",
   "invoice_export_selected_button": "Export to Accountant",
@@ -740,5 +740,7 @@
   "accounts_no_spending_data_period": "No supplier spending data found for the selected period.",
   "accounts_total_amount_spent_short": "Total Spent",
   "accounts_cash_flow_title": "Cash Flow",
-  "accounts_cash_flow_desc_period_placeholder": "Cash flow analysis for the selected period (Coming Soon)."
+  "accounts_cash_flow_desc_period_placeholder": "Cash flow analysis for the selected period (Coming Soon).",
+  "accounts_current_month_expenses_title": "Current Month's Expenses",
+  "accounts_current_month_expenses_desc": "Total amount of invoices for this month."
 }
