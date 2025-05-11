@@ -702,7 +702,7 @@
   "paid_invoices_toast_receipt_uploaded_desc": "קבלת התשלום עבור {{fileName}} הועלתה והחשבונית סומנה כשולמה.",
   "paid_invoices_invalid_receipt_type_desc": "אנא בחר קובץ תמונה תקין (JPEG, PNG, GIF, WEBP) או PDF עבור הקבלה.",
   "paid_invoices_update_receipt_button": "עדכן קבלה",
-  "invoice_export_select_column_header": "בחר",
+    "invoice_export_select_column_header": "בחר",
   "invoice_export_select_aria": "בחר חשבונית {{fileName}} לייצוא",
   "invoice_export_select_all_last_month_button": "בחר חשבוניות מחודש שעבר",
   "invoice_export_selected_button": "ייצא לרו\"ח",
@@ -732,5 +732,13 @@
   "accounts_due_date_alert_column": "התראה",
   "accounts_due_date_overdue": "איחור בתשלום",
   "accounts_due_date_due_today": "תשלום היום",
-  "accounts_due_date_upcoming_soon": "תשלום בעוד {{days}} ימים"
+  "accounts_due_date_upcoming_soon": "תשלום בעוד {{days}} ימים",
+  "accounts_open_invoices_desc_period": "צפה בחשבוניות שאינן משולמות או ממתינות לתשלום בתקופה שנבחרה.",
+  "accounts_no_open_invoices_period": "לא נמצאו חשבוניות פתוחות בתקופה שנבחרה.",
+  "accounts_supplier_spending_title": "הוצאות לפי ספק",
+  "accounts_supplier_spending_desc_period": "סכום כולל שהוצא לכל ספק בתקופה שנבחרה.",
+  "accounts_no_spending_data_period": "לא נמצאו נתוני הוצאות לפי ספק בתקופה שנבחרה.",
+  "accounts_total_amount_spent_short": "סה\"כ הוצאה",
+  "accounts_cash_flow_title": "תזרים מזומנים",
+  "accounts_cash_flow_desc_period_placeholder": "ניתוח תזרים מזומנים לתקופה שנבחרה (בקרוב)."
 }

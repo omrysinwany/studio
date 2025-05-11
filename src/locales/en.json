@@ -732,5 +732,13 @@
   "accounts_due_date_alert_column": "Alert",
   "accounts_due_date_overdue": "Overdue",
   "accounts_due_date_due_today": "Due Today",
-  "accounts_due_date_upcoming_soon": "Due in {{days}} days"
+  "accounts_due_date_upcoming_soon": "Due in {{days}} days",
+  "accounts_open_invoices_desc_period": "View invoices that are currently unpaid or pending payment for the selected period.",
+  "accounts_no_open_invoices_period": "No open invoices found for the selected period.",
+  "accounts_supplier_spending_title": "Supplier Spending",
+  "accounts_supplier_spending_desc_period": "Total amount spent per supplier for the selected period.",
+  "accounts_no_spending_data_period": "No supplier spending data found for the selected period.",
+  "accounts_total_amount_spent_short": "Total Spent",
+  "accounts_cash_flow_title": "Cash Flow",
+  "accounts_cash_flow_desc_period_placeholder": "Cash flow analysis for the selected period (Coming Soon)."
 }
