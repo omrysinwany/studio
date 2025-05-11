@@ -3,7 +3,7 @@
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
  import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
  import {
    Table,
    TableBody,
@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
    DropdownMenuRadioItem,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileTextIcon, Info, Download, Trash2, Edit, Save, CheckSquare, Square, Mail, Briefcase, Clock, XCircle, CheckCircle, MoreVertical, ImageIcon } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileTextIcon, Info, Download, Trash2, Edit, Save, XCircle, CheckCircle, MoreVertical, ImageIcon, Clock } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -63,8 +63,6 @@ import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 
 
 const formatNumber = (
@@ -107,8 +105,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>>({
-    selection: true,
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
     actions: true,
     id: false,
     fileName: true,
@@ -145,11 +142,6 @@ export default function InvoicesPage() {
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
 
-  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
-  const [showExportDialog, setShowExportDialog] = useState(false);
-  const [accountantEmail, setAccountantEmail] = useState('');
-  const [emailNote, setEmailNote] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const smartTouchHandlers = useSmartTouch({
@@ -301,9 +293,8 @@ export default function InvoicesPage() {
   }, [invoices, searchTerm]);
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10' },
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
       { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
@@ -319,7 +310,7 @@ export default function InvoicesPage() {
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate' && h.key !== 'selection');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -335,7 +326,7 @@ export default function InvoicesPage() {
      }
    };
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions' | 'selection') => {
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
@@ -550,76 +541,6 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
      );
   };
 
-    const escapeCsvValue = (value: any): string => {
-        if (value === null || value === undefined) {
-          return '';
-        }
-         if (value instanceof Date) {
-            try { return value.toISOString(); } catch { return t('invoices_invalid_date'); }
-         }
-         if (typeof value === 'number') {
-             return formatNumber(value, t, { decimals: 2, useGrouping: false });
-         }
-        let stringValue = String(value);
-        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-          stringValue = stringValue.replace(/"/g, '""');
-          return `"${stringValue}"`;
-        }
-        return stringValue;
-      };
-
-    const handleExportAndEmail = async () => {
-      if (!user || selectedInvoiceIds.length === 0) {
-          toast({ title: t('invoice_export_error_no_selection_title'), description: t('invoice_export_error_no_selection_desc'), variant: 'destructive' });
-          return;
-      }
-      if (!accountantEmail.trim() || !/\S+@\S+\.\S+/.test(accountantEmail)) {
-          toast({ title: t('invoice_export_error_invalid_email_title'), description: t('invoice_export_error_invalid_email_desc'), variant: 'destructive' });
-          return;
-      }
-
-      setIsExporting(true);
-      try {
-          const result = await generateAndEmailInvoicesAction(selectedInvoiceIds, accountantEmail, emailNote, user.id);
-          if (result.success) {
-              toast({ title: t('invoice_export_success_title'), description: result.message });
-              setShowExportDialog(false);
-              setAccountantEmail('');
-              setEmailNote('');
-              setSelectedInvoiceIds([]); // Clear selection after successful export
-          } else {
-              toast({ title: t('invoice_export_error_title'), description: result.message, variant: 'destructive' });
-          }
-      } catch (error: any) {
-          console.error("Error exporting invoices:", error);
-          toast({ title: t('invoice_export_error_unexpected_title'), description: error.message || t('invoice_export_error_unexpected_desc'), variant: 'destructive' });
-      } finally {
-          setIsExporting(false);
-      }
-  };
-
-  const handleInvoiceSelect = (invoiceId: string) => {
-    setSelectedInvoiceIds(prev =>
-        prev.includes(invoiceId) ? prev.filter(id => id !== invoiceId) : [...prev, invoiceId]
-    );
-  };
-
-  const handleSelectAllLastMonth = () => {
-    const thirtyDaysAgo = subDays(new Date(), 30);
-    const lastMonthInvoiceIds = invoices
-        .filter(inv => new Date(inv.uploadTime as string) >= thirtyDaysAgo)
-        .map(inv => inv.id);
-    setSelectedInvoiceIds(lastMonthInvoiceIds);
-    toast({title: t('invoice_export_selected_last_month_title'), description: t('invoice_export_selected_last_month_desc', {count: lastMonthInvoiceIds.length})});
-  };
-
-  const isAllSelectedLastMonth = useMemo(() => {
-    const thirtyDaysAgo = subDays(new Date(), 30);
-    const lastMonthInvoices = invoices.filter(inv => new Date(inv.uploadTime as string) >= thirtyDaysAgo);
-    if(lastMonthInvoices.length === 0) return false;
-    return lastMonthInvoices.every(inv => selectedInvoiceIds.includes(inv.id));
-  }, [invoices, selectedInvoiceIds]);
-
 
   if (authLoading || (!user && !isLoading)) {
      return (
@@ -822,7 +743,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate' && h.key !== 'selection').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -843,13 +764,6 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-
-               <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
-                 <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
-               </Button>
-               <Button variant="default" onClick={() => setShowExportDialog(true)} disabled={selectedInvoiceIds.length === 0} className="flex-1 md:flex-initial bg-primary">
-                 <Mail className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')} ({selectedInvoiceIds.length})
-               </Button>
             </div>
           </div>
 
@@ -866,7 +780,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                             header.sortable && "cursor-pointer hover:bg-muted/50",
                             header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                             'px-2 sm:px-4 py-2',
-                             header.key === 'actions' ? 'sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10' : header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''
+                             header.key === 'actions' && 'sticky left-0 bg-card z-10'
                         )}
                         onClick={() => header.sortable && handleSort(header.key as SortKey)}
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -901,18 +815,9 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     </TableRow>
                   ) : (
                     filteredAndSortedInvoices.map((item) => (
-                      <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`} data-selected={selectedInvoiceIds.includes(item.id)}>
-                         {visibleColumns.selection && (
-                           <TableCell className={cn("text-center px-1 sticky left-0 bg-card z-20", columnDefinitions.find(h=>h.key==='selection')?.className)}>
-                             <Checkbox
-                               checked={selectedInvoiceIds.includes(item.id)}
-                               onCheckedChange={() => handleInvoiceSelect(item.id)}
-                               aria-label={t('invoice_export_select_aria_label', {fileName: item.fileName})}
-                              />
-                           </TableCell>
-                         )}
+                      <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                           {visibleColumns.actions && (
-                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(3%+0.25rem)] sm:left-[calc(3%+0.5rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                  <Button
                                      variant="ghost"
                                      size="icon"
@@ -1064,7 +969,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                         <Input
                             id="editPaymentDueDate"
                             type="date"
-                            value={editedInvoiceData.paymentDueDate ? format(new Date(editedInvoiceData.paymentDueDate), 'yyyy-MM-dd') : ''}
+                            value={editedInvoiceData.paymentDueDate ? format(parseISO(editedInvoiceData.paymentDueDate as string), 'yyyy-MM-dd') : ''}
                             onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? new Date(e.target.value) : undefined)}
                             disabled={isSavingDetails}
                         />
@@ -1197,58 +1102,6 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
           onConfirmUpload={handleConfirmReceiptUpload}
         />
       )}
-
-    {showExportDialog && (
-      <Sheet open={showExportDialog} onOpenChange={setShowExportDialog}>
-        <SheetContent side="bottom" className="h-auto max-h-[80vh] flex flex-col p-0 rounded-t-lg">
-          <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
-            <SheetTitle>{t('invoice_export_dialog_title')}</SheetTitle>
-            <SheetDescription>{t('invoice_export_dialog_desc', { count: selectedInvoiceIds.length })}</SheetDescription>
-          </SheetHeader>
-          <ScrollArea className="flex-grow">
-            <div className="p-4 sm:p-6 space-y-4">
-              <div>
-                <Label htmlFor="accountantEmail">{t('invoice_export_email_label')}</Label>
-                <Input
-                  id="accountantEmail"
-                  type="email"
-                  value={accountantEmail}
-                  onChange={(e) => setAccountantEmail(e.target.value)}
-                  placeholder={t('invoice_export_email_placeholder')}
-                  disabled={isExporting}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="emailNote">{t('invoice_export_note_label')}</Label>
-                <Textarea
-                  id="emailNote"
-                  value={emailNote}
-                  onChange={(e) => setEmailNote(e.target.value)}
-                  placeholder={t('invoice_export_note_placeholder')}
-                  disabled={isExporting}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          </ScrollArea>
-          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
-            <Button variant="outline" onClick={() => setShowExportDialog(false)} disabled={isExporting}>
-              {t('cancel_button')}
-            </Button>
-            <Button onClick={handleExportAndEmail} disabled={isExporting || selectedInvoiceIds.length === 0 || !accountantEmail.trim()}>
-              {isExporting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Mail className="mr-2 h-4 w-4" />
-              )}
-              {t('invoice_export_send_email_button')}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    )}
-
     </div>
   );
 }
