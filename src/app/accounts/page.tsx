@@ -42,12 +42,12 @@ export default function AccountsPage() {
   });
 
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([
-    { id: 'e1', category: 'electricity', description: 'Monthly electricity bill - May', amount: 250.75, date: '2024-05-15' },
-    { id: 'w1', category: 'water', description: 'Water bill - Q2', amount: 120.50, date: '2024-04-20' },
-    { id: 'a1', category: 'arnona', description: 'Arnona payment - Jan/Feb', amount: 450.00, date: '2024-03-10' },
-    { id: 'e2', category: 'electricity', description: 'Electricity bill - April', amount: 230.00, date: '2024-04-15' },
-    { id: 'w2', category: 'water', description: 'Water bill - Q1', amount: 115.20, date: '2024-01-22'},
-    { id: 'a2', category: 'arnona', description: 'Arnona payment - Mar/Apr', amount: 460.50, date: '2024-05-08' },
+    { id: 'e1', category: 'electricity', description: t('accounts_other_expenses_electricity_example_desc'), amount: 250.75, date: '2024-05-15' },
+    { id: 'w1', category: 'water', description: t('accounts_other_expenses_water_example_desc'), amount: 120.50, date: '2024-04-20' },
+    { id: 'a1', category: 'arnona', description: t('accounts_other_expenses_arnona_example_desc'), amount: 450.00, date: '2024-03-10' },
+    { id: 'e2', category: 'electricity', description: t('accounts_other_expenses_electricity_example_desc_2'), amount: 230.00, date: '2024-04-15' },
+    { id: 'w2', category: 'water', description: t('accounts_other_expenses_water_example_desc_2'), amount: 115.20, date: '2024-01-22'},
+    { id: 'a2', category: 'arnona', description: t('accounts_other_expenses_arnona_example_desc_2'), amount: 460.50, date: '2024-05-08' },
   ]);
 
 
@@ -304,14 +304,14 @@ export default function AccountsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs defaultValue="electricity" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 rounded-lg bg-muted p-1">
-                <TabsTrigger value="electricity" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+              <TabsList className="inline-flex h-auto items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground sm:h-10">
+                <TabsTrigger value="electricity" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
                   {t('accounts_other_expenses_tab_electricity')}
                 </TabsTrigger>
-                <TabsTrigger value="water" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+                <TabsTrigger value="water" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
                   {t('accounts_other_expenses_tab_water')}
                 </TabsTrigger>
-                <TabsTrigger value="arnona" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all">
+                <TabsTrigger value="arnona" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
                   {t('accounts_other_expenses_tab_arnona')}
                 </TabsTrigger>
               </TabsList>
