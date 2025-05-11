@@ -750,5 +750,9 @@
     "accounts_predictive_balance_title": "Predictive Balance Tool",
     "accounts_other_expenses_title": "Other Business Expenses",
     "accounts_other_expenses_desc": "Track and manage recurring expenses like electricity, water, and municipal taxes.",
-    "accounts_add_expense_button": "Add Expense"
+    "accounts_add_expense_button": "Add Expense",
+    "accounts_other_expenses_tab_electricity": "Electricity",
+    "accounts_other_expenses_tab_water": "Water",
+    "accounts_other_expenses_tab_arnona": "Municipal Taxes",
+    "accounts_other_expenses_no_expenses_in_category": "No expenses recorded in this category for the selected period."
 }

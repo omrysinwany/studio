@@ -11,14 +11,23 @@ import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMon
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, PlusCircle } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, PlusCircle, BarChart3 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs components
 
+
+interface OtherExpense {
+  id: string;
+  category: 'electricity' | 'water' | 'arnona';
+  description: string;
+  amount: number;
+  date: string; // ISO date string
+}
 
 export default function AccountsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -31,6 +40,16 @@ export default function AccountsPage() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+
+  const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([
+    { id: 'e1', category: 'electricity', description: 'Monthly electricity bill - May', amount: 250.75, date: '2024-05-15' },
+    { id: 'w1', category: 'water', description: 'Water bill - Q2', amount: 120.50, date: '2024-04-20' },
+    { id: 'a1', category: 'arnona', description: 'Arnona payment - Jan/Feb', amount: 450.00, date: '2024-03-10' },
+    { id: 'e2', category: 'electricity', description: 'Electricity bill - April', amount: 230.00, date: '2024-04-15' },
+    { id: 'w2', category: 'water', description: 'Water bill - Q1', amount: 115.20, date: '2024-01-22'},
+    { id: 'a2', category: 'arnona', description: 'Arnona payment - Mar/Apr', amount: 460.50, date: '2024-05-08' },
+  ]);
+
 
   const fetchAccountData = async () => {
     if (!user) return;
@@ -283,14 +302,39 @@ export default function AccountsPage() {
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-              <div className="text-center text-muted-foreground py-6">
-                <p>{t('settings_more_coming_soon')}</p>
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" disabled>
-                    <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
-                </Button>
-              </div>
+            <Tabs defaultValue="electricity" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="electricity">{t('accounts_other_expenses_tab_electricity')}</TabsTrigger>
+                <TabsTrigger value="water">{t('accounts_other_expenses_tab_water')}</TabsTrigger>
+                <TabsTrigger value="arnona">{t('accounts_other_expenses_tab_arnona')}</TabsTrigger>
+              </TabsList>
+              {(['electricity', 'water', 'arnona'] as const).map(category => (
+                <TabsContent key={category} value={category}>
+                  <div className="mt-4 space-y-2">
+                    {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
+                      otherExpenses.filter(exp => exp.category === category)
+                        .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
+                        .map(expense => (
+                          <div key={expense.id} className="flex justify-between items-center p-2 border rounded-md">
+                            <div>
+                              <p className="text-sm font-medium">{expense.description}</p>
+                              <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
+                            </div>
+                            <p className="text-sm font-semibold">{formatCurrency(expense.amount)}</p>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">{t('accounts_other_expenses_no_expenses_in_category')}</p>
+                    )}
+                  </div>
+                </TabsContent>
+              ))}
+            </Tabs>
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" disabled>
+                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
+              </Button>
+            </div>
           </CardContent>
       </Card>
 
@@ -316,4 +360,3 @@ export default function AccountsPage() {
     </div>
   );
 }
-

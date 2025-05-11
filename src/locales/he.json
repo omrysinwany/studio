@@ -739,7 +739,7 @@
     "accounts_supplier_spending_desc_period": "סכום כולל שהוצא לכל ספק בתקופה שנבחרה.",
     "accounts_no_spending_data_period": "לא נמצאו נתוני הוצאות לפי ספק בתקופה שנבחרה.",
     "accounts_total_amount_spent_short": "סה\"כ הוצאה",
-    "accounts_current_month_expenses_title": "הוצאות החודש",
+    "accounts_current_month_expenses_title": "הוצאות החודש הנוכחי",
     "accounts_current_month_expenses_desc": "סכום החשבוניות הכולל לחודש הנוכחי.",
     "accounts_potential_profit_title": "רווח גולמי פוטנציאלי",
     "accounts_potential_profit_desc": "רווח גולמי משוער מהמלאי הנוכחי.",
@@ -750,5 +750,9 @@
     "accounts_predictive_balance_title": "כלי לחיזוי יתרה",
     "accounts_other_expenses_title": "הוצאות עסקיות נוספות",
     "accounts_other_expenses_desc": "עקוב ונהל הוצאות חוזרות כמו חשמל, מים וארנונה.",
-    "accounts_add_expense_button": "הוסף הוצאה"
+    "accounts_add_expense_button": "הוסף הוצאה",
+    "accounts_other_expenses_tab_electricity": "חשמל",
+    "accounts_other_expenses_tab_water": "מים",
+    "accounts_other_expenses_tab_arnona": "ארנונה",
+    "accounts_other_expenses_no_expenses_in_category": "לא נרשמו הוצאות בקטגוריה זו בתקופה שנבחרה."
 }
