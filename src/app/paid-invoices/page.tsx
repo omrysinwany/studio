@@ -1,4 +1,3 @@
-
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -19,8 +18,6 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuLabel,
    DropdownMenuSeparator,
    DropdownMenuTrigger,
-   DropdownMenuRadioGroup,
-   DropdownMenuRadioItem
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
  import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail } from 'lucide-react';
@@ -29,10 +26,10 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format, parseISO, subDays } from 'date-fns';
+ import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -62,7 +59,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
-// import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions'; // Removed as export functionality is removed
+import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 
 
 const formatNumber = (
@@ -107,13 +106,13 @@ export default function PaidInvoicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>>({
-    selection: true, // Kept for potential future bulk actions
+    selection: true,
     actions: true,
     id: false,
     fileName: true,
     uploadTime: false,
-    status: true, // Scan status
-    paymentStatus: false, // Payment status is implicitly 'paid' on this page
+    status: true, 
+    paymentStatus: false, 
     invoiceNumber: false,
     supplier: true,
     totalAmount: true,
@@ -140,12 +139,11 @@ export default function PaidInvoicesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   
-  // Removed state related to export dialog as the functionality is removed
-  // const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
-  // const [showExportDialog, setShowExportDialog] = useState(false);
-  // const [accountantEmail, setAccountantEmail] = useState('');
-  // const [emailNote, setEmailNote] = useState('');
-  // const [isExporting, setIsExporting] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [accountantEmail, setAccountantEmail] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
@@ -295,8 +293,8 @@ export default function PaidInvoicesPage() {
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      // { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' }, // Removed
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
+      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
       { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
@@ -309,7 +307,7 @@ export default function PaidInvoicesPage() {
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' }, 
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus' && h.key !== 'selection');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -473,6 +471,76 @@ export default function PaidInvoicesPage() {
         </Badge>
      );
   };
+
+  const handleSelectInvoice = (invoiceId: string, checked: boolean) => {
+    setSelectedInvoiceIds(prev =>
+      checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
+    );
+  };
+
+  const handleSelectAllLastMonth = async () => {
+    if(!user) return;
+    const allUserInvoices = await getInvoicesService(user.id);
+    const paidUserInvoices = allUserInvoices.filter(inv => inv.paymentStatus === 'paid');
+    const today = new Date();
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); // Start of current month, then subtract days to get to start of previous month
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));
+
+    const lastMonthInvoices = paidUserInvoices.filter(invoice => {
+      const uploadDate = new Date(invoice.uploadTime);
+      return uploadDate >= lastMonthStart && uploadDate <= lastMonthEnd;
+    });
+
+    setSelectedInvoiceIds(lastMonthInvoices.map(invoice => invoice.id));
+    toast({
+      title: t('invoice_export_selected_last_month_title'),
+      description: t('invoice_export_selected_last_month_desc', { count: lastMonthInvoices.length }),
+    });
+  };
+
+
+  const handleOpenExportDialog = () => {
+    if (selectedInvoiceIds.length === 0) {
+      toast({
+        title: t('invoice_export_error_no_selection_title'),
+        description: t('invoice_export_error_no_selection_desc'),
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowExportDialog(true);
+  };
+
+ const handleExportSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user?.id) {
+        toast({ title: "User not authenticated", variant: "destructive" });
+        return;
+    }
+    if (!accountantEmail.trim()) {
+        toast({ title: t('invoice_export_error_invalid_email_title'), description: t('invoice_export_error_invalid_email_desc'), variant: "destructive" });
+        return;
+    }
+
+    setIsExporting(true);
+    try {
+        const result = await generateAndEmailInvoicesAction(selectedInvoiceIds, accountantEmail, emailNote, user.id);
+        if (result.success) {
+            toast({ title: t('invoice_export_success_title'), description: result.message });
+            setShowExportDialog(false);
+            setSelectedInvoiceIds([]);
+            setAccountantEmail('');
+            setEmailNote('');
+        } else {
+            toast({ title: t('invoice_export_error_title'), description: result.message, variant: "destructive" });
+        }
+    } catch (error: any) {
+        toast({ title: t('invoice_export_error_unexpected_title'), description: t('invoice_export_error_unexpected_desc', { message: error.message }), variant: "destructive"});
+    } finally {
+        setIsExporting(false);
+    }
+ };
+
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -670,7 +738,12 @@ export default function PaidInvoicesPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              {/* Removed export related buttons */}
+              <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
+                <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
+              </Button>
+              <Button onClick={handleOpenExportDialog} disabled={selectedInvoiceIds.length === 0} className="bg-primary hover:bg-primary/90 flex-1 md:flex-initial">
+                <Mail className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
+              </Button>
             </div>
           </div>
 
@@ -687,14 +760,28 @@ export default function PaidInvoicesPage() {
                             header.sortable && "cursor-pointer hover:bg-muted/50",
                             header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                             'px-2 sm:px-4 py-2',
-                            header.key === 'actions' ? 'sticky left-0 bg-card z-10' : '' // Adjusted sticky positioning
+                            header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                         )}
                         onClick={() => header.sortable && handleSort(header.key as SortKey)}
                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                       >
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                           {/* Removed Checkbox for select all */}
-                           {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                           {header.key === 'selection' ? (
+                                <Checkbox
+                                    checked={selectedInvoiceIds.length > 0 && selectedInvoiceIds.length === filteredAndSortedInvoices.length && filteredAndSortedInvoices.length > 0}
+                                    onCheckedChange={(checked) => {
+                                        if (checked) {
+                                            setSelectedInvoiceIds(filteredAndSortedInvoices.map(inv => inv.id));
+                                        } else {
+                                            setSelectedInvoiceIds([]);
+                                        }
+                                    }}
+                                    aria-label={t('invoice_export_select_all_aria')}
+                                    className="mx-auto"
+                                />
+                           ) : (
+                            t(header.labelKey as any, { currency_symbol: t('currency_symbol') })
+                           )}
                            {header.sortable && sortKey === header.key && (
                               <span className="text-xs" aria-hidden="true">
                                  {sortDirection === 'asc' ? '▲' : '▼'}
@@ -724,8 +811,17 @@ export default function PaidInvoicesPage() {
                   ) : (
                     filteredAndSortedInvoices.map((item) => (
                       <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                          {visibleColumns.selection && (
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
+                                <Checkbox
+                                  checked={selectedInvoiceIds.includes(item.id)}
+                                  onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)}
+                                  aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                                />
+                             </TableCell>
+                          )}
                           {visibleColumns.actions && (
-                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
+                             <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                  <Button
                                      variant="ghost"
                                      size="icon"
@@ -792,8 +888,16 @@ export default function PaidInvoicesPage() {
                 <p className="col-span-full text-center text-muted-foreground py-10">{t('paid_invoices_no_paid_invoices_found')}</p>
               ) : (
                 filteredAndSortedInvoices.map((item) => (
-                  <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
-                    <CardHeader className="p-0 relative aspect-[4/3]">
+                  <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
+                    <div className="p-2 absolute top-0 left-0 z-10">
+                         <Checkbox
+                            checked={selectedInvoiceIds.includes(item.id)}
+                            onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)}
+                            aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                            className="bg-background/70 hover:bg-background border-primary"
+                        />
+                    </div>
+                    <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item)}>
                       {isValidImageSrc(item.paymentReceiptImageUri) ? (
                         <NextImage
                           src={item.paymentReceiptImageUri}
@@ -813,7 +917,7 @@ export default function PaidInvoicesPage() {
                           {renderStatusBadge('paid', 'payment')}
                        </div>
                     </CardHeader>
-                    <CardContent className="p-3 flex-grow">
+                    <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}>
                       <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
                       <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
                        {item.supplier && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplier}</p>}
@@ -965,7 +1069,63 @@ export default function PaidInvoicesPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
-    {/* Removed export dialog */}
+
+    <AlertDialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <AlertDialogContentComponent>
+            <AlertDialogHeaderComponent>
+                <AlertDialogTitleComponent>{t('invoice_export_dialog_title')}</AlertDialogTitleComponent>
+                <AlertDialogDescriptionComponent>
+                    {t('invoice_export_dialog_desc', { count: selectedInvoiceIds.length })}
+                </AlertDialogDescriptionComponent>
+            </AlertDialogHeaderComponent>
+            <form onSubmit={handleExportSubmit} className="space-y-4">
+                <div>
+                    <Label htmlFor="accountantEmail" className="text-sm font-medium">
+                        {t('invoice_export_email_label')} <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                        id="accountantEmail"
+                        type="email"
+                        value={accountantEmail}
+                        onChange={(e) => setAccountantEmail(e.target.value)}
+                        placeholder={t('invoice_export_email_placeholder')}
+                        required
+                        className="mt-1"
+                    />
+                </div>
+                <div>
+                    <Label htmlFor="emailNote" className="text-sm font-medium">
+                        {t('invoice_export_note_label')}
+                    </Label>
+                    <Textarea
+                        id="emailNote"
+                        value={emailNote}
+                        onChange={(e) => setEmailNote(e.target.value)}
+                        placeholder={t('invoice_export_note_placeholder')}
+                        className="mt-1"
+                    />
+                </div>
+                <AlertDialogFooterComponent>
+                    <AlertDialogCancel onClick={() => setShowExportDialog(false)} disabled={isExporting}>
+                        {t('cancel_button')}
+                    </AlertDialogCancel>
+                    <Button type="submit" disabled={isExporting} className="bg-primary hover:bg-primary/90">
+                        {isExporting ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                {t('sending')}...
+                            </>
+                        ) : (
+                            <>
+                                <Mail className="mr-2 h-4 w-4" />
+                                {t('invoice_export_send_email_button')}
+                            </>
+                        )}
+                    </Button>
+                </AlertDialogFooterComponent>
+            </form>
+        </AlertDialogContentComponent>
+    </AlertDialog>
     </div>
   );
 }

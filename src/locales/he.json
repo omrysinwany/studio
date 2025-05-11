@@ -1,4 +1,3 @@
-
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -569,7 +568,7 @@
   "barcode_prompt_sale_price_method_label": "שיטת מחיר מכירה",
   "barcode_prompt_manual_entry": "הזנה ידנית",
   "barcode_prompt_profit_percentage": "אחוז רווח",
-  "barcode_prompt_sale_price_label": "מחיר מכירה",
+  "barcode_prompt_sale_price_label": "מחיר מכירה ({{currency_symbol}})",
   "barcode_prompt_sale_price_placeholder": "לדוגמה 25.99",
   "barcode_prompt_sale_price_aria": "מחיר מכירה עבור {{productName}}",
   "barcode_prompt_profit_margin_label": "שולי רווח (%)",
@@ -711,5 +710,6 @@
   "invoice_export_success_title": "הייצוא החל",
   "invoice_export_error_title": "ייצוא נכשל",
   "invoice_export_error_unexpected_title": "שגיאת ייצוא לא צפויה",
-  "invoice_export_error_unexpected_desc": "אירעה שגיאה לא צפויה במהלך תהליך הייצוא."
+  "invoice_export_error_unexpected_desc": "אירעה שגיאה לא צפויה במהלך תהליך הייצוא.",
+  "sending": "שולח"
 }

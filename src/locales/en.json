@@ -1,4 +1,3 @@
-
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -128,7 +127,7 @@
   "edit_invoice_toast_save_incomplete_desc_details": "New product detail entry was cancelled. Changes were not fully saved.",
   "edit_invoice_toast_payment_due_date_skipped_title": "Payment Date Skipped",
   "edit_invoice_toast_payment_due_date_skipped_desc": "Payment due date was not set. Proceeding with save.",
-  "loading_data": "Loading InvoTrack",
+  "loading_data": "Loading InvoTrack...",
   "loading_editor": "Loading editor...",
   "edit_invoice_no_products_found_title": "No Products Found",
   "edit_invoice_no_products_found_desc": "The scan did not detect any products, or the data was invalid. You can try adding rows manually or go back and upload again.",
@@ -429,7 +428,7 @@
   "reports_chart_label_sales": "Sales",
   "reports_chart_label_qty_sold": "Quantity Sold",
   "reports_chart_label_documents": "Documents",
-  "invoices_title": "Scanned Documents",
+  "invoices_title": "Scanned Docs",
   "invoices_description": "View and manage your processed documents and delivery notes.",
   "invoices_search_aria": "Search documents",
   "invoices_date_range_aria": "Select date range for filtering documents",
@@ -569,7 +568,7 @@
   "barcode_prompt_sale_price_method_label": "Sale Price Method",
   "barcode_prompt_manual_entry": "Manual Entry",
   "barcode_prompt_profit_percentage": "Profit %",
-  "barcode_prompt_sale_price_label": "Sale Price",
+  "barcode_prompt_sale_price_label": "Sale Price ({{currency_symbol}})",
   "barcode_prompt_sale_price_placeholder": "e.g. 25.99",
   "barcode_prompt_sale_price_aria": "Sale price for {{productName}}",
   "barcode_prompt_profit_margin_label": "Profit Margin (%)",
@@ -711,5 +710,6 @@
   "invoice_export_success_title": "Export Initiated",
   "invoice_export_error_title": "Export Failed",
   "invoice_export_error_unexpected_title": "Unexpected Export Error",
-  "invoice_export_error_unexpected_desc": "An unexpected error occurred during the export process."
+  "invoice_export_error_unexpected_desc": "An unexpected error occurred during the export process.",
+  "sending": "Sending"
 }
