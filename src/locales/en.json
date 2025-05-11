@@ -674,5 +674,21 @@
   "guest_home_feature_inventory_title": "Smart Inventory",
   "guest_home_feature_inventory_desc": "Keep track of your stock levels, costs, and sale prices with ease.",
   "guest_home_feature_insights_title": "Actionable Insights",
-  "guest_home_feature_insights_desc": "Generate reports and understand your business performance better."
+  "guest_home_feature_insights_desc": "Generate reports and understand your business performance better.",
+  "invoices_col_compressed_uri": "Compressed Image URI",
+  "paid_invoices_error_no_receipt_selected": "Please select a receipt image to upload.",
+  "paid_invoices_error_processing_receipt": "Error processing receipt image",
+  "paid_invoices_upload_receipt_title": "Upload Payment Receipt for {{fileName}}",
+  "paid_invoices_upload_receipt_desc": "To mark this invoice as paid, please upload an image of the payment receipt.",
+  "paid_invoices_select_receipt_label": "Select Receipt Image",
+  "paid_invoices_receipt_preview_alt": "Receipt preview",
+  "paid_invoices_pdf_selected": "PDF Selected",
+  "paid_invoices_change_receipt_button": "Change file",
+  "paid_invoices_upload_receipt_button": "Upload a file",
+  "paid_invoices_drag_drop_text": "or drag and drop",
+  "paid_invoices_file_types_text": "PNG, JPG, GIF, WEBP, PDF up to 10MB",
+  "paid_invoices_confirm_upload_button": "Confirm & Upload Receipt",
+  "paid_invoices_toast_receipt_uploaded_title": "Receipt Uploaded",
+  "paid_invoices_toast_receipt_uploaded_desc": "Payment receipt for {{fileName}} uploaded and invoice marked as paid.",
+  "paid_invoices_invalid_receipt_type_desc": "Please select a valid image (JPEG, PNG, GIF, WEBP) or PDF file for the receipt."
 }

@@ -1,3 +1,4 @@
+
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -22,7 +23,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuRadioItem,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye, CreditCard } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, FileTextIcon, Briefcase, Eye, CreditCard, UploadCloud } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -47,11 +48,11 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent,
-  AlertDialogDescription as AlertDialogDescriptionComponent,
-  AlertDialogFooter as AlertDialogFooterComponent,
-  AlertDialogHeader as AlertDialogHeaderComponent,
-  AlertDialogTitle as AlertDialogTitleComponent,
+  AlertDialogContent as AlertDialogContentComponent, // Renamed to avoid conflict
+  AlertDialogDescription as AlertDialogDescriptionComponent, // Renamed
+  AlertDialogFooter as AlertDialogFooterComponent, // Renamed
+  AlertDialogHeader as AlertDialogHeaderComponent, // Renamed
+  AlertDialogTitle as AlertDialogTitleComponent, // Renamed
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
@@ -61,6 +62,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
+import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 
 
 const formatNumber = (
@@ -76,7 +78,7 @@ const formatNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
+        return currency ? `${t('currency_symbol')}${zeroFormatted}` : formattedValue;
     }
 
     const formattedValue = value.toLocaleString(undefined, {
@@ -98,7 +100,7 @@ type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 export default function InvoicesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,6 +117,9 @@ export default function InvoicesPage() {
     errorMessage: false,
     originalImagePreviewUri: false,
     paymentStatus: true,
+    compressedImageForFinalRecordUri: false, // Added to state
+    paymentReceiptImageUri: false, // Added to state
+    paymentDueDate: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -131,8 +136,11 @@ export default function InvoicesPage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
+
+  const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
+  const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
@@ -162,10 +170,12 @@ export default function InvoicesPage() {
   }, [toast, t, user]);
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && !user) {
+        router.push('/login');
+    } else if (user) {
       fetchSuppliers();
     }
-  }, [fetchSuppliers, user]);
+  }, [authLoading, user, router, fetchSuppliers]);
 
 
     const fetchInvoices = useCallback(async () => {
@@ -251,7 +261,7 @@ export default function InvoicesPage() {
 
 
    useEffect(() => {
-    if (user) {
+    if(user) {
      fetchInvoices();
     }
    }, [fetchInvoices, user]);
@@ -293,9 +303,12 @@ export default function InvoicesPage() {
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
       { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
+      { key: 'compressedImageForFinalRecordUri', labelKey: 'invoices_col_compressed_uri', sortable: false, className: 'hidden' },
+      { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
+      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -346,7 +359,8 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number ) => {
+  const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | Date | undefined ) => {
+     if (field === 'uploadTime' || field === 'status') return; // Prevent editing these fields
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -354,16 +368,19 @@ export default function InvoicesPage() {
     if (!selectedInvoiceDetails || !selectedInvoiceDetails.id || !user) return;
     setIsSavingDetails(true);
     try {
-        const updatedInvoice: Partial<InvoiceHistoryItem> = {
+        const updatedInvoiceData: Partial<InvoiceHistoryItem> = {
             fileName: editedInvoiceData.fileName || selectedInvoiceDetails.fileName,
             invoiceNumber: editedInvoiceData.invoiceNumber || undefined,
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
-            errorMessage: editedInvoiceData.errorMessage || undefined,
+            errorMessage: editedInvoiceData.errorMessage || undefined, // Error message can be cleared
             paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
+            paymentDueDate: editedInvoiceData.paymentDueDate,
+            // originalImagePreviewUri and compressedImageForFinalRecordUri are usually set during upload/finalization, not manual edit.
+            // paymentReceiptImageUri is handled by a separate flow.
         };
 
-        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice, user.id);
+        await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
         toast({
             title: t('invoices_toast_updated_title'),
             description: t('invoices_toast_updated_desc'),
@@ -372,6 +389,7 @@ export default function InvoicesPage() {
         const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
+             fetchInvoices(); // Also refresh the main list
         } else {
            setShowDetailsSheet(false); // Close sheet if invoice somehow disappeared
            fetchInvoices(); // Refresh list
@@ -390,43 +408,77 @@ export default function InvoicesPage() {
     }
   };
 
-  const handlePaymentStatusChange = async (invoiceId: string, newStatus: InvoiceHistoryItem['paymentStatus']) => {
-    if (!user) return;
-    const originalInvoice = invoices.find(inv => inv.id === invoiceId);
-    if (!originalInvoice) return;
+ const handlePaymentStatusChange = async (invoiceId: string, newStatus: InvoiceHistoryItem['paymentStatus']) => {
+    if (!user || !selectedInvoiceDetails) return;
 
-    // Optimistic UI update
-    setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus} : null);
-    setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus} : inv));
+    if (newStatus === 'paid') {
+        setInvoiceForReceiptUpload(selectedInvoiceDetails);
+        setShowReceiptUploadDialog(true);
+    } else {
+        // For 'unpaid' or 'pending_payment', update directly without receipt
+        const originalInvoice = invoices.find(inv => inv.id === invoiceId);
+        if (!originalInvoice) return;
+
+        // Optimistic UI update
+        setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : null);
+        setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : inv));
+
+        try {
+            await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, undefined); // Pass undefined for receipt URI
+            toast({
+                title: t('toast_invoice_payment_status_updated_title'),
+                description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
+            });
+            fetchInvoices();
+        } catch (error) {
+            console.error("Failed to update payment status:", error);
+            setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : null);
+            setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : inv));
+            toast({
+                title: t('toast_invoice_payment_status_update_fail_title'),
+                description: t('toast_invoice_payment_status_update_fail_desc'),
+                variant: "destructive",
+            });
+        }
+    }
+};
+
+const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
+    if (!invoiceForReceiptUpload || !user) return;
+    const invoiceId = invoiceForReceiptUpload.id;
 
     try {
-        await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id);
+        await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptImageUri);
         toast({
-            title: t('toast_invoice_payment_status_updated_title'),
-            description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
+            title: t('paid_invoices_toast_receipt_uploaded_title'),
+            description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: invoiceForReceiptUpload.fileName }),
         });
-        // Re-fetch to ensure data consistency, or update local state more deeply if preferred
-        fetchInvoices(); // This will re-filter based on the new status if the main filter is set
+        setShowReceiptUploadDialog(false);
+        setInvoiceForReceiptUpload(null);
+        fetchInvoices(); // Refresh the main list
+        if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
+             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri } : null);
+        }
     } catch (error) {
-        console.error("Failed to update payment status:", error);
-        // Revert optimistic update
-        setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus} : null);
-        setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: originalInvoice.paymentStatus} : inv));
+        console.error("Failed to confirm receipt upload and update status:", error);
         toast({
             title: t('toast_invoice_payment_status_update_fail_title'),
-            description: t('toast_invoice_payment_status_update_fail_desc'),
+            description: t('paid_invoices_error_processing_receipt'),
             variant: "destructive",
         });
     }
 };
 
 
-  if (isLoading) {
+  if (isLoading && !user && authLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+  if (!user && !authLoading) {
+    return null; // Or some placeholder if you prefer
   }
 
 
@@ -527,7 +579,7 @@ export default function InvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage', 'paymentDueDate'
         ];
         const headers = exportColumns
             .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
@@ -750,7 +802,7 @@ export default function InvoicesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -837,7 +889,7 @@ export default function InvoicesPage() {
                                      title={t('invoices_view_details_title', { fileName: item.fileName })}
                                      aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
                                  >
-                                     <Info className="h-4 w-4" />
+                                     <Eye className="h-4 w-4" />
                                  </Button>
                              </TableCell>
                          )}
@@ -974,6 +1026,16 @@ export default function InvoicesPage() {
                             <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
                         </div>
                     )}
+                     <div>
+                        <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
+                        <Input 
+                            id="editPaymentDueDate" 
+                            type="date" 
+                            value={editedInvoiceData.paymentDueDate ? format(new Date(editedInvoiceData.paymentDueDate), 'yyyy-MM-dd') : ''} 
+                            onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? new Date(e.target.value) : undefined)} 
+                            disabled={isSavingDetails}
+                        />
+                    </div>
                 </div>
               ) : (
                 <>
@@ -987,6 +1049,9 @@ export default function InvoicesPage() {
                        <div className="flex items-center mt-1">
                         <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
                        </div>
+                       {selectedInvoiceDetails.paymentDueDate && (
+                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate)}</p>
+                       )}
                     </div>
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
@@ -1033,7 +1098,10 @@ export default function InvoicesPage() {
                         data-ai-hint="invoice document"
                     />
                     ) : (
-                    <p className="text-muted-foreground text-center py-4">{t('invoice_details_no_image_available')}</p>
+                    <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                        <ImageIcon className="h-10 w-10 mb-2"/>
+                        <p>{t('invoice_details_no_image_available')}</p>
+                    </div>
                     )}
                   </div>
                 </>
@@ -1087,6 +1155,15 @@ export default function InvoicesPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+       {invoiceForReceiptUpload && (
+        <PaymentReceiptUploadDialog
+          isOpen={showReceiptUploadDialog}
+          onOpenChange={setShowReceiptUploadDialog}
+          invoiceFileName={invoiceForReceiptUpload.fileName}
+          onConfirmUpload={handleConfirmReceiptUpload}
+        />
+      )}
 
     </div>
   );
