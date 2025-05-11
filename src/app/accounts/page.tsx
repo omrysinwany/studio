@@ -18,12 +18,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs components
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
 interface OtherExpense {
   id: string;
-  category: 'electricity' | 'water' | 'arnona';
+  category: string; // Changed to string to support dynamic categories
   description: string;
   amount: number;
   date: string; // ISO date string
@@ -41,14 +41,12 @@ export default function AccountsPage() {
     to: endOfMonth(new Date()),
   });
 
-  const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([
-    { id: 'e1', category: 'electricity', description: t('accounts_other_expenses_electricity_example_desc'), amount: 250.75, date: '2024-05-15' },
-    { id: 'w1', category: 'water', description: t('accounts_other_expenses_water_example_desc'), amount: 120.50, date: '2024-04-20' },
-    { id: 'a1', category: 'arnona', description: t('accounts_other_expenses_arnona_example_desc'), amount: 450.00, date: '2024-03-10' },
-    { id: 'e2', category: 'electricity', description: t('accounts_other_expenses_electricity_example_desc_2'), amount: 230.00, date: '2024-04-15' },
-    { id: 'w2', category: 'water', description: t('accounts_other_expenses_water_example_desc_2'), amount: 115.20, date: '2024-01-22'},
-    { id: 'a2', category: 'arnona', description: t('accounts_other_expenses_arnona_example_desc_2'), amount: 460.50, date: '2024-05-08' },
+  // Initialize with default categories, but no static expenses
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([
+    'electricity', 'water', 'arnona'
   ]);
+  const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]); // No static expenses
+  const [activeExpenseTab, setActiveExpenseTab] = useState<string>(expenseCategories[0]);
 
 
   const fetchAccountData = async () => {
@@ -303,19 +301,19 @@ export default function AccountsPage() {
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Tabs defaultValue="electricity" className="w-full">
-              <TabsList className="inline-flex h-auto items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground sm:h-10">
-                <TabsTrigger value="electricity" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
-                  {t('accounts_other_expenses_tab_electricity')}
-                </TabsTrigger>
-                <TabsTrigger value="water" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
-                  {t('accounts_other_expenses_tab_water')}
-                </TabsTrigger>
-                <TabsTrigger value="arnona" className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none">
-                  {t('accounts_other_expenses_tab_arnona')}
-                </TabsTrigger>
+            <Tabs defaultValue={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 sm:inline-flex sm:h-10 sm:w-auto items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+                {expenseCategories.map(category => (
+                    <TabsTrigger 
+                        key={category} 
+                        value={category} 
+                        className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
+                    >
+                      {t(`accounts_other_expenses_tab_${category}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
+                    </TabsTrigger>
+                ))}
               </TabsList>
-              {(['electricity', 'water', 'arnona'] as const).map(category => (
+              {expenseCategories.map(category => (
                 <TabsContent key={category} value={category}>
                   <div className="mt-4 space-y-2">
                     {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
@@ -337,9 +335,12 @@ export default function AccountsPage() {
                 </TabsContent>
               ))}
             </Tabs>
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
               <Button variant="outline" disabled>
                   <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
+              </Button>
+               <Button variant="outline" disabled>
+                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_category_button')}
               </Button>
             </div>
           </CardContent>
@@ -367,4 +368,3 @@ export default function AccountsPage() {
     </div>
   );
 }
-
