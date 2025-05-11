@@ -1,0 +1,13 @@
+.homeContainer {
+  /* Basic styling to ensure the file is not empty and is valid SCSS */
+  width: 100%;
+}
+
+.kpiCard {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.kpiCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}

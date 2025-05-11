@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, HandCoins, ShoppingCart } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, Info, DollarSign, HandCoins, ShoppingCart, CreditCard } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Progress } from "@/components/ui/progress";
 import { useTranslation } from '@/hooks/useTranslation';
 import GuestHomePage from '@/components/GuestHomePage';
+import styles from "./page.module.scss";
+
 
 interface KpiData {
   totalItems: number;
@@ -34,6 +37,7 @@ interface KpiData {
   inventoryValuePrevious?: number;
   grossProfit: number;
   averageOrderValue: number;
+  amountRemainingToPay: number;
 }
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
@@ -89,8 +93,8 @@ export default function Home() {
       setKpiError(null);
       try {
         const [products, invoices] = await Promise.all([
-          getProductsService(),
-          getInvoicesService()
+          getProductsService(user.id),
+          getInvoicesService(user.id)
         ]);
 
         const totalItems = calculateTotalItems(products);
@@ -98,6 +102,14 @@ export default function Home() {
         const lowStockItemsCount = getLowStockItems(products).length;
         const grossProfit = calculateTotalPotentialGrossProfit(products);
         const averageOrderValue = calculateAverageOrderValue(invoices.filter(inv => inv.status === 'completed'));
+
+        const unpaidInvoices = invoices.filter(
+          invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment'
+        );
+        const amountRemainingToPay = unpaidInvoices.reduce(
+          (sum, invoice) => sum + (invoice.totalAmount || 0),
+          0
+        );
 
 
         const thirtyDaysAgo = new Date();
@@ -136,6 +148,7 @@ export default function Home() {
           inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
           grossProfit,
           averageOrderValue,
+          amountRemainingToPay,
         });
 
       } catch (error) {
@@ -249,16 +262,9 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background">
+    <div className={cn(styles.homeContainer, "flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('app_title')}
-          </h1>
-          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
-            {t('greeting_user', { username: user?.username || 'User' })}
-          </p>
-
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
             <Button
               size="lg"
@@ -284,19 +290,25 @@ export default function Home() {
               <BarChart2 className="mr-2 h-5 w-5" /> {t('view_reports')}
             </Button>
           </div>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
+            {t('app_title')}
+          </h1>
+          <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
+            {t('greeting_user', { username: user?.username || 'User' })}
+          </p>
 
-          {kpiError && !isLoadingKpis && user && (
+           {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>{kpiError}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
-                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                    <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_total_items')}</CardTitle>
                         <Package className="h-5 w-5 text-accent" />
@@ -316,7 +328,7 @@ export default function Home() {
               <Tooltip>
                   <TooltipTrigger asChild>
                       <Link href="/reports" className="block hover:no-underline">
-                      <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                      <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
                           <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_inventory_value')}</CardTitle>
                           <DollarSign className="h-5 w-5 text-accent" />
@@ -350,7 +362,7 @@ export default function Home() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/reports" className="block hover:no-underline">
-                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                    <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_gross_profit')}</CardTitle>
                         <HandCoins className="h-5 w-5 text-accent" />
@@ -370,7 +382,7 @@ export default function Home() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/reports" className="block hover:no-underline">
-                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                    <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">{t('reports_kpi_avg_order_value')}</CardTitle>
                         <ShoppingCart className="h-5 w-5 text-accent" />
@@ -383,14 +395,14 @@ export default function Home() {
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_avg_order_value')}</p> {/* You might want a specific tooltip for AOV */}
+                  <p>{t('kpi_avg_order_value')}</p>
                 </TooltipContent>
               </Tooltip>
 
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/invoices" className="block hover:no-underline">
-                    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                    <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_docs_30d')}</CardTitle>
                         <FileText className="h-5 w-5 text-accent" />
@@ -412,7 +424,7 @@ export default function Home() {
               <Tooltip>
                   <TooltipTrigger asChild>
                       <Link href="/inventory?filter=low" className="block hover:no-underline">
-                          <Card className="shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left bg-card/80 backdrop-blur-sm border-border/50 transform hover:-translate-y-1">
+                          <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
                               <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_low_stock')}</CardTitle>
                               <AlertTriangle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
@@ -444,6 +456,26 @@ export default function Home() {
                           </p>
                       )}
                   </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href="/invoices?filter=unpaid" className="block hover:no-underline">
+                    <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_amount_remaining_to_pay')}</CardTitle>
+                        <CreditCard className="h-5 w-5 text-accent" />
+                      </CardHeader>
+                      <CardContent className="pb-4 px-4">
+                        <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.amountRemainingToPay, true)}</div>
+                        <p className="text-xs text-muted-foreground pt-1">{t('kpi_amount_remaining_to_pay_desc')}</p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('kpi_amount_remaining_to_pay_tooltip')}</p>
+                </TooltipContent>
               </Tooltip>
           </div>
         </div>
