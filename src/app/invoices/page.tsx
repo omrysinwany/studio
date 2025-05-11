@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -19,14 +19,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileText as FileTextIcon, Info, Edit, Save, XCircle, CheckCircle, Clock, MoreVertical, ImageIcon, Briefcase } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Search, Filter, ChevronDown, Loader2, Eye, CreditCard, UploadCloud, List, Grid, FileText as FileTextIcon, Info, Edit, Save, XCircle, CheckCircle, Clock, MoreVertical, ImageIcon, Briefcase, Receipt, CheckSquare, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
@@ -109,7 +109,7 @@ const ScannedDocsView = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showDetailsSheet, setShowDetailsSheet] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(isDeleting);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
@@ -854,7 +854,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                       />
                     ) : (
                       <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                        <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                        <ImageIconLucide className="h-12 w-12 text-muted-foreground" />
                       </div>
                     )}
                      <div className="absolute top-2 right-2 flex flex-col gap-1">
