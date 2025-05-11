@@ -11,7 +11,7 @@ import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMon
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon, TrendingUp as TrendingUpIcon, DollarSign, Info } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, BarChartHorizontalBig, CalendarDays, TrendingDown as TrendingDownIcon, TrendingUp as TrendingUpIcon, DollarSign, Info, Landmark, PlusCircle } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem, getProductsService, type Product } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -48,6 +48,9 @@ export default function AccountsPage() {
     to: endOfMonth(new Date()),
   });
 
+  // TODO: Add state for other expenses
+  // const [otherExpenses, setOtherExpenses] = useState<any[]>([]);
+
   const fetchAccountData = async () => {
     if (!user) return;
     setIsLoadingData(true);
@@ -55,6 +58,7 @@ export default function AccountsPage() {
       const [invoices, productsData] = await Promise.all([
         getInvoicesService(user.id),
         getProductsService(user.id)
+        // TODO: Fetch other expenses data here
       ]);
       setAllInvoices(invoices);
       setAllProducts(productsData);
@@ -410,6 +414,26 @@ export default function AccountsPage() {
       </Card>
 
       <Card className="shadow-md scale-fade-in delay-400">
+          <CardHeader>
+              <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <Landmark className="mr-2 h-5 w-5" /> {t('accounts_other_expenses_title')}
+              </CardTitle>
+              <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+              {/* Placeholder for listing other expenses */}
+              <div className="text-center text-muted-foreground py-6">
+                <p>{t('settings_more_coming_soon')}</p>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" disabled> {/* TODO: Implement add expense functionality */}
+                    <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
+                </Button>
+              </div>
+          </CardContent>
+      </Card>
+
+      <Card className="shadow-md scale-fade-in delay-500">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <DollarSign className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}

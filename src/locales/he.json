@@ -309,9 +309,9 @@
     "inventory_col_catalog": "מס' קטלוגי",
     "inventory_col_barcode": "ברקוד",
     "inventory_col_qty": "כמות",
-    "inventory_col_unit_price": "מחיר יחידה",
-    "inventory_col_sale_price": "מחיר מכירה",
-    "inventory_col_total": "סה\"כ",
+    "inventory_col_unit_price": "מחיר יחידה ({{currency_symbol}})",
+    "inventory_col_sale_price": "מחיר מכירה ({{currency_symbol}})",
+    "inventory_col_total": "סה\"כ ({{currency_symbol}})",
     "inventory_col_min_stock": "מלאי מינימלי",
     "inventory_col_max_stock": "מלאי מקסימלי",
     "inventory_no_items_found": "לא נמצאו פריטי מלאי התואמים לקריטריונים שלך.",
@@ -579,7 +579,7 @@
     "barcode_prompt_sale_price_method_label": "שיטת מחיר מכירה",
     "barcode_prompt_manual_entry": "הזנה ידנית",
     "barcode_prompt_profit_percentage": "אחוז רווח",
-    "barcode_prompt_sale_price_label": "מחיר מכירה",
+    "barcode_prompt_sale_price_label": "מחיר מכירה ({{currency_symbol}})",
     "barcode_prompt_sale_price_placeholder": "לדוגמה 25.99",
     "barcode_prompt_sale_price_aria": "מחיר מכירה עבור {{productName}}",
     "barcode_prompt_profit_margin_label": "שולי רווח (%)",
@@ -747,5 +747,8 @@
     "accounts_cash_flow_profitability_desc": "תובנות לגבי הבריאות הפיננסית והפוטנציאל של העסק שלך.",
     "accounts_potential_gross_profit_stock_title": "רווח גולמי פוטנציאלי מהמלאי",
     "accounts_cash_flow_analysis_title": "ניתוח תזרים מזומנים",
-    "accounts_predictive_balance_title": "כלי לחיזוי יתרה"
+    "accounts_predictive_balance_title": "כלי לחיזוי יתרה",
+    "accounts_other_expenses_title": "הוצאות עסקיות נוספות",
+    "accounts_other_expenses_desc": "עקוב ונהל הוצאות חוזרות כמו חשמל, מים וארנונה.",
+    "accounts_add_expense_button": "הוסף הוצאה"
 }

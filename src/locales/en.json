@@ -309,9 +309,9 @@
   "inventory_col_catalog": "Catalog #",
   "inventory_col_barcode": "Barcode",
   "inventory_col_qty": "Qty",
-  "inventory_col_unit_price": "Unit Price",
-  "inventory_col_sale_price": "Sale Price",
-  "inventory_col_total": "Total",
+  "inventory_col_unit_price": "Unit Price ({{currency_symbol}})",
+  "inventory_col_sale_price": "Sale Price ({{currency_symbol}})",
+  "inventory_col_total": "Total ({{currency_symbol}})",
   "inventory_col_min_stock": "Min Stock",
   "inventory_col_max_stock": "Max Stock",
   "inventory_no_items_found": "No inventory items found matching your criteria.",
@@ -579,7 +579,7 @@
   "barcode_prompt_sale_price_method_label": "Sale Price Method",
   "barcode_prompt_manual_entry": "Manual Entry",
   "barcode_prompt_profit_percentage": "Profit %",
-  "barcode_prompt_sale_price_label": "Sale Price",
+  "barcode_prompt_sale_price_label": "Sale Price ({{currency_symbol}})",
   "barcode_prompt_sale_price_placeholder": "e.g. 25.99",
   "barcode_prompt_sale_price_aria": "Sale price for {{productName}}",
   "barcode_prompt_profit_margin_label": "Profit Margin (%)",
@@ -747,5 +747,8 @@
     "accounts_cash_flow_profitability_desc": "Insights into your business's financial health and potential.",
     "accounts_potential_gross_profit_stock_title": "Potential Gross Profit from Stock",
     "accounts_cash_flow_analysis_title": "Cash Flow Analysis",
-    "accounts_predictive_balance_title": "Predictive Balance Tool"
+    "accounts_predictive_balance_title": "Predictive Balance Tool",
+    "accounts_other_expenses_title": "Other Business Expenses",
+    "accounts_other_expenses_desc": "Track and manage recurring expenses like electricity, water, and municipal taxes.",
+    "accounts_add_expense_button": "Add Expense"
 }
