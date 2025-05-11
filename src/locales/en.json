@@ -1,3 +1,4 @@
+
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -361,6 +362,10 @@
   "invoice_details_title": "Document Details",
   "paid_invoices_title": "Paid Invoices",
   "paid_invoices_description": "View and manage your paid invoices.",
+  "paid_invoices_no_paid_invoices_found": "No paid invoices found matching your criteria.",
+  "paid_invoices_receipt_image_alt": "Receipt for {{fileName}}",
+  "paid_invoices_no_receipt_image_available": "Payment receipt not uploaded for this invoice.",
+  "paid_invoices_receipt_image_label": "Receipt Image",
   "invoice_details_description": "Detailed information for: {{fileName}}",
   "invoice_details_file_name_label": "File Name",
   "invoice_details_upload_time_label": "Upload Time",

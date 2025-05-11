@@ -1,3 +1,4 @@
+
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -361,6 +362,10 @@
   "invoice_details_title": "פרטי מסמך",
   "paid_invoices_title": "חשבוניות ששולמו",
   "paid_invoices_description": "צפה ונהל את החשבוניות ששולמו.",
+  "paid_invoices_no_paid_invoices_found": "לא נמצאו חשבוניות ששולמו התואמות לקריטריונים שלך.",
+  "paid_invoices_receipt_image_alt": "קבלה עבור {{fileName}}",
+  "paid_invoices_no_receipt_image_available": "קבלת תשלום לא הועלתה עבור חשבונית זו.",
+  "paid_invoices_receipt_image_label": "תמונת קבלה",
   "invoice_details_description": "מידע מפורט עבור: {{fileName}}",
   "invoice_details_file_name_label": "שם קובץ",
   "invoice_details_upload_time_label": "זמן העלאה",

@@ -1,3 +1,4 @@
+
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -20,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, CreditCard, Briefcase } from 'lucide-react'; // Added Briefcase
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIcon, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, Briefcase, CreditCard } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -87,7 +88,8 @@ const formatNumber = (
 
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
+  // Allow data URIs and also relative/absolute paths if your setup supports it
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
 };
 
 
@@ -96,7 +98,7 @@ type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 export default function PaidInvoicesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -112,7 +114,10 @@ export default function PaidInvoicesPage() {
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    originalImagePreviewUri: false,
+    originalImagePreviewUri: false, // Not shown on this page
+    compressedImageForFinalRecordUri: false, // Not shown on this page
+    paymentReceiptImageUri: false, // This is what we want to show
+    paymentDueDate: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   // Filter by scan status might still be useful for paid invoices (e.g., completed scan vs error)
@@ -159,10 +164,12 @@ export default function PaidInvoicesPage() {
   }, [toast, t, user]);
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && !user) {
+      router.push('/login');
+    } else if (user) {
       fetchSuppliers();
     }
-  }, [fetchSuppliers, user]);
+  }, [authLoading, user, router, fetchSuppliers]);
 
 
     const fetchInvoices = useCallback(async () => {
@@ -179,12 +186,13 @@ export default function PaidInvoicesPage() {
         fetchedData.forEach(invoice => {
             const existing = uniqueInvoicesMap.get(invoice.id);
             if (existing) {
-                if ((invoice.originalImagePreviewUri && !existing.originalImagePreviewUri) ||
-                    (invoice.originalImagePreviewUri && new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime())) {
+                // Prioritize record with paymentReceiptImageUri if available
+                if (invoice.paymentReceiptImageUri && !existing.paymentReceiptImageUri) {
                     uniqueInvoicesMap.set(invoice.id, invoice);
-                } else if (!invoice.originalImagePreviewUri && existing.originalImagePreviewUri) {
+                } else if (!invoice.paymentReceiptImageUri && existing.paymentReceiptImageUri) {
+                    // Keep existing if it has the receipt
                 } else if (new Date(invoice.uploadTime).getTime() > new Date(existing.uploadTime).getTime()){
-                     uniqueInvoicesMap.set(invoice.id, invoice);
+                     uniqueInvoicesMap.set(invoice.id, invoice); // Fallback to newest if receipt status is same
                 }
             } else {
                 uniqueInvoicesMap.set(invoice.id, invoice);
@@ -283,15 +291,16 @@ export default function PaidInvoicesPage() {
       { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
-      { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
+      { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' }, // Scan status
+      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplier', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-      { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
+      { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' }, // For data reference, not direct display
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentStatus');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -356,7 +365,7 @@ export default function PaidInvoicesPage() {
             supplier: editedInvoiceData.supplier || undefined,
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
-            // Payment status should not be editable from here, it's 'paid'
+            // paymentReceiptImageUri: editedInvoiceData.paymentReceiptImageUri || selectedInvoiceDetails.paymentReceiptImageUri // Assuming this might be editable
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoice, user.id);
@@ -387,13 +396,14 @@ export default function PaidInvoicesPage() {
   };
 
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (authLoading || (!user && !isLoading)) { // Show loading if auth is in progress or if user is null and not initial loading
+     return (
+       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
+       </div>
+     );
+   }
 
 
   const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
@@ -481,7 +491,7 @@ export default function PaidInvoicesPage() {
             return;
         }
         const exportColumns: (keyof InvoiceHistoryItem)[] = [
-            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage'
+            'id', 'fileName', 'uploadTime', 'status', 'paymentStatus', 'invoiceNumber', 'supplier', 'totalAmount', 'errorMessage', 'paymentDueDate'
         ];
         const headers = exportColumns
             .map(key => t(columnDefinitions.find(col => col.key === key)?.labelKey || key as any))
@@ -679,7 +689,7 @@ export default function PaidInvoicesPage() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'paymentStatus').map((header) => (
+                    {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'actions' && h.key !== 'paymentStatus').map((header) => (
                       <DropdownMenuCheckboxItem
                         key={header.key}
                         className="capitalize"
@@ -750,7 +760,7 @@ export default function PaidInvoicesPage() {
                   ) : filteredAndSortedInvoices.length === 0 ? (
                     <TableRow>
                        <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                         {t('invoices_no_invoices_found')}
+                         {t('paid_invoices_no_paid_invoices_found')}
                        </TableCell>
                     </TableRow>
                   ) : (
@@ -788,6 +798,7 @@ export default function PaidInvoicesPage() {
                               {renderStatusBadge(item.status, 'scan')}
                            </TableCell>
                          )}
+                         {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{formatDate(item.paymentDueDate)}</TableCell>}
                          {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                          {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                          {visibleColumns.totalAmount && (
@@ -820,28 +831,28 @@ export default function PaidInvoicesPage() {
                     </Card>
                  ))
               ) : filteredAndSortedInvoices.length === 0 ? (
-                <p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>
+                <p className="col-span-full text-center text-muted-foreground py-10">{t('paid_invoices_no_paid_invoices_found')}</p>
               ) : (
                 filteredAndSortedInvoices.map((item) => (
                   <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                     <CardHeader className="p-0 relative aspect-[4/3]">
-                      {isValidImageSrc(item.originalImagePreviewUri) ? (
+                      {isValidImageSrc(item.paymentReceiptImageUri) ? (
                         <NextImage
-                          src={item.originalImagePreviewUri}
-                          alt={t('invoices_preview_alt', { fileName: item.fileName })}
+                          src={item.paymentReceiptImageUri}
+                          alt={t('paid_invoices_receipt_image_alt', { fileName: item.fileName })}
                           layout="fill"
                           objectFit="cover"
                           className="rounded-t-lg"
-                          data-ai-hint="invoice document"
+                          data-ai-hint="payment receipt"
                         />
                       ) : (
                         <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                          <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                          <Receipt className="h-12 w-12 text-muted-foreground" />
                         </div>
                       )}
                        <div className="absolute top-2 right-2 flex flex-col gap-1">
                           {renderStatusBadge(item.status, 'scan')}
-                          {renderStatusBadge('paid', 'payment')} {/* All invoices on this page are 'paid' */}
+                          {renderStatusBadge('paid', 'payment')}
                        </div>
                     </CardHeader>
                     <CardContent className="p-3 flex-grow">
@@ -892,6 +903,7 @@ export default function PaidInvoicesPage() {
                         <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
                     </div>
+                    {/* Payment Receipt Image upload could be added here for editing */}
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
@@ -911,6 +923,9 @@ export default function PaidInvoicesPage() {
                        <div className="flex items-center mt-1">
                         <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge('paid', 'payment')}
                        </div>
+                       {selectedInvoiceDetails.paymentDueDate && (
+                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate)}</p>
+                       )}
                     </div>
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
@@ -926,17 +941,21 @@ export default function PaidInvoicesPage() {
                   )}
                   <Separator className="my-4"/>
                   <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
+                  {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri) ? (
                     <NextImage
-                        src={selectedInvoiceDetails.originalImagePreviewUri}
-                        alt={t('invoices_preview_alt', { fileName: selectedInvoiceDetails.fileName })}
+                        src={selectedInvoiceDetails.paymentReceiptImageUri}
+                        alt={t('paid_invoices_receipt_image_alt', { fileName: selectedInvoiceDetails.fileName })}
                         width={800}
                         height={1100}
                         className="rounded-md object-contain mx-auto"
-                        data-ai-hint="invoice document"
+                        data-ai-hint="payment receipt document"
                     />
                     ) : (
-                    <p className="text-muted-foreground text-center py-4">{t('invoice_details_no_image_available')}</p>
+                    <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                        <Receipt className="h-10 w-10 mb-2"/>
+                        <p>{t('paid_invoices_no_receipt_image_available')}</p>
+                        {/* Future: Add button here to upload receipt image */}
+                    </div>
                     )}
                   </div>
                 </>
@@ -994,5 +1013,3 @@ export default function PaidInvoicesPage() {
     </div>
   );
 }
-
-    
