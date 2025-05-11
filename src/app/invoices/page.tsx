@@ -20,7 +20,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, List, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, Mail, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, List, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, Mail, FileTextIcon, X, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -122,12 +122,9 @@ const ScannedDocsView = () => {
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
     onTap: (e) => {
-      // This will only be called for genuine taps, not scrolls
       const target = e.target as HTMLElement;
-      // Check if the tap occurred on a dropdown trigger or its child
       if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(target)) {
-        // Logic to open dropdown, or let the default browser behavior handle it
-        // For ShadCN DropdownMenu, onClick on Trigger already handles it.
+        // Logic to open dropdown
       }
     }
   });
@@ -320,7 +317,7 @@ const ScannedDocsView = () => {
 
    const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
     if (invoice) {
-        console.log("Opening details for:", invoice);
+        console.log("Opening details for:", invoice.fileName); // Log filename for clarity
         setSelectedInvoiceDetails(invoice);
         setEditedInvoiceData({ ...invoice });
         setIsEditingDetails(false);
@@ -373,6 +370,7 @@ const ScannedDocsView = () => {
             errorMessage: editedInvoiceData.errorMessage || undefined,
             paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
             paymentDueDate: editedInvoiceData.paymentDueDate,
+            originalImagePreviewUri: editedInvoiceData.originalImagePreviewUri === null ? undefined : editedInvoiceData.originalImagePreviewUri,
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
@@ -422,7 +420,7 @@ const ScannedDocsView = () => {
                 title: t('toast_invoice_payment_status_updated_title'),
                 description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
             });
-            fetchInvoices();
+            fetchInvoices(); 
         } catch (error) {
             console.error("Failed to update payment status:", error);
             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : null);
@@ -448,7 +446,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchInvoices();
+        fetchInvoices(); 
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
              setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri } : null);
         }
@@ -705,7 +703,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_view_aria')} >
-                    <Info className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
+                    <Eye className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
                     <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -895,14 +893,218 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
             )}
           </div>
         )}
-        {/* Sheet and Dialogs are defined at the page level */}
-     </>
+      <Sheet open={showDetailsSheet} onOpenChange={(open) => {
+          setShowDetailsSheet(open);
+          if (!open) {
+            setIsEditingDetails(false); // Reset edit state when closing
+            setSelectedInvoiceDetails(null); // Clear selected invoice
+          }
+      }}>
+        <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
+          <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
+             <SheetTitle>{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
+             <SheetDescription>
+                {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.fileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.fileName || '' })}
+             </SheetDescription>
+          </SheetHeader>
+          {selectedInvoiceDetails && (
+            <ScrollArea className="flex-grow">
+              <div className="p-4 sm:p-6 space-y-4">
+              {isEditingDetails ? (
+                <div className="space-y-3">
+                    <div>
+                        <Label htmlFor="editFileName">{t('invoice_details_file_name_label')}</Label>
+                        <Input id="editFileName" value={editedInvoiceData.fileName || ''} onChange={(e) => handleEditDetailsInputChange('fileName', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
+                        <Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editSupplier">{t('invoice_details_supplier_label')}</Label>
+                        <Input id="editSupplier" value={editedInvoiceData.supplier || ''} onChange={(e) => handleEditDetailsInputChange('supplier', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
+                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
+                        <Input id="editPaymentDueDate" type="date" value={editedInvoiceData.paymentDueDate ? format(parseISO(editedInvoiceData.paymentDueDate as string), 'yyyy-MM-dd') : ''} onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} disabled={isSavingDetails}/>
+                    </div>
+                    {selectedInvoiceDetails.status === 'error' && (
+                        <div>
+                            <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
+                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
+                        </div>
+                    )}
+                     <div>
+                        <Label>{t('invoice_payment_status_label')}</Label>
+                            <div className="flex gap-2 mt-1">
+                                {(['unpaid', 'pending_payment', 'paid'] as InvoiceHistoryItem['paymentStatus'][]).map(pStatus => (
+                                    <Button
+                                        key={pStatus}
+                                        variant={editedInvoiceData.paymentStatus === pStatus ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => {
+                                             if (pStatus === 'paid' && selectedInvoiceDetails) {
+                                                setInvoiceForReceiptUpload(selectedInvoiceDetails); // Keep current details
+                                                setEditedInvoiceData(prev => ({...prev, paymentStatus: pStatus })); // Optimistically set for dialog if needed
+                                                setShowReceiptUploadDialog(true);
+                                            } else {
+                                               handleEditDetailsInputChange('paymentStatus', pStatus);
+                                            }
+                                        }}
+                                        disabled={isSavingDetails}
+                                    >
+                                      {t(`invoice_payment_status_${pStatus}` as any)}
+                                    </Button>
+                                ))}
+                            </div>
+                     </div>
+
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
+                      <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                      <div className="flex items-center">
+                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
+                      </div>
+                       <div className="flex items-center mt-1">
+                        <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
+                       </div>
+                       {selectedInvoiceDetails.paymentDueDate && (
+                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate)}</p>
+                       )}
+                    </div>
+                    <div>
+                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, { currency: true, useGrouping: true }) : t('invoices_na')}</p>
+                    </div>
+                  </div>
+                  {selectedInvoiceDetails.errorMessage && (
+                    <div className="mt-2">
+                      <p className="font-semibold text-destructive">{t('invoice_details_error_message_label')}:</p>
+                      <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
+                    </div>
+                  )}
+                  <Separator className="my-4"/>
+                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
+                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
+                    <NextImage
+                        src={selectedInvoiceDetails.originalImagePreviewUri}
+                        alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName })}
+                        width={800}
+                        height={1100}
+                        className="rounded-md object-contain mx-auto"
+                        data-ai-hint="invoice document"
+                    />
+                    ) : (
+                    <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                        <ImageIconLucide className="h-10 w-10 mb-2"/>
+                        <p>{t('invoice_details_no_image_available')}</p>
+                    </div>
+                    )}
+                  </div>
+                </>
+              )}
+              </div>
+            </ScrollArea>
+          )}
+          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
+            {selectedInvoiceDetails && (
+                <>
+                    {isEditingDetails ? (
+                        <>
+                            <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button>
+                            <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
+                                {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                {isSavingDetails ? t('saving_button') : t('save_changes_button')}
+                            </Button>
+                        </>
+                    ) : (
+                        <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
+                            <Edit className="mr-2 h-4 w-4" /> {t('invoices_edit_details_button')}
+                        </Button>
+                    )}
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
+                                <Trash2 className="mr-2 h-4 w-4" /> {t('invoices_delete_button')}
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContentComponent>
+                            <AlertDialogHeaderComponent>
+                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
+                                <AlertDialogDescriptionComponent>
+                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails?.fileName || '' })}
+                                </AlertDialogDescriptionComponent>
+                            </AlertDialogHeaderComponent>
+                            <AlertDialogFooterComponent>
+                                <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => selectedInvoiceDetails && handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {t('invoices_delete_confirm_action')}
+                                </AlertDialogAction>
+                            </AlertDialogFooterComponent>
+                        </AlertDialogContentComponent>
+                    </AlertDialog>
+                </>
+            )}
+            <SheetClose asChild>
+                 <Button variant="outline" className="sm:ml-auto">{t('invoices_close_button')}</Button>
+            </SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+        {showReceiptUploadDialog && invoiceForReceiptUpload && (
+            <PaymentReceiptUploadDialog
+                isOpen={showReceiptUploadDialog}
+                onOpenChange={setShowReceiptUploadDialog}
+                invoiceFileName={invoiceForReceiptUpload.fileName}
+                onConfirmUpload={async (receiptUri) => {
+                    // Directly update the payment status after successful upload
+                    if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid'){
+                        await handleConfirmReceiptUpload(receiptUri);
+                        // Also update the currently edited data if the dialog was opened from edit mode
+                        setEditedInvoiceData(prev => ({...prev, paymentReceiptImageUri: receiptUri}));
+                    } else {
+                        // If not in edit mode, or if status wasn't 'paid' during edit trigger
+                        // this case might be less likely if dialog only opens for 'paid' status
+                        await handleConfirmReceiptUpload(receiptUri);
+                    }
+                }}
+            />
+        )}
+    </>
    );
 };
 
 
 export default function DocumentsPage() {
   const { t } = useTranslation();
+  const { user, loading: authLoading } = useAuth(); // Auth check at the page level
+  const router = useRouter();
+
+  useEffect(() => { // Redirection logic
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading || !user) { // Loading state or redirect if not logged in
+    return (
+      <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -912,7 +1114,6 @@ export default function DocumentsPage() {
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
-             {/* Removed view mode toggle from main page header as it's specific to each tab view */}
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
@@ -931,13 +1132,8 @@ export default function DocumentsPage() {
           </Tabs>
         </CardContent>
       </Card>
-
-      {/* Common Sheet for ScannedDocsView details - moved here to avoid conflicts */}
-      {/* This assumes ScannedDocsView's state and handlers are somehow passed down or managed globally/contextually */}
-      {/* For now, keeping detail sheet within ScannedDocsView to maintain encapsulation. */}
-      {/* If issues persist, a global modal/sheet context might be a solution. */}
-
     </div>
   );
 }
+
 
