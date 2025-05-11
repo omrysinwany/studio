@@ -3,8 +3,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Receipt } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Plug, Languages, Receipt, Search } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -41,15 +41,38 @@ export default function Navigation() {
     { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
     { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
     { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
-    { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
+    // { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.7s' },
   ];
+
+   // Conditional nav items based on auth state
+   const getNavItems = () => {
+    if (!user) {
+      return [
+        { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
+        { href: '/login', labelKey: 'nav_login', icon: LogIn, animationDelay: '0.2s' },
+        { href: '/register', labelKey: 'nav_register', icon: UserPlus, animationDelay: '0.3s' },
+      ];
+    }
+    return [
+      { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
+      { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
+      { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
+      { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
+      { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.5s' },
+      { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.6s' },
+      // Settings is usually in a dropdown or user menu for logged-in users
+    ];
+  };
+
+  const currentNavItems = getNavItems();
+
 
   useEffect(() => {
     if (authLoading) {
       return;
     }
     const publicPaths = ['/login', '/register'];
-    const isGuestPage = pathname === '/'; // Assuming '/' is the guest home page
+    const isGuestPage = pathname === '/' && !user;
     const isAuthPage = publicPaths.includes(pathname);
 
     if (!user && !isGuestPage && !isAuthPage) {
@@ -90,15 +113,15 @@ export default function Navigation() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
-          {user && navItems.map((item) => (
+          {currentNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-in-out hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 scale-fade-in hover:scale-105",
-                pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')
-                  ? "bg-accent text-accent-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted"
+                buttonVariants({ variant: pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost', size: 'sm' }),
+                "transition-all duration-200 ease-in-out hover:scale-105",
+                "scale-fade-in",
+                (pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')) ? "shadow-sm" : "hover:bg-muted"
               )}
                style={{ animationDelay: item.animationDelay }}
                aria-current={pathname === item.href ? 'page' : undefined}
@@ -181,6 +204,10 @@ export default function Navigation() {
                        <Plug className="mr-2 h-4 w-4" />
                        <span>{t('pos_integration')}</span>
                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
+                        <SettingsIcon className="mr-2 h-4 w-4" />
+                        <span>{t('nav_settings')}</span>
+                      </DropdownMenuItem>
                      <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
@@ -191,18 +218,19 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Button variant="ghost" size="sm" asChild> {/* Ghost button for login */}
-                    <Link href="/login">
-                       {/* The Link component must have exactly one child when used with asChild */}
-                       <span className="flex items-center">
-                           <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                       </span>
+                   <Button variant="ghost" size="sm" asChild>
+                    <Link href="/login" legacyBehavior passHref>
+                      <a className="flex items-center">
+                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                      </a>
                     </Link>
                   </Button>
                   <Button asChild size="sm" className="transition-transform hover:scale-105">
-                    <Link href="/register">
-                      <UserPlus className="mr-1 h-4 w-4" />
-                      {t('nav_register')}
+                    <Link href="/register" legacyBehavior passHref>
+                      <a className="flex items-center">
+                        <UserPlus className="mr-1 h-4 w-4" />
+                        {t('nav_register')}
+                      </a>
                     </Link>
                   </Button>
                 </>
@@ -227,7 +255,7 @@ export default function Navigation() {
                       </Link>
                     </div>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
-                        {user && navItems.map((item) => (
+                        {currentNavItems.map((item) => (
                           <Button
                              key={item.href}
                              variant={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost'}
@@ -260,6 +288,10 @@ export default function Navigation() {
                                        <Plug className="h-5 w-5" />
                                        {t('pos_integration')}
                                     </Button>
+                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
+                                        <SettingsIcon className="h-5 w-5" />
+                                        {t('nav_settings')}
+                                     </Button>
                                    <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
                                       {t('nav_logout')}
@@ -284,8 +316,8 @@ export default function Navigation() {
                                   <Palette className="h-5 w-5" /> {t('theme')}: <span className="ml-auto capitalize font-medium">{t(theme === 'light' ? 'light_theme' : theme === 'dark' ? 'dark_theme' : 'system_theme')}</span>
                                </Button>
                              </DropdownMenuTrigger>
-                             <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
-                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
+                             <DropdownMenuPortal>
+                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
                                    <DropdownMenuLabel>{t('theme')}</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
                                    <DropdownMenuRadioGroup value={theme} onValueChange={(newTheme) => { setTheme(newTheme); }}>
@@ -310,8 +342,8 @@ export default function Navigation() {
                                   <Languages className="h-5 w-5" /> {t('language')}: <span className="ml-auto capitalize font-medium">{locale === 'he' ? t('hebrew') : t('english')}</span>
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuPortal> {/* Use portal to avoid sheet clipping */}
-                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2"> {/* Adjust width */}
+                              <DropdownMenuPortal>
+                                <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
                                   <DropdownMenuLabel>{t('language')}</DropdownMenuLabel>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
