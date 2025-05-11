@@ -1,3 +1,4 @@
+// src/app/invoices/page.tsx
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -20,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, List, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, Mail, FileTextIcon, X, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileTextIcon, X, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -29,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, updateInvoicePaymentStatusService } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, updateInvoicePaymentStatusService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -56,7 +57,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch';
+// import { useSmartTouch } from '@/hooks/useSmartTouch'; // Removed as it was causing issues
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
@@ -120,20 +121,28 @@ const ScannedDocsView = () => {
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
-    onTap: (e) => {
-      const target = e.target as HTMLElement;
-      if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(target)) {
-        // Logic to open dropdown
-      }
-    }
-  });
+  // const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch({
+  //   onTap: (e) => {
+  //     const target = e.target as HTMLElement;
+  //     if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(target)) {
+  //       // Logic to open dropdown
+  //     }
+  //   }
+  // });
 
   const fetchSuppliers = useCallback(async () => {
     if (!user) return;
     try {
-      const summaries = await getSupplierSummariesService(user.id);
-      setExistingSuppliers(summaries);
+      // Fetch only explicitly managed suppliers for the filter
+      const managedSuppliersData = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, user.id, []);
+      const managedSuppliersSummaries: SupplierSummary[] = managedSuppliersData.map(s => ({
+        name: s.name,
+        invoiceCount: 0, // These will not be used for filter, only name matters
+        totalSpent: 0,   // These will not be used for filter, only name matters
+        phone: s.phone,
+        email: s.email,
+      }));
+      setExistingSuppliers(managedSuppliersSummaries);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
       toast({
@@ -166,6 +175,9 @@ const ScannedDocsView = () => {
         });
 
         let filteredData = Array.from(uniqueInvoicesMap.values());
+        // Filter out "paid" invoices from this tab
+        filteredData = filteredData.filter(inv => inv.paymentStatus !== 'paid');
+
 
         if (filterSupplier) {
            filteredData = filteredData.filter(inv => inv.supplier === filterSupplier);
@@ -271,7 +283,7 @@ const ScannedDocsView = () => {
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -287,27 +299,9 @@ const ScannedDocsView = () => {
      }
    };
 
-    const formatNumber = (
-        value: number | undefined | null,
-        options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
-    ): string => {
-        const { decimals = 2, useGrouping = true, currency = false } = options || {};
-
-        if (value === null || value === undefined || isNaN(value)) {
-            const zeroFormatted = (0).toLocaleString(undefined, {
-                minimumFractionDigits: decimals,
-                maximumFractionDigits: decimals,
-                useGrouping: useGrouping,
-            });
-            return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
-        }
-
-        const formattedValue = value.toLocaleString(undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-            useGrouping: useGrouping,
-        });
-        return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
+    const formatCurrency = (value: number | undefined | null): string => {
+        if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
+        return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
 
@@ -532,7 +526,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
      );
   };
 
-  if (authLoading || (!user && isLoading)) {
+  if (authLoading || (isLoading && !user)) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -547,9 +541,9 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
    return (
      <>
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
+            // onTouchStart={onTouchStart}
+            // onTouchMove={onTouchMove}
+            // onTouchEnd={onTouchEnd}
         >
           <div className="relative w-full md:max-w-xs lg:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -562,9 +556,9 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
             />
           </div>
           <div className="flex gap-2 flex-wrap justify-start md:justify-end"
-               onTouchStart={onTouchStart}
-               onTouchMove={onTouchMove}
-               onTouchEnd={onTouchEnd}
+            //    onTouchStart={onTouchStart}
+            //    onTouchMove={onTouchMove}
+            //    onTouchEnd={onTouchEnd}
           >
                <Popover>
                  <PopoverTrigger asChild>
@@ -686,7 +680,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                 <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
-                {(['paid', 'unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
+                {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
                   <DropdownMenuCheckboxItem
                     key={pStatus}
                     checked={filterPaymentStatus === pStatus}
@@ -710,7 +704,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentDueDate').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -825,7 +819,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                        {visibleColumns.supplier && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplier')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplier || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
-                            {item.totalAmount !== undefined && item.totalAmount !== null ? formatNumber(item.totalAmount, { currency: true }) : t('invoices_na')}
+                            {item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrency(item.totalAmount) : t('invoices_na')}
                          </TableCell>
                        )}
                        {visibleColumns.errorMessage && (
@@ -881,7 +875,7 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                     <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
                     <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
                      {item.supplier && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplier}</p>}
-                     {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatNumber(item.totalAmount, { currency: true })}</p>}
+                     {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrency(item.totalAmount)}</p>}
                   </CardContent>
                    <CardFooter className="p-3 border-t">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
@@ -977,13 +971,13 @@ const handleConfirmReceiptUpload = async (receiptImageUri: string) => {
                         <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
                        </div>
                        {selectedInvoiceDetails.paymentDueDate && (
-                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate)}</p>
+                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate as string)}</p>
                        )}
                     </div>
                     <div>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, { currency: true, useGrouping: true }) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrency(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -1135,5 +1129,4 @@ export default function DocumentsPage() {
     </div>
   );
 }
-
 

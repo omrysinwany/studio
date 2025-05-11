@@ -1,3 +1,4 @@
+// src/components/PaidInvoicesTabView.tsx
 'use client';
 
  import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -20,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIconLucide, Info, Download, Trash2, Edit, Save, List, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail as MailIcon } from 'lucide-react'; // Renamed Mail to MailIcon
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Image as ImageIconLucide, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, CheckSquare, Mail as MailIcon } from 'lucide-react'; // Renamed Mail to MailIcon
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -29,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, getSupplierSummariesService, SupplierSummary, getAccountantSettingsService } from '@/services/backend'; // Added getAccountantSettingsService
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend'; // Added getAccountantSettingsService
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -56,7 +57,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch';
+// import { useSmartTouch } from '@/hooks/useSmartTouch';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -145,14 +146,22 @@ export default function PaidInvoicesTabView() {
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch();
+  // const { onTouchStart, onTouchMove, onTouchEnd } = useSmartTouch();
 
 
   const fetchSuppliers = useCallback(async () => {
     if (!user) return;
     try {
-      const summaries = await getSupplierSummariesService(user.id);
-      setExistingSuppliers(summaries);
+      // Fetch only explicitly managed suppliers for the filter
+      const managedSuppliersData = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, user.id, []);
+      const managedSuppliersSummaries: SupplierSummary[] = managedSuppliersData.map(s => ({
+        name: s.name,
+        invoiceCount: 0, // Not used for filter
+        totalSpent: 0,   // Not used for filter
+        phone: s.phone,
+        email: s.email,
+      }));
+      setExistingSuppliers(managedSuppliersSummaries);
     } catch (error) {
       console.error("Failed to fetch suppliers for filter:", error);
       toast({
@@ -214,7 +223,7 @@ export default function PaidInvoicesTabView() {
                  let comparison = 0;
                  if (sortKey === 'uploadTime') {
                      const dateA = valA instanceof Date ? valA.getTime() : new Date(valA as string).getTime();
-                     const dateB = valB instanceof Date ? valB.getTime() : new Date(valB as string).getTime();
+                     const dateB = valB instanceof Date ? valB.getTime() : new Date(valA as string).getTime();
                      comparison = dateA - dateB;
                  } else if (typeof valA === 'number' && typeof valB === 'number') {
                      comparison = valA - valB;
@@ -550,9 +559,9 @@ export default function PaidInvoicesTabView() {
   return (
     <>
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
+            // onTouchStart={onTouchStart}
+            // onTouchMove={onTouchMove}
+            // onTouchEnd={onTouchEnd}
         >
           <div className="relative w-full md:max-w-xs lg:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -565,9 +574,9 @@ export default function PaidInvoicesTabView() {
             />
           </div>
           <div className="flex gap-2 flex-wrap justify-start md:justify-end"
-               onTouchStart={onTouchStart}
-               onTouchMove={onTouchMove}
-               onTouchEnd={onTouchEnd}
+            //    onTouchStart={onTouchStart}
+            //    onTouchMove={onTouchMove}
+            //    onTouchEnd={onTouchEnd}
           >
                <Popover>
                  <PopoverTrigger asChild>
@@ -1098,3 +1107,4 @@ export default function PaidInvoicesTabView() {
     </>
   );
 }
+
