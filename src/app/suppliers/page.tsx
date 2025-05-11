@@ -1,3 +1,4 @@
+// src/app/suppliers/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -7,7 +8,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2 } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2, CalendarDays, BarChartHorizontalBig } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import {
@@ -22,7 +23,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid, Tooltip as RechartsRechartsTooltip, ResponsiveContainer, Legend as RechartsRechartsLegend } from 'recharts';
 import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
@@ -38,6 +39,10 @@ import {
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import type { DateRange } from 'react-day-picker';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -46,7 +51,7 @@ type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpen
 type SortDirection = 'asc' | 'desc';
 
 
-const formatDate = (date: Date | string | undefined, t: (key: string) => string, f: string = 'PP') => {
+const formatDateDisplay = (date: Date | string | undefined, t: (key: string) => string, f: string = 'PP') => {
   if (!date) return t('suppliers_na');
   try {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
@@ -56,6 +61,11 @@ const formatDate = (date: Date | string | undefined, t: (key: string) => string,
     console.error("Error formatting date:", e, "Input:", date);
     return t('suppliers_invalid_date');
   }
+};
+
+const formatCurrencyDisplay = (value: number | undefined | null, t: (key: string) => string): string => {
+    if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 
@@ -102,15 +112,19 @@ interface MonthlySpendingData {
   total: number;
 }
 
+const supplierChartConfig = {
+  totalAmount: {
+    labelKey: 'accounts_total_amount_spent_short',
+    color: "hsl(var(--chart-1))",
+  },
+} satisfies React.ComponentProps<typeof ChartContainer>["config"];
+
+
 export default function SuppliersPage() {
   const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
 
-  const formatCurrency = (value: number | undefined | null): string => {
-    if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -128,6 +142,10 @@ export default function SuppliersPage() {
   const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
   const [isSavingContact, setIsSavingContact] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ // For supplier spending
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date()),
+  });
 
 
   const { toast } = useToast();
@@ -143,8 +161,8 @@ export default function SuppliersPage() {
     setIsLoading(true);
     try {
       const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(user.id), // Pass userId here
-        getInvoicesService(user.id) // Pass userId here
+        getSupplierSummariesService(user.id),
+        getInvoicesService(user.id)
       ]);
       setSuppliers(summaries);
       setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
@@ -165,7 +183,7 @@ export default function SuppliersPage() {
         fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast, t, user]);
+  }, [user]); // Removed toast and t as they are stable
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -228,13 +246,13 @@ export default function SuppliersPage() {
 
     const spendingByMonth: Record<string, number> = {};
     last12Months.forEach(monthDate => {
-        const monthYear = formatDate(monthDate, t, 'MMM yyyy');
+        const monthYear = formatDateDisplay(monthDate, t, 'MMM yyyy');
         spendingByMonth[monthYear] = 0;
     });
 
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
-        const monthYear = formatDate(invoice.uploadTime as string, t, 'MMM yyyy');
+        const monthYear = formatDateDisplay(invoice.uploadTime as string, t, 'MMM yyyy');
         if(spendingByMonth.hasOwnProperty(monthYear)){
             spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
         }
@@ -242,14 +260,14 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Ensure chronological order for chart
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
   };
 
   const navigateToInvoiceDetails = (invoiceId: string) => {
-    router.push(`/invoices?viewInvoiceId=${invoiceId}`);
+    router.push(`/invoices?viewInvoiceId=${invoiceId}`); // Assuming Invoices page can handle this query param
     setIsDetailSheetOpen(false);
   };
 
@@ -274,7 +292,7 @@ export default function SuppliersPage() {
     if(!user) return;
     try {
       const newSupplier = await createSupplierService(name, contactInfo, user.id);
-      setSuppliers(prev => [newSupplier, ...prev]);
+      setSuppliers(prev => [newSupplier, ...prev]); // Add to the beginning of the list
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
     } catch (error: any) {
@@ -287,7 +305,7 @@ export default function SuppliersPage() {
     if(!user) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierName, user.id); // Pass userId
+      await deleteSupplierService(supplierName, user.id);
       setSuppliers(prev => prev.filter(s => s.name !== supplierName));
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName }) });
       if (selectedSupplier?.name === supplierName) {
@@ -301,6 +319,32 @@ export default function SuppliersPage() {
       setIsDeletingSupplier(false);
     }
   };
+
+  // Supplier Spending Data for the main page card
+  const supplierSpendingData = useMemo(() => {
+    const spendingMap = new Map<string, number>();
+    const filteredPeriodInvoices = allInvoices.filter(invoice => {
+        if (!dateRange?.from || !invoice.uploadTime) return true; // if no date range, include all
+        const invoiceDate = parseISO(invoice.uploadTime as string);
+        const startDate = new Date(dateRange.from);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
+        endDate.setHours(23, 59, 59, 999);
+        return invoiceDate >= startDate && invoiceDate <= endDate && invoice.status === 'completed';
+    });
+
+    filteredPeriodInvoices.forEach(invoice => {
+      if (invoice.supplier && typeof invoice.supplier === 'string' && invoice.totalAmount !== undefined && typeof invoice.totalAmount === 'number') {
+        spendingMap.set(
+          invoice.supplier,
+          (spendingMap.get(invoice.supplier) || 0) + invoice.totalAmount
+        );
+      }
+    });
+    return Array.from(spendingMap.entries())
+      .map(([name, totalAmount]) => ({ name, totalAmount }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+  }, [allInvoices, dateRange]);
 
 
   if (authLoading || isLoading || !user) {
@@ -341,6 +385,46 @@ export default function SuppliersPage() {
                 aria-label={t('suppliers_search_aria')}
               />
             </div>
+             <Popover>
+                <PopoverTrigger asChild>
+                    <Button
+                        id="supplierDateRange"
+                        variant={"outline"}
+                        className={cn(
+                        "w-full md:w-auto md:min-w-[260px] justify-start text-left font-normal",
+                        !dateRange && "text-muted-foreground"
+                        )}
+                    >
+                        <CalendarDays className="mr-2 h-4 w-4" />
+                        {dateRange?.from ? (
+                        dateRange.to ? (
+                            <>
+                            {format(dateRange.from, "PP")} - {format(dateRange.to, "PP")}
+                            </>
+                        ) : (
+                            format(dateRange.from, "PP")
+                        )
+                        ) : (
+                        <span>{t('reports_date_range_placeholder')}</span>
+                        )}
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange?.from}
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        numberOfMonths={2}
+                    />
+                     {dateRange && (
+                        <div className="p-2 border-t flex justify-end">
+                            <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
+                        </div>
+                     )}
+                </PopoverContent>
+            </Popover>
           </div>
 
           <div className="overflow-x-auto relative">
@@ -428,6 +512,72 @@ export default function SuppliersPage() {
         </CardContent>
       </Card>
 
+      <Card className="shadow-md scale-fade-in delay-100">
+        <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <BarChartHorizontalBig className="mr-2 h-5 w-5" /> {t('accounts_supplier_spending_title')}
+            </CardTitle>
+            <CardDescription>{t('accounts_supplier_spending_desc_period')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+            {isLoading ? (
+                <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
+                </div>
+            ) : supplierSpendingData.length === 0 ? (
+                <p className="text-muted-foreground text-center py-6">{t('accounts_no_spending_data_period')}</p>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="overflow-x-auto max-h-[350px]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>{t('invoice_details_supplier_label')}</TableHead>
+                                    <TableHead className="text-right">{t('invoice_details_total_amount_label')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {supplierSpendingData.slice(0, 10).map(item => (
+                                    <TableRow key={item.name}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell className="text-right">{formatCurrencyDisplay(item.totalAmount, t)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <div className="h-[300px] md:h-[350px]">
+                        <ChartContainer config={supplierChartConfig} className="w-full h-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: 30, left: 20, bottom: 20}}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={10} />
+                                    <RechartsYAxis dataKey="name" type="category" width={80} tick={{fontSize: 10, dy: 5 }} interval={0} />
+                                    <RechartsRechartsTooltip
+                                        content={<ChartTooltipContent indicator="dot" hideLabel />}
+                                        formatter={(value: number) => [formatCurrencyDisplay(value, t), t(supplierChartConfig.totalAmount.labelKey) ]}
+                                    />
+                                     <RechartsRechartsLegend verticalAlign="top" content={({ payload }) => (
+                                        <ul className="flex flex-wrap justify-center gap-x-4 text-xs text-muted-foreground">
+                                            {payload?.map((entry, index) => (
+                                                <li key={`item-${index}`} className="flex items-center gap-1.5">
+                                                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                                                    {t(supplierChartConfig.totalAmount.labelKey)}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}/>
+                                    <Bar dataKey="totalAmount" fill="var(--color-totalAmount)" radius={[0, 4, 4, 0]} barSize={15}/>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </ChartContainer>
+                    </div>
+                </div>
+            )}
+        </CardContent>
+      </Card>
+
       <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl flex flex-col p-0">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
@@ -444,7 +594,7 @@ export default function SuppliersPage() {
                     <CardTitle className="text-base flex items-center"><DollarSign className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_total_spending')}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-2xl font-bold text-primary">{formatCurrency(selectedSupplier.totalSpent)}</p>
+                    <p className="text-2xl font-bold text-primary">{formatCurrencyDisplay(selectedSupplier.totalSpent,t)}</p>
                     <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
                   </CardContent>
                 </Card>
@@ -513,10 +663,10 @@ export default function SuppliersPage() {
                         <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                            <YAxis fontSize={10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false}/>
-                            <RechartsTooltip formatter={(value: number) => [formatCurrency(value), t('suppliers_tooltip_total_spent')]}/>
-                            <Legend wrapperStyle={{fontSize: "12px"}}/>
+                            <RechartsXAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
+                            <RechartsYAxis fontSize={10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false}/>
+                            <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
+                            <RechartsRechartsLegend wrapperStyle={{fontSize: "12px"}}/>
                             <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')}/>
                             </BarChart>
                         </ResponsiveContainer>
@@ -541,14 +691,14 @@ export default function SuppliersPage() {
                                 {index < selectedSupplierInvoices.slice(0, 10).length - 1 && <div className="h-full w-px bg-border" />}
                               </div>
                               <div className="pb-3 flex-1">
-                                <p className="text-xs text-muted-foreground">{formatDate(invoice.uploadTime as string, t, 'PPp')}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateDisplay(invoice.uploadTime as string, t, 'PPp')}</p>
                                 <p className="text-sm font-medium">
                                   <Button variant="link" className="p-0 h-auto text-sm" onClick={() => navigateToInvoiceDetails(invoice.id)}>
                                     {invoice.fileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
                                   </Button>
                                 </p>
                                 <div className="text-xs text-muted-foreground">
-                                  {t('suppliers_invoice_total')}: {formatCurrency(invoice.totalAmount)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status, t)}
+                                  {t('suppliers_invoice_total')}: {formatCurrencyDisplay(invoice.totalAmount, t)} - {t('upload_history_col_status')}: {renderStatusBadge(invoice.status, t)}
                                 </div>
                               </div>
                             </div>
