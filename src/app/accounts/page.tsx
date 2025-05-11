@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
-import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -19,15 +19,21 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AddCategoryDialog from '@/components/accounts/AddCategoryDialog';
+import AddExpenseDialog from '@/components/accounts/AddExpenseDialog';
 
 
-interface OtherExpense {
+export interface OtherExpense {
   id: string;
-  category: string; // Changed to string to support dynamic categories
+  category: string;
   description: string;
   amount: number;
   date: string; // ISO date string
 }
+
+const EXPENSE_CATEGORIES_STORAGE_KEY = 'invoTrack_expenseCategories';
+const OTHER_EXPENSES_STORAGE_KEY = 'invoTrack_otherExpenses';
+
 
 export default function AccountsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -41,12 +47,99 @@ export default function AccountsPage() {
     to: endOfMonth(new Date()),
   });
 
-  // Initialize with default categories, but no static expenses
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([
-    'electricity', 'water', 'arnona'
-  ]);
-  const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]); // No static expenses
-  const [activeExpenseTab, setActiveExpenseTab] = useState<string>(expenseCategories[0]);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
+  const [activeExpenseTab, setActiveExpenseTab] = useState<string>('');
+
+  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
+  const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
+
+  // Load categories and expenses from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedCategories = localStorage.getItem(EXPENSE_CATEGORIES_STORAGE_KEY);
+      const defaultCategories = ['electricity', 'water', 'arnona'];
+      if (storedCategories) {
+        const parsedCategories = JSON.parse(storedCategories);
+        // Ensure default categories are present if local storage is empty or doesn't have them
+        const finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
+        setExpenseCategories(finalCategories);
+        if (finalCategories.length > 0 && !activeExpenseTab) {
+          setActiveExpenseTab(finalCategories[0]);
+        }
+      } else {
+        setExpenseCategories(defaultCategories);
+        if (defaultCategories.length > 0 && !activeExpenseTab) {
+          setActiveExpenseTab(defaultCategories[0]);
+        }
+      }
+
+      const storedExpenses = localStorage.getItem(OTHER_EXPENSES_STORAGE_KEY);
+      if (storedExpenses) {
+        setOtherExpenses(JSON.parse(storedExpenses));
+      }
+    }
+  }, [activeExpenseTab]);
+
+  const saveExpenseCategories = (categories: string[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(EXPENSE_CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+    }
+  };
+
+  const saveOtherExpenses = (expenses: OtherExpense[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(OTHER_EXPENSES_STORAGE_KEY, JSON.stringify(expenses));
+    }
+  };
+
+  const handleAddCategory = (newCategoryName: string) => {
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) {
+      toast({ title: t('error_title'), description: t('accounts_toast_category_name_empty_desc'), variant: "destructive" });
+      return;
+    }
+    if (expenseCategories.some(cat => cat.toLowerCase() === trimmedName.toLowerCase())) {
+      toast({ title: t('accounts_toast_category_exists_title'), description: t('accounts_toast_category_exists_desc', { categoryName: trimmedName }), variant: "destructive" });
+      return;
+    }
+    const updatedCategories = [...expenseCategories, trimmedName];
+    setExpenseCategories(updatedCategories);
+    saveExpenseCategories(updatedCategories);
+    setActiveExpenseTab(trimmedName); // Switch to the new category
+    toast({ title: t('accounts_toast_category_added_title'), description: t('accounts_toast_category_added_desc', { categoryName: trimmedName }) });
+    setShowAddCategoryDialog(false);
+  };
+
+  const handleAddExpense = (newExpenseData: Omit<OtherExpense, 'id'>) => {
+    if (!newExpenseData.description.trim()) {
+      toast({ title: t('error_title'), description: t('accounts_toast_expense_desc_empty_desc'), variant: "destructive" });
+      return;
+    }
+    if (newExpenseData.amount <= 0) {
+      toast({ title: t('accounts_toast_expense_invalid_amount_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive" });
+      return;
+    }
+    if (!newExpenseData.category) {
+        toast({ title: t('error_title'), description: t('accounts_toast_expense_category_empty_desc'), variant: "destructive"});
+        return;
+    }
+     if (!newExpenseData.date || !isValid(parseISO(newExpenseData.date))) {
+        toast({ title: t('error_title'), description: t('accounts_toast_expense_invalid_date_desc'), variant: "destructive"});
+        return;
+    }
+
+
+    const newExpense: OtherExpense = {
+      id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      ...newExpenseData,
+    };
+    const updatedExpenses = [...otherExpenses, newExpense];
+    setOtherExpenses(updatedExpenses);
+    saveOtherExpenses(updatedExpenses);
+    toast({ title: t('accounts_toast_expense_added_title'), description: t('accounts_toast_expense_added_desc', { description: newExpense.description }) });
+    setShowAddExpenseDialog(false);
+  };
 
 
   const fetchAccountData = async () => {
@@ -76,6 +169,13 @@ export default function AccountsPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    // Set active tab to the first category if categories are loaded and no tab is active
+    if (expenseCategories.length > 0 && !activeExpenseTab) {
+      setActiveExpenseTab(expenseCategories[0]);
+    }
+  }, [expenseCategories, activeExpenseTab]);
 
   const filteredInvoices = useMemo(() => {
     if (!dateRange?.from) return allInvoices;
@@ -301,7 +401,7 @@ export default function AccountsPage() {
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Tabs defaultValue={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
+            <Tabs value={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
               <div className="flex items-center gap-2">
                   <TabsList className="inline-flex h-10 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
                     {expenseCategories.map(category => (
@@ -310,11 +410,11 @@ export default function AccountsPage() {
                             value={category}
                             className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none whitespace-nowrap"
                         >
-                          {t(`accounts_other_expenses_tab_${category}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
+                          {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
                         </TabsTrigger>
                     ))}
                   </TabsList>
-                <Button variant="outline" size="icon" disabled className="ml-2 flex-shrink-0">
+                <Button variant="outline" size="icon" onClick={() => setShowAddCategoryDialog(true)} className="ml-2 flex-shrink-0">
                   <PlusCircle className="h-4 w-4" />
                   <span className="sr-only">{t('accounts_add_category_button')}</span>
                 </Button>
@@ -342,7 +442,7 @@ export default function AccountsPage() {
               ))}
             </Tabs>
             <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
-              <Button variant="outline" disabled className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => setShowAddExpenseDialog(true)} className="w-full sm:w-auto">
                   <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
               </Button>
             </div>
@@ -368,7 +468,18 @@ export default function AccountsPage() {
               </div>
           </CardContent>
       </Card>
+
+      <AddCategoryDialog
+        isOpen={showAddCategoryDialog}
+        onOpenChange={setShowAddCategoryDialog}
+        onAddCategory={handleAddCategory}
+      />
+      <AddExpenseDialog
+        isOpen={showAddExpenseDialog}
+        onOpenChange={setShowAddExpenseDialog}
+        categories={expenseCategories}
+        onAddExpense={handleAddExpense}
+      />
     </div>
   );
 }
-
