@@ -202,6 +202,24 @@ export default function AccountsPage() {
         </CardHeader>
       </Card>
 
+      <Card className="shadow-md scale-fade-in delay-200">
+          <CardHeader>
+              <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                  <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
+              </CardTitle>
+              <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+              {isLoadingData ? (
+                  <div className="flex justify-center items-center py-6">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+              ) : (
+                  <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
+              )}
+          </CardContent>
+      </Card>
+
       <Card className="shadow-md scale-fade-in delay-100">
         <CardHeader>
           <CardTitle className="text-xl font-semibold text-primary flex items-center">
@@ -257,26 +275,6 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-        <Card className="shadow-md scale-fade-in delay-200">
-            <CardHeader>
-                <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
-                </CardTitle>
-                <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {isLoadingData ? (
-                    <div className="flex justify-center items-center py-6">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    </div>
-                ) : (
-                    <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
-                )}
-            </CardContent>
-        </Card>
-      </div>
-
       <Card className="shadow-md scale-fade-in delay-400">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
@@ -318,3 +316,4 @@ export default function AccountsPage() {
     </div>
   );
 }
+
