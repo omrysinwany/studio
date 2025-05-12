@@ -3,7 +3,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Loader2, Landmark, Home, Building } from "lucide-react"; // Added Home, Building
+import { Loader2, Landmark, Home, Building, Edit2 } from "lucide-react"; // Added Edit2
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function OtherExpensesLoading() {
@@ -11,20 +11,19 @@ export default function OtherExpensesLoading() {
 
   const renderSkeletonFixedExpenseCard = (Icon: React.ElementType) => (
     <Card className="shadow-md flex flex-col">
-      <CardHeader className="pb-3">
-        <Skeleton className="h-6 w-2/5 mb-1" /> {/* Title Skeleton e.g. "Property Tax" */}
-        <Skeleton className="h-4 w-4/5" /> {/* Description Skeleton */}
-      </CardHeader>
-      <CardContent className="space-y-3 flex-grow">
+      <CardHeader className="pb-3 flex flex-row items-start justify-between">
         <div>
-          <Skeleton className="h-4 w-1/4 mb-1" /> {/* Label Skeleton "Amount" */}
-          <Skeleton className="h-10 w-full" /> {/* Input Skeleton */}
+            <Skeleton className="h-6 w-2/5 mb-1" /> {/* Title Skeleton e.g. "Property Tax" */}
+            <Skeleton className="h-4 w-4/5" /> {/* Description Skeleton */}
         </div>
-        <Skeleton className="h-4 w-2/3" /> {/* Last recorded info skeleton */}
+        <Skeleton className="h-8 w-8 rounded-md" /> {/* Edit Icon Skeleton */}
+      </CardHeader>
+      <CardContent className="space-y-1 flex-grow">
+        <Skeleton className="h-8 w-1/2" /> {/* Amount Display Skeleton */}
+        <Skeleton className="h-3 w-2/3" /> {/* Last recorded info skeleton */}
       </CardContent>
-      <CardFooter className="border-t pt-3 pb-3 flex justify-end gap-2">
-        <Skeleton className="h-8 w-8 rounded-md" /> {/* Edit Button Skeleton */}
-        <Skeleton className="h-9 w-24 rounded-md" /> {/* Save Button Skeleton */}
+      <CardFooter className="border-t pt-3 pb-3">
+        <Skeleton className="h-9 w-full rounded-md" /> {/* Button Skeleton (e.g., "Record Payment" or "Edit") */}
       </CardFooter>
     </Card>
   );
