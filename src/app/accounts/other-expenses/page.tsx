@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Import Input
+import { Input } from '@/components/ui/input'; 
 import { format, parseISO, isValid, getYear, getMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -17,21 +17,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AddCategoryDialog from '@/components/accounts/AddCategoryDialog';
 import AddExpenseDialog from '@/components/accounts/AddExpenseDialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Label } from '@/components/ui/label'; // Import Label
+import { Label } from '@/components/ui/label'; 
 
 export interface OtherExpense {
   id: string;
-  category: string; // Stores the translated category name for display
-  _internalCategoryKey?: string; // Stores the original, non-translated key for logic
+  category: string; 
+  _internalCategoryKey?: string; 
   description: string;
   amount: number;
-  date: string; // ISO date string
+  date: string; 
 }
 
 export interface ExpenseTemplate {
   id: string;
   name: string;
-  category: string; // Should store the _internalCategoryKey if it's a special one
+  category: string; 
   description: string;
   amount: number;
 }
@@ -48,7 +48,6 @@ const getStorageKey = (baseKey: string, userId?: string): string => {
   return `${baseKey}_${userId}`;
 };
 
-// These are the internal, non-translated keys for special categories
 const SPECIAL_CATEGORY_KEYS = {
   ARNONA: 'arnona',
   RENT: 'rent',
@@ -63,10 +62,10 @@ export default function OtherExpensesPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
 
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([]); // Stores internal keys
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]); 
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
   const [expenseTemplates, setExpenseTemplates] = useState<ExpenseTemplate[]>([]);
-  const [activeExpenseTab, setActiveExpenseTab] = useState<string>(''); // Uses internal keys
+  const [activeExpenseTab, setActiveExpenseTab] = useState<string>(''); 
 
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
@@ -74,7 +73,6 @@ export default function OtherExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<OtherExpense | null>(null);
   const [prefillDataForDialog, setPrefillDataForDialog] = useState<Partial<Omit<OtherExpense, 'id'> & { isSpecialFixedExpense?: boolean }>>({});
   
-  // State for inline amount input for special categories
   const [specialExpenseAmounts, setSpecialExpenseAmounts] = useState<Record<string, string | number>>({
     [SPECIAL_CATEGORY_KEYS.ARNONA]: '',
     [SPECIAL_CATEGORY_KEYS.RENT]: '',
@@ -93,23 +91,20 @@ export default function OtherExpensesPage() {
       const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
 
       const storedCategories = localStorage.getItem(categoriesStorageKey);
-      // Default categories are internal keys
       const defaultInternalCategories = [SPECIAL_CATEGORY_KEYS.ELECTRICITY, SPECIAL_CATEGORY_KEYS.WATER]; 
       let finalCategories = [...defaultInternalCategories]; 
       if (storedCategories) {
         const parsedCategories = JSON.parse(storedCategories).map((cat: string) => cat.toLowerCase());
         const uniqueParsed = parsedCategories.filter((cat: string) => !defaultInternalCategories.includes(cat.toLowerCase()) && !Object.values(SPECIAL_CATEGORY_KEYS).includes(cat.toLowerCase()));
-        finalCategories = [...Object.values(SPECIAL_CATEGORY_KEYS), ...uniqueParsed]; // Ensure all special keys + user defined
+        finalCategories = [...Object.values(SPECIAL_CATEGORY_KEYS), ...uniqueParsed]; 
       } else {
-        // If no stored categories, ensure all default special categories are present
         finalCategories = Object.values(SPECIAL_CATEGORY_KEYS);
       }
 
-      // Ensure Arnona and Rent are always present if not already from parsing
       if (!finalCategories.includes(SPECIAL_CATEGORY_KEYS.ARNONA)) finalCategories.push(SPECIAL_CATEGORY_KEYS.ARNONA);
       if (!finalCategories.includes(SPECIAL_CATEGORY_KEYS.RENT)) finalCategories.push(SPECIAL_CATEGORY_KEYS.RENT);
       
-      setExpenseCategories(Array.from(new Set(finalCategories))); // Use Set to ensure unique
+      setExpenseCategories(Array.from(new Set(finalCategories))); 
       
       const generalTabCategories = finalCategories.filter(catKey => 
           catKey !== SPECIAL_CATEGORY_KEYS.ARNONA && catKey !== SPECIAL_CATEGORY_KEYS.RENT
@@ -126,7 +121,6 @@ export default function OtherExpensesPage() {
       const parsedExpenses: OtherExpense[] = storedExpenses ? JSON.parse(storedExpenses) : [];
       setOtherExpenses(parsedExpenses);
 
-       // Pre-fill special expense amounts from the latest recorded expense for that category
       const initialSpecialAmounts: Record<string, string | number> = {};
       [SPECIAL_CATEGORY_KEYS.ARNONA, SPECIAL_CATEGORY_KEYS.RENT].forEach(specialCatKey => {
         const latestExpenseForCategory = parsedExpenses
@@ -135,7 +129,7 @@ export default function OtherExpensesPage() {
         if (latestExpenseForCategory) {
           initialSpecialAmounts[specialCatKey] = latestExpenseForCategory.amount;
         } else {
-          initialSpecialAmounts[specialCatKey] = ''; // Default to empty if no record
+          initialSpecialAmounts[specialCatKey] = ''; 
         }
       });
       setSpecialExpenseAmounts(initialSpecialAmounts);
@@ -146,12 +140,12 @@ export default function OtherExpensesPage() {
     } else if (!authLoading && !user) {
         router.push('/login');
     }
-  }, [user, authLoading, router, t, activeExpenseTab]); // Added activeExpenseTab
+  }, [user, authLoading, router, t, activeExpenseTab]); 
 
   const saveExpenseCategories = (categoriesToSave: string[]) => {
     if (typeof window !== 'undefined' && user) {
       const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
-      localStorage.setItem(categoriesStorageKey, JSON.stringify(Array.from(new Set(categoriesToSave.map(c => c.toLowerCase()))))); // Save internal keys
+      localStorage.setItem(categoriesStorageKey, JSON.stringify(Array.from(new Set(categoriesToSave.map(c => c.toLowerCase()))))); 
     }
   };
 
@@ -169,17 +163,16 @@ export default function OtherExpensesPage() {
     }
   };
 
-  const handleAddCategory = (newCategoryName: string) => { // newCategoryName is the UI display name
+  const handleAddCategory = (newCategoryName: string) => { 
     const trimmedName = newCategoryName.trim();
     if (!trimmedName) {
       toast({ title: t('error_title'), description: t('accounts_toast_category_name_empty_desc'), variant: "destructive" });
       return;
     }
-    // For internal storage, use a lowercased, underscore-separated key from the trimmed name
     const internalKey = trimmedName.toLowerCase().replace(/\s+/g, '_');
 
     const categoryExists = expenseCategories.some(catKey => 
-        catKey === internalKey || // Check against internal keys
+        catKey === internalKey || 
         t(`accounts_other_expenses_tab_${catKey}` as any, { defaultValue: catKey }).toLowerCase() === trimmedName.toLowerCase()
     );
     if (categoryExists) {
@@ -209,7 +202,7 @@ export default function OtherExpensesPage() {
       toast({ title: t('accounts_toast_expense_invalid_amount_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive" });
       return;
     }
-    if (!expenseData.category) { // category here is the display name/translated name
+    if (!expenseData.category) { 
         toast({ title: t('error_title'), description: t('accounts_toast_expense_category_empty_desc'), variant: "destructive"});
         return;
     }
@@ -221,12 +214,9 @@ export default function OtherExpensesPage() {
     let updatedExpenses: OtherExpense[];
     let toastMessage = '';
     
-    // Determine the internal category key
-    // If _internalCategoryKey is provided (e.g., from special category handling), use it.
-    // Otherwise, find the internal key from expenseCategories that matches the translated expenseData.category
     const internalCatKey = expenseData._internalCategoryKey || 
                             expenseCategories.find(catKey => t(`accounts_other_expenses_tab_${catKey}` as any, {defaultValue: catKey}).toLowerCase() === expenseData.category.toLowerCase()) ||
-                            expenseData.category.toLowerCase().replace(/\s+/g, '_'); // Fallback: generate key from display name
+                            expenseData.category.toLowerCase().replace(/\s+/g, '_'); 
 
     const expenseToSave: Omit<OtherExpense, 'id'> & { id?: string } = {
       ...expenseData,
@@ -259,7 +249,7 @@ export default function OtherExpensesPage() {
       const newTemplate: ExpenseTemplate = {
         id: `tmpl-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         name: templateDetails.templateName || `${expenseData.description.substring(0, 20)} Template`,
-        category: internalCatKey, // Save internal key in template
+        category: internalCatKey, 
         description: expenseData.description,
         amount: expenseData.amount,
       };
@@ -294,11 +284,10 @@ export default function OtherExpensesPage() {
       amount: amount,
       date: new Date().toISOString(),
     };
-
-    // Simulate async operation if needed
+    
     await new Promise(resolve => setTimeout(resolve, 300)); 
     
-    handleAddOrUpdateExpense(expenseData); // This will handle saving and updating state
+    handleAddOrUpdateExpense(expenseData); 
 
     setIsSavingSpecialExpense(prev => ({ ...prev, [internalCatKey]: false }));
   };
@@ -313,7 +302,7 @@ export default function OtherExpensesPage() {
 
   const openEditDialog = (expense: OtherExpense) => {
     setEditingExpense(expense);
-    setPrefillDataForDialog({}); // Clear general prefill
+    setPrefillDataForDialog({}); 
     setShowAddExpenseDialog(true);
   };
 
@@ -351,7 +340,7 @@ export default function OtherExpensesPage() {
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.WATER)) return Droplet;
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.ARNONA)) return Building;
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.RENT)) return Home;
-    return Landmark; // Default icon
+    return Landmark; 
   };
 
 
@@ -373,7 +362,6 @@ export default function OtherExpensesPage() {
         </Link>
       </Button>
 
-      {/* Special Fixed Expenses - Arnona & Rent */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {[SPECIAL_CATEGORY_KEYS.ARNONA, SPECIAL_CATEGORY_KEYS.RENT].map((specialCatKey) => {
             const categoryLabel = t(`accounts_other_expenses_tab_${specialCatKey}` as any, { defaultValue: specialCatKey.charAt(0).toUpperCase() + specialCatKey.slice(1) });
@@ -392,9 +380,7 @@ export default function OtherExpensesPage() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <div>
-                            <Label htmlFor={`${specialCatKey}-amount`} className="text-sm font-medium">
-                                {t('accounts_add_expense_amount_label')}
-                            </Label>
+                            {/* Label removed as requested */}
                             <Input
                                 id={`${specialCatKey}-amount`}
                                 type="number"
@@ -430,7 +416,6 @@ export default function OtherExpensesPage() {
       </div>
 
 
-      {/* General Variable Expenses */}
       <Card className="shadow-md scale-fade-in delay-200">
           <CardHeader>
               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
@@ -446,7 +431,7 @@ export default function OtherExpensesPage() {
                         {tabCategories.map(categoryKey => (
                             <TabsTrigger
                                 key={categoryKey}
-                                value={categoryKey} // Use internal key for tab value
+                                value={categoryKey} 
                                 className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
                             >
                              {t(`accounts_other_expenses_tab_${categoryKey.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1)})}
@@ -522,10 +507,8 @@ export default function OtherExpensesPage() {
             setPrefillDataForDialog({});
           }
         }}
-        categories={expenseCategories} // Pass internal keys
+        categories={expenseCategories} 
         onAddExpense={handleAddOrUpdateExpense}
-        // preselectedCategory in AddExpenseDialog expects the internal key for logic, 
-        // but for display it will be translated inside the dialog if needed.
         preselectedCategory={prefillDataForDialog._internalCategoryKey || editingExpense?._internalCategoryKey || activeExpenseTab}
         existingTemplates={expenseTemplates}
         otherExpenses={otherExpenses}
