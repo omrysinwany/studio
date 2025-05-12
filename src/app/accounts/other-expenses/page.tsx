@@ -49,7 +49,7 @@ const getStorageKey = (baseKey: string, userId?: string): string => {
 };
 
 const SPECIAL_CATEGORY_KEYS = {
-  ARNONA: 'arnona',
+  PROPERTY_TAX: 'property_tax', // Changed from ARNONA
   RENT: 'rent',
   ELECTRICITY: 'electricity',
   WATER: 'water',
@@ -74,11 +74,11 @@ export default function OtherExpensesPage() {
   const [prefillDataForDialog, setPrefillDataForDialog] = useState<Partial<Omit<OtherExpense, 'id'> & { isSpecialFixedExpense?: boolean }>>({});
   
   const [specialExpenseAmounts, setSpecialExpenseAmounts] = useState<Record<string, string | number>>({
-    [SPECIAL_CATEGORY_KEYS.ARNONA]: '',
+    [SPECIAL_CATEGORY_KEYS.PROPERTY_TAX]: '',
     [SPECIAL_CATEGORY_KEYS.RENT]: '',
   });
   const [isSavingSpecialExpense, setIsSavingSpecialExpense] = useState<Record<string, boolean>>({
-    [SPECIAL_CATEGORY_KEYS.ARNONA]: false,
+    [SPECIAL_CATEGORY_KEYS.PROPERTY_TAX]: false,
     [SPECIAL_CATEGORY_KEYS.RENT]: false,
   });
 
@@ -101,19 +101,19 @@ export default function OtherExpensesPage() {
         finalCategories = Object.values(SPECIAL_CATEGORY_KEYS);
       }
 
-      if (!finalCategories.includes(SPECIAL_CATEGORY_KEYS.ARNONA)) finalCategories.push(SPECIAL_CATEGORY_KEYS.ARNONA);
+      if (!finalCategories.includes(SPECIAL_CATEGORY_KEYS.PROPERTY_TAX)) finalCategories.push(SPECIAL_CATEGORY_KEYS.PROPERTY_TAX);
       if (!finalCategories.includes(SPECIAL_CATEGORY_KEYS.RENT)) finalCategories.push(SPECIAL_CATEGORY_KEYS.RENT);
       
       setExpenseCategories(Array.from(new Set(finalCategories))); 
       
       const generalTabCategories = finalCategories.filter(catKey => 
-          catKey !== SPECIAL_CATEGORY_KEYS.ARNONA && catKey !== SPECIAL_CATEGORY_KEYS.RENT
+          catKey !== SPECIAL_CATEGORY_KEYS.PROPERTY_TAX && catKey !== SPECIAL_CATEGORY_KEYS.RENT
       );
 
       if (generalTabCategories.length > 0 && (!activeExpenseTab || !generalTabCategories.includes(activeExpenseTab))) {
         setActiveExpenseTab(generalTabCategories[0]);
       } else if (generalTabCategories.length === 0 && finalCategories.length > 0) {
-        setActiveExpenseTab(finalCategories.find(cat => cat !== SPECIAL_CATEGORY_KEYS.ARNONA && cat !== SPECIAL_CATEGORY_KEYS.RENT) || ''); 
+        setActiveExpenseTab(finalCategories.find(cat => cat !== SPECIAL_CATEGORY_KEYS.PROPERTY_TAX && cat !== SPECIAL_CATEGORY_KEYS.RENT) || ''); 
       }
 
 
@@ -122,7 +122,7 @@ export default function OtherExpensesPage() {
       setOtherExpenses(parsedExpenses);
 
       const initialSpecialAmounts: Record<string, string | number> = {};
-      [SPECIAL_CATEGORY_KEYS.ARNONA, SPECIAL_CATEGORY_KEYS.RENT].forEach(specialCatKey => {
+      [SPECIAL_CATEGORY_KEYS.PROPERTY_TAX, SPECIAL_CATEGORY_KEYS.RENT].forEach(specialCatKey => {
         const latestExpenseForCategory = parsedExpenses
           .filter(exp => exp._internalCategoryKey === specialCatKey)
           .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
@@ -285,9 +285,24 @@ export default function OtherExpensesPage() {
       date: new Date().toISOString(),
     };
     
-    await new Promise(resolve => setTimeout(resolve, 300)); 
+    // Find if an expense for this category and this specific month/year already exists
+    const existingExpenseForThisPeriod = otherExpenses.find(exp => 
+      exp._internalCategoryKey === internalCatKey &&
+      isValid(parseISO(exp.date)) &&
+      getYear(parseISO(exp.date)) === getYear(new Date()) &&
+      getMonth(parseISO(exp.date)) === getMonth(new Date())
+    );
+
+    if (existingExpenseForThisPeriod) {
+        // Update existing expense
+        handleAddOrUpdateExpense({ ...expenseData, id: existingExpenseForThisPeriod.id });
+    } else {
+        // Add new expense
+        handleAddOrUpdateExpense(expenseData);
+    }
     
-    handleAddOrUpdateExpense(expenseData); 
+    // Update displayed amount in the special card immediately
+    setSpecialExpenseAmounts(prev => ({ ...prev, [internalCatKey]: amount }));
 
     setIsSavingSpecialExpense(prev => ({ ...prev, [internalCatKey]: false }));
   };
@@ -327,18 +342,18 @@ export default function OtherExpensesPage() {
 
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null) return t('invoices_na');
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
   };
 
   const tabCategories = expenseCategories.filter(catKey => 
-      catKey !== SPECIAL_CATEGORY_KEYS.ARNONA && catKey !== SPECIAL_CATEGORY_KEYS.RENT
+      catKey !== SPECIAL_CATEGORY_KEYS.PROPERTY_TAX && catKey !== SPECIAL_CATEGORY_KEYS.RENT
   );
 
   const getCategoryIcon = (categoryKey: string): React.ElementType => {
     const lowerCategoryKey = categoryKey.toLowerCase();
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.ELECTRICITY)) return Zap;
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.WATER)) return Droplet;
-    if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.ARNONA)) return Building;
+    if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.PROPERTY_TAX)) return Building;
     if (lowerCategoryKey.includes(SPECIAL_CATEGORY_KEYS.RENT)) return Home;
     return Landmark; 
   };
@@ -363,7 +378,7 @@ export default function OtherExpensesPage() {
       </Button>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {[SPECIAL_CATEGORY_KEYS.ARNONA, SPECIAL_CATEGORY_KEYS.RENT].map((specialCatKey) => {
+        {[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX, SPECIAL_CATEGORY_KEYS.RENT].map((specialCatKey) => {
             const categoryLabel = t(`accounts_other_expenses_tab_${specialCatKey}` as any, { defaultValue: specialCatKey.charAt(0).toUpperCase() + specialCatKey.slice(1) });
             const CategoryIcon = getCategoryIcon(specialCatKey);
             const latestExpenseForCategory = otherExpenses
@@ -380,12 +395,20 @@ export default function OtherExpensesPage() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <div>
-                            {/* Label removed as requested */}
                             <Input
                                 id={`${specialCatKey}-amount`}
                                 type="number"
                                 value={specialExpenseAmounts[specialCatKey]}
-                                onChange={(e) => setSpecialExpenseAmounts(prev => ({ ...prev, [specialCatKey]: e.target.value }))}
+                                onChange={(e) => {
+                                    const newValue = e.target.value;
+                                    setSpecialExpenseAmounts(prev => ({ ...prev, [specialCatKey]: newValue }));
+                                    
+                                    // Automatically save if a valid number is entered
+                                    const numericValue = parseFloat(newValue);
+                                    if (!isNaN(numericValue) && numericValue > 0) {
+                                      handleRecordSpecialExpense(specialCatKey);
+                                    }
+                                }}
                                 placeholder={`${t('currency_symbol')}0`}
                                 className="mt-1 h-10"
                                 min="0.01"
@@ -395,21 +418,14 @@ export default function OtherExpensesPage() {
                         </div>
                         {latestExpenseForCategory && (
                              <p className="text-xs text-muted-foreground">
-                                {t('accounts_other_expenses_last_recorded_on')} {formatDateDisplay(latestExpenseForCategory.date)} - {formatCurrency(latestExpenseForCategory.amount)}
+                                {t('accounts_other_expenses_last_recorded_on')}{' '}
+                                <strong>{formatDateDisplay(latestExpenseForCategory.date)}</strong> -{' '}
+                                <strong>{formatCurrency(latestExpenseForCategory.amount)}</strong>
                              </p>
                         )}
                         {!latestExpenseForCategory && <p className="text-sm text-muted-foreground">{t('accounts_other_expenses_no_record_yet')}</p>}
                     </CardContent>
-                    <CardFooter>
-                        <Button 
-                            onClick={() => handleRecordSpecialExpense(specialCatKey)} 
-                            className="w-full bg-primary hover:bg-primary/90"
-                            disabled={isSavingSpecialExpense[specialCatKey] || !String(specialExpenseAmounts[specialCatKey]).trim() || parseFloat(String(specialExpenseAmounts[specialCatKey])) <=0}
-                        >
-                            {isSavingSpecialExpense[specialCatKey] ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
-                             {t('accounts_other_expenses_record_payment_for')} {categoryLabel.toLowerCase()}
-                        </Button>
-                    </CardFooter>
+                     {/* Removed CardFooter with the explicit "Record Payment for..." button */}
                 </Card>
             );
         })}
