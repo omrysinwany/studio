@@ -26,7 +26,7 @@ export default function Error({
         <AlertTriangle className="h-6 w-6 mx-auto mb-2" />
         <AlertTitle className="text-xl font-semibold">{t('error_title')}</AlertTitle>
         <AlertDescription className="mt-2 mb-4">
-          {error.message || t('barcode_scanner_alert_desc_unexpected_error')} {/* Re-use a generic error message */}
+          {error.message || t('barcode_scanner_alert_desc_unexpected_error')}
         </AlertDescription>
         <div className="flex gap-2 justify-center">
             <Button onClick={() => reset()}>
@@ -40,4 +40,3 @@ export default function Error({
     </div>
   );
 }
-
