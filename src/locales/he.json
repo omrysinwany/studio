@@ -752,6 +752,7 @@
   "accounts_other_expenses_tab_electricity": "חשמל",
   "accounts_other_expenses_tab_water": "מים",
   "accounts_other_expenses_tab_arnona": "ארנונה",
+  "accounts_other_expenses_tab_rent": "שכירות",
   "accounts_other_expenses_no_expenses_in_category": "לא נרשמו הוצאות בקטגוריה זו.",
   "accounts_other_expenses_electricity_example_desc": "חשבון חשמל חודשי - מאי",
   "accounts_other_expenses_water_example_desc": "חשבון מים - רבעון 2",
@@ -796,5 +797,6 @@
   "accounts_other_expenses_total_for_period": "סה\"כ לתקופה שנבחרה",
   "accounts_other_expenses_total_all_time": "סה\"כ כל ההוצאות שנרשמו"
 }
+
 
 

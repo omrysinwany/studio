@@ -69,10 +69,11 @@ export default function OtherExpensesPage() {
       const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
 
       const storedCategories = localStorage.getItem(categoriesStorageKey);
-      const defaultCategories = ['electricity', 'water', 'arnona'];
+      const defaultCategories = ['electricity', 'water', 'arnona', 'rent']; // Added 'rent'
       let finalCategories = [...defaultCategories];
       if (storedCategories) {
         const parsedCategories = JSON.parse(storedCategories);
+        // Ensure default categories are always present and maintain user-added ones
         finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
       }
       setExpenseCategories(finalCategories);
@@ -179,7 +180,8 @@ export default function OtherExpensesPage() {
   const formatDateDisplay = (dateString: string | Date | undefined, formatStr: string = 'PP') => {
     if (!dateString) return t('invoices_na');
     try {
-      return format(parseISO(dateString as string), formatStr);
+      const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
+      return format(dateObj, formatStr);
     } catch (e) {
       console.error("Error formatting date for display:", e, "Input:", dateString);
       return t('invoices_invalid_date');

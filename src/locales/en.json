@@ -752,6 +752,7 @@
   "accounts_other_expenses_tab_electricity": "Electricity",
   "accounts_other_expenses_tab_water": "Water",
   "accounts_other_expenses_tab_arnona": "Municipal Taxes",
+  "accounts_other_expenses_tab_rent": "Rent",
   "accounts_other_expenses_no_expenses_in_category": "No expenses recorded in this category for the selected period.",
   "accounts_other_expenses_electricity_example_desc": "Monthly electricity bill - May",
   "accounts_other_expenses_water_example_desc": "Water bill - Q2",
@@ -796,5 +797,6 @@
   "accounts_other_expenses_total_for_period": "Total for selected period",
   "accounts_other_expenses_total_all_time": "Total of all recorded expenses"
 }
+
 
 
