@@ -214,7 +214,7 @@ export default function OtherExpensesPage() {
       <Card className="shadow-md scale-fade-in delay-100">
           <CardHeader>
               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <Landmark className="mr-2 h-5 sm:h-6 w-5 sm:h-6" /> {t('accounts_other_expenses_title')}
+                <Landmark className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('accounts_other_expenses_title')}
               </CardTitle>
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
@@ -287,6 +287,8 @@ export default function OtherExpensesPage() {
         categories={expenseCategories}
         onAddExpense={handleAddExpense}
         preselectedCategory={activeExpenseTab}
+        existingTemplates={expenseTemplates} // Pass templates
+        otherExpenses={otherExpenses} // Pass other expenses for pre-filling
       />
     </div>
   );

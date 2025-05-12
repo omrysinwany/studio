@@ -20,7 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { PlusCircle, X, CalendarIcon } from 'lucide-react';
 import { format, isValid, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import type { OtherExpense } from '@/app/accounts/other-expenses/page'; // Updated path
+import type { OtherExpense, ExpenseTemplate } from '@/app/accounts/other-expenses/page';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -30,6 +30,8 @@ interface AddExpenseDialogProps {
   categories: string[];
   onAddExpense: (expenseData: Omit<OtherExpense, 'id'>, templateDetails?: { saveAsTemplate: boolean; templateName?: string }) => void;
   preselectedCategory?: string;
+  existingTemplates: ExpenseTemplate[]; // Added to potentially pre-fill from templates
+  otherExpenses: OtherExpense[]; // Added to pre-fill from last expense
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
@@ -38,6 +40,8 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   categories,
   onAddExpense,
   preselectedCategory,
+  existingTemplates,
+  otherExpenses,
 }) => {
   const { t } = useTranslation();
   const [description, setDescription] = useState('');
@@ -51,16 +55,51 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     setDescription('');
     setAmount('');
     setDate(new Date());
-    setSelectedCategory(preselectedCategory && categories.includes(preselectedCategory) ? preselectedCategory : (categories.length > 0 ? categories[0] : ''));
+    const initialCategory = preselectedCategory && categories.includes(preselectedCategory) 
+                            ? preselectedCategory 
+                            : (categories.length > 0 ? categories[0] : '');
+    setSelectedCategory(initialCategory);
     setSaveAsTemplate(false);
     setTemplateName('');
   };
 
   useEffect(() => {
     if (isOpen) {
-      resetForm(); // Reset form when dialog becomes visible or preselectedCategory changes
+      resetForm();
     }
-  }, [isOpen, categories, preselectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, preselectedCategory, categories]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  useEffect(() => {
+    if (isOpen && selectedCategory) {
+      const lowerSelectedCategory = selectedCategory.toLowerCase();
+      const fixedRecurringCategories = ['arnona', 'rent', t('accounts_other_expenses_tab_arnona').toLowerCase(), t('accounts_other_expenses_tab_rent').toLowerCase()];
+
+      if (fixedRecurringCategories.includes(lowerSelectedCategory)) {
+        // Try to find the most recent expense in this category
+        const recentExpensesInCat = otherExpenses
+          .filter(exp => exp.category.toLowerCase() === lowerSelectedCategory)
+          .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+
+        if (recentExpensesInCat.length > 0) {
+          const lastExpense = recentExpensesInCat[0];
+          setDescription(lastExpense.description);
+          setAmount(lastExpense.amount);
+        } else {
+          // If no recent expense, try to find a template for this category
+          const templateForCategory = existingTemplates.find(
+            (template) => template.category.toLowerCase() === lowerSelectedCategory
+          );
+          if (templateForCategory) {
+            setDescription(templateForCategory.description);
+            setAmount(templateForCategory.amount);
+          }
+        }
+        setSaveAsTemplate(false); // Default to false for these, user can override
+      }
+    }
+  }, [isOpen, selectedCategory, otherExpenses, existingTemplates, t]);
+
 
   const handleSubmit = () => {
     const expenseData = {
@@ -72,7 +111,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     const templateDetails = saveAsTemplate ? { saveAsTemplate: true, templateName: templateName.trim() || undefined } : undefined;
     
     onAddExpense(expenseData, templateDetails);
-    onOpenChange(false); // Close dialog on successful add
+    onOpenChange(false); 
   };
 
   const handleClose = () => {
