@@ -4,6 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
@@ -12,13 +13,14 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; // Import Link
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
 
 
 export interface OtherExpense {
@@ -38,6 +40,7 @@ export interface ExpenseTemplate {
 }
 
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
+const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
 
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
@@ -61,16 +64,25 @@ export default function AccountsPage() {
     to: endOfMonth(new Date()),
   });
 
-  // OtherExpenses state remains here for summary calculation
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [tempBudget, setTempBudget] = useState<string>('');
 
-  // Load other expenses from localStorage for summary
+
   useEffect(() => {
     if (typeof window !== 'undefined' && user) {
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
       const storedExpenses = localStorage.getItem(expensesStorageKey);
       if (storedExpenses) {
         setOtherExpenses(JSON.parse(storedExpenses));
+      }
+
+      const budgetStorageKey = getStorageKey(MONTHLY_BUDGET_STORAGE_KEY_BASE, user.id);
+      const storedBudget = localStorage.getItem(budgetStorageKey);
+      if (storedBudget) {
+        setMonthlyBudget(parseFloat(storedBudget));
+        setTempBudget(storedBudget);
       }
     }
   }, [user]);
@@ -146,7 +158,7 @@ export default function AccountsPage() {
         if (!invoice.uploadTime) return;
         try {
             const invoiceDate = parseISO(invoice.uploadTime as string);
-            if (isSameMonth(invoiceDate, currentMonth) && invoice.status === 'completed') { // Consider only completed invoices
+            if (isSameMonth(invoiceDate, currentMonth) && invoice.status === 'completed') {
                 totalExpenses += (invoice.totalAmount || 0);
             }
         } catch (e) {
@@ -156,41 +168,32 @@ export default function AccountsPage() {
     return totalExpenses;
   }, [allInvoices]);
 
-  const totalOtherExpensesInRange = useMemo(() => {
-    let relevantExpenses = otherExpenses;
-    if (dateRange?.from) {
-        const startDate = new Date(dateRange.from);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
-        endDate.setHours(23, 59, 59, 999);
-
-        relevantExpenses = otherExpenses.filter(expense => {
-            if (!expense.date || !isValid(parseISO(expense.date))) return false;
-            try {
-                const expenseDate = parseISO(expense.date);
-                return expenseDate >= startDate && expenseDate <= endDate;
-            } catch (e) {
-                console.error("Invalid date for other expense:", expense.date, e);
-                return false;
+  const totalOtherExpensesForCurrentMonth = useMemo(() => {
+    const currentMonthDate = new Date();
+    return otherExpenses.reduce((sum, exp) => {
+        if (!exp.date || !isValid(parseISO(exp.date))) return sum;
+        try {
+            const expenseDate = parseISO(exp.date);
+            if (isSameMonth(expenseDate, currentMonthDate)) {
+                let amountToAdd = exp.amount;
+                const biMonthlyCategories = ['electricity', 'water', 'property_tax']; // Use internal keys
+                if (biMonthlyCategories.includes(exp.category?.toLowerCase() || exp._internalCategoryKey?.toLowerCase() || '')) {
+                    amountToAdd /= 2;
+                }
+                return sum + amountToAdd;
             }
-        });
-    }
-    const biMonthlyCategories = ['electricity', 'water', 'arnona'];
-    return relevantExpenses.reduce((sum, exp) => {
-        let amountToAdd = exp.amount;
-        // If no date range is selected (all time), or if the expense date is within the current month, apply bi-monthly logic
-        if (!dateRange?.from || (dateRange.from && isSameMonth(parseISO(exp.date), new Date()))) {
-             if (biMonthlyCategories.includes(exp.category.toLowerCase())) {
-                amountToAdd /= 2;
-            }
+            return sum;
+        } catch (e) {
+            console.error("Invalid date for other expense in current month calculation:", exp.date, e);
+            return sum;
         }
-        return sum + amountToAdd;
     }, 0);
-  }, [otherExpenses, dateRange]);
+}, [otherExpenses]);
+
 
   const currentMonthTotalExpenses = useMemo(() => {
-    return currentMonthTotalExpensesFromInvoices + totalOtherExpensesInRange; // Assuming totalOtherExpensesInRange is for current month if no range selected
-  }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesInRange]);
+    return currentMonthTotalExpensesFromInvoices + totalOtherExpensesForCurrentMonth;
+  }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesForCurrentMonth]);
 
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
@@ -207,7 +210,7 @@ export default function AccountsPage() {
 
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (daysUntilDue <= 0) { // Changed from daysUntilDue <= 0 to include due today
+        if (daysUntilDue <= 0) {
             return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
         }
         if (daysUntilDue <= 7) {
@@ -234,6 +237,22 @@ export default function AccountsPage() {
     if (value === undefined || value === null) return t('invoices_na');
     return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
+
+  const handleSaveBudget = () => {
+    if (!user) return;
+    const newBudget = parseFloat(tempBudget);
+    if (isNaN(newBudget) || newBudget < 0) {
+      toast({ title: t('error_title'), description: t('accounts_budget_invalid_amount'), variant: 'destructive' });
+      return;
+    }
+    setMonthlyBudget(newBudget);
+    localStorage.setItem(getStorageKey(MONTHLY_BUDGET_STORAGE_KEY_BASE, user.id), String(newBudget));
+    setIsEditingBudget(false);
+    toast({ title: t('accounts_budget_saved_title'), description: t('accounts_budget_saved_desc') });
+  };
+
+  const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
+
 
   if (authLoading || (!user && !authLoading)) {
     return (
@@ -302,22 +321,58 @@ export default function AccountsPage() {
       </Card>
 
       <Card className="shadow-md scale-fade-in delay-200">
-          <CardHeader>
-              <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                  <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
-              </CardTitle>
-              <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-              {isLoadingData ? (
-                  <div className="flex justify-center items-center py-6">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-              ) : (
-                  <p className="text-3xl font-bold">{formatCurrency(currentMonthTotalExpenses)}</p>
-              )}
-          </CardContent>
+        <CardHeader>
+            <div className="flex justify-between items-center">
+                <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
+                </CardTitle>
+                <Button variant="ghost" size="icon" onClick={() => setIsEditingBudget(!isEditingBudget)} className="h-8 w-8">
+                    {isEditingBudget ? <Save className="h-4 w-4 text-primary" /> : <Edit2 className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+            </div>
+            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+            {isLoadingData ? (
+                <div className="flex justify-center items-center py-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    <p className="text-3xl font-bold">{formatCurrency(currentMonthTotalExpenses)}</p>
+                    {isEditingBudget ? (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="number"
+                                value={tempBudget}
+                                onChange={(e) => setTempBudget(e.target.value)}
+                                placeholder={t('accounts_budget_placeholder')}
+                                className="h-9 max-w-xs"
+                            />
+                            <Button size="sm" onClick={handleSaveBudget}><Save className="mr-1 h-4 w-4" /> {t('save_button')}</Button>
+                        </div>
+                    ) : (
+                        monthlyBudget !== null && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Target className="h-4 w-4 text-primary"/>
+                                <span>{t('accounts_budget_of')} {formatCurrency(monthlyBudget)}</span>
+                            </div>
+                        )
+                    )}
+                    {monthlyBudget !== null && monthlyBudget > 0 && (
+                      <div className="mt-2">
+                        <Progress value={budgetProgress} className="h-2" indicatorClassName={budgetProgress > 100 ? "bg-destructive" : (budgetProgress > 75 ? "bg-yellow-500" : "bg-primary")} />
+                        <p className="text-xs text-muted-foreground mt-1">
+                           {budgetProgress > 100 ? t('accounts_budget_exceeded_by', {amount: formatCurrency(currentMonthTotalExpenses - monthlyBudget)}) : 
+                           t('accounts_budget_remaining', {amount: formatCurrency(monthlyBudget - currentMonthTotalExpenses)})}
+                        </p>
+                      </div>
+                    )}
+                </div>
+            )}
+        </CardContent>
       </Card>
+
 
       <Card className="shadow-md scale-fade-in delay-100">
         <CardHeader>
@@ -360,7 +415,7 @@ export default function AccountsPage() {
                           {dueDateStatus && (
                             <Badge variant={dueDateStatus.variant} className="text-xs">
                               {IconComponent && <IconComponent className="mr-1 h-3.5 w-3.5" />}
-                              {t(dueDateStatus.textKey, dueDateStatus.params)}
+                              {t(dueDateStatus.textKey as any, dueDateStatus.params)}
                             </Badge>
                           )}
                         </TableCell>
@@ -374,7 +429,6 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      {/* Other Business Expenses Summary Card */}
       <Link href="/accounts/other-expenses" passHref>
         <Card className="shadow-md scale-fade-in delay-400 cursor-pointer hover:shadow-lg transition-shadow">
             <CardHeader>
@@ -392,13 +446,10 @@ export default function AccountsPage() {
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 ) : (
-                    <p className="text-2xl font-bold">{formatCurrency(totalOtherExpensesInRange)}</p>
+                    <p className="text-2xl font-bold">{formatCurrency(totalOtherExpensesForCurrentMonth)}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">
-                    {dateRange?.from && dateRange?.to ? 
-                        t('accounts_other_expenses_total_for_period') : 
-                        t('accounts_other_expenses_total_all_time')
-                    }
+                    {t('accounts_other_expenses_total_for_current_month')}
                 </p>
             </CardContent>
         </Card>

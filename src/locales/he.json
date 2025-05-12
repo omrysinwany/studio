@@ -819,10 +819,19 @@
   "accounts_other_expenses_summary_desc": "לחץ לצפייה וניהול הוצאות עסקיות נוספות כמו חשמל, מים וכו'.",
   "accounts_other_expenses_total_for_period": "סה\"כ לתקופה שנבחרה",
   "accounts_other_expenses_total_all_time": "סה\"כ כל ההוצאות שנרשמו",
+  "accounts_other_expenses_total_for_current_month": "סה\"כ לחודש הנוכחי",
   "accounts_other_expenses_recurring_desc": "עקוב אחר תשלומים קבועים עבור {{category}}.",
   "accounts_other_expenses_last_recorded_on": "נרשם לאחרונה ב-",
   "accounts_other_expenses_no_record_yet": "עדיין לא נרשמו תשלומים עבור קטגוריה זו.",
   "accounts_other_expenses_record_payment_for": "רשום תשלום עבור",
   "accounts_other_expenses_variable_title": "הוצאות כלליות",
-  "accounts_other_expenses_variable_desc": "עקוב אחר הוצאות עסקיות שונות או משתנות אחרות."
+  "accounts_other_expenses_variable_desc": "עקוב אחר הוצאות עסקיות שונות או משתנות אחרות.",
+  "save_button": "שמור",
+  "accounts_budget_placeholder": "הזן תקציב חודשי",
+  "accounts_budget_of": "מתוך",
+  "accounts_budget_saved_title": "תקציב נשמר",
+  "accounts_budget_saved_desc": "התקציב החודשי עודכן.",
+  "accounts_budget_invalid_amount": "אנא הזן סכום תקציב חיובי ותקין.",
+  "accounts_budget_exceeded_by": "חרגת ב-{{amount}}",
+  "accounts_budget_remaining": "{{amount}} נשארו"
 }
