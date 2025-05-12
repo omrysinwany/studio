@@ -771,6 +771,8 @@
   "accounts_toast_category_exists_desc": "Category \"{{categoryName}}\" already exists.",
   "accounts_toast_category_name_empty_desc": "Category name cannot be empty.",
   "accounts_add_expense_dialog_title": "Add New Expense",
+  "accounts_edit_expense_dialog_title": "Edit Expense",
+  "accounts_edit_expense_dialog_desc": "Update the details for the selected expense.",
   "accounts_add_expense_dialog_desc": "Enter the details for the new expense.",
   "accounts_add_expense_desc_label": "Description",
   "accounts_add_expense_desc_placeholder": "e.g., Office rent for June",
@@ -781,6 +783,9 @@
   "accounts_add_expense_category_placeholder": "Select a category",
   "accounts_add_expense_button_add": "Add Expense",
   "accounts_toast_expense_added_title": "Expense Added",
+  "accounts_toast_expense_updated_title": "Expense Updated",
+  "accounts_toast_expense_deleted_title": "Expense Deleted",
+  "accounts_toast_expense_deleted_desc": "The expense has been deleted.",
   "accounts_toast_expense_added_desc": "Expense \"{{description}}\" has been added.",
   "accounts_toast_expense_invalid_amount_title": "Invalid Amount",
   "accounts_toast_expense_invalid_amount_desc": "Please enter a valid, positive amount for the expense.",
@@ -797,6 +802,4 @@
   "accounts_other_expenses_total_for_period": "Total for selected period",
   "accounts_other_expenses_total_all_time": "Total of all recorded expenses"
 }
-
-
 

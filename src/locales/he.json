@@ -771,6 +771,8 @@
   "accounts_toast_category_exists_desc": "הקטגוריה \"{{categoryName}}\" כבר קיימת.",
   "accounts_toast_category_name_empty_desc": "שם הקטגוריה אינו יכול להיות ריק.",
   "accounts_add_expense_dialog_title": "הוסף הוצאה חדשה",
+  "accounts_edit_expense_dialog_title": "ערוך הוצאה",
+  "accounts_edit_expense_dialog_desc": "עדכן את הפרטים עבור ההוצאה שנבחרה.",
   "accounts_add_expense_dialog_desc": "הזן את הפרטים עבור ההוצאה החדשה.",
   "accounts_add_expense_desc_label": "תיאור",
   "accounts_add_expense_desc_placeholder": "לדוגמה, שכירות משרד לחודש יוני",
@@ -781,6 +783,9 @@
   "accounts_add_expense_category_placeholder": "בחר קטגוריה",
   "accounts_add_expense_button_add": "הוסף הוצאה",
   "accounts_toast_expense_added_title": "הוצאה נוספה",
+  "accounts_toast_expense_updated_title": "הוצאה עודכנה",
+  "accounts_toast_expense_deleted_title": "הוצאה נמחקה",
+  "accounts_toast_expense_deleted_desc": "ההוצאה נמחקה.",
   "accounts_toast_expense_added_desc": "ההוצאה \"{{description}}\" נוספה.",
   "accounts_toast_expense_invalid_amount_title": "סכום לא חוקי",
   "accounts_toast_expense_invalid_amount_desc": "אנא הזן סכום חיובי ותקין עבור ההוצאה.",
@@ -797,6 +802,4 @@
   "accounts_other_expenses_total_for_period": "סה\"כ לתקופה שנבחרה",
   "accounts_other_expenses_total_all_time": "סה\"כ כל ההוצאות שנרשמו"
 }
-
-
 
