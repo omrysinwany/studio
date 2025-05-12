@@ -2,14 +2,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, getYear, getMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, PlusCircle, Landmark, ArrowLeft, Edit2, Trash2 } from 'lucide-react'; // Added Edit2, Trash2
+import { Loader2, PlusCircle, Landmark, ArrowLeft, Edit2, Trash2, Home, Building, Droplet, Zap } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,6 +45,9 @@ const getStorageKey = (baseKey: string, userId?: string): string => {
   return `${baseKey}_${userId}`;
 };
 
+const SPECIAL_CATEGORIES_LOWERCASE = ['arnona', 'rent'];
+
+
 export default function OtherExpensesPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -59,7 +62,9 @@ export default function OtherExpensesPage() {
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [editingExpense, setEditingExpense] = useState<OtherExpense | null>(null); // For editing
+  const [editingExpense, setEditingExpense] = useState<OtherExpense | null>(null);
+  const [prefillDataForDialog, setPrefillDataForDialog] = useState<Partial<Omit<OtherExpense, 'id'>>>({});
+
 
   useEffect(() => {
     if (typeof window !== 'undefined' && user) {
@@ -73,12 +78,20 @@ export default function OtherExpensesPage() {
       let finalCategories = [...defaultCategories];
       if (storedCategories) {
         const parsedCategories = JSON.parse(storedCategories);
-        finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
+        // Ensure default special categories are always present and others are merged without duplicates
+        const uniqueParsed = parsedCategories.filter((cat: string) => !defaultCategories.some(dc => dc.toLowerCase() === cat.toLowerCase()));
+        finalCategories = [...defaultCategories, ...uniqueParsed];
       }
       setExpenseCategories(finalCategories);
-      if (finalCategories.length > 0 && (!activeExpenseTab || !finalCategories.includes(activeExpenseTab))) {
-        setActiveExpenseTab(finalCategories[0]);
+      
+      const generalTabCategories = finalCategories.filter(cat => !SPECIAL_CATEGORIES_LOWERCASE.includes(cat.toLowerCase()) && !SPECIAL_CATEGORIES_LOWERCASE.includes(t(`accounts_other_expenses_tab_${cat.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: cat}).toLowerCase() ));
+      if (generalTabCategories.length > 0 && (!activeExpenseTab || !generalTabCategories.includes(activeExpenseTab))) {
+        setActiveExpenseTab(generalTabCategories[0]);
+      } else if (generalTabCategories.length === 0 && finalCategories.length > 0) {
+        // If only special categories exist, pick one for active tab to avoid errors, though tabs won't show
+        setActiveExpenseTab(finalCategories[0]); 
       }
+
 
       const storedExpenses = localStorage.getItem(expensesStorageKey);
       setOtherExpenses(storedExpenses ? JSON.parse(storedExpenses) : []);
@@ -89,7 +102,7 @@ export default function OtherExpensesPage() {
     } else if (!authLoading && !user) {
         router.push('/login');
     }
-  }, [user, authLoading, router, activeExpenseTab]);
+  }, [user, authLoading, router, t]); // Added t to dependencies
 
   const saveExpenseCategories = (categories: string[]) => {
     if (typeof window !== 'undefined' && user) {
@@ -118,20 +131,26 @@ export default function OtherExpensesPage() {
       toast({ title: t('error_title'), description: t('accounts_toast_category_name_empty_desc'), variant: "destructive" });
       return;
     }
-    if (expenseCategories.some(cat => cat.toLowerCase() === trimmedName.toLowerCase())) {
+     const categoryExists = expenseCategories.some(cat => 
+        cat.toLowerCase() === trimmedName.toLowerCase() ||
+        t(`accounts_other_expenses_tab_${cat.toLowerCase().replace(/\s+/g, '_')}` as any, { defaultValue: cat }).toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (categoryExists) {
       toast({ title: t('accounts_toast_category_exists_title'), description: t('accounts_toast_category_exists_desc', { categoryName: trimmedName }), variant: "destructive" });
       return;
     }
     const updatedCategories = [...expenseCategories, trimmedName];
     setExpenseCategories(updatedCategories);
     saveExpenseCategories(updatedCategories);
-    setActiveExpenseTab(trimmedName); 
+    if (!SPECIAL_CATEGORIES_LOWERCASE.includes(trimmedName.toLowerCase())) {
+        setActiveExpenseTab(trimmedName); 
+    }
     toast({ title: t('accounts_toast_category_added_title'), description: t('accounts_toast_category_added_desc', { categoryName: trimmedName }) });
     setShowAddCategoryDialog(false);
   };
 
   const handleAddOrUpdateExpense = (
-    expenseData: Omit<OtherExpense, 'id'> & { id?: string }, // id is optional for new, required for update
+    expenseData: Omit<OtherExpense, 'id'> & { id?: string },
     templateDetails?: { saveAsTemplate: boolean; templateName?: string }
   ) => {
     if (!expenseData.description.trim()) {
@@ -154,12 +173,12 @@ export default function OtherExpensesPage() {
     let updatedExpenses: OtherExpense[];
     let toastMessage = '';
 
-    if (expenseData.id) { // Editing existing expense
+    if (expenseData.id) { 
       updatedExpenses = otherExpenses.map(exp => 
         exp.id === expenseData.id ? { ...exp, ...expenseData } as OtherExpense : exp
       );
-      toastMessage = t('accounts_toast_expense_updated_title'); // You'll need to add this translation
-    } else { // Adding new expense
+      toastMessage = t('accounts_toast_expense_updated_title');
+    } else { 
       const newExpense: OtherExpense = {
         id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         ...expenseData,
@@ -170,9 +189,10 @@ export default function OtherExpensesPage() {
     
     setOtherExpenses(updatedExpenses);
     saveOtherExpenses(updatedExpenses);
-    toast({ title: toastMessage, description: t('accounts_toast_expense_added_desc', { description: expenseData.description }) }); // Can refine desc for update
+    toast({ title: toastMessage, description: t('accounts_toast_expense_added_desc', { description: expenseData.description }) }); 
     setShowAddExpenseDialog(false);
-    setEditingExpense(null); // Clear editing state
+    setEditingExpense(null); 
+    setPrefillDataForDialog({});
 
     if (templateDetails?.saveAsTemplate) {
       const newTemplate: ExpenseTemplate = {
@@ -193,11 +213,30 @@ export default function OtherExpensesPage() {
     const updatedExpenses = otherExpenses.filter(exp => exp.id !== expenseId);
     setOtherExpenses(updatedExpenses);
     saveOtherExpenses(updatedExpenses);
-    toast({ title: t('accounts_toast_expense_deleted_title'), description: t('accounts_toast_expense_deleted_desc') }); // Add translations
+    toast({ title: t('accounts_toast_expense_deleted_title'), description: t('accounts_toast_expense_deleted_desc') });
   };
 
   const openEditDialog = (expense: OtherExpense) => {
     setEditingExpense(expense);
+    setPrefillDataForDialog({}); // Clear general prefill
+    setShowAddExpenseDialog(true);
+  };
+
+  const openAddDialogForSpecialCategory = (category: string) => {
+    const latestExpense = otherExpenses
+        .filter(exp => exp.category.toLowerCase() === category.toLowerCase())
+        .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+    
+    const currentMonthYear = format(new Date(), 'MMMM yyyy');
+    const defaultDescription = `${t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: category})} - ${currentMonthYear}`;
+
+    setPrefillDataForDialog({
+        category: category,
+        description: latestExpense?.description.startsWith(t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: category})) ? defaultDescription : (latestExpense?.description || defaultDescription),
+        amount: latestExpense?.amount,
+        date: new Date().toISOString(),
+    });
+    setEditingExpense(null);
     setShowAddExpenseDialog(true);
   };
 
@@ -218,6 +257,21 @@ export default function OtherExpensesPage() {
     return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
+  const tabCategories = expenseCategories.filter(cat => 
+      !SPECIAL_CATEGORIES_LOWERCASE.includes(cat.toLowerCase()) &&
+      !SPECIAL_CATEGORIES_LOWERCASE.includes(t(`accounts_other_expenses_tab_${cat.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: cat}).toLowerCase())
+  );
+
+  const getCategoryIcon = (categoryKey: string): React.ElementType => {
+    const lowerCategoryKey = categoryKey.toLowerCase();
+    if (lowerCategoryKey.includes('electricity') || lowerCategoryKey.includes(t('accounts_other_expenses_tab_electricity').toLowerCase())) return Zap;
+    if (lowerCategoryKey.includes('water') || lowerCategoryKey.includes(t('accounts_other_expenses_tab_water').toLowerCase())) return Droplet;
+    if (lowerCategoryKey.includes('arnona') || lowerCategoryKey.includes(t('accounts_other_expenses_tab_arnona').toLowerCase())) return Building;
+    if (lowerCategoryKey.includes('rent') || lowerCategoryKey.includes(t('accounts_other_expenses_tab_rent').toLowerCase())) return Home;
+    return Landmark; // Default icon
+  };
+
+
   if (authLoading || isLoadingData || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
@@ -236,25 +290,59 @@ export default function OtherExpensesPage() {
         </Link>
       </Button>
 
-      <Card className="shadow-md scale-fade-in delay-100">
+      {/* Special Fixed Expenses - Arnona & Rent */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {SPECIAL_CATEGORIES_LOWERCASE.map((specialCatKey) => {
+            const categoryLabel = t(`accounts_other_expenses_tab_${specialCatKey}` as any, { defaultValue: specialCatKey.charAt(0).toUpperCase() + specialCatKey.slice(1) });
+            const CategoryIcon = getCategoryIcon(specialCatKey);
+            const latestExpenseForCategory = otherExpenses
+                .filter(exp => exp.category.toLowerCase() === specialCatKey.toLowerCase() || t(`accounts_other_expenses_tab_${exp.category.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: exp.category}).toLowerCase() === specialCatKey.toLowerCase())
+                .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+
+            return (
+                <Card key={specialCatKey} className="shadow-md scale-fade-in delay-100">
+                    <CardHeader>
+                        <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                            <CategoryIcon className="mr-2 h-5 w-5" /> {categoryLabel}
+                        </CardTitle>
+                        <CardDescription>{t('accounts_other_expenses_recurring_desc', { category: categoryLabel.toLowerCase() })}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-2xl font-bold">{formatCurrency(latestExpenseForCategory?.amount)}</p>
+                        {latestExpenseForCategory && <p className="text-xs text-muted-foreground">{t('accounts_other_expenses_last_recorded_on')} {formatDateDisplay(latestExpenseForCategory.date)}</p>}
+                        {!latestExpenseForCategory && <p className="text-sm text-muted-foreground">{t('accounts_other_expenses_no_record_yet')}</p>}
+                    </CardContent>
+                    <CardFooter>
+                        <Button onClick={() => openAddDialogForSpecialCategory(categoryLabel)} className="w-full bg-primary hover:bg-primary/90">
+                            <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_other_expenses_record_payment_for')} {categoryLabel.toLowerCase()}
+                        </Button>
+                    </CardFooter>
+                </Card>
+            );
+        })}
+      </div>
+
+
+      {/* General Variable Expenses */}
+      <Card className="shadow-md scale-fade-in delay-200">
           <CardHeader>
               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <Landmark className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('accounts_other_expenses_title')}
+                <Landmark className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('accounts_other_expenses_variable_title')}
               </CardTitle>
-              <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
+              <CardDescription>{t('accounts_other_expenses_variable_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs value={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
               <div className="flex items-center gap-2 border-b pb-2">
                 <ScrollArea className="w-full whitespace-nowrap">
                     <TabsList className="inline-flex h-10 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
-                        {expenseCategories.map(category => (
+                        {tabCategories.map(category => (
                             <TabsTrigger
                                 key={category}
                                 value={category}
                                 className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
                             >
-                            {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
+                             {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: category.charAt(0).toUpperCase() + category.slice(1)})}
                             </TabsTrigger>
                         ))}
                     </TabsList>
@@ -265,7 +353,7 @@ export default function OtherExpensesPage() {
                   <span className="sr-only">{t('accounts_add_category_button')}</span>
                 </Button>
               </div>
-              {expenseCategories.map(category => (
+              {tabCategories.map(category => (
                 <TabsContent key={category} value={category} className="mt-4 min-h-[200px] tabs-content-fade-in">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
@@ -294,10 +382,10 @@ export default function OtherExpensesPage() {
                         ))
                     ) : (
                       <div className="sm:col-span-2 lg:col-span-3 text-center py-8 text-muted-foreground">
-                        <Landmark className="mx-auto h-12 w-12 mb-2 opacity-50"/>
+                        {React.createElement(getCategoryIcon(category), { className: "mx-auto h-12 w-12 mb-2 opacity-50" })}
                         <p className="text-sm ">{t('accounts_other_expenses_no_expenses_in_category')}</p>
-                        <Button variant="link" size="sm" onClick={() => { setActiveExpenseTab(category); setEditingExpense(null); setShowAddExpenseDialog(true); }} className="mt-1 text-primary">
-                            {t('accounts_add_expense_button')} {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.toLowerCase()}
+                        <Button variant="link" size="sm" onClick={() => { setPrefillDataForDialog({category: category}); setEditingExpense(null); setShowAddExpenseDialog(true); }} className="mt-1 text-primary">
+                           {t('accounts_add_expense_button')} {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: category.toLowerCase()})}
                         </Button>
                       </div>
                     )}
@@ -306,8 +394,8 @@ export default function OtherExpensesPage() {
               ))}
             </Tabs>
             <div className="flex flex-col sm:flex-row justify-end pt-4 mt-4 border-t">
-              <Button onClick={() => { setEditingExpense(null); setShowAddExpenseDialog(true); }} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
-                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
+              <Button onClick={() => { setPrefillDataForDialog({category: activeExpenseTab}); setEditingExpense(null); setShowAddExpenseDialog(true); }} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
+                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button_general')}
               </Button>
             </div>
           </CardContent>
@@ -322,14 +410,18 @@ export default function OtherExpensesPage() {
         isOpen={showAddExpenseDialog}
         onOpenChange={(isOpen) => {
           setShowAddExpenseDialog(isOpen);
-          if (!isOpen) setEditingExpense(null); // Clear editing state when dialog closes
+          if (!isOpen) {
+            setEditingExpense(null);
+            setPrefillDataForDialog({});
+          }
         }}
-        categories={expenseCategories}
+        categories={expenseCategories} // Pass all categories so user can change if needed
         onAddExpense={handleAddOrUpdateExpense}
-        preselectedCategory={activeExpenseTab}
+        preselectedCategory={prefillDataForDialog.category || editingExpense?.category || activeExpenseTab}
         existingTemplates={expenseTemplates}
         otherExpenses={otherExpenses}
-        editingExpense={editingExpense} // Pass expense to edit
+        editingExpense={editingExpense}
+        prefillData={prefillDataForDialog}
       />
     </div>
   );

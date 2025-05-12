@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { PlusCircle, X, CalendarIcon, Save } from 'lucide-react'; // Added Save icon
+import { PlusCircle, X, CalendarIcon, Save } from 'lucide-react';
 import { format, isValid, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { OtherExpense, ExpenseTemplate } from '@/app/accounts/other-expenses/page';
@@ -32,7 +32,8 @@ interface AddExpenseDialogProps {
   preselectedCategory?: string;
   existingTemplates: ExpenseTemplate[];
   otherExpenses: OtherExpense[];
-  editingExpense?: OtherExpense | null; // Make it optional for new expenses
+  editingExpense?: OtherExpense | null;
+  prefillData?: Partial<Omit<OtherExpense, 'id'>>; // For pre-filling specific fields
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
@@ -44,6 +45,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   existingTemplates,
   otherExpenses,
   editingExpense,
+  prefillData,
 }) => {
   const { t } = useTranslation();
   const [description, setDescription] = useState('');
@@ -53,11 +55,13 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
-  const resetForm = (expenseToEdit?: OtherExpense | null) => {
-    setDescription(expenseToEdit?.description || '');
-    setAmount(expenseToEdit?.amount ?? '');
-    setDate(expenseToEdit?.date ? parseISO(expenseToEdit.date) : new Date());
-    const initialCategory = expenseToEdit?.category || 
+  const resetForm = (expenseToEdit?: OtherExpense | null, prefill?: Partial<Omit<OtherExpense, 'id'>>) => {
+    setDescription(prefill?.description || expenseToEdit?.description || '');
+    setAmount(prefill?.amount ?? expenseToEdit?.amount ?? '');
+    setDate(prefill?.date ? parseISO(prefill.date) : (expenseToEdit?.date ? parseISO(expenseToEdit.date) : new Date()));
+    
+    const initialCategory = prefill?.category || 
+                            expenseToEdit?.category || 
                             (preselectedCategory && categories.includes(preselectedCategory) 
                               ? preselectedCategory 
                               : (categories.length > 0 ? categories[0] : ''));
@@ -68,38 +72,41 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      resetForm(editingExpense);
+      resetForm(editingExpense, prefillData);
     }
-  }, [isOpen, editingExpense, preselectedCategory, categories]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, editingExpense, prefillData, preselectedCategory, categories]);
 
 
   useEffect(() => {
-    if (isOpen && selectedCategory && !editingExpense) { // Only prefill for new expenses based on category logic
+    // This useEffect is for general category pre-filling based on templates/history.
+    // It should only run if NOT editing AND no specific prefillData.description/amount is provided.
+    if (isOpen && selectedCategory && !editingExpense && !prefillData?.description && !prefillData?.amount) {
       const lowerSelectedCategory = selectedCategory.toLowerCase();
       const fixedRecurringCategories = ['arnona', 'rent', t('accounts_other_expenses_tab_arnona').toLowerCase(), t('accounts_other_expenses_tab_rent').toLowerCase()];
 
-      if (fixedRecurringCategories.includes(lowerSelectedCategory)) {
-        const recentExpensesInCat = otherExpenses
-          .filter(exp => exp.category.toLowerCase() === lowerSelectedCategory)
-          .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+      // Only apply this logic if it's NOT one of the special categories that have their own prefill logic
+      if (!fixedRecurringCategories.includes(lowerSelectedCategory) && !SPECIAL_CATEGORIES_LOWERCASE.includes(lowerSelectedCategory)) {
+          const recentExpensesInCat = otherExpenses
+            .filter(exp => exp.category.toLowerCase() === lowerSelectedCategory)
+            .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
 
-        if (recentExpensesInCat.length > 0) {
-          const lastExpense = recentExpensesInCat[0];
-          setDescription(lastExpense.description);
-          setAmount(lastExpense.amount);
-        } else {
-          const templateForCategory = existingTemplates.find(
-            (template) => template.category.toLowerCase() === lowerSelectedCategory
-          );
-          if (templateForCategory) {
-            setDescription(templateForCategory.description);
-            setAmount(templateForCategory.amount);
+          if (recentExpensesInCat.length > 0) {
+            const lastExpense = recentExpensesInCat[0];
+            setDescription(lastExpense.description);
+            setAmount(lastExpense.amount);
+          } else {
+            const templateForCategory = existingTemplates.find(
+              (template) => template.category.toLowerCase() === lowerSelectedCategory
+            );
+            if (templateForCategory) {
+              setDescription(templateForCategory.description);
+              setAmount(templateForCategory.amount);
+            }
           }
-        }
-        setSaveAsTemplate(false);
+          setSaveAsTemplate(false); // Reset template saving for general categories
       }
     }
-  }, [isOpen, selectedCategory, otherExpenses, existingTemplates, t, editingExpense]);
+  }, [isOpen, selectedCategory, otherExpenses, existingTemplates, t, editingExpense, prefillData]);
 
 
   const handleSubmit = () => {
@@ -110,7 +117,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       category: selectedCategory,
     };
     if (editingExpense) {
-      expenseData.id = editingExpense.id; // Include ID if editing
+      expenseData.id = editingExpense.id;
     }
     const templateDetails = saveAsTemplate ? { saveAsTemplate: true, templateName: templateName.trim() || undefined } : undefined;
     
@@ -121,6 +128,8 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const handleClose = () => {
     onOpenChange(false);
   };
+
+  const SPECIAL_CATEGORIES_LOWERCASE = ['arnona', 'rent']; // Defined here too for local logic if needed
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -194,21 +203,28 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
             <Label htmlFor="expenseCategory" className="text-sm font-medium">
               {t('accounts_add_expense_category_label')}
             </Label>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <Select 
+                value={selectedCategory} 
+                onValueChange={setSelectedCategory}
+                // Disable if prefillData has a category (implies opened from special card)
+                // OR if editing an expense (category shouldn't change during edit for simplicity here)
+                disabled={!!prefillData?.category || !!editingExpense} 
+            >
               <SelectTrigger className="w-full mt-1 h-10">
                 <SelectValue placeholder={t('accounts_add_expense_category_placeholder')} />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((cat) => (
                   <SelectItem key={cat} value={cat}>
-                    {t(`accounts_other_expenses_tab_${cat.toLowerCase().replace(/\s+/g, '_')}` as any) || cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    {t(`accounts_other_expenses_tab_${cat.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: cat.charAt(0).toUpperCase() + cat.slice(1)})}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {!editingExpense && ( // Only show template options for new expenses
+          {/* Hide "Save as Template" if editing OR if it's a special category opened for "Record Payment" */}
+          {!editingExpense && !SPECIAL_CATEGORIES_LOWERCASE.includes(selectedCategory.toLowerCase()) && (
             <>
               <div className="flex items-center space-x-2 pt-2">
                 <Checkbox

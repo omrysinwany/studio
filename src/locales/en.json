@@ -1,4 +1,3 @@
-
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -748,6 +747,7 @@
   "accounts_other_expenses_title": "Other Business Expenses",
   "accounts_other_expenses_desc": "Track and manage recurring expenses like electricity, water, and municipal taxes.",
   "accounts_add_expense_button": "Add Expense",
+  "accounts_add_expense_button_general": "Add General Expense",
   "accounts_add_category_button": "Add Category",
   "accounts_other_expenses_tab_electricity": "Electricity",
   "accounts_other_expenses_tab_water": "Water",
@@ -800,6 +800,11 @@
   "back_to_accounts_button": "Back to Accounts",
   "accounts_other_expenses_summary_desc": "Click to view and manage your other business expenses like electricity, water, etc.",
   "accounts_other_expenses_total_for_period": "Total for selected period",
-  "accounts_other_expenses_total_all_time": "Total of all recorded expenses"
+  "accounts_other_expenses_total_all_time": "Total of all recorded expenses",
+  "accounts_other_expenses_recurring_desc": "Track fixed payments for {{category}}.",
+  "accounts_other_expenses_last_recorded_on": "Last recorded on",
+  "accounts_other_expenses_no_record_yet": "No payments recorded yet for this category.",
+  "accounts_other_expenses_record_payment_for": "Record Payment for",
+  "accounts_other_expenses_variable_title": "General Expenses",
+  "accounts_other_expenses_variable_desc": "Track other miscellaneous or variable business expenses."
 }
-

@@ -1,4 +1,3 @@
-
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -739,8 +738,8 @@
   "accounts_supplier_spending_desc_period": "סכום כולל שהוצא לכל ספק בתקופה שנבחרה.",
   "accounts_no_spending_data_period": "לא נמצאו נתוני הוצאות לפי ספק בתקופה שנבחרה.",
   "accounts_total_amount_spent_short": "סה\"כ הוצאה",
-  "accounts_current_month_expenses_title": "הוצאות החודש",
-  "accounts_current_month_expenses_desc": "סכום החשבוניות הכולל לחודש הנוכחי.",
+  "accounts_current_month_expenses_title": "הוצאות חודש נוכחי",
+  "accounts_current_month_expenses_desc": "סך כל סכומי החשבוניות לחודש הנוכחי והוצאות קבועות.",
   "accounts_cash_flow_profitability_title": "רווחיות ותחזית עתידית",
   "accounts_cash_flow_profitability_desc": "תובנות לגבי הבריאות הפיננסית והפוטנציאל של העסק שלך.",
   "accounts_cash_flow_analysis_title": "ניתוח תזרים מזומנים",
@@ -748,6 +747,7 @@
   "accounts_other_expenses_title": "הוצאות עסקיות נוספות",
   "accounts_other_expenses_desc": "עקוב ונהל הוצאות חוזרות כמו חשמל, מים וארנונה.",
   "accounts_add_expense_button": "הוסף הוצאה",
+  "accounts_add_expense_button_general": "הוסף הוצאה כללית",
   "accounts_add_category_button": "הוסף קטגוריה",
   "accounts_other_expenses_tab_electricity": "חשמל",
   "accounts_other_expenses_tab_water": "מים",
@@ -800,6 +800,11 @@
   "back_to_accounts_button": "חזרה לחשבונות",
   "accounts_other_expenses_summary_desc": "לחץ לצפייה וניהול הוצאות עסקיות נוספות כמו חשמל, מים וכו'.",
   "accounts_other_expenses_total_for_period": "סה\"כ לתקופה שנבחרה",
-  "accounts_other_expenses_total_all_time": "סה\"כ כל ההוצאות שנרשמו"
+  "accounts_other_expenses_total_all_time": "סה\"כ כל ההוצאות שנרשמו",
+  "accounts_other_expenses_recurring_desc": "עקוב אחר תשלומים קבועים עבור {{category}}.",
+  "accounts_other_expenses_last_recorded_on": "נרשם לאחרונה ב-",
+  "accounts_other_expenses_no_record_yet": "עדיין לא נרשמו תשלומים עבור קטגוריה זו.",
+  "accounts_other_expenses_record_payment_for": "רשום תשלום עבור",
+  "accounts_other_expenses_variable_title": "הוצאות כלליות",
+  "accounts_other_expenses_variable_desc": "עקוב אחר הוצאות עסקיות שונות או משתנות אחרות."
 }
-
