@@ -20,15 +20,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { PlusCircle, X, CalendarIcon } from 'lucide-react';
 import { format, isValid, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
-import type { OtherExpense } from '@/app/accounts/page';
+import type { OtherExpense } from '@/app/accounts/other-expenses/page'; // Updated path
 import { useTranslation } from '@/hooks/useTranslation';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface AddExpenseDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   categories: string[];
   onAddExpense: (expenseData: Omit<OtherExpense, 'id'>, templateDetails?: { saveAsTemplate: boolean; templateName?: string }) => void;
+  preselectedCategory?: string;
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
@@ -36,6 +37,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   onOpenChange,
   categories,
   onAddExpense,
+  preselectedCategory,
 }) => {
   const { t } = useTranslation();
   const [description, setDescription] = useState('');
@@ -45,20 +47,20 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
+  const resetForm = () => {
+    setDescription('');
+    setAmount('');
+    setDate(new Date());
+    setSelectedCategory(preselectedCategory && categories.includes(preselectedCategory) ? preselectedCategory : (categories.length > 0 ? categories[0] : ''));
+    setSaveAsTemplate(false);
+    setTemplateName('');
+  };
+
   useEffect(() => {
-    if (isOpen && categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0]);
+    if (isOpen) {
+      resetForm(); // Reset form when dialog becomes visible or preselectedCategory changes
     }
-    if (!isOpen) {
-        // Reset form when dialog closes
-        setDescription('');
-        setAmount('');
-        setDate(new Date());
-        setSelectedCategory(categories.length > 0 ? categories[0] : '');
-        setSaveAsTemplate(false);
-        setTemplateName('');
-    }
-  }, [isOpen, categories, selectedCategory]);
+  }, [isOpen, categories, preselectedCategory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = () => {
     const expenseData = {
@@ -70,41 +72,41 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     const templateDetails = saveAsTemplate ? { saveAsTemplate: true, templateName: templateName.trim() || undefined } : undefined;
     
     onAddExpense(expenseData, templateDetails);
-    
-    // Reset form handled by useEffect on !isOpen
+    onOpenChange(false); // Close dialog on successful add
   };
 
   const handleClose = () => {
-    onOpenChange(false); // useEffect will handle reset
+    onOpenChange(false);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <PlusCircle className="mr-2 h-5 w-5 text-primary" />
+      <DialogContent className="sm:max-w-lg rounded-lg shadow-xl">
+        <DialogHeader className="p-6">
+          <DialogTitle className="flex items-center text-lg font-semibold text-primary">
+            <PlusCircle className="mr-2 h-5 w-5" />
             {t('accounts_add_expense_dialog_title')}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm text-muted-foreground">
             {t('accounts_add_expense_dialog_desc')}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="expenseDescription" className="text-right col-span-1">
+        <div className="px-6 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div>
+            <Label htmlFor="expenseDescription" className="text-sm font-medium">
               {t('accounts_add_expense_desc_label')}
             </Label>
             <Textarea
               id="expenseDescription"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="col-span-3"
+              className="mt-1"
               placeholder={t('accounts_add_expense_desc_placeholder')}
+              rows={3}
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="expenseAmount" className="text-right col-span-1">
+          <div>
+            <Label htmlFor="expenseAmount" className="text-sm font-medium">
               {t('accounts_add_expense_amount_label')}
             </Label>
             <Input
@@ -112,14 +114,14 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
-              className="col-span-3"
+              className="mt-1 h-10"
               placeholder={t('accounts_add_expense_amount_placeholder')}
               min="0.01"
               step="0.01"
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="expenseDate" className="text-right col-span-1">
+          <div>
+            <Label htmlFor="expenseDate" className="text-sm font-medium">
               {t('accounts_add_expense_date_label')}
             </Label>
             <Popover>
@@ -127,7 +129,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
                 <Button
                   variant={"outline"}
                   className={cn(
-                    "col-span-3 justify-start text-left font-normal",
+                    "w-full justify-start text-left font-normal mt-1 h-10",
                     !date && "text-muted-foreground"
                   )}
                 >
@@ -145,12 +147,12 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
               </PopoverContent>
             </Popover>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="expenseCategory" className="text-right col-span-1">
+          <div>
+            <Label htmlFor="expenseCategory" className="text-sm font-medium">
               {t('accounts_add_expense_category_label')}
             </Label>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="col-span-3">
+              <SelectTrigger className="w-full mt-1 h-10">
                 <SelectValue placeholder={t('accounts_add_expense_category_placeholder')} />
               </SelectTrigger>
               <SelectContent>
@@ -163,42 +165,41 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
             </Select>
           </div>
 
-          {/* Template Options */}
-          <div className="grid grid-cols-4 items-center gap-4 pt-2">
-            <div className="col-span-1"></div> {/* Empty cell for alignment */}
-            <div className="col-span-3 flex items-center space-x-2">
-              <Checkbox
-                id="saveAsTemplate"
-                checked={saveAsTemplate}
-                onCheckedChange={(checked) => setSaveAsTemplate(Boolean(checked))}
-              />
-              <Label htmlFor="saveAsTemplate" className="text-sm font-normal cursor-pointer">
-                {t('accounts_add_expense_save_as_template_label')}
-              </Label>
-            </div>
+          <div className="flex items-center space-x-2 pt-2">
+            <Checkbox
+              id="saveAsTemplate"
+              checked={saveAsTemplate}
+              onCheckedChange={(checked) => setSaveAsTemplate(Boolean(checked))}
+            />
+            <Label htmlFor="saveAsTemplate" className="text-sm font-normal cursor-pointer">
+              {t('accounts_add_expense_save_as_template_label')}
+            </Label>
           </div>
 
           {saveAsTemplate && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="templateName" className="text-right col-span-1">
+            <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+              <Label htmlFor="templateName" className="text-sm font-medium">
                 {t('accounts_add_expense_template_name_label')}
               </Label>
               <Input
                 id="templateName"
                 value={templateName}
                 onChange={(e) => setTemplateName(e.target.value)}
-                className="col-span-3"
+                className="mt-1 h-10"
                 placeholder={t('accounts_add_expense_template_name_placeholder')}
               />
             </div>
           )}
-
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="p-6 border-t flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={handleClose} className="w-full sm:w-auto">
              <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
           </Button>
-          <Button onClick={handleSubmit} disabled={!description.trim() || Number(amount) <= 0 || !selectedCategory || !date}>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={!description.trim() || Number(amount) <= 0 || !selectedCategory || !date}
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90"
+          >
             <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button_add')}
           </Button>
         </DialogFooter>

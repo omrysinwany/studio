@@ -33,46 +33,47 @@ const AddCategoryDialog: React.FC<AddCategoryDialogProps> = ({
   const handleSubmit = () => {
     if (categoryName.trim()) {
       onAddCategory(categoryName.trim());
-      setCategoryName(''); // Reset after adding
+      setCategoryName(''); 
+      onOpenChange(false); // Close dialog on successful add
     }
   };
 
   const handleClose = () => {
-    setCategoryName('');
+    setCategoryName(''); // Reset input on close
     onOpenChange(false);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center">
-            <PlusCircle className="mr-2 h-5 w-5 text-primary" />
+      <DialogContent className="sm:max-w-md rounded-lg shadow-xl">
+        <DialogHeader className="p-6">
+          <DialogTitle className="flex items-center text-lg font-semibold text-primary">
+            <PlusCircle className="mr-2 h-5 w-5" />
             {t('accounts_add_category_dialog_title')}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm text-muted-foreground">
             {t('accounts_add_category_dialog_desc')}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="categoryName" className="text-right col-span-1">
+        <div className="px-6 py-4">
+          <div className="grid grid-cols-1 gap-3">
+            <Label htmlFor="categoryName" className="text-sm font-medium">
               {t('accounts_add_category_name_label')}
             </Label>
             <Input
               id="categoryName"
               value={categoryName}
               onChange={(e) => setCategoryName(e.target.value)}
-              className="col-span-3"
               placeholder={t('accounts_add_category_name_placeholder')}
+              className="h-10"
             />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="p-6 border-t flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={handleClose} className="w-full sm:w-auto">
             <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
           </Button>
-          <Button onClick={handleSubmit} disabled={!categoryName.trim()}>
+          <Button onClick={handleSubmit} disabled={!categoryName.trim()} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
             <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_category_button_add')}
           </Button>
         </DialogFooter>

@@ -15,7 +15,24 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AddCategoryDialog from '@/components/accounts/AddCategoryDialog';
 import AddExpenseDialog from '@/components/accounts/AddExpenseDialog';
-import type { OtherExpense, ExpenseTemplate } from '@/app/accounts/page'; // Re-using interfaces
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'; // For horizontal scroll
+
+// Re-declaring interfaces for this page, or consider moving to a shared types file
+export interface OtherExpense {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string; // ISO date string
+}
+
+export interface ExpenseTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  amount: number;
+}
 
 const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
@@ -44,7 +61,6 @@ export default function OtherExpensesPage() {
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // Load categories, expenses, and templates from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && user) {
       setIsLoadingData(true);
@@ -53,35 +69,27 @@ export default function OtherExpensesPage() {
       const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
 
       const storedCategories = localStorage.getItem(categoriesStorageKey);
-      const defaultCategories = ['electricity', 'water', 'arnona']; // These will be translated
+      const defaultCategories = ['electricity', 'water', 'arnona'];
       let finalCategories = [...defaultCategories];
       if (storedCategories) {
         const parsedCategories = JSON.parse(storedCategories);
         finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
       }
       setExpenseCategories(finalCategories);
-      if (finalCategories.length > 0 && !activeExpenseTab) {
+      if (finalCategories.length > 0 && (!activeExpenseTab || !finalCategories.includes(activeExpenseTab))) {
         setActiveExpenseTab(finalCategories[0]);
       }
 
       const storedExpenses = localStorage.getItem(expensesStorageKey);
-      if (storedExpenses) {
-        setOtherExpenses(JSON.parse(storedExpenses));
-      } else {
-        setOtherExpenses([]);
-      }
+      setOtherExpenses(storedExpenses ? JSON.parse(storedExpenses) : []);
       
       const storedTemplates = localStorage.getItem(templatesStorageKey);
-      if (storedTemplates) {
-        setExpenseTemplates(JSON.parse(storedTemplates));
-      } else {
-        setExpenseTemplates([]);
-      }
+      setExpenseTemplates(storedTemplates ? JSON.parse(storedTemplates) : []);
       setIsLoadingData(false);
     } else if (!authLoading && !user) {
         router.push('/login');
     }
-  }, [user, authLoading, router, activeExpenseTab]); // Added activeExpenseTab to re-check if needed
+  }, [user, authLoading, router, activeExpenseTab]);
 
   const saveExpenseCategories = (categories: string[]) => {
     if (typeof window !== 'undefined' && user) {
@@ -194,63 +202,72 @@ export default function OtherExpensesPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-       <Button variant="outline" size="sm" asChild className="mb-4">
+       <Button variant="outline" size="sm" asChild className="mb-4 scale-fade-in">
         <Link href="/accounts">
           <ArrowLeft className="mr-2 h-4 w-4" />
           {t('back_to_accounts_button')}
         </Link>
       </Button>
 
-      <Card className="shadow-md scale-fade-in">
+      <Card className="shadow-md scale-fade-in delay-100">
           <CardHeader>
-              <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <Landmark className="mr-2 h-5 w-5" /> {t('accounts_other_expenses_title')}
+              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <Landmark className="mr-2 h-5 sm:h-6 w-5 sm:h-6" /> {t('accounts_other_expenses_title')}
               </CardTitle>
               <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Tabs value={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
-              <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                  <TabsList className="inline-flex h-10 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground whitespace-nowrap">
-                    {expenseCategories.map(category => (
-                        <TabsTrigger
-                            key={category}
-                            value={category}
-                            className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
-                        >
-                          {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
-                        </TabsTrigger>
-                    ))}
-                  </TabsList>
-                <Button variant="outline" size="icon" onClick={() => setShowAddCategoryDialog(true)} className="ml-auto flex-shrink-0">
-                  <PlusCircle className="h-4 w-4" />
+              <div className="flex items-center gap-2 border-b pb-2">
+                <ScrollArea className="w-full whitespace-nowrap">
+                    <TabsList className="inline-flex h-10 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
+                        {expenseCategories.map(category => (
+                            <TabsTrigger
+                                key={category}
+                                value={category}
+                                className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none"
+                            >
+                            {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+                    <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+                <Button variant="ghost" size="icon" onClick={() => setShowAddCategoryDialog(true)} className="ml-auto flex-shrink-0 text-primary hover:bg-primary/10">
+                  <PlusCircle className="h-5 w-5" />
                   <span className="sr-only">{t('accounts_add_category_button')}</span>
                 </Button>
               </div>
               {expenseCategories.map(category => (
-                <TabsContent key={category} value={category} className="mt-4">
-                  <div className="space-y-2">
+                <TabsContent key={category} value={category} className="mt-4 min-h-[200px] tabs-content-fade-in">
+                  <div className="space-y-3">
                     {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
                       otherExpenses.filter(exp => exp.category === category)
                         .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
                         .map(expense => (
-                          <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-background shadow-sm hover:shadow-md transition-shadow">
+                          <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
                             <div>
-                              <p className="text-sm font-medium">{expense.description}</p>
+                              <p className="text-sm font-medium text-foreground">{expense.description}</p>
                               <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
                             </div>
-                            <p className="text-sm font-semibold">{formatCurrency(expense.amount)}</p>
+                            <p className="text-base font-semibold text-primary">{formatCurrency(expense.amount)}</p>
                           </div>
                         ))
                     ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">{t('accounts_other_expenses_no_expenses_in_category')}</p>
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Landmark className="mx-auto h-12 w-12 mb-2 opacity-50"/>
+                        <p className="text-sm ">{t('accounts_other_expenses_no_expenses_in_category')}</p>
+                        <Button variant="link" size="sm" onClick={() => { setActiveExpenseTab(category); setShowAddExpenseDialog(true); }} className="mt-1 text-primary">
+                            {t('accounts_add_expense_button')} {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.toLowerCase()}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </TabsContent>
               ))}
             </Tabs>
-            <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
-              <Button variant="outline" onClick={() => setShowAddExpenseDialog(true)} className="w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row justify-end pt-4 mt-4 border-t">
+              <Button onClick={() => setShowAddExpenseDialog(true)} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
                   <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
               </Button>
             </div>
@@ -267,9 +284,8 @@ export default function OtherExpensesPage() {
         onOpenChange={setShowAddExpenseDialog}
         categories={expenseCategories}
         onAddExpense={handleAddExpense}
-        // Pass templates if needed for pre-filling in future
+        preselectedCategory={activeExpenseTab}
       />
     </div>
   );
 }
-

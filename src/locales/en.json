@@ -343,7 +343,7 @@
   "upload_toast_history_load_fail_desc": "Could not load recent uploads.",
   "upload_toast_invalid_file_type_title": "Invalid File Type",
   "upload_toast_invalid_file_type_desc": "Please select a JPEG, PNG, or PDF file.",
-  "upload_toast_storage_full_pending_title": "Storage Full for Invoice History",
+  "upload_toast_storage_full_pending_title": "Storage Full for Document History",
   "upload_toast_storage_full_pending_desc": "Could not save pending document record. LocalStorage quota exceeded. File: {{fileName}}",
   "upload_toast_scan_error_title": "Scan Error",
   "upload_toast_scan_error_desc": "Could not extract products: {{error}}",
@@ -741,11 +741,8 @@
   "accounts_total_amount_spent_short": "Total Spent",
   "accounts_current_month_expenses_title": "This Month's Expenses",
   "accounts_current_month_expenses_desc": "Total invoiced amount for the current month.",
-  "accounts_potential_profit_title": "Potential Gross Profit",
-  "accounts_potential_profit_desc": "Estimated gross profit from current stock.",
   "accounts_cash_flow_profitability_title": "Profitability & Future Outlook",
   "accounts_cash_flow_profitability_desc": "Insights into your business's financial health and potential.",
-  "accounts_potential_gross_profit_stock_title": "Potential Gross Profit from Stock",
   "accounts_cash_flow_analysis_title": "Cash Flow Analysis",
   "accounts_predictive_balance_title": "Predictive Balance Tool",
   "accounts_other_expenses_title": "Other Business Expenses",
@@ -799,4 +796,5 @@
   "accounts_other_expenses_total_for_period": "Total for selected period",
   "accounts_other_expenses_total_all_time": "Total of all recorded expenses"
 }
+
 
