@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input'; 
-import { format, parseISO, isValid, getYear, getMonth } from 'date-fns';
+import { format, parseISO, isValid, getYear, getMonth, isSameMonth, isSameYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -49,7 +49,7 @@ const getStorageKey = (baseKey: string, userId?: string): string => {
 };
 
 const SPECIAL_CATEGORY_KEYS = {
-  PROPERTY_TAX: 'property_tax', // Changed from ARNONA
+  PROPERTY_TAX: 'property_tax',
   RENT: 'rent',
   ELECTRICITY: 'electricity',
   WATER: 'water',
@@ -261,7 +261,7 @@ export default function OtherExpensesPage() {
   };
 
 
-  const handleRecordSpecialExpense = async (internalCatKey: string) => {
+ const handleRecordSpecialExpense = async (internalCatKey: string) => {
     if (!user) return;
     const amountStr = String(specialExpenseAmounts[internalCatKey]);
     const amount = parseFloat(amountStr);
@@ -277,33 +277,26 @@ export default function OtherExpensesPage() {
     const currentMonthYear = format(new Date(), 'MMMM yyyy');
     const description = `${categoryLabel} - ${currentMonthYear}`;
 
-    const expenseData: Omit<OtherExpense, 'id'> = {
-      _internalCategoryKey: internalCatKey,
-      category: categoryLabel,
-      description: description,
-      amount: amount,
-      date: new Date().toISOString(),
-    };
-    
     // Find if an expense for this category and this specific month/year already exists
     const existingExpenseForThisPeriod = otherExpenses.find(exp => 
       exp._internalCategoryKey === internalCatKey &&
       isValid(parseISO(exp.date)) &&
-      getYear(parseISO(exp.date)) === getYear(new Date()) &&
-      getMonth(parseISO(exp.date)) === getMonth(new Date())
+      isSameMonth(parseISO(exp.date), new Date()) &&
+      isSameYear(parseISO(exp.date), new Date())
     );
 
-    if (existingExpenseForThisPeriod) {
-        // Update existing expense
-        handleAddOrUpdateExpense({ ...expenseData, id: existingExpenseForThisPeriod.id });
-    } else {
-        // Add new expense
-        handleAddOrUpdateExpense(expenseData);
-    }
+    const expenseData: Omit<OtherExpense, 'id'> & { id?: string } = {
+      _internalCategoryKey: internalCatKey,
+      category: categoryLabel,
+      description: description,
+      amount: amount,
+      date: existingExpenseForThisPeriod ? existingExpenseForThisPeriod.date : new Date().toISOString(), // Keep original date if updating
+      id: existingExpenseForThisPeriod ? existingExpenseForThisPeriod.id : undefined,
+    };
     
-    // Update displayed amount in the special card immediately
+    handleAddOrUpdateExpense(expenseData); // This will either add or update
+    
     setSpecialExpenseAmounts(prev => ({ ...prev, [internalCatKey]: amount }));
-
     setIsSavingSpecialExpense(prev => ({ ...prev, [internalCatKey]: false }));
   };
 
@@ -320,6 +313,19 @@ export default function OtherExpensesPage() {
     setPrefillDataForDialog({}); 
     setShowAddExpenseDialog(true);
   };
+
+  const openEditSpecialExpenseDialog = (internalCatKey: string) => {
+    const latestExpenseForCategory = otherExpenses
+      .filter(exp => exp._internalCategoryKey === internalCatKey)
+      .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+
+    if (latestExpenseForCategory) {
+        openEditDialog(latestExpenseForCategory);
+    } else {
+        toast({ title: t('error_title'), description: t('accounts_other_expenses_no_record_yet'), variant: "default"});
+    }
+  };
+
 
   const openAddDialogForVariableCategory = (internalCatKey: string) => {
     const categoryLabel = t(`accounts_other_expenses_tab_${internalCatKey}` as any, { defaultValue: internalCatKey.charAt(0).toUpperCase() + internalCatKey.slice(1) });
@@ -386,15 +392,16 @@ export default function OtherExpensesPage() {
                 .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
 
             return (
-                <Card key={specialCatKey} className="shadow-md scale-fade-in delay-100">
-                    <CardHeader>
+                <Card key={specialCatKey} className="shadow-md scale-fade-in delay-100 flex flex-col">
+                    <CardHeader className="pb-3">
                         <CardTitle className="text-xl font-semibold text-primary flex items-center">
                             <CategoryIcon className="mr-2 h-5 w-5" /> {categoryLabel}
                         </CardTitle>
                         <CardDescription>{t('accounts_other_expenses_recurring_desc', { category: categoryLabel.toLowerCase() })}</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-3 flex-grow">
                         <div>
+                            <Label htmlFor={`${specialCatKey}-amount`} className="text-sm text-muted-foreground">{t('accounts_add_expense_amount_label')}</Label>
                             <Input
                                 id={`${specialCatKey}-amount`}
                                 type="number"
@@ -402,9 +409,9 @@ export default function OtherExpensesPage() {
                                 onChange={(e) => {
                                     const newValue = e.target.value;
                                     setSpecialExpenseAmounts(prev => ({ ...prev, [specialCatKey]: newValue }));
-                                    
-                                    // Automatically save if a valid number is entered
-                                    const numericValue = parseFloat(newValue);
+                                }}
+                                onBlur={() => { // Auto-save on blur if value is valid
+                                     const numericValue = parseFloat(String(specialExpenseAmounts[specialCatKey]));
                                     if (!isNaN(numericValue) && numericValue > 0) {
                                       handleRecordSpecialExpense(specialCatKey);
                                     }
@@ -425,7 +432,23 @@ export default function OtherExpensesPage() {
                         )}
                         {!latestExpenseForCategory && <p className="text-sm text-muted-foreground">{t('accounts_other_expenses_no_record_yet')}</p>}
                     </CardContent>
-                     {/* Removed CardFooter with the explicit "Record Payment for..." button */}
+                    <CardFooter className="border-t pt-3 pb-3 flex justify-end gap-2">
+                        {latestExpenseForCategory && (
+                            <Button variant="ghost" size="icon" onClick={() => openEditSpecialExpenseDialog(specialCatKey)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                <Edit2 className="h-4 w-4" />
+                                <span className="sr-only">{t('edit_button')}</span>
+                            </Button>
+                        )}
+                        <Button 
+                          onClick={() => handleRecordSpecialExpense(specialCatKey)} 
+                          disabled={isSavingSpecialExpense[specialCatKey] || !specialExpenseAmounts[specialCatKey] || parseFloat(String(specialExpenseAmounts[specialCatKey])) <= 0}
+                          size="sm"
+                          className="bg-primary hover:bg-primary/90"
+                        >
+                           {isSavingSpecialExpense[specialCatKey] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                           {t('save_button')} {/* Or "Record" / "Update" depending on context */}
+                        </Button>
+                    </CardFooter>
                 </Card>
             );
         })}
@@ -534,4 +557,3 @@ export default function OtherExpensesPage() {
     </div>
   );
 }
-
