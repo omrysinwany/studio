@@ -13,7 +13,6 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         throw new Error('Missing Caspit credentials (user, pwd, osekMorshe) in configuration.');
     }
 
-    // Use demo credentials as per user's information
     const demoUser = 'demo';
     const demoPwd = 'demodemo';
     const demoOsekMorshe = '123456789';
@@ -27,7 +26,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         response = await fetch(url, { 
             method: 'GET',
             headers: {
-                'Accept': 'application/json, text/plain, */*' // Prefer JSON or plain text
+                'Accept': 'application/json, text/plain' 
             }
         }); 
         responseText = await response.text(); 
@@ -37,21 +36,19 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
         if (!response.ok) {
              if (responseText.includes("Invalid") || responseText.toLowerCase().includes("token error") || responseText.toLowerCase().includes("too many requests")) {
-                throw new Error(`Caspit API Error (${response.status}): ${responseText}`);
+                throw new Error(`Caspit API Error (${response.status}): ${responseText}`); // Keep responseText for specific known Caspit errors
              }
-            throw new Error(`Caspit API Error (${response.status}): ${responseText || response.statusText}`);
+            // Generic error for other !response.ok cases, avoiding raw responseText in message
+            throw new Error(`Caspit API request failed with status ${response.status}.`);
         }
 
         let accessToken: string | null = null;
         
-        // Try to parse as JSON first, as Caspit's OpenAPI docs show JSON for OpenAPIToken endpoint
         if (responseText.trim().startsWith('{')) {
              try {
                 const data = JSON.parse(responseText);
-                // Check for common token field names (case-insensitive for robustnes, then specific)
                 accessToken = data?.AccessToken || data?.accessToken || data?.Token || data?.token;
                 if (!accessToken && typeof data === 'object' && data !== null) {
-                    // Fallback: iterate keys if specific names fail
                     for (const key in data) {
                         if (key.toLowerCase() === 'accesstoken' || key.toLowerCase() === 'token') {
                             if (typeof data[key] === 'string' && data[key].trim() !== '') {
@@ -63,46 +60,46 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                 }
 
                 if (!accessToken) {
-                     console.warn('[Caspit Action - getToken] JSON parsed, but no token field (AccessToken, accessToken, Token, token) found. Checking if response IS the token itself.');
-                     // If JSON parsing succeeded but no token field, check if the raw responseText itself could be the token
+                     console.warn('[Caspit Action - getToken] JSON parsed, but no token field found. Checking if response IS the token itself.');
                      if (typeof responseText === 'string' && responseText.length > 20 && !responseText.includes(" ") && !responseText.includes("<") && !responseText.includes("{")) {
                          accessToken = responseText.trim().replace(/^"+|"+$/g, '');
                          console.log('[Caspit Action - getToken] Interpreted raw response as plain text token after failed JSON key lookup.');
                      } else {
-                         // Throw error if JSON parsed but no usable token field and not a plain token string
-                         throw new Error('JSON response did not contain a valid AccessToken or token field.');
+                         // Throw simpler error if JSON parsed but no usable token field and not a plain token string
+                         throw new Error('Caspit API: JSON response did not contain a valid token field.');
                      }
                 }
              } catch (jsonError) {
-                 console.warn('[Caspit Action - getToken] Failed to parse as JSON. Will attempt to treat as plain text token. Error:', jsonError);
+                 console.warn('[Caspit Action - getToken] Failed to parse as JSON. Will attempt to treat as plain text token. JSON Error:', (jsonError as Error).message);
                  // Fall through to plain text check if JSON parsing fails
              }
         }
         
-        // If not parsed as JSON or JSON parsing failed, try treating as plain text token
         if (!accessToken) {
-            if (typeof responseText === 'string' && responseText.length > 20 && !responseText.includes(" ") && !responseText.includes("<") && !responseText.includes("{")) {
-                accessToken = responseText.trim().replace(/^"+|"+$/g, ''); // Remove surrounding quotes if any
+            // More specific check for plain text token: should be a long alphanumeric string without typical sentence characters or XML/JSON structures.
+            if (typeof responseText === 'string' && responseText.length >= 20 && /^[a-zA-Z0-9]+$/.test(responseText.replace(/^"+|"+$/g, ''))) {
+                accessToken = responseText.trim().replace(/^"+|"+$/g, ''); 
                 console.log('[Caspit Action - getToken] Interpreted response as plain text token.');
+            } else {
+                console.warn('[Caspit Action - getToken] Response is not valid JSON and does not look like a plain text token. Raw response logged above.');
             }
         }
 
-
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Text:', responseText);
-            throw new Error('Invalid token response structure from Caspit API. AccessToken missing or empty.');
+            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Response logged above.');
+            // Simplified error message
+            throw new Error('Caspit API: Invalid token response or AccessToken missing/empty.');
         }
         
         accessToken = accessToken.replace(/^"+|"+$/g, '');
-
 
         console.log('[Caspit Action - getToken] Successfully obtained token:', accessToken);
         return accessToken;
 
     } catch (error: any) {
-        console.error('[Caspit Action - getToken] Error fetching Caspit token:', error);
-        // Ensure a clean string message is thrown
-        throw new Error(`Caspit token request failed: ${error.message}. Raw Response (if available): ${responseText}`);
+        console.error('[Caspit Action - getToken] Error processing Caspit token request:', error.message);
+        // Simplified error propagation
+        throw new Error(`Caspit token request failed: ${error.message}`);
     }
 }
 
@@ -114,7 +111,6 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
         return { success: true, message: 'Connection successful!' };
     } catch (error: any) {
         console.error("[Caspit Action - testConnection] Test failed:", error);
-        // Ensure message is a simple string
         const errorMessage = error.message || 'Unknown error during connection test.';
         return { success: false, message: `Connection failed: ${errorMessage}` };
     }
@@ -125,8 +121,8 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
       const productId = caspitProduct.ProductId;
       const catalogNumber = caspitProduct.CatalogNumber || '';
       const description = caspitProduct.Name || caspitProduct.Description || '';
-      const unitPrice = caspitProduct.PurchasePrice ?? 0; // Cost price
-      const salePrice = caspitProduct.SalePrice1 ?? undefined; // Sale price (optional)
+      const unitPrice = caspitProduct.PurchasePrice ?? 0; 
+      const salePrice = caspitProduct.SalePrice1 ?? undefined; 
       const quantityInStock = caspitProduct.QtyInStock ?? 0;
 
       if (!catalogNumber && !description) {
@@ -140,8 +136,8 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
         description: description || 'No Description',
         quantity: quantityInStock,
         unitPrice: unitPrice,
-        salePrice: salePrice, // Map SalePrice1 to salePrice
-        lineTotal: quantityInStock * unitPrice, // Based on cost price
+        salePrice: salePrice, 
+        lineTotal: quantityInStock * unitPrice, 
       };
       return invoTrackProduct;
 }
@@ -169,7 +165,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             console.log(`[Caspit Action - syncProducts] Fetching page ${currentPage}: ${url}`);
             const response = await fetch(url, {
                 headers: {
-                    'Accept': 'application/json' // Explicitly request JSON for products
+                    'Accept': 'application/json' 
                 }
             });
             const responseText = await response.text();
@@ -177,9 +173,9 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             if (!response.ok) {
                  console.error(`[Caspit Action - syncProducts] Failed fetch for page ${currentPage}. Status: ${response.status}. Response: ${responseText}`);
                  if (response.status === 401) {
-                    throw new Error(`Failed to fetch products: ${response.status} Invalid token. Token used: "${token}". Response: ${responseText}`);
+                    throw new Error(`Failed to fetch products: ${response.status} Invalid token. Token used: "${token}".`);
                  }
-                throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}. Response: ${responseText}`);
+                throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}.`);
             }
 
             let data;
@@ -187,12 +183,12 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
                 data = JSON.parse(responseText);
             } catch (e) {
                 console.error(`[Caspit Action - syncProducts] Failed to parse JSON for page ${currentPage}. Response: ${responseText}`);
-                throw new Error('Invalid JSON response received from Caspit product API.');
+                throw new Error('Caspit API: Invalid JSON response received from product API.');
             }
 
             if (!data || typeof data !== 'object' || !Array.isArray(data.Results)) {
                 console.error(`[Caspit Action - syncProducts] Invalid product data structure received from Caspit API. Expected object with 'Results' array. Raw response: ${responseText}`);
-                throw new Error(`Invalid product data structure received from Caspit API. Expected object with 'Results' array. Received structure: ${JSON.stringify(Object.keys(data))}. Raw response: ${responseText}`);
+                throw new Error(`Caspit API: Invalid product data structure received. Expected object with 'Results' array.`);
             }
 
             const mappedProducts = data.Results
