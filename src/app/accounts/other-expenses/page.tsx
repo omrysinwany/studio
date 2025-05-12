@@ -132,7 +132,7 @@ export default function OtherExpensesPage() {
           initialSpecialAmounts[specialCatKey] = ''; 
         }
       });
-      setSpecialExpenseAmounts(initialSpecialSpecialAmounts);
+      setSpecialExpenseAmounts(initialSpecialAmounts);
       
       const storedTemplates = localStorage.getItem(templatesStorageKey);
       setExpenseTemplates(storedTemplates ? JSON.parse(storedTemplates) : []);
@@ -386,7 +386,7 @@ export default function OtherExpensesPage() {
                                 type="number"
                                 value={specialExpenseAmounts[specialCatKey]}
                                 onChange={(e) => setSpecialExpenseAmounts(prev => ({ ...prev, [specialCatKey]: e.target.value }))}
-                                placeholder={t('accounts_add_expense_amount_placeholder', { currency_symbol: t('currency_symbol')})}
+                                placeholder={`${t('currency_symbol')}0`}
                                 className="mt-1 h-10"
                                 min="0.01"
                                 step="0.01"
