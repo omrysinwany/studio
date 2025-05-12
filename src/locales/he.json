@@ -778,7 +778,7 @@
   "accounts_add_expense_desc_label": "תיאור",
   "accounts_add_expense_desc_placeholder": "לדוגמה, שכירות משרד לחודש יוני",
   "accounts_add_expense_amount_label": "סכום ({{currency_symbol}})",
-  "accounts_add_expense_amount_placeholder": "לדוגמה, {{currency_symbol}}1500",
+  "accounts_add_expense_amount_placeholder": "לדוגמה, ₪1500",
   "accounts_add_expense_date_label": "תאריך",
   "accounts_add_expense_category_label": "קטגוריה",
   "accounts_add_expense_category_placeholder": "בחר קטגוריה",
