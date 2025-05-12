@@ -13,11 +13,13 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         throw new Error('Missing Caspit credentials (user, pwd, osekMorshe) in configuration.');
     }
 
-    const demoUser = 'demo';
-    const demoPwd = 'demodemo';
-    const demoOsekMorshe = '123456789';
+    // Use demo credentials if actual ones are not fully provided or for testing
+    const effectiveUser = user || 'demo';
+    const effectivePwd = pwd || 'demodemo';
+    const effectiveOsekMorshe = osekMorshe || '123456789';
 
-    const url = `${CASPIT_API_BASE_URL}/Token?user=${encodeURIComponent(demoUser)}&pwd=${encodeURIComponent(demoPwd)}&osekMorshe=${encodeURIComponent(demoOsekMorshe)}`;
+
+    const url = `${CASPIT_API_BASE_URL}/Token?user=${encodeURIComponent(effectiveUser)}&pwd=${encodeURIComponent(effectivePwd)}&osekMorshe=${encodeURIComponent(effectiveOsekMorshe)}`;
     console.log('[Caspit Action - getToken] Requesting token from:', url);
 
     let response: Response;
@@ -35,11 +37,18 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         console.log(`[Caspit Action - getToken] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
 
         if (!response.ok) {
-             if (responseText.includes("Invalid") || responseText.toLowerCase().includes("token error") || responseText.toLowerCase().includes("too many requests")) {
-                throw new Error(`Caspit API Error (${response.status}): ${responseText}`); // Keep responseText for specific known Caspit errors
-             }
-            // Generic error for other !response.ok cases, avoiding raw responseText in message
-            throw new Error(`Caspit API request failed with status ${response.status}.`);
+            // Sanitize the error message to prevent issues with Next.js error rendering
+            const genericApiError = `Caspit API request failed with status ${response.status}.`;
+            console.error(`[Caspit Action - getToken] ${genericApiError} Full Response: ${responseText}`);
+            // Do not include raw responseText directly in the error message thrown to the client
+            // if it might contain characters that break XML/HTML parsing for the error overlay.
+            let displayErrorMessage = genericApiError;
+            if (responseText && !responseText.trim().startsWith('{') && !responseText.trim().startsWith('[')) { // If not JSON
+                displayErrorMessage += " (Non-JSON response received from Caspit). Check server logs for Caspit's full response.";
+            } else if (responseText) {
+                 displayErrorMessage += " Check server logs for Caspit's full response.";
+            }
+            throw new Error(displayErrorMessage);
         }
 
         let accessToken: string | null = null;
@@ -58,37 +67,33 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                         }
                     }
                 }
-
-                if (!accessToken) {
-                     console.warn('[Caspit Action - getToken] JSON parsed, but no token field found. Checking if response IS the token itself.');
-                     if (typeof responseText === 'string' && responseText.length > 20 && !responseText.includes(" ") && !responseText.includes("<") && !responseText.includes("{")) {
-                         accessToken = responseText.trim().replace(/^"+|"+$/g, '');
-                         console.log('[Caspit Action - getToken] Interpreted raw response as plain text token after failed JSON key lookup.');
-                     } else {
-                         // Throw simpler error if JSON parsed but no usable token field and not a plain token string
-                         throw new Error('Caspit API: JSON response did not contain a valid token field.');
-                     }
-                }
              } catch (jsonError) {
                  console.warn('[Caspit Action - getToken] Failed to parse as JSON. Will attempt to treat as plain text token. JSON Error:', (jsonError as Error).message);
-                 // Fall through to plain text check if JSON parsing fails
              }
         }
         
         if (!accessToken) {
-            // More specific check for plain text token: should be a long alphanumeric string without typical sentence characters or XML/JSON structures.
-            if (typeof responseText === 'string' && responseText.length >= 20 && /^[a-zA-Z0-9]+$/.test(responseText.replace(/^"+|"+$/g, ''))) {
+            if (typeof responseText === 'string' && responseText.length >= 20 && /^[a-zA-Z0-9.-_]+$/.test(responseText.replace(/^"+|"+$/g, ''))) {
                 accessToken = responseText.trim().replace(/^"+|"+$/g, ''); 
                 console.log('[Caspit Action - getToken] Interpreted response as plain text token.');
             } else {
-                console.warn('[Caspit Action - getToken] Response is not valid JSON and does not look like a plain text token. Raw response logged above.');
+                console.warn('[Caspit Action - getToken] Response is not valid JSON and does not look like a plain text token. Raw response logged above. Throwing generic error.');
+                throw new Error('Caspit API returned an unparsable response or not a token.'); 
             }
         }
 
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
-            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Response logged above.');
-            // Simplified error message
-            throw new Error('Caspit API: Invalid token response or AccessToken missing/empty.');
+            console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Response Text:', responseText);
+            let detail = "AccessToken missing/empty";
+            if (responseText.trim().startsWith("<")) { // Check if Caspit might have sent XML error
+                detail = "Received unexpected XML/HTML from Caspit instead of token.";
+            } else if (responseText.length > 200) { // Avoid showing very long non-token responses
+                detail = "Unexpected and lengthy response format from Caspit.";
+            } else if (responseText.trim() !== "" && !accessToken) { // It was some text, but not identified as a token
+                console.warn("[Caspit Action - getToken] Potentially problematic responseText not included in thrown error to avoid rendering issues:", responseText);
+                detail = "Unrecognized response format from Caspit.";
+            }
+            throw new Error(`Caspit API: Invalid token response. ${detail}`);
         }
         
         accessToken = accessToken.replace(/^"+|"+$/g, '');
@@ -98,8 +103,12 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
     } catch (error: any) {
         console.error('[Caspit Action - getToken] Error processing Caspit token request:', error.message);
-        // Simplified error propagation
-        throw new Error(`Caspit token request failed: ${error.message}`);
+        // Ensure errors propagated are clean strings
+        const specificMessage = error.message || 'Unknown error during token request.';
+        if (specificMessage.toLowerCase().includes('fetch failed') || specificMessage.toLowerCase().includes('networkerror')) {
+            throw new Error(`Network error while trying to reach Caspit API: ${specificMessage}`);
+        }
+        throw new Error(`Caspit token request failed: ${specificMessage}`);
     }
 }
 
@@ -111,8 +120,14 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
         return { success: true, message: 'Connection successful!' };
     } catch (error: any) {
         console.error("[Caspit Action - testConnection] Test failed:", error);
+        // Ensure the error message passed to client is clean
         const errorMessage = error.message || 'Unknown error during connection test.';
-        return { success: false, message: `Connection failed: ${errorMessage}` };
+        let clientSafeMessage = `Connection failed: ${errorMessage}`;
+        // Basic sanitization if error message is too long or looks like HTML/XML
+        if (errorMessage.length > 150 || errorMessage.trim().startsWith('<')) {
+            clientSafeMessage = "Connection failed. Check server console for details.";
+        }
+        return { success: false, message: clientSafeMessage };
     }
 }
 
