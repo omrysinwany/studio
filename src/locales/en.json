@@ -1,3 +1,4 @@
+
 {
   "app_title": "InvoTrack",
   "app_description": "Inventory management based on delivery notes and invoices",
@@ -578,7 +579,7 @@
   "barcode_prompt_sale_price_method_label": "Sale Price Method",
   "barcode_prompt_manual_entry": "Manual Entry",
   "barcode_prompt_profit_percentage": "Profit %",
-  "barcode_prompt_sale_price_label": "Sale Price",
+  "barcode_prompt_sale_price_label": "Sale Price ({{currency_symbol}})",
   "barcode_prompt_sale_price_placeholder": "e.g. 25.99",
   "barcode_prompt_sale_price_aria": "Sale price for {{productName}}",
   "barcode_prompt_profit_margin_label": "Profit Margin (%)",
@@ -777,7 +778,7 @@
   "accounts_add_expense_desc_label": "Description",
   "accounts_add_expense_desc_placeholder": "e.g., Office rent for June",
   "accounts_add_expense_amount_label": "Amount ({{currency_symbol}})",
-  "accounts_add_expense_amount_placeholder": "e.g., 1500.00",
+  "accounts_add_expense_amount_placeholder": "e.g., {{currency_symbol}}1500",
   "accounts_add_expense_date_label": "Date",
   "accounts_add_expense_category_label": "Category",
   "accounts_add_expense_category_placeholder": "Select a category",
@@ -808,3 +809,5 @@
   "accounts_other_expenses_variable_title": "General Expenses",
   "accounts_other_expenses_variable_desc": "Track other miscellaneous or variable business expenses."
 }
+
+    

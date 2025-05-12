@@ -1,3 +1,4 @@
+
 {
   "app_title": "אינבוטרק",
   "app_description": "ניהול מלאי מבוסס תעודות משלוח וחשבוניות",
@@ -578,7 +579,7 @@
   "barcode_prompt_sale_price_method_label": "שיטת קביעת מחיר מכירה",
   "barcode_prompt_manual_entry": "הזנה ידנית",
   "barcode_prompt_profit_percentage": "אחוז רווח",
-  "barcode_prompt_sale_price_label": "מחיר מכירה",
+  "barcode_prompt_sale_price_label": "מחיר מכירה ({{currency_symbol}})",
   "barcode_prompt_sale_price_placeholder": "לדוגמה 25.99",
   "barcode_prompt_sale_price_aria": "מחיר מכירה עבור {{productName}}",
   "barcode_prompt_profit_margin_label": "שולי רווח (%)",
@@ -777,7 +778,7 @@
   "accounts_add_expense_desc_label": "תיאור",
   "accounts_add_expense_desc_placeholder": "לדוגמה, שכירות משרד לחודש יוני",
   "accounts_add_expense_amount_label": "סכום ({{currency_symbol}})",
-  "accounts_add_expense_amount_placeholder": "לדוגמה, 1500.00",
+  "accounts_add_expense_amount_placeholder": "לדוגמה, {{currency_symbol}}1500",
   "accounts_add_expense_date_label": "תאריך",
   "accounts_add_expense_category_label": "קטגוריה",
   "accounts_add_expense_category_placeholder": "בחר קטגוריה",
@@ -808,3 +809,5 @@
   "accounts_other_expenses_variable_title": "הוצאות כלליות",
   "accounts_other_expenses_variable_desc": "עקוב אחר הוצאות עסקיות שונות או משתנות אחרות."
 }
+
+    
