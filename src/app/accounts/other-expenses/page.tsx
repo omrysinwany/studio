@@ -263,7 +263,15 @@ export default function OtherExpensesPage() {
       .filter(exp => exp._internalCategoryKey === internalCatKey)
       .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
 
-    const categoryLabel = t(`accounts_other_expenses_tab_${internalCatKey}` as any, { defaultValue: internalCatKey.charAt(0).toUpperCase() + internalCatKey.slice(1) });
+    let categoryLabel = '';
+    if (internalCatKey === SPECIAL_CATEGORY_KEYS.PROPERTY_TAX) {
+        categoryLabel = t('accounts_other_expenses_tab_property_tax');
+    } else if (internalCatKey === SPECIAL_CATEGORY_KEYS.RENT) {
+        categoryLabel = t('accounts_other_expenses_tab_rent');
+    } else {
+        categoryLabel = t(`accounts_other_expenses_tab_${internalCatKey}` as any, { defaultValue: internalCatKey.charAt(0).toUpperCase() + internalCatKey.slice(1) });
+    }
+    
     const currentMonthYear = format(new Date(), 'MMMM yyyy');
     const defaultDescription = `${categoryLabel} - ${currentMonthYear}`;
 
@@ -341,7 +349,12 @@ export default function OtherExpensesPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX, SPECIAL_CATEGORY_KEYS.RENT].map((specialCatKey) => {
-            const categoryLabel = t(`accounts_other_expenses_tab_${specialCatKey}` as any, { defaultValue: specialCatKey.charAt(0).toUpperCase() + specialCatKey.slice(1) });
+            let categoryLabel = '';
+            if (specialCatKey === SPECIAL_CATEGORY_KEYS.PROPERTY_TAX) {
+                categoryLabel = t('accounts_other_expenses_tab_property_tax');
+            } else if (specialCatKey === SPECIAL_CATEGORY_KEYS.RENT) {
+                categoryLabel = t('accounts_other_expenses_tab_rent');
+            }
             const CategoryIcon = getCategoryIcon(specialCatKey);
             const latestExpenseForCategory = otherExpenses
                 .filter(exp => exp._internalCategoryKey === specialCatKey)
@@ -459,11 +472,7 @@ export default function OtherExpensesPage() {
                 </TabsContent>
               ))}
             </Tabs>
-            <div className="flex flex-col sm:flex-row justify-end pt-4 mt-4 border-t">
-              <Button onClick={() => openAddDialogForVariableCategory(activeExpenseTab)} className="w-full sm:w-auto bg-primary hover:bg-primary/90">
-                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button_general')}
-              </Button>
-            </div>
+            {/* Removed the general "Add Expense" button as requested */}
           </CardContent>
       </Card>
 
@@ -492,3 +501,4 @@ export default function OtherExpensesPage() {
     </div>
   );
 }
+
