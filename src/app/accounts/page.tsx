@@ -31,8 +31,18 @@ export interface OtherExpense {
   date: string; // ISO date string
 }
 
+export interface ExpenseTemplate {
+  id: string; // Unique ID for the template
+  name: string; // User-defined name for the template
+  category: string;
+  description: string;
+  amount: number;
+}
+
 const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
+const EXPENSE_TEMPLATES_STORAGE_KEY_BASE = 'invoTrack_expenseTemplates';
+
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
@@ -57,16 +67,18 @@ export default function AccountsPage() {
 
   const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
+  const [expenseTemplates, setExpenseTemplates] = useState<ExpenseTemplate[]>([]);
   const [activeExpenseTab, setActiveExpenseTab] = useState<string>('');
 
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
 
-  // Load categories and expenses from localStorage
+  // Load categories, expenses, and templates from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && user) {
       const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
+      const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
 
       const storedCategories = localStorage.getItem(categoriesStorageKey);
       const defaultCategories = ['electricity', 'water', 'arnona'];
@@ -88,6 +100,11 @@ export default function AccountsPage() {
       if (storedExpenses) {
         setOtherExpenses(JSON.parse(storedExpenses));
       }
+      
+      const storedTemplates = localStorage.getItem(templatesStorageKey);
+      if (storedTemplates) {
+        setExpenseTemplates(JSON.parse(storedTemplates));
+      }
     }
   }, [user, activeExpenseTab]);
 
@@ -102,6 +119,13 @@ export default function AccountsPage() {
     if (typeof window !== 'undefined' && user) {
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
       localStorage.setItem(expensesStorageKey, JSON.stringify(expenses));
+    }
+  };
+  
+  const saveExpenseTemplates = (templates: ExpenseTemplate[]) => {
+    if (typeof window !== 'undefined' && user) {
+      const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
+      localStorage.setItem(templatesStorageKey, JSON.stringify(templates));
     }
   };
 
@@ -123,34 +147,52 @@ export default function AccountsPage() {
     setShowAddCategoryDialog(false);
   };
 
-  const handleAddExpense = (newExpenseData: Omit<OtherExpense, 'id'>) => {
-    if (!newExpenseData.description.trim()) {
+  const handleAddExpense = (
+    expenseData: Omit<OtherExpense, 'id'>,
+    templateDetails?: { saveAsTemplate: boolean; templateName?: string }
+  ) => {
+    if (!expenseData.description.trim()) {
       toast({ title: t('error_title'), description: t('accounts_toast_expense_desc_empty_desc'), variant: "destructive" });
       return;
     }
-    if (newExpenseData.amount <= 0) {
+    if (expenseData.amount <= 0) {
       toast({ title: t('accounts_toast_expense_invalid_amount_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive" });
       return;
     }
-    if (!newExpenseData.category) {
+    if (!expenseData.category) {
         toast({ title: t('error_title'), description: t('accounts_toast_expense_category_empty_desc'), variant: "destructive"});
         return;
     }
-     if (!newExpenseData.date || !isValid(parseISO(newExpenseData.date))) {
+     if (!expenseData.date || !isValid(parseISO(expenseData.date))) {
         toast({ title: t('error_title'), description: t('accounts_toast_expense_invalid_date_desc'), variant: "destructive"});
         return;
     }
 
-
+    // Save the actual expense
     const newExpense: OtherExpense = {
       id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      ...newExpenseData,
+      ...expenseData,
     };
     const updatedExpenses = [...otherExpenses, newExpense];
     setOtherExpenses(updatedExpenses);
     saveOtherExpenses(updatedExpenses);
     toast({ title: t('accounts_toast_expense_added_title'), description: t('accounts_toast_expense_added_desc', { description: newExpense.description }) });
     setShowAddExpenseDialog(false);
+
+    // If requested, save as a template
+    if (templateDetails?.saveAsTemplate) {
+      const newTemplate: ExpenseTemplate = {
+        id: `tmpl-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        name: templateDetails.templateName || `${expenseData.description.substring(0, 20)} Template`,
+        category: expenseData.category,
+        description: expenseData.description,
+        amount: expenseData.amount,
+      };
+      const updatedTemplates = [...expenseTemplates, newTemplate];
+      setExpenseTemplates(updatedTemplates);
+      saveExpenseTemplates(updatedTemplates);
+      toast({ title: t('accounts_toast_template_saved_title'), description: t('accounts_toast_template_saved_desc', { templateName: newTemplate.name }) });
+    }
   };
 
 
@@ -182,10 +224,10 @@ export default function AccountsPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (expenseCategories.length > 0 && !activeExpenseTab) {
+    if (expenseCategories.length > 0 && !activeExpenseTab && !authLoading && user) {
       setActiveExpenseTab(expenseCategories[0]);
     }
-  }, [expenseCategories, activeExpenseTab]);
+  }, [expenseCategories, activeExpenseTab, authLoading, user]);
 
   const filteredInvoices = useMemo(() => {
     if (!dateRange?.from) return allInvoices;
@@ -196,8 +238,13 @@ export default function AccountsPage() {
 
     return allInvoices.filter(invoice => {
       if (!invoice.uploadTime) return false;
-      const invoiceDate = parseISO(invoice.uploadTime as string);
-      return invoiceDate >= startDate && invoiceDate <= endDate;
+      try {
+        const invoiceDate = parseISO(invoice.uploadTime as string);
+        return invoiceDate >= startDate && invoiceDate <= endDate;
+      } catch (e) {
+        console.error("Invalid date encountered in filteredInvoices:", invoice.uploadTime);
+        return false;
+      }
     });
   }, [allInvoices, dateRange]);
 
@@ -206,9 +253,14 @@ export default function AccountsPage() {
     return filteredInvoices
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
-        const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string).getTime() : Infinity;
-        const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string).getTime() : Infinity;
-        return dateA - dateB;
+        try {
+            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string).getTime() : Infinity;
+            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string).getTime() : Infinity;
+            return dateA - dateB;
+        } catch (e) {
+            console.error("Error sorting open invoices by due date:", e);
+            return 0;
+        }
       });
   }, [filteredInvoices]);
 
@@ -219,9 +271,13 @@ export default function AccountsPage() {
     // Add invoice expenses
     allInvoices.forEach(invoice => {
         if (!invoice.uploadTime) return;
-        const invoiceDate = parseISO(invoice.uploadTime as string);
-        if (isSameMonth(invoiceDate, currentMonth)) {
-            totalExpenses += (invoice.totalAmount || 0);
+        try {
+            const invoiceDate = parseISO(invoice.uploadTime as string);
+            if (isSameMonth(invoiceDate, currentMonth)) {
+                totalExpenses += (invoice.totalAmount || 0);
+            }
+        } catch (e) {
+            console.error("Invalid date in currentMonthExpenses (invoices):", invoice.uploadTime);
         }
     });
 
@@ -229,13 +285,17 @@ export default function AccountsPage() {
     const biMonthlyCategories = ['electricity', 'water', 'arnona']; 
     otherExpenses.forEach(expense => {
         if (!expense.date) return;
-        const expenseDate = parseISO(expense.date);
-        if (isSameMonth(expenseDate, currentMonth)) {
-            if (biMonthlyCategories.includes(expense.category.toLowerCase())) {
-                totalExpenses += (expense.amount / 2); // For bi-monthly, take half for the current month's display
-            } else {
-                totalExpenses += expense.amount; // For other (assumed monthly) categories, take full amount
+        try {
+            const expenseDate = parseISO(expense.date);
+            if (isSameMonth(expenseDate, currentMonth)) {
+                if (biMonthlyCategories.includes(expense.category.toLowerCase())) {
+                    totalExpenses += (expense.amount / 2); // For bi-monthly, take half for the current month's display
+                } else {
+                    totalExpenses += expense.amount; // For other (assumed monthly) categories, take full amount
+                }
             }
+        } catch (e) {
+            console.error("Invalid date in currentMonthExpenses (otherExpenses):", expense.date);
         }
     });
 
@@ -245,26 +305,29 @@ export default function AccountsPage() {
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
     if (!dueDate) return null;
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dueDateObj = parseISO(dueDate as string);
+        dueDateObj.setHours(0,0,0,0);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDateObj = parseISO(dueDate as string);
-     dueDateObj.setHours(0,0,0,0);
+        if (isPast(dueDateObj) && !isToday(dueDateObj)) {
+        return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle };
+        }
 
-    if (isPast(dueDateObj) && !isToday(dueDateObj)) {
-      return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle };
+        const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
+
+        if (daysUntilDue <= 0) {
+            return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
+        }
+        if (daysUntilDue <= 7) {
+        return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock };
+        }
+        return null;
+    } catch(e) {
+        console.error("Error in getDueDateStatus:", e);
+        return null;
     }
-
-    const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
-
-    if (daysUntilDue <= 0) {
-         return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
-    }
-    if (daysUntilDue <= 7) {
-      return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock };
-    }
-
-    return null;
   };
 
   const formatDateDisplay = (dateString: string | Date | undefined, formatStr: string = 'PP') => {
@@ -272,6 +335,7 @@ export default function AccountsPage() {
     try {
       return format(parseISO(dateString as string), formatStr);
     } catch (e) {
+      console.error("Error formatting date for display:", e, "Input:", dateString);
       return t('invoices_invalid_date');
     }
   };

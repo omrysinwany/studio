@@ -408,7 +408,7 @@
   "invoice_status_processing": "Processing",
   "invoice_status_pending": "Pending",
   "invoice_status_error": "Error",
-  "currency_symbol": "₪",
+  "currency_symbol": "$",
   "reports_title": "Reports & Statistics",
   "reports_date_range_placeholder": "Pick a date range",
   "reports_date_range_clear": "Clear",
@@ -788,5 +788,10 @@
   "accounts_toast_expense_invalid_amount_desc": "Please enter a valid, positive amount for the expense.",
   "accounts_toast_expense_desc_empty_desc": "Expense description cannot be empty.",
   "accounts_toast_expense_category_empty_desc": "Please select a category for the expense.",
-  "accounts_toast_expense_invalid_date_desc": "Please select a valid date for the expense."
+  "accounts_toast_expense_invalid_date_desc": "Please select a valid date for the expense.",
+  "accounts_add_expense_save_as_template_label": "Save as template",
+  "accounts_add_expense_template_name_label": "Template Name (Optional)",
+  "accounts_add_expense_template_name_placeholder": "e.g., Monthly Electricity Bill",
+  "accounts_toast_template_saved_title": "Template Saved",
+  "accounts_toast_template_saved_desc": "Expense template \"{{templateName}}\" has been saved."
 }

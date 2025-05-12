@@ -1,7 +1,7 @@
 // src/components/accounts/AddExpenseDialog.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,12 +22,13 @@ import { format, isValid, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { OtherExpense } from '@/app/accounts/page';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 
 interface AddExpenseDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   categories: string[];
-  onAddExpense: (expenseData: Omit<OtherExpense, 'id'>) => void;
+  onAddExpense: (expenseData: Omit<OtherExpense, 'id'>, templateDetails?: { saveAsTemplate: boolean; templateName?: string }) => void;
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
@@ -40,7 +41,24 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | ''>('');
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const [selectedCategory, setSelectedCategory] = useState<string>(categories[0] || '');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  useEffect(() => {
+    if (isOpen && categories.length > 0 && !selectedCategory) {
+      setSelectedCategory(categories[0]);
+    }
+    if (!isOpen) {
+        // Reset form when dialog closes
+        setDescription('');
+        setAmount('');
+        setDate(new Date());
+        setSelectedCategory(categories.length > 0 ? categories[0] : '');
+        setSaveAsTemplate(false);
+        setTemplateName('');
+    }
+  }, [isOpen, categories, selectedCategory]);
 
   const handleSubmit = () => {
     const expenseData = {
@@ -49,20 +67,15 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
       date: date ? date.toISOString() : new Date().toISOString(),
       category: selectedCategory,
     };
-    onAddExpense(expenseData);
-    // Reset form after adding
-    setDescription('');
-    setAmount('');
-    setDate(new Date());
-    setSelectedCategory(categories[0] || '');
+    const templateDetails = saveAsTemplate ? { saveAsTemplate: true, templateName: templateName.trim() || undefined } : undefined;
+    
+    onAddExpense(expenseData, templateDetails);
+    
+    // Reset form handled by useEffect on !isOpen
   };
 
   const handleClose = () => {
-    setDescription('');
-    setAmount('');
-    setDate(new Date());
-    setSelectedCategory(categories[0] || '');
-    onOpenChange(false);
+    onOpenChange(false); // useEffect will handle reset
   };
 
   return (
@@ -149,6 +162,37 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Template Options */}
+          <div className="grid grid-cols-4 items-center gap-4 pt-2">
+            <div className="col-span-1"></div> {/* Empty cell for alignment */}
+            <div className="col-span-3 flex items-center space-x-2">
+              <Checkbox
+                id="saveAsTemplate"
+                checked={saveAsTemplate}
+                onCheckedChange={(checked) => setSaveAsTemplate(Boolean(checked))}
+              />
+              <Label htmlFor="saveAsTemplate" className="text-sm font-normal cursor-pointer">
+                {t('accounts_add_expense_save_as_template_label')}
+              </Label>
+            </div>
+          </div>
+
+          {saveAsTemplate && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="templateName" className="text-right col-span-1">
+                {t('accounts_add_expense_template_name_label')}
+              </Label>
+              <Input
+                id="templateName"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                className="col-span-3"
+                placeholder={t('accounts_add_expense_template_name_placeholder')}
+              />
+            </div>
+          )}
+
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
