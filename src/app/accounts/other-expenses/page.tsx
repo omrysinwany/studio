@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { format, parseISO, isValid, getYear, getMonth, isSameMonth, isSameYear } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -117,7 +117,7 @@ export default function OtherExpensesPage() {
     } else if (!authLoading && !user) {
         router.push('/login');
     }
-  }, [user, authLoading, router, t, activeExpenseTab]); // Removed specialExpenseAmounts from dependencies
+  }, [user, authLoading, router, t, activeExpenseTab]); 
 
   const saveExpenseCategories = (categoriesToSave: string[]) => {
     if (typeof window !== 'undefined' && user) {
@@ -208,12 +208,12 @@ export default function OtherExpensesPage() {
     };
 
 
-    if (expenseData.id) { // Editing an existing expense
+    if (expenseData.id) { 
       updatedExpenses = otherExpenses.map(exp =>
         exp.id === expenseData.id ? { ...exp, ...expenseToSave } as OtherExpense : exp
       );
       toastMessage = t('accounts_toast_expense_updated_title');
-    } else { // Adding a new expense
+    } else { 
       const newExpense: OtherExpense = {
         id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         ...expenseToSave,
@@ -254,7 +254,7 @@ export default function OtherExpensesPage() {
 
   const openEditDialog = (expense: OtherExpense) => {
     setEditingExpense(expense);
-    setPrefillDataForDialog({}); // Clear general prefill if editing specific
+    setPrefillDataForDialog({}); 
     setShowAddExpenseDialog(true);
   };
 
@@ -277,9 +277,9 @@ export default function OtherExpensesPage() {
 
     if (latestExpenseForCategory) {
         setEditingExpense(latestExpenseForCategory);
-        setPrefillDataForDialog({}); // Clear prefill as we are editing
+        setPrefillDataForDialog({}); 
     } else {
-        setEditingExpense(null); // Ensure not editing if no expense exists
+        setEditingExpense(null); 
         setPrefillDataForDialog({ 
             category: categoryLabel, 
             _internalCategoryKey: internalCatKey,
@@ -394,7 +394,7 @@ export default function OtherExpensesPage() {
                            className="w-full bg-primary hover:bg-primary/90"
                          >
                            {latestExpenseForCategory ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" /> }
-                           {latestExpenseForCategory ? t('accounts_edit_expense_dialog_title') : t('accounts_add_expense_button')}
+                           {latestExpenseForCategory ? t('accounts_edit_expense_dialog_title') : t('accounts_record_payment_button')}
                          </Button>
                      </CardFooter>
                 </Card>
@@ -472,7 +472,7 @@ export default function OtherExpensesPage() {
                 </TabsContent>
               ))}
             </Tabs>
-            {/* Removed the general "Add Expense" button as requested */}
+            
           </CardContent>
       </Card>
 
@@ -501,4 +501,3 @@ export default function OtherExpensesPage() {
     </div>
   );
 }
-
