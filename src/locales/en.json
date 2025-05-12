@@ -408,7 +408,7 @@
   "invoice_status_processing": "Processing",
   "invoice_status_pending": "Pending",
   "invoice_status_error": "Error",
-  "currency_symbol": "$",
+  "currency_symbol": "₪",
   "reports_title": "Reports & Statistics",
   "reports_date_range_placeholder": "Pick a date range",
   "reports_date_range_clear": "Clear",
@@ -579,7 +579,7 @@
   "barcode_prompt_sale_price_method_label": "Sale Price Method",
   "barcode_prompt_manual_entry": "Manual Entry",
   "barcode_prompt_profit_percentage": "Profit %",
-  "barcode_prompt_sale_price_label": "Sale Price ({{currency_symbol}})",
+  "barcode_prompt_sale_price_label": "Sale Price",
   "barcode_prompt_sale_price_placeholder": "e.g. 25.99",
   "barcode_prompt_sale_price_aria": "Sale price for {{productName}}",
   "barcode_prompt_profit_margin_label": "Profit Margin (%)",
@@ -624,7 +624,7 @@
   "barcode_scanner_toast_camera_not_found_desc": "Could not find a suitable camera.",
   "barcode_scanner_error_camera_in_use_hardware": "Camera is already in use by another application or encountered a hardware issue.",
   "barcode_scanner_toast_camera_access_issue_title": "Camera Access Issue",
-  "barcode_scanner_error_not_supported_browser": "Camera access or barcode scanning is not supported by your browser or device. Ensure you are using HTTPS and a compatible browser (e.g., not all features work on iOS Safari in all contexts).",
+  "barcode_scanner_error_not_supported_browser": "Camera access or barcode scanning is not supported by your browser or device. Ensure you are using HTTPS and a compatible browser.",
   "barcode_scanner_toast_not_supported_title": "Scanning Not Supported",
   "barcode_scanner_toast_camera_error_title": "Camera Error",
   "barcode_scanner_toast_camera_error_desc": "Could not access camera or start scan: {{message}}",
@@ -793,5 +793,10 @@
   "accounts_add_expense_template_name_label": "Template Name (Optional)",
   "accounts_add_expense_template_name_placeholder": "e.g., Monthly Electricity Bill",
   "accounts_toast_template_saved_title": "Template Saved",
-  "accounts_toast_template_saved_desc": "Expense template \"{{templateName}}\" has been saved."
+  "accounts_toast_template_saved_desc": "Expense template \"{{templateName}}\" has been saved.",
+  "back_to_accounts_button": "Back to Accounts",
+  "accounts_other_expenses_summary_desc": "Click to view and manage your other business expenses like electricity, water, etc.",
+  "accounts_other_expenses_total_for_period": "Total for selected period",
+  "accounts_other_expenses_total_all_time": "Total of all recorded expenses"
 }
+

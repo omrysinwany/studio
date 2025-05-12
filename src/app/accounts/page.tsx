@@ -11,16 +11,14 @@ import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMon
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, PlusCircle, BarChart3 } from 'lucide-react';
+import Link from 'next/link'; // Import Link
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AddCategoryDialog from '@/components/accounts/AddCategoryDialog';
-import AddExpenseDialog from '@/components/accounts/AddExpenseDialog';
 
 
 export interface OtherExpense {
@@ -39,15 +37,13 @@ export interface ExpenseTemplate {
   amount: number;
 }
 
-const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
-const EXPENSE_TEMPLATES_STORAGE_KEY_BASE = 'invoTrack_expenseTemplates';
 
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
     console.warn(`[getStorageKey AccountsPage] Attempted to get storage key for base "${baseKey}" without a userId.`);
-    return baseKey; 
+    return baseKey;
   }
   return `${baseKey}_${userId}`;
 };
@@ -65,135 +61,19 @@ export default function AccountsPage() {
     to: endOfMonth(new Date()),
   });
 
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  // OtherExpenses state remains here for summary calculation
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
-  const [expenseTemplates, setExpenseTemplates] = useState<ExpenseTemplate[]>([]);
-  const [activeExpenseTab, setActiveExpenseTab] = useState<string>('');
 
-  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
-  const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
-
-  // Load categories, expenses, and templates from localStorage
+  // Load other expenses from localStorage for summary
   useEffect(() => {
     if (typeof window !== 'undefined' && user) {
-      const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
-      const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
-
-      const storedCategories = localStorage.getItem(categoriesStorageKey);
-      const defaultCategories = ['electricity', 'water', 'arnona'];
-      if (storedCategories) {
-        const parsedCategories = JSON.parse(storedCategories);
-        const finalCategories = Array.from(new Set([...defaultCategories, ...parsedCategories]));
-        setExpenseCategories(finalCategories);
-        if (finalCategories.length > 0 && !activeExpenseTab) {
-          setActiveExpenseTab(finalCategories[0]);
-        }
-      } else {
-        setExpenseCategories(defaultCategories);
-        if (defaultCategories.length > 0 && !activeExpenseTab) {
-          setActiveExpenseTab(defaultCategories[0]);
-        }
-      }
-
       const storedExpenses = localStorage.getItem(expensesStorageKey);
       if (storedExpenses) {
         setOtherExpenses(JSON.parse(storedExpenses));
       }
-      
-      const storedTemplates = localStorage.getItem(templatesStorageKey);
-      if (storedTemplates) {
-        setExpenseTemplates(JSON.parse(storedTemplates));
-      }
     }
-  }, [user, activeExpenseTab]);
-
-  const saveExpenseCategories = (categories: string[]) => {
-    if (typeof window !== 'undefined' && user) {
-      const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
-      localStorage.setItem(categoriesStorageKey, JSON.stringify(categories));
-    }
-  };
-
-  const saveOtherExpenses = (expenses: OtherExpense[]) => {
-    if (typeof window !== 'undefined' && user) {
-      const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
-      localStorage.setItem(expensesStorageKey, JSON.stringify(expenses));
-    }
-  };
-  
-  const saveExpenseTemplates = (templates: ExpenseTemplate[]) => {
-    if (typeof window !== 'undefined' && user) {
-      const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
-      localStorage.setItem(templatesStorageKey, JSON.stringify(templates));
-    }
-  };
-
-  const handleAddCategory = (newCategoryName: string) => {
-    const trimmedName = newCategoryName.trim();
-    if (!trimmedName) {
-      toast({ title: t('error_title'), description: t('accounts_toast_category_name_empty_desc'), variant: "destructive" });
-      return;
-    }
-    if (expenseCategories.some(cat => cat.toLowerCase() === trimmedName.toLowerCase())) {
-      toast({ title: t('accounts_toast_category_exists_title'), description: t('accounts_toast_category_exists_desc', { categoryName: trimmedName }), variant: "destructive" });
-      return;
-    }
-    const updatedCategories = [...expenseCategories, trimmedName];
-    setExpenseCategories(updatedCategories);
-    saveExpenseCategories(updatedCategories);
-    setActiveExpenseTab(trimmedName); 
-    toast({ title: t('accounts_toast_category_added_title'), description: t('accounts_toast_category_added_desc', { categoryName: trimmedName }) });
-    setShowAddCategoryDialog(false);
-  };
-
-  const handleAddExpense = (
-    expenseData: Omit<OtherExpense, 'id'>,
-    templateDetails?: { saveAsTemplate: boolean; templateName?: string }
-  ) => {
-    if (!expenseData.description.trim()) {
-      toast({ title: t('error_title'), description: t('accounts_toast_expense_desc_empty_desc'), variant: "destructive" });
-      return;
-    }
-    if (expenseData.amount <= 0) {
-      toast({ title: t('accounts_toast_expense_invalid_amount_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive" });
-      return;
-    }
-    if (!expenseData.category) {
-        toast({ title: t('error_title'), description: t('accounts_toast_expense_category_empty_desc'), variant: "destructive"});
-        return;
-    }
-     if (!expenseData.date || !isValid(parseISO(expenseData.date))) {
-        toast({ title: t('error_title'), description: t('accounts_toast_expense_invalid_date_desc'), variant: "destructive"});
-        return;
-    }
-
-    // Save the actual expense
-    const newExpense: OtherExpense = {
-      id: `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      ...expenseData,
-    };
-    const updatedExpenses = [...otherExpenses, newExpense];
-    setOtherExpenses(updatedExpenses);
-    saveOtherExpenses(updatedExpenses);
-    toast({ title: t('accounts_toast_expense_added_title'), description: t('accounts_toast_expense_added_desc', { description: newExpense.description }) });
-    setShowAddExpenseDialog(false);
-
-    // If requested, save as a template
-    if (templateDetails?.saveAsTemplate) {
-      const newTemplate: ExpenseTemplate = {
-        id: `tmpl-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        name: templateDetails.templateName || `${expenseData.description.substring(0, 20)} Template`,
-        category: expenseData.category,
-        description: expenseData.description,
-        amount: expenseData.amount,
-      };
-      const updatedTemplates = [...expenseTemplates, newTemplate];
-      setExpenseTemplates(updatedTemplates);
-      saveExpenseTemplates(updatedTemplates);
-      toast({ title: t('accounts_toast_template_saved_title'), description: t('accounts_toast_template_saved_desc', { templateName: newTemplate.name }) });
-    }
-  };
+  }, [user]);
 
 
   const fetchAccountData = async () => {
@@ -223,11 +103,6 @@ export default function AccountsPage() {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    if (expenseCategories.length > 0 && !activeExpenseTab && !authLoading && user) {
-      setActiveExpenseTab(expenseCategories[0]);
-    }
-  }, [expenseCategories, activeExpenseTab, authLoading, user]);
 
   const filteredInvoices = useMemo(() => {
     if (!dateRange?.from) return allInvoices;
@@ -264,43 +139,58 @@ export default function AccountsPage() {
       });
   }, [filteredInvoices]);
 
-  const currentMonthExpenses = useMemo(() => {
+  const currentMonthTotalExpensesFromInvoices = useMemo(() => {
     const currentMonth = new Date();
     let totalExpenses = 0;
-
-    // Add invoice expenses
     allInvoices.forEach(invoice => {
         if (!invoice.uploadTime) return;
         try {
             const invoiceDate = parseISO(invoice.uploadTime as string);
-            if (isSameMonth(invoiceDate, currentMonth)) {
+            if (isSameMonth(invoiceDate, currentMonth) && invoice.status === 'completed') { // Consider only completed invoices
                 totalExpenses += (invoice.totalAmount || 0);
             }
         } catch (e) {
             console.error("Invalid date in currentMonthExpenses (invoices):", invoice.uploadTime);
         }
     });
-
-    // Add other expenses
-    const biMonthlyCategories = ['electricity', 'water', 'arnona']; 
-    otherExpenses.forEach(expense => {
-        if (!expense.date) return;
-        try {
-            const expenseDate = parseISO(expense.date);
-            if (isSameMonth(expenseDate, currentMonth)) {
-                if (biMonthlyCategories.includes(expense.category.toLowerCase())) {
-                    totalExpenses += (expense.amount / 2); // For bi-monthly, take half for the current month's display
-                } else {
-                    totalExpenses += expense.amount; // For other (assumed monthly) categories, take full amount
-                }
-            }
-        } catch (e) {
-            console.error("Invalid date in currentMonthExpenses (otherExpenses):", expense.date);
-        }
-    });
-
     return totalExpenses;
-  }, [allInvoices, otherExpenses]);
+  }, [allInvoices]);
+
+  const totalOtherExpensesInRange = useMemo(() => {
+    let relevantExpenses = otherExpenses;
+    if (dateRange?.from) {
+        const startDate = new Date(dateRange.from);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
+        endDate.setHours(23, 59, 59, 999);
+
+        relevantExpenses = otherExpenses.filter(expense => {
+            if (!expense.date || !isValid(parseISO(expense.date))) return false;
+            try {
+                const expenseDate = parseISO(expense.date);
+                return expenseDate >= startDate && expenseDate <= endDate;
+            } catch (e) {
+                console.error("Invalid date for other expense:", expense.date, e);
+                return false;
+            }
+        });
+    }
+    const biMonthlyCategories = ['electricity', 'water', 'arnona'];
+    return relevantExpenses.reduce((sum, exp) => {
+        let amountToAdd = exp.amount;
+        // If no date range is selected (all time), or if the expense date is within the current month, apply bi-monthly logic
+        if (!dateRange?.from || (dateRange.from && isSameMonth(parseISO(exp.date), new Date()))) {
+             if (biMonthlyCategories.includes(exp.category.toLowerCase())) {
+                amountToAdd /= 2;
+            }
+        }
+        return sum + amountToAdd;
+    }, 0);
+  }, [otherExpenses, dateRange]);
+
+  const currentMonthTotalExpenses = useMemo(() => {
+    return currentMonthTotalExpensesFromInvoices + totalOtherExpensesInRange; // Assuming totalOtherExpensesInRange is for current month if no range selected
+  }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesInRange]);
 
 
   const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
@@ -317,7 +207,7 @@ export default function AccountsPage() {
 
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (daysUntilDue <= 0) {
+        if (daysUntilDue <= 0) { // Changed from daysUntilDue <= 0 to include due today
             return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
         }
         if (daysUntilDue <= 7) {
@@ -424,7 +314,7 @@ export default function AccountsPage() {
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
               ) : (
-                  <p className="text-3xl font-bold">{formatCurrency(currentMonthExpenses)}</p>
+                  <p className="text-3xl font-bold">{formatCurrency(currentMonthTotalExpenses)}</p>
               )}
           </CardContent>
       </Card>
@@ -484,66 +374,41 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-md scale-fade-in delay-400">
-          <CardHeader>
-              <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <Landmark className="mr-2 h-5 w-5" /> {t('accounts_other_expenses_title')}
-              </CardTitle>
-              <CardDescription>{t('accounts_other_expenses_desc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Tabs value={activeExpenseTab} onValueChange={setActiveExpenseTab} className="w-full">
-              <div className="flex items-center gap-2">
-                  <TabsList className="inline-flex h-10 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
-                    {expenseCategories.map(category => (
-                        <TabsTrigger
-                            key={category}
-                            value={category}
-                            className="data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md px-3 py-1.5 text-sm font-medium transition-all flex-1 sm:flex-none whitespace-nowrap"
-                        >
-                          {t(`accounts_other_expenses_tab_${category.toLowerCase().replace(/\s+/g, '_')}` as any) || category.charAt(0).toUpperCase() + category.slice(1)}
-                        </TabsTrigger>
-                    ))}
-                  </TabsList>
-                <Button variant="outline" size="icon" onClick={() => setShowAddCategoryDialog(true)} className="ml-2 flex-shrink-0">
-                  <PlusCircle className="h-4 w-4" />
-                  <span className="sr-only">{t('accounts_add_category_button')}</span>
-                </Button>
-              </div>
-              {expenseCategories.map(category => (
-                <TabsContent key={category} value={category} className="mt-4">
-                  <div className="space-y-2">
-                    {otherExpenses.filter(exp => exp.category === category).length > 0 ? (
-                      otherExpenses.filter(exp => exp.category === category)
-                        .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
-                        .map(expense => (
-                          <div key={expense.id} className="flex justify-between items-center p-3 border rounded-md bg-background shadow-sm hover:shadow-md transition-shadow">
-                            <div>
-                              <p className="text-sm font-medium">{expense.description}</p>
-                              <p className="text-xs text-muted-foreground">{formatDateDisplay(expense.date)}</p>
-                            </div>
-                            <p className="text-sm font-semibold">{formatCurrency(expense.amount)}</p>
-                          </div>
-                        ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">{t('accounts_other_expenses_no_expenses_in_category')}</p>
-                    )}
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
-            <div className="flex flex-col sm:flex-row justify-end pt-2 gap-2">
-              <Button variant="outline" onClick={() => setShowAddExpenseDialog(true)} className="w-full sm:w-auto">
-                  <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button')}
-              </Button>
-            </div>
-          </CardContent>
-      </Card>
+      {/* Other Business Expenses Summary Card */}
+      <Link href="/accounts/other-expenses" passHref>
+        <Card className="shadow-md scale-fade-in delay-400 cursor-pointer hover:shadow-lg transition-shadow">
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                        <Landmark className="mr-2 h-5 w-5" /> {t('accounts_other_expenses_title')}
+                    </CardTitle>
+                    <ArrowRightCircle className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <CardDescription>{t('accounts_other_expenses_summary_desc')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingData ? (
+                     <div className="flex justify-center items-center py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <p className="text-2xl font-bold">{formatCurrency(totalOtherExpensesInRange)}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                    {dateRange?.from && dateRange?.to ? 
+                        t('accounts_other_expenses_total_for_period') : 
+                        t('accounts_other_expenses_total_all_time')
+                    }
+                </p>
+            </CardContent>
+        </Card>
+      </Link>
+
 
       <Card className="shadow-md scale-fade-in delay-500">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <DollarSign className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}
+                <BarChart3 className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}
               </CardTitle>
               <CardDescription>{t('accounts_cash_flow_profitability_desc')}</CardDescription>
           </CardHeader>
@@ -559,18 +424,7 @@ export default function AccountsPage() {
               </div>
           </CardContent>
       </Card>
-
-      <AddCategoryDialog
-        isOpen={showAddCategoryDialog}
-        onOpenChange={setShowAddCategoryDialog}
-        onAddCategory={handleAddCategory}
-      />
-      <AddExpenseDialog
-        isOpen={showAddExpenseDialog}
-        onOpenChange={setShowAddExpenseDialog}
-        categories={expenseCategories}
-        onAddExpense={handleAddExpense}
-      />
     </div>
   );
 }
+
