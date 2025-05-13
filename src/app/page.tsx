@@ -21,8 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Progress } from "@/components/ui/progress";
-import { useTranslation } from '@/hooks/useTranslation';
+import { Progress, ProgressProps } from "@/components/ui/progress";
+// import { useTranslation } from '@/hooks/useTranslation'; // t will now return keys
 import GuestHomePage from '@/components/GuestHomePage';
 import styles from "./page.module.scss";
 
@@ -41,9 +41,9 @@ interface KpiData {
 }
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
-  const { t } = useTranslation();
+  // const { t } = useTranslation(); // t will return keys
   if (!data || data.length === 0) {
-    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('reports_chart_no_value_trend_data')}</div>;
+    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">No value trend data</div>;
   }
   return (
     <ResponsiveContainer width="100%" height={40}>
@@ -57,7 +57,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
             padding: "0.25rem 0.5rem",
           }}
           formatter={(value: number, name: string) => {
-             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
+             if (name === 'value') return [`₪${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, 'Value']; // Assuming Shekel symbol for now
              return [value.toLocaleString(), name];
           }}
           labelFormatter={() => ''}
@@ -79,7 +79,7 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  // const { t } = useTranslation(); // t will return keys
 
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
@@ -153,10 +153,10 @@ export default function Home() {
 
       } catch (error) {
         console.error("Failed to fetch KPI data:", error);
-        setKpiError(t('reports_toast_error_fetch_desc'));
+        setKpiError("Failed to load key performance indicators."); // Hardcoded string
         toast({
-          title: t('reports_toast_error_fetch_title'),
-          description: t('reports_toast_error_fetch_desc'),
+          title: "Error Fetching Data", // Hardcoded string
+          description: "Could not load key performance indicators.", // Hardcoded string
           variant: "destructive",
         });
       } finally {
@@ -168,7 +168,7 @@ export default function Home() {
     } else if (!authLoading) { 
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, toast, t]);
+  }, [user, authLoading, toast]);
 
 
   const handleScanClick = () => {
@@ -185,10 +185,10 @@ export default function Home() {
 
   const formatLargeNumber = (num: number | undefined, decimals = 1, isCurrency = false): string => {
     if (num === undefined || num === null || isNaN(num)) {
-      return isCurrency ? `${t('currency_symbol')}-` : '-';
+      return isCurrency ? `₪-` : '-'; // Assuming Shekel for now
     }
   
-    const prefix = isCurrency ? `${t('currency_symbol')}` : '';
+    const prefix = isCurrency ? `₪` : ''; // Assuming Shekel for now
   
     const absNum = Math.abs(num);
   
@@ -201,10 +201,10 @@ export default function Home() {
   
     const si = [
       { value: 1, symbol: "" },
-      { value: 1E3, symbol: t('number_suffix_k') || "K" },
-      { value: 1E6, symbol: t('number_suffix_m') || "M" },
-      { value: 1E9, symbol: t('number_suffix_b') || "B" },
-      { value: 1E12, symbol: t('number_suffix_t') || "T" }
+      { value: 1E3, symbol: "K" }, // Assuming K, M, B, T as suffixes
+      { value: 1E6, symbol: "M" },
+      { value: 1E9, symbol: "B" },
+      { value: 1E12, symbol: "T" }
     ];
     const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
     let i;
@@ -235,7 +235,7 @@ export default function Home() {
       return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
     }
     if (kpiError && user) return <span className="text-destructive text-lg">-</span>;
-    if (value === undefined || value === null || isNaN(value)) return isCurrency ? `${t('currency_symbol')}-` : '-';
+    if (value === undefined || value === null || isNaN(value)) return isCurrency ? `₪-` : '-'; // Assuming Shekel
 
     return formatLargeNumber(value, isInteger ? 0 : (isCurrency ? 2 : 1), isCurrency);
   };
@@ -252,7 +252,7 @@ export default function Home() {
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-         <p className="mt-4 text-muted-foreground">{t('loading_data')}</p>
+         <p className="mt-4 text-muted-foreground">Loading InvoTrack...</p> {/* Hardcoded string */}
        </div>
      );
    }
@@ -262,14 +262,14 @@ export default function Home() {
   }
 
   return (
-    <div className={cn(styles.homeContainer, "flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8")}>
+    <div className={cn(styles.homeContainer, "flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", "home-background")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-            {t('app_title')}
+            Welcome to InvoTrack {/* Hardcoded string */}
           </h1>
           <p className="text-base sm:text-lg text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-100">
-            {t('greeting_user', { username: user?.username || 'User' })}
+            Hello, {user?.username || 'User'}! Manage your inventory efficiently. {/* Hardcoded string */}
           </p>
 
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
@@ -278,7 +278,7 @@ export default function Home() {
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleScanClick}
             >
-              <ScanLine className="mr-2 h-5 w-5" /> {t('scan_document')}
+              <ScanLine className="mr-2 h-5 w-5" /> Scan Document {/* Hardcoded string */}
             </Button>
             <Button
               variant="outline"
@@ -286,7 +286,7 @@ export default function Home() {
               className="w-full border-primary text-primary hover:bg-primary/10 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleInventoryClick}
             >
-              <Package className="mr-2 h-5 w-5" /> {t('view_inventory')}
+              <Package className="mr-2 h-5 w-5" /> View Inventory {/* Hardcoded string */}
             </Button>
             <Button
               variant="secondary"
@@ -294,7 +294,7 @@ export default function Home() {
               className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleReportsClick}
             >
-              <BarChart2 className="mr-2 h-5 w-5" /> {t('view_reports')}
+              <BarChart2 className="mr-2 h-5 w-5" /> View Reports {/* Hardcoded string */}
             </Button>
           </div>
 
@@ -306,24 +306,24 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href="/inventory" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_total_items')}</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Items</CardTitle>
                         <Package className="h-5 w-5 text-accent" />
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.totalItems, false, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1">{t('kpi_total_items_desc')}</p>
+                        <p className="text-xs text-muted-foreground pt-1">Currently in stock</p>
                       </CardContent>
                     </Card>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_total_items_tooltip')}</p>
+                  <p>Total number of individual items currently in your inventory.</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -332,7 +332,7 @@ export default function Home() {
                       <Link href="/reports" className="block hover:no-underline">
                       <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                          <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_inventory_value')}</CardTitle>
+                          <CardTitle className="text-sm font-medium text-muted-foreground">Inventory Value</CardTitle>
                           <DollarSign className="h-5 w-5 text-accent" />
                           </CardHeader>
                           <CardContent className="pt-1 pb-2 px-4">
@@ -352,10 +352,10 @@ export default function Home() {
                       </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                      <p>{t('kpi_inventory_value_tooltip')}</p>
+                      <p>Total monetary value of your current inventory (cost price).</p>
                       {kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
                           <p className={cn("text-xs", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-500" : "text-red-500")}>
-                              {t('kpi_inventory_value_desc_vs', { previousValue: formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)})}
+                              vs. {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
                           </p>
                       )}
                   </TooltipContent>
@@ -366,18 +366,18 @@ export default function Home() {
                   <Link href="/reports" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_gross_profit')}</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Gross Profit</CardTitle>
                         <HandCoins className="h-5 w-5 text-accent" />
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.grossProfit, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1">{t('kpi_gross_profit_desc')}</p>
+                        <p className="text-xs text-muted-foreground pt-1">Potential from current stock</p>
                       </CardContent>
                     </Card>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_gross_profit_tooltip')}</p>
+                  <p>Total potential gross profit if all current inventory is sold at its sale price.</p>
                 </TooltipContent>
               </Tooltip>
               
@@ -386,18 +386,18 @@ export default function Home() {
                   <Link href="/reports" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('reports_kpi_avg_order_value')}</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Avg. Order Value</CardTitle>
                         <ShoppingCart className="h-5 w-5 text-accent" />
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.averageOrderValue, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1">{t('reports_kpi_from_invoices')}</p>
+                        <p className="text-xs text-muted-foreground pt-1">From invoices</p>
                       </CardContent>
                     </Card>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_avg_order_value')}</p>
+                  <p>Average monetary value of completed orders/invoices.</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -406,20 +406,20 @@ export default function Home() {
                   <Link href="/invoices" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_docs_30d')}</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Docs (30d)</CardTitle>
                         <FileText className="h-5 w-5 text-accent" />
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.docsProcessedLast30Days, false, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || t('kpi_latest_doc_processed')}>
-                          {t('kpi_docs_30d_last', { latestDocName: renderKpiText(kpiData?.latestDocName) })}
+                        <p className="text-xs text-muted-foreground pt-1 truncate" title={kpiData?.latestDocName || "Latest document processed"}>
+                          Last: {renderKpiText(kpiData?.latestDocName)}
                         </p>
                       </CardContent>
                     </Card>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_docs_30d_tooltip')}</p>
+                  <p>Number of documents processed in the last 30 days.</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -428,12 +428,12 @@ export default function Home() {
                       <Link href="/inventory?filter=low" className="block hover:no-underline">
                           <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                              <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_low_stock')}</CardTitle>
+                              <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock</CardTitle>
                               <AlertTriangle className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
                           </CardHeader>
                           <CardContent className="pb-4 px-4">
                               <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.lowStockItemsCount, false, true)}</div>
-                              <p className="text-xs text-muted-foreground pt-1">{t('kpi_low_stock_desc')}</p>
+                              <p className="text-xs text-muted-foreground pt-1">Items needing attention</p>
                               {kpiData && typeof kpiData.totalItems === 'number' && kpiData.totalItems > 0 && typeof kpiData.lowStockItemsCount === 'number' && kpiData.lowStockItemsCount >= 0 && (
                                   <Progress
                                       value={(kpiData.lowStockItemsCount / kpiData.totalItems) * 100}
@@ -451,10 +451,10 @@ export default function Home() {
                       </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                      <p>{t('kpi_low_stock_tooltip')}</p>
+                      <p>Number of items at or below their minimum stock level.</p>
                       {kpiData && typeof kpiData.totalItems === 'number' && kpiData.totalItems > 0 && typeof kpiData.lowStockItemsCount === 'number' && kpiData.lowStockItemsCount >= 0 && (
                           <p className="text-xs">
-                              {t('kpi_low_stock_percentage_desc', {percentage: ((kpiData.lowStockItemsCount / kpiData.totalItems) * 100).toFixed(1)})}
+                              {((kpiData.lowStockItemsCount / kpiData.totalItems) * 100).toFixed(1)}% of total items are low on stock.
                           </p>
                       )}
                   </TooltipContent>
@@ -465,18 +465,18 @@ export default function Home() {
                   <Link href="/accounts?filter=unpaid" className="block hover:no-underline">
                     <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1")}>
                       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">{t('kpi_amount_remaining_to_pay')}</CardTitle>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Amount to Pay</CardTitle>
                         <CreditCard className="h-5 w-5 text-accent" />
                       </CardHeader>
                       <CardContent className="pb-4 px-4">
                         <div className="text-2xl sm:text-3xl font-bold text-primary">{renderKpiValue(kpiData?.amountRemainingToPay, true)}</div>
-                        <p className="text-xs text-muted-foreground pt-1">{t('kpi_amount_remaining_to_pay_desc')}</p>
+                        <p className="text-xs text-muted-foreground pt-1">Total outstanding on invoices</p>
                       </CardContent>
                     </Card>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{t('kpi_amount_remaining_to_pay_tooltip')}</p>
+                  <p>Sum of all unpaid and pending payment invoices.</p>
                 </TooltipContent>
               </Tooltip>
           </div>

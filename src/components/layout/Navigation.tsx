@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon as FileText, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -22,8 +22,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import React, { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
-import { useLanguage, Locale } from '@/context/LanguageContext';
-import { useTranslation } from '@/hooks/useTranslation';
+// Removed LanguageContext and useLanguage imports
+// import { useLanguage, Locale } from '@/context/LanguageContext'; 
+// import { useTranslation } from '@/hooks/useTranslation'; // Still using useTranslation for keys if not fully removed
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -31,30 +32,28 @@ export default function Navigation() {
   const router = useRouter();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  const { locale, setLocale } = useLanguage();
-  const { t } = useTranslation();
+  // Removed locale and setLocale from useLanguage
+  // const { locale, setLocale } = useLanguage(); 
+  // const { t } = useTranslation(); // t will now return keys
 
-   // Conditional nav items based on auth state
-   const getNavItems = () => {
-    if (!user) {
-      return [
-        { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
-        { href: '/login', labelKey: 'nav_login', icon: LogIn, animationDelay: '0.2s' },
-        { href: '/register', labelKey: 'nav_register', icon: UserPlus, animationDelay: '0.3s' },
-      ];
-    }
-    return [
-      { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
-      { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
-      { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
-      { href: '/invoices', labelKey: 'nav_documents', icon: FileText, animationDelay: '0.4s' },
-      { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s' },
-      { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s' },
-      { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s' },
-    ];
-  };
+  const navItemsLoggedIn = [
+    { href: '/', label: 'Home', icon: Home, animationDelay: '0.1s' },
+    { href: '/upload', label: 'Upload', icon: ScanLine, animationDelay: '0.2s' },
+    { href: '/inventory', label: 'Inventory', icon: Package, animationDelay: '0.3s' },
+    { href: '/invoices', label: 'Documents', icon: FileText, animationDelay: '0.4s' },
+    { href: '/accounts', label: 'Accounts', icon: CreditCard, animationDelay: '0.5s' },
+    { href: '/suppliers', label: 'Suppliers', icon: Briefcase, animationDelay: '0.6s' },
+    { href: '/reports', label: 'Reports', icon: BarChart2, animationDelay: '0.7s' },
+  ];
 
-  const currentNavItems = getNavItems();
+  const navItemsLoggedOut = [
+    { href: '/', label: 'Home', icon: Home, animationDelay: '0.1s' },
+    { href: '/login', label: 'Login', icon: LogIn, animationDelay: '0.2s' },
+    { href: '/register', label: 'Register', icon: UserPlus, animationDelay: '0.3s' },
+  ];
+  
+  const currentNavItems = user ? navItemsLoggedIn : navItemsLoggedOut;
+
 
   useEffect(() => {
     if (authLoading) {
@@ -89,8 +88,11 @@ export default function Navigation() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const changeLanguage = (newLocale: Locale) => {
-    setLocale(newLocale);
+  const changeLanguage = (newLocale: string) => { // Changed Locale to string
+    // setLocale(newLocale as Locale); // Locale type removed
+    localStorage.setItem('locale', newLocale); // Keep storing for potential future use
+    document.documentElement.lang = newLocale;
+    document.documentElement.dir = newLocale === 'he' ? 'rtl' : 'ltr';
     if (isMobileSheetOpen) setIsMobileSheetOpen(false);
   };
 
@@ -102,13 +104,11 @@ export default function Navigation() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-        {/* Logo/Brand */}
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
-          <span className="text-primary">{t('app_title')}</span>
+          <span className="text-primary">InvoTrack</span>
         </Link>
 
-        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {currentNavItems.map((item) => (
             <Link
@@ -124,46 +124,43 @@ export default function Navigation() {
                aria-current={pathname === item.href ? 'page' : undefined}
             >
               <item.icon className="h-4 w-4" />
-              {t(item.labelKey as any)}
+              {item.label} {/* Use hardcoded label */}
             </Link>
           ))}
         </nav>
 
-        {/* Right side controls: Combined Appearance Settings, Auth */}
         <div className="flex items-center gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
-           {/* Combined Appearance Settings Dropdown (Desktop) */}
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
                <Button variant="ghost" size="icon" className='hidden md:inline-flex transition-transform hover:scale-110'>
                   <Wand2 className="h-[1.2rem] w-[1.2rem]" />
-                  <span className="sr-only">{t('appearance_settings')}</span>
+                  <span className="sr-only">Appearance Settings</span>
                </Button>
              </DropdownMenuTrigger>
              <DropdownMenuContent align="end" className="w-56">
-               <DropdownMenuLabel>{t('appearance_settings')}</DropdownMenuLabel>
+               <DropdownMenuLabel>Appearance Settings</DropdownMenuLabel>
                <DropdownMenuSeparator />
-               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('theme')}</DropdownMenuLabel>
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Theme</DropdownMenuLabel>
                <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                  <DropdownMenuRadioItem value="light">
-                   <Sun className="mr-2 h-4 w-4" /> {t('light_theme')}
+                   <Sun className="mr-2 h-4 w-4" /> Light
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="dark">
-                   <Moon className="mr-2 h-4 w-4" /> {t('dark_theme')}
+                   <Moon className="mr-2 h-4 w-4" /> Dark
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
-                   <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
+                   <SettingsIcon className="mr-2 h-4 w-4" /> System
                  </DropdownMenuRadioItem>
                </DropdownMenuRadioGroup>
                <DropdownMenuSeparator />
-               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('language')}</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
-                  <DropdownMenuRadioItem value="en">{t('english')}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="he">{t('hebrew')}</DropdownMenuRadioItem>
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Language</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={typeof window !== 'undefined' ? localStorage.getItem('locale') || 'en' : 'en'} onValueChange={(value) => changeLanguage(value as string)}>
+                  <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="he">Hebrew</DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
 
-          {/* Desktop Auth Controls */}
           <div className="hidden md:flex items-center gap-2">
               {authLoading ? (
                 <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
@@ -188,23 +185,21 @@ export default function Navigation() {
                     <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
                         <SettingsIcon className="mr-2 h-4 w-4" />
-                        <span>{t('nav_settings')}</span>
+                        <span>Settings</span>
                       </DropdownMenuItem>
                      <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
-                      <span>{t('nav_logout')}</span>
+                      <span>Logout</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
                 <>
-                   {/* Apply button styles directly to Link */}
                    <Button variant="ghost" size="sm" asChild>
                     <Link href="/login">
-                       {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
-                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                        <LogIn className="mr-1 h-4 w-4" /> Login
                        </span>
                     </Link>
                    </Button>
@@ -212,7 +207,7 @@ export default function Navigation() {
                     <Link href="/register">
                        <span className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
-                        {t('nav_register')}
+                        Register
                        </span>
                     </Link>
                   </Button>
@@ -220,21 +215,20 @@ export default function Navigation() {
               )}
           </div>
 
-            {/* Mobile Menu Trigger */}
             <div className="md:hidden">
               <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon" className="transition-transform hover:scale-110">
                     <Menu className="h-6 w-6" />
-                     <span className="sr-only">{t('nav_toggle_navigation')}</span>
+                     <span className="sr-only">Toggle Navigation</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col bg-background">
-                    <SheetTitle className="sr-only">{t('nav_menu')}</SheetTitle>
+                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                    <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
-                          <span className="text-primary">{t('app_title')}</span>
+                          <span className="text-primary">InvoTrack</span>
                       </Link>
                     </div>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
@@ -246,12 +240,11 @@ export default function Navigation() {
                              onClick={() => handleMobileNavClick(item.href)}
                           >
                              <item.icon className="h-5 w-5" />
-                             {t(item.labelKey as any)}
+                             {item.label}
                           </Button>
                         ))}
                       </nav>
 
-                    {/* Mobile Auth, Appearance Settings in Footer */}
                     <div className="mt-auto border-t p-4 space-y-4">
                          <div>
                            {authLoading ? (
@@ -269,54 +262,53 @@ export default function Navigation() {
                                     </div>
                                      <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
-                                        {t('nav_settings')}
+                                        Settings
                                      </Button>
                                    <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
-                                      {t('nav_logout')}
+                                      Logout
                                    </Button>
                                </div>
                            ) : (
                                <div className="flex flex-col gap-2">
                                    <Button variant="outline" className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/login')}>
-                                      <LogIn className="mr-2 h-5 w-5" /> {t('nav_login')}
+                                      <LogIn className="mr-2 h-5 w-5" /> Login
                                    </Button>
                                    <Button className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/register')}>
-                                      <UserPlus className="mr-2 h-5 w-5" /> {t('nav_register')}
+                                      <UserPlus className="mr-2 h-5 w-5" /> Register
                                    </Button>
                                </div>
                            )}
                          </div>
 
-                         {/* Combined Appearance Settings Dropdown (Mobile) */}
                          <div className="border-t pt-4">
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
-                                  <Wand2 className="h-5 w-5" /> {t('appearance_settings')}
+                                  <Wand2 className="h-5 w-5" /> Appearance Settings
                                </Button>
                              </DropdownMenuTrigger>
                              <DropdownMenuPortal>
                                   <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
-                                   <DropdownMenuLabel>{t('appearance_settings')}</DropdownMenuLabel>
+                                   <DropdownMenuLabel>Appearance Settings</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('theme')}</DropdownMenuLabel>
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Theme</DropdownMenuLabel>
                                    <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                                      <DropdownMenuRadioItem value="light">
-                                       <Sun className="mr-2 h-4 w-4" /> {t('light_theme')}
+                                       <Sun className="mr-2 h-4 w-4" /> Light
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="dark">
-                                       <Moon className="mr-2 h-4 w-4" /> {t('dark_theme')}
+                                       <Moon className="mr-2 h-4 w-4" /> Dark
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="system">
-                                       <SettingsIcon className="mr-2 h-4 w-4" /> {t('system_theme')}
+                                       <SettingsIcon className="mr-2 h-4 w-4" /> System
                                      </DropdownMenuRadioItem>
                                    </DropdownMenuRadioGroup>
                                    <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('language')}</DropdownMenuLabel>
-                                    <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as Locale)}>
-                                      <DropdownMenuRadioItem value="en">{t('english')}</DropdownMenuRadioItem>
-                                      <DropdownMenuRadioItem value="he">{t('hebrew')}</DropdownMenuRadioItem>
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Language</DropdownMenuLabel>
+                                    <DropdownMenuRadioGroup value={typeof window !== 'undefined' ? localStorage.getItem('locale') || 'en' : 'en'} onValueChange={(value) => changeLanguage(value as string)}>
+                                      <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="he">Hebrew</DropdownMenuRadioItem>
                                     </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
                               </DropdownMenuPortal>
