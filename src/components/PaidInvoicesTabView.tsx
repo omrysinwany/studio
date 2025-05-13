@@ -30,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -90,7 +90,7 @@ const formatNumber = (
 
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
 
@@ -98,7 +98,7 @@ type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
-export default function PaidInvoicesTabView() {
+export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) {
   const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
@@ -120,6 +120,9 @@ export default function PaidInvoicesTabView() {
     compressedImageForFinalRecordUri: false,
     paymentReceiptImageUri: false,
     paymentDueDate: false,
+    documentType: false,
+    invoiceDate: false,
+    paymentMethod: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -209,6 +212,10 @@ export default function PaidInvoicesTabView() {
             endDate.setHours(23, 59, 59, 999);
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) <= endDate);
          }
+         if (filterDocumentType) {
+           filteredData = filteredData.filter(inv => inv.documentType === filterDocumentType);
+         }
+
 
          if (sortKey) {
              filteredData.sort((a, b) => {
@@ -243,7 +250,7 @@ export default function PaidInvoicesTabView() {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t, user]);
+    }, [filterSupplier, filterStatus, dateRange, toast, sortKey, sortDirection, t, user, filterDocumentType]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -292,9 +299,12 @@ export default function PaidInvoicesTabView() {
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
+      { key: 'documentType', labelKey: 'invoices_document_type_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -360,6 +370,9 @@ export default function PaidInvoicesTabView() {
             totalAmount: typeof editedInvoiceData.totalAmount === 'number' ? editedInvoiceData.totalAmount : undefined,
             errorMessage: editedInvoiceData.errorMessage || undefined,
             paymentDueDate: editedInvoiceData.paymentDueDate,
+            documentType: editedInvoiceData.documentType || selectedInvoiceDetails.documentType,
+            invoiceDate: editedInvoiceData.invoiceDate,
+            paymentMethod: editedInvoiceData.paymentMethod,
             // paymentReceiptImageUri is handled separately by its upload dialog
         };
 
@@ -690,7 +703,7 @@ export default function PaidInvoicesTabView() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'actions' && h.key !== 'paymentStatus' && h.key !== 'selection').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'actions' && h.key !== 'paymentStatus' && h.key !== 'selection' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -967,6 +980,8 @@ export default function PaidInvoicesTabView() {
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatNumber(selectedInvoiceDetails.totalAmount, t, { currency: true, useGrouping: true }) : t('invoices_na')}</p>
+                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDate(selectedInvoiceDetails.invoiceDate as string) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (

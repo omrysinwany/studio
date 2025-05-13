@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileTextIcon as FileText, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon, BookOpenCheck } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -30,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, updateInvoicePaymentStatusService, getAccountantSettingsService } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -59,6 +59,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
+import { Checkbox } from '@/components/ui/checkbox';
+import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
@@ -75,7 +77,7 @@ type ViewMode = 'grid' | 'list';
 
 
 // Scanned Documents View Component
-const ScannedDocsView = () => {
+const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) => {
   const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
@@ -99,6 +101,9 @@ const ScannedDocsView = () => {
     paymentReceiptImageUri: false,
     paymentStatus: true,
     paymentDueDate: false,
+    documentType: false, 
+    invoiceDate: false,
+    paymentMethod: false,
   });
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
@@ -182,6 +187,10 @@ const ScannedDocsView = () => {
             endDate.setHours(23, 59, 59, 999);
             filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) <= endDate);
          }
+         if (filterDocumentType) {
+            filteredData = filteredData.filter(inv => inv.documentType === filterDocumentType);
+         }
+
 
          if (sortKey) {
              filteredData.sort((a, b) => {
@@ -216,7 +225,7 @@ const ScannedDocsView = () => {
       } finally {
         setIsLoading(false);
       }
-    }, [filterSupplier, filterStatus, filterPaymentStatus, dateRange, toast, sortKey, sortDirection, t, user]);
+    }, [filterSupplier, filterStatus, filterPaymentStatus, dateRange, toast, sortKey, sortDirection, t, user, filterDocumentType]);
 
   useEffect(() => {
     if(user) {
@@ -265,9 +274,12 @@ const ScannedDocsView = () => {
       { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
       { key: 'compressedImageForFinalRecordUri', labelKey: 'invoices_col_compressed_uri', sortable: false, className: 'hidden' },
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
+      { key: 'documentType', labelKey: 'invoices_document_type_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
 
    const formatDate = (date: Date | string | undefined) => {
      if (!date) return t('edit_invoice_unknown_document');
@@ -295,13 +307,11 @@ const ScannedDocsView = () => {
 
    const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
     if (invoice) {
-        console.log("Opening details for:", invoice.fileName); // Log filename for clarity
         setSelectedInvoiceDetails(invoice);
         setEditedInvoiceData({ ...invoice });
         setIsEditingDetails(false);
         setShowDetailsSheet(true);
     } else {
-        console.log("handleViewDetails called with null invoice, sheet will not open.");
         setSelectedInvoiceDetails(null);
         setShowDetailsSheet(false);
     }
@@ -349,6 +359,9 @@ const ScannedDocsView = () => {
             paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
             paymentDueDate: editedInvoiceData.paymentDueDate,
             originalImagePreviewUri: editedInvoiceData.originalImagePreviewUri === null ? undefined : editedInvoiceData.originalImagePreviewUri,
+            documentType: editedInvoiceData.documentType || selectedInvoiceDetails.documentType,
+            invoiceDate: editedInvoiceData.invoiceDate,
+            paymentMethod: editedInvoiceData.paymentMethod,
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
@@ -680,7 +693,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -905,7 +918,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     {selectedInvoiceDetails.status === 'error' && (
                         <div>
                             <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
-                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value)} disabled={isSavingDetails}/>
+                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value as string)} disabled={isSavingDetails}/>
                         </div>
                     )}
                      <div>
@@ -954,6 +967,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrency(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
+                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDate(selectedInvoiceDetails.invoiceDate as string) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
@@ -1035,7 +1050,10 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         {showReceiptUploadDialog && invoiceForReceiptUpload && (
             <PaymentReceiptUploadDialog
                 isOpen={showReceiptUploadDialog}
-                onOpenChange={setShowReceiptUploadDialog}
+                onOpenChange={(isOpen) => {
+                    setShowReceiptUploadDialog(isOpen);
+                    if (!isOpen) setInvoiceForReceiptUpload(null);
+                }}
                 invoiceFileName={invoiceForReceiptUpload.fileName}
                 onConfirmUpload={async (receiptUri) => {
                     // Directly update the payment status after successful upload
@@ -1060,6 +1078,8 @@ export default function DocumentsPage() {
   const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth(); // Auth check at the page level
   const router = useRouter();
+  const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | ''>('');
+
 
   useEffect(() => { // Redirection logic
     if (!authLoading && !user) {
@@ -1082,22 +1102,57 @@ export default function DocumentsPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <FileText className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
+                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
         <CardContent>
+         <div className="mb-4">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-auto">
+                        <BookOpenCheck className="mr-2 h-4 w-4" />
+                        {filterDocumentType === 'deliveryNote' ? t('upload_doc_type_delivery_note') :
+                         filterDocumentType === 'invoice' ? t('upload_doc_type_invoice') :
+                         t('invoices_filter_doc_type_all')}
+                        <ChevronDown className="ml-auto h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                    <DropdownMenuLabel>{t('invoices_filter_doc_type_label')}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem
+                        checked={filterDocumentType === ''}
+                        onCheckedChange={() => setFilterDocumentType('')}
+                    >
+                        {t('invoices_filter_doc_type_all')}
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                        checked={filterDocumentType === 'deliveryNote'}
+                        onCheckedChange={() => setFilterDocumentType('deliveryNote')}
+                    >
+                        {t('upload_doc_type_delivery_note')}
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                        checked={filterDocumentType === 'invoice'}
+                        onCheckedChange={() => setFilterDocumentType('invoice')}
+                    >
+                        {t('upload_doc_type_invoice')}
+                    </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <Tabs defaultValue="scanned-docs" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="scanned-docs">{t('invoices_tab_scanned_docs')}</TabsTrigger>
               <TabsTrigger value="paid-invoices">{t('invoices_tab_paid_invoices')}</TabsTrigger>
             </TabsList>
             <TabsContent value="scanned-docs">
-              <ScannedDocsView />
+              <ScannedDocsView filterDocumentType={filterDocumentType} />
             </TabsContent>
             <TabsContent value="paid-invoices">
-              <PaidInvoicesTabView />
+              <PaidInvoicesTabView filterDocumentType={filterDocumentType} />
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -1105,5 +1160,3 @@ export default function DocumentsPage() {
     </div>
   );
 }
-
-
