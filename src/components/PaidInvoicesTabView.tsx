@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -98,6 +98,9 @@ type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
+const ITEMS_PER_PAGE_PAID_INVOICES = 8;
+
+
 export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) {
   const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
@@ -148,6 +151,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
   const [isExporting, setIsExporting] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
+  const [currentPaidInvoicesPage, setCurrentPaidInvoicesPage] = useState(1);
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
@@ -270,6 +274,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
       setSortKey(key);
       setSortDirection('asc');
     }
+    setCurrentPaidInvoicesPage(1);
   };
 
    const filteredAndSortedInvoices = useMemo(() => {
@@ -284,6 +289,19 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     }
     return result;
   }, [invoices, searchTerm]);
+
+  const totalPaidInvoices = filteredAndSortedInvoices.length;
+  const totalPaidInvoicesPages = Math.ceil(totalPaidInvoices / ITEMS_PER_PAGE_PAID_INVOICES);
+  const displayedPaidInvoices = useMemo(() => {
+      const startIndex = (currentPaidInvoicesPage - 1) * ITEMS_PER_PAGE_PAID_INVOICES;
+      return filteredAndSortedInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE_PAID_INVOICES);
+  }, [filteredAndSortedInvoices, currentPaidInvoicesPage]);
+
+  const handlePaidInvoicesPageChange = (newPage: number) => {
+      if (newPage >= 1 && newPage <= totalPaidInvoicesPages) {
+          setCurrentPaidInvoicesPage(newPage);
+      }
+  };
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
@@ -588,7 +606,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
             <Input
               placeholder={t('inventory_search_placeholder')}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {setSearchTerm(e.target.value); setCurrentPaidInvoicesPage(1);}}
               className="pl-10"
               aria-label={t('invoices_search_aria')}
             />
@@ -628,12 +646,12 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                      mode="range"
                      defaultMonth={dateRange?.from}
                      selected={dateRange}
-                     onSelect={setDateRange}
+                     onSelect={(range) => {setDateRange(range); setCurrentPaidInvoicesPage(1);}}
                      numberOfMonths={1} // For mobile, show 1 month
                    />
                    {dateRange && (
                       <div className="p-2 border-t flex justify-end">
-                           <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
+                           <Button variant="ghost" size="sm" onClick={() => {setDateRange(undefined); setCurrentPaidInvoicesPage(1);}}>{t('reports_date_range_clear')}</Button>
                       </div>
                    )}
                  </PopoverContent>
@@ -652,7 +670,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem
                   checked={!filterSupplier}
-                  onCheckedChange={() => setFilterSupplier('')}
+                  onCheckedChange={() => {setFilterSupplier(''); setCurrentPaidInvoicesPage(1);}}
                 >
                   {t('invoices_filter_supplier_all')}
                 </DropdownMenuCheckboxItem>
@@ -660,7 +678,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                   <DropdownMenuCheckboxItem
                     key={supplier.name}
                     checked={filterSupplier === supplier.name}
-                    onCheckedChange={() => setFilterSupplier(supplier.name)}
+                    onCheckedChange={() => {setFilterSupplier(supplier.name); setCurrentPaidInvoicesPage(1);}}
                   >
                     {supplier.name}
                   </DropdownMenuCheckboxItem>
@@ -679,12 +697,12 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => setFilterStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => {setFilterStatus(''); setCurrentPaidInvoicesPage(1);}}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
                 {(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (
                   <DropdownMenuCheckboxItem
                     key={status}
                     checked={filterStatus === status}
-                    onCheckedChange={() => setFilterStatus(status)}
+                    onCheckedChange={() => {setFilterStatus(status); setCurrentPaidInvoicesPage(1);}}
                   >
                     {t(`invoice_status_${status}` as any)}
                   </DropdownMenuCheckboxItem>
@@ -724,6 +742,15 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+             <Button
+                variant="outline"
+                onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
+                className="flex-1 md:flex-initial"
+                aria-label={t('invoices_toggle_view_mode_aria')}
+                >
+                {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
+                {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
+            </Button>
              <Button variant="outline" onClick={handleSelectAllLastMonth} className="flex-1 md:flex-initial">
               <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
             </Button>
@@ -788,14 +815,14 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : filteredAndSortedInvoices.length === 0 ? (
+                ) : displayedPaidInvoices.length === 0 ? (
                   <TableRow>
                      <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                        {t('paid_invoices_no_paid_invoices_found')}
                      </TableCell>
                   </TableRow>
                 ) : (
-                  filteredAndSortedInvoices.map((item) => (
+                  displayedPaidInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                         {visibleColumns.selection && (
                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
@@ -856,11 +883,36 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                 )}
               </TableBody>
             </Table>
+             {totalPaidInvoicesPages > 1 && (
+                <div className="flex items-center justify-end space-x-2 py-4">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePaidInvoicesPageChange(currentPaidInvoicesPage - 1)}
+                        disabled={currentPaidInvoicesPage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="sr-only">{t('inventory_pagination_previous')}</span>
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                        {t('inventory_pagination_page_info_simple', { currentPage: currentPaidInvoicesPage, totalPages: totalPaidInvoicesPages})}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePaidInvoicesPageChange(currentPaidInvoicesPage + 1)}
+                        disabled={currentPaidInvoicesPage === totalPaidInvoicesPages}
+                    >
+                         <span className="sr-only">{t('inventory_pagination_next')}</span>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
             {isLoading ? (
-               Array.from({ length: 8 }).map((_, index) => (
+               Array.from({ length: ITEMS_PER_PAGE_PAID_INVOICES }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
                       <CardHeader className="h-32 bg-muted rounded-t-lg" />
                       <CardContent className="p-4 space-y-2">
@@ -870,10 +922,10 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                       </CardContent>
                   </Card>
                ))
-            ) : filteredAndSortedInvoices.length === 0 ? (
+            ) : displayedPaidInvoices.length === 0 ? (
               <p className="col-span-full text-center text-muted-foreground py-10">{t('paid_invoices_no_paid_invoices_found')}</p>
             ) : (
-              filteredAndSortedInvoices.map((item) => (
+              displayedPaidInvoices.map((item) => (
                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
                   <div className="p-2 absolute top-0 left-0 z-10">
                        <Checkbox
@@ -918,6 +970,31 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
               ))
             )}
           </div>
+        )}
+         {viewMode === 'grid' && totalPaidInvoicesPages > 1 && (
+            <div className="flex items-center justify-end space-x-2 py-4 mt-4">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePaidInvoicesPageChange(currentPaidInvoicesPage - 1)}
+                    disabled={currentPaidInvoicesPage === 1}
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="sr-only">{t('inventory_pagination_previous')}</span>
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                    {t('inventory_pagination_page_info_simple', { currentPage: currentPaidInvoicesPage, totalPages: totalPaidInvoicesPages})}
+                </span>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePaidInvoicesPageChange(currentPaidInvoicesPage + 1)}
+                    disabled={currentPaidInvoicesPage === totalPaidInvoicesPages}
+                >
+                     <span className="sr-only">{t('inventory_pagination_next')}</span>
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
         )}
 
       <Sheet open={showDetailsSheet} onOpenChange={setShowDetailsSheet}>
@@ -1144,3 +1221,4 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     </>
   );
 }
+

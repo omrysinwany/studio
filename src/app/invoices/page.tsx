@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon, BookOpenCheck } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon, BookOpenCheck, ChevronLeft, ChevronRight } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -30,7 +30,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, getStorageKey } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -74,6 +74,8 @@ const isValidImageSrc = (src: string | undefined): src is string => {
 type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
+
+const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
 
 
 // Scanned Documents View Component
@@ -122,6 +124,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
+  const [currentScannedDocsPage, setCurrentScannedDocsPage] = useState(1);
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
@@ -243,6 +246,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
       setSortKey(key);
       setSortDirection('asc');
     }
+    setCurrentScannedDocsPage(1);
   };
 
    const filteredAndSortedInvoices = useMemo(() => {
@@ -257,6 +261,19 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     }
     return result;
   }, [invoices, searchTerm]);
+
+  const totalScannedDocs = filteredAndSortedInvoices.length;
+  const totalScannedDocsPages = Math.ceil(totalScannedDocs / ITEMS_PER_PAGE_SCANNED_DOCS);
+  const displayedScannedInvoices = useMemo(() => {
+    const startIndex = (currentScannedDocsPage - 1) * ITEMS_PER_PAGE_SCANNED_DOCS;
+    return filteredAndSortedInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE_SCANNED_DOCS);
+  }, [filteredAndSortedInvoices, currentScannedDocsPage]);
+
+  const handleScannedDocsPageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalScannedDocsPages) {
+        setCurrentScannedDocsPage(newPage);
+    }
+  };
 
 
    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
@@ -452,7 +469,19 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
 };
 
 
-  const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
+  if (authLoading || (isLoading && !user)) {
+     return (
+       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+         <p className="ml-2 text-muted-foreground">{t('invoices_loading')}</p>
+       </div>
+     );
+   }
+   if (!user && !authLoading) {
+    return null;
+   }
+
+   const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
      let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
      let className = '';
      let icon = null;
@@ -523,17 +552,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
      );
   };
 
-  if (authLoading || (isLoading && !user)) {
-     return (
-       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-         <p className="ml-2 text-muted-foreground">{t('invoices_loading')}</p>
-       </div>
-     );
-   }
-   if (!user && !authLoading) {
-    return null;
-   }
 
    return (
      <>
@@ -543,7 +561,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             <Input
               placeholder={t('inventory_search_placeholder')}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {setSearchTerm(e.target.value); setCurrentScannedDocsPage(1);}}
               className="pl-10"
               aria-label={t('invoices_search_aria')}
             />
@@ -583,22 +601,12 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      mode="range"
                      defaultMonth={dateRange?.from}
                      selected={dateRange}
-                     onSelect={setDateRange}
-                     numberOfMonths={1}
-                     className="sm:block hidden"
-                   />
-                     <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={dateRange?.from}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={2}
-                      className="hidden sm:block"
+                     onSelect={(range) => {setDateRange(range); setCurrentScannedDocsPage(1);}}
+                     numberOfMonths={1} // For mobile, show 1 month
                    />
                    {dateRange && (
                       <div className="p-2 border-t flex justify-end">
-                           <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
+                           <Button variant="ghost" size="sm" onClick={() => {setDateRange(undefined); setCurrentScannedDocsPage(1);}}>{t('reports_date_range_clear')}</Button>
                       </div>
                    )}
                  </PopoverContent>
@@ -617,7 +625,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem
                   checked={!filterSupplier}
-                  onCheckedChange={() => setFilterSupplier('')}
+                  onCheckedChange={() => {setFilterSupplier(''); setCurrentScannedDocsPage(1);}}
                 >
                   {t('invoices_filter_supplier_all')}
                 </DropdownMenuCheckboxItem>
@@ -625,7 +633,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                   <DropdownMenuCheckboxItem
                     key={supplier.name}
                     checked={filterSupplier === supplier.name}
-                    onCheckedChange={() => setFilterSupplier(supplier.name)}
+                    onCheckedChange={() => {setFilterSupplier(supplier.name); setCurrentScannedDocsPage(1);}}
                   >
                     {supplier.name}
                   </DropdownMenuCheckboxItem>
@@ -644,12 +652,12 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => setFilterStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={!filterStatus} onCheckedChange={() => {setFilterStatus(''); setCurrentScannedDocsPage(1);}}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
                 {(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (
                   <DropdownMenuCheckboxItem
                     key={status}
                     checked={filterStatus === status}
-                    onCheckedChange={() => setFilterStatus(status)}
+                    onCheckedChange={() => {setFilterStatus(status); setCurrentScannedDocsPage(1);}}
                   >
                     {t(`invoice_status_${status}` as any)}
                   </DropdownMenuCheckboxItem>
@@ -668,12 +676,12 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => {setFilterPaymentStatus(''); setCurrentScannedDocsPage(1);}}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
                 {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
                   <DropdownMenuCheckboxItem
                     key={pStatus}
                     checked={filterPaymentStatus === pStatus}
-                    onCheckedChange={() => setFilterPaymentStatus(pStatus)}
+                    onCheckedChange={() => {setFilterPaymentStatus(pStatus); setCurrentScannedDocsPage(1);}}
                   >
                     {t(`invoice_payment_status_${pStatus}` as any)}
                   </DropdownMenuCheckboxItem>
@@ -714,6 +722,15 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+             <Button
+                variant="outline"
+                onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
+                className="flex-1 md:flex-initial"
+                aria-label={t('invoices_toggle_view_mode_aria')}
+                >
+                {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
+                {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
+            </Button>
           </div>
         </div>
 
@@ -757,14 +774,14 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : filteredAndSortedInvoices.length === 0 ? (
+                ) : displayedScannedInvoices.length === 0 ? (
                   <TableRow>
                      <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
                        {t('invoices_no_invoices_found')}
                      </TableCell>
                   </TableRow>
                 ) : (
-                  filteredAndSortedInvoices.map((item) => (
+                  displayedScannedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                         {visibleColumns.actions && (
                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
@@ -821,6 +838,31 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 )}
               </TableBody>
             </Table>
+             {totalScannedDocsPages > 1 && (
+                <div className="flex items-center justify-end space-x-2 py-4">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleScannedDocsPageChange(currentScannedDocsPage - 1)}
+                        disabled={currentScannedDocsPage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="sr-only">{t('inventory_pagination_previous')}</span>
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                        {t('inventory_pagination_page_info_simple', { currentPage: currentScannedDocsPage, totalPages: totalScannedDocsPages})}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)}
+                        disabled={currentScannedDocsPage === totalScannedDocsPages}
+                    >
+                         <span className="sr-only">{t('inventory_pagination_next')}</span>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
@@ -835,10 +877,10 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       </CardContent>
                   </Card>
                ))
-            ) : filteredAndSortedInvoices.length === 0 ? (
+            ) : displayedScannedInvoices.length === 0 ? (
               <p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>
             ) : (
-              filteredAndSortedInvoices.map((item) => (
+              displayedScannedInvoices.map((item) => (
                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
                   <CardHeader className="p-0 relative aspect-[4/3]">
                     {isValidImageSrc(item.originalImagePreviewUri) ? (
@@ -875,6 +917,31 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               ))
             )}
           </div>
+        )}
+         {viewMode === 'grid' && totalScannedDocsPages > 1 && (
+            <div className="flex items-center justify-end space-x-2 py-4 mt-4">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleScannedDocsPageChange(currentScannedDocsPage - 1)}
+                    disabled={currentScannedDocsPage === 1}
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="sr-only">{t('inventory_pagination_previous')}</span>
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                    {t('inventory_pagination_page_info_simple', { currentPage: currentScannedDocsPage, totalPages: totalScannedDocsPages})}
+                </span>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)}
+                    disabled={currentScannedDocsPage === totalScannedDocsPages}
+                >
+                     <span className="sr-only">{t('inventory_pagination_next')}</span>
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+            </div>
         )}
       <Sheet open={showDetailsSheet} onOpenChange={(open) => {
           setShowDetailsSheet(open);
@@ -1026,7 +1093,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             <AlertDialogHeaderComponent>
                                 <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
                                 <AlertDialogDescriptionComponent>
-                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails?.fileName || '' })}
+                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName })}
                                 </AlertDialogDescriptionComponent>
                             </AlertDialogHeaderComponent>
                             <AlertDialogFooterComponent>
@@ -1160,3 +1227,4 @@ export default function DocumentsPage() {
     </div>
   );
 }
+
