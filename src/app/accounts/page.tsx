@@ -21,7 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 
 export interface OtherExpense {
@@ -253,7 +253,7 @@ export default function AccountsPage() {
 
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null) return t('invoices_na');
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const handleSaveBudget = () => {
@@ -408,7 +408,7 @@ export default function AccountsPage() {
           ) : openInvoices.length === 0 ? (
             <p className="text-muted-foreground text-center py-6">{t('accounts_no_open_invoices_period')}</p>
           ) : (
-            <ScrollArea className="h-[300px] w-full rounded-md border p-1"> {/* Added max-height, border and padding for ScrollArea */}
+            <ScrollArea className="h-[300px] w-full rounded-md border p-1">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -442,6 +442,7 @@ export default function AccountsPage() {
                   })}
                 </TableBody>
               </Table>
+              <ScrollBar orientation="horizontal" />
             </ScrollArea>
           )}
         </CardContent>
@@ -496,4 +497,3 @@ export default function AccountsPage() {
     </div>
   );
 }
-
