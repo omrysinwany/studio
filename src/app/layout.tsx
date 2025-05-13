@@ -1,5 +1,5 @@
 
-'use client'; 
+'use client';
 
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
@@ -8,11 +8,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/AuthContext';
 import Navigation from '@/components/layout/Navigation';
 import { ThemeProvider } from "@/components/theme-provider";
-// Removed LanguageProvider import
-import React, { useEffect } from 'react'; 
-import { 
+import React, { useEffect } from 'react';
+import {
   clearOldTemporaryScanData
 } from '@/services/backend';
+import { useTranslation } from '@/hooks/useTranslation';
 
 
 const geistSans = Geist({
@@ -25,27 +25,32 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-// Metadata is commented out as it cannot be in a 'use client' file directly.
-// If static metadata is needed, it should be in a parent server component or a specific page.ts/layout.ts.
-/*
-export const metadata: Metadata = {
-  title: 'InvoTrack',
-  description: 'Inventory management based on delivery notes and invoices',
-};
-*/
+// export const metadata: Metadata = {
+//   title: 'InvoTrack',
+//   description: 'Inventory management based on delivery notes and invoices',
+// };
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { locale, t } = useTranslation(); // Using t for potential future use
+
   useEffect(() => {
-    clearOldTemporaryScanData();
-  }, []);
+    clearOldTemporaryScanData(false); // Perform regular cleanup
+     // Set language and direction on initial load and when locale changes
+    document.documentElement.lang = locale;
+    document.documentElement.dir = locale === 'he' ? 'rtl' : 'ltr';
+  }, [locale]);
+
 
   return (
-    // Removed LanguageProvider
-    <html lang="en" dir="ltr" suppressHydrationWarning> {/* Default to English and LTR */}
+    <html lang={locale} dir={locale === 'he' ? 'rtl' : 'ltr'} suppressHydrationWarning>
+      <head>
+        <title>{t('app_title')}</title>
+        <meta name="description" content={t('app_description')} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
          <ThemeProvider
             attribute="class"
