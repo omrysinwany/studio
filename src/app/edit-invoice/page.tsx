@@ -46,7 +46,7 @@ interface EditableTaxInvoiceDetails {
     supplierName?: string;
     invoiceNumber?: string;
     totalAmount?: number;
-    invoiceDate?: string; 
+    invoiceDate?: string;
     paymentMethod?: string;
 }
 
@@ -310,15 +310,26 @@ function EditInvoiceContent() {
 
 
   const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
-    if (!scannedSupplierName || !currentUserId) {
-      setIsSupplierConfirmed(true);
-      if (documentType === 'deliveryNote' || (documentType === 'invoice' && (!editableTaxInvoiceDetails.invoiceDate || !editableTaxInvoiceDetails.paymentMethod))) {
-          setShowPaymentDueDateDialog(true);
-      } else {
-          handleSaveChecks();
-      }
-      return;
+    if (!currentUserId) { // User check is primary
+        setIsSupplierConfirmed(true); // Assume confirmed if no user context to check against
+        if (documentType === 'deliveryNote' || documentType === 'invoice') {
+            setShowPaymentDueDateDialog(true);
+        } else {
+            handleSaveChecks();
+        }
+        return;
     }
+
+    if (!scannedSupplierName) { // If AI didn't find a name
+        setIsSupplierConfirmed(true); // Proceed without supplier confirmation dialog
+        if (documentType === 'deliveryNote' || documentType === 'invoice') {
+            setShowPaymentDueDateDialog(true);
+        } else {
+            handleSaveChecks();
+        }
+        return;
+    }
+
     try {
       const suppliers = await getSupplierSummariesService(currentUserId);
       setExistingSuppliers(suppliers);
@@ -326,21 +337,21 @@ function EditInvoiceContent() {
       if (isExisting) {
         setExtractedSupplierName(scannedSupplierName);
         setIsSupplierConfirmed(true);
-         if (documentType === 'deliveryNote' || (documentType === 'invoice' && (!editableTaxInvoiceDetails.invoiceDate || !editableTaxInvoiceDetails.paymentMethod))) {
+        if (documentType === 'deliveryNote' || documentType === 'invoice') {
             setShowPaymentDueDateDialog(true);
         } else {
             handleSaveChecks();
         }
       } else {
         setPotentialSupplierName(scannedSupplierName);
-        setShowSupplierDialog(true); 
+        setShowSupplierDialog(true);
       }
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName);
+      setExtractedSupplierName(scannedSupplierName); // Use scanned name as fallback
       setIsSupplierConfirmed(true);
-      if (documentType === 'deliveryNote' || (documentType === 'invoice' && (!editableTaxInvoiceDetails.invoiceDate || !editableTaxInvoiceDetails.paymentMethod))) {
+      if (documentType === 'deliveryNote' || documentType === 'invoice') {
           setShowPaymentDueDateDialog(true);
       } else {
           handleSaveChecks();
@@ -366,12 +377,12 @@ function EditInvoiceContent() {
           toast({ title: t('edit_invoice_toast_fail_add_supplier_title'), variant: "destructive" });
         }
       }
-    } else {
-      setExtractedSupplierName(aiScannedSupplierName);
+    } else { // User cancelled or chose not to select/create a supplier from dialog
+      setExtractedSupplierName(aiScannedSupplierName); // Fallback to AI scanned name
       setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
     }
     setIsSupplierConfirmed(true);
-    if (documentType === 'deliveryNote' || (documentType === 'invoice' && (!editableTaxInvoiceDetails.invoiceDate || !editableTaxInvoiceDetails.paymentMethod))) {
+    if (documentType === 'deliveryNote' || documentType === 'invoice') {
       setShowPaymentDueDateDialog(true);
     } else {
       handleSaveChecks();
@@ -519,8 +530,8 @@ function EditInvoiceContent() {
             selectedPaymentDueDate,
             finalInvoiceDate,
             finalPaymentMethod,
-            originalImagePreviewKey, 
-            compressedImageKeyFromParam 
+            originalImagePreviewKey,
+            compressedImageKeyFromParam
           );
 
           cleanupTemporaryData();
@@ -563,9 +574,9 @@ function EditInvoiceContent() {
     }
     try {
       let finalFileNameForSave = originalFileName;
-      const finalSupplierNameForSave = editableTaxInvoiceDetails.supplierName || extractedSupplierName; 
+      const finalSupplierNameForSave = editableTaxInvoiceDetails.supplierName || extractedSupplierName;
       const finalInvoiceNumberForSave = editableTaxInvoiceDetails.invoiceNumber || extractedInvoiceNumber;
-      const finalTotalAmountForSave = editableTaxInvoiceDetails.totalAmount ?? extractedTotalAmount; 
+      const finalTotalAmountForSave = editableTaxInvoiceDetails.totalAmount ?? extractedTotalAmount;
       const finalInvoiceDate = editableTaxInvoiceDetails.invoiceDate || extractedInvoiceDate;
       const finalPaymentMethod = editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod;
 
@@ -579,7 +590,7 @@ function EditInvoiceContent() {
 
       console.log(`[EditInvoice] Finalizing TAX INVOICE save for file: ${finalFileNameForSave}, tempInvoiceId: ${tempInvoiceId}`);
       await finalizeSaveProductsService(
-        [], 
+        [],
         finalFileNameForSave,
         'upload',
         user.id,
@@ -590,15 +601,15 @@ function EditInvoiceContent() {
         selectedPaymentDueDate,
         finalInvoiceDate,
         finalPaymentMethod,
-        originalImagePreviewKey, 
-        compressedImageKeyFromParam 
+        originalImagePreviewKey,
+        compressedImageKeyFromParam
       );
       cleanupTemporaryData();
       toast({
         title: t('edit_invoice_toast_invoice_details_saved_title'),
         description: t('edit_invoice_toast_invoice_details_saved_desc'),
       });
-      router.push('/invoices?view=paid'); 
+      router.push('/invoices?view=paid');
 
     } catch (error: any) {
       console.error("Failed to finalize save for tax invoice:", error);
@@ -623,7 +634,7 @@ function EditInvoiceContent() {
 
 
  const handleSaveChecks = async () => {
-    if (!isSupplierConfirmed) { 
+    if (!isSupplierConfirmed) {
         setShowSupplierDialog(true);
         toast({ title: t('edit_invoice_toast_supplier_not_confirmed_title'), description: t('edit_invoice_toast_supplier_not_confirmed_desc'), variant: "default" });
         return;
@@ -917,11 +928,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      </div>
                      <div>
                          <Label htmlFor="taxInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
-                         <Input 
-                            id="taxInvoiceDate" 
-                            type="date" 
-                            value={editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate)) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''} 
-                            onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)} 
+                         <Input
+                            id="taxInvoiceDate"
+                            type="date"
+                            value={editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate)) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''}
+                            onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)}
                             disabled={isSaving} />
                      </div>
                      <div>
@@ -1017,9 +1028,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                     <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                 </Button>
              )}
-             <Button 
-                onClick={handleSaveChecks} 
-                disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && !scanProcessError) || !isSupplierConfirmed || !selectedPaymentDueDate} 
+             <Button
+                onClick={handleSaveChecks}
+                disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && !scanProcessError) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate)}
                 className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
              >
               {isSaving ? (
@@ -1049,9 +1060,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onCancel={() => {
             setShowSupplierDialog(false);
             setIsSupplierConfirmed(true);
-            setExtractedSupplierName(aiScannedSupplierName); 
+            setExtractedSupplierName(aiScannedSupplierName);
             setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
-            if (documentType === 'deliveryNote' || (documentType === 'invoice' && (!editableTaxInvoiceDetails.invoiceDate || !editableTaxInvoiceDetails.paymentMethod))) {
+            if (documentType === 'deliveryNote' || documentType === 'invoice') {
               setShowPaymentDueDateDialog(true);
             } else {
               handleSaveChecks();
@@ -1070,8 +1081,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onCancel={() => {
             setShowPaymentDueDateDialog(false);
             toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
-            setSelectedPaymentDueDate(undefined); 
-            handleSaveChecks(); 
+            setSelectedPaymentDueDate(undefined);
+            handleSaveChecks();
           }}
         />
       )}
