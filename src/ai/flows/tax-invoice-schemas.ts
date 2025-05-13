@@ -1,5 +1,6 @@
 // src/ai/flows/tax-invoice-schemas.ts
-'use server';
+// This file defines Zod schemas and their TypeScript types for tax invoice scanning.
+// It does not need to be a server module itself, as it's imported by server modules (flows).
 import { z } from 'genkit';
 
 // Input schema for the AI flow for tax invoices
