@@ -750,7 +750,7 @@
   "accounts_no_spending_data_period": "No supplier spending data found for the selected period.",
   "accounts_total_amount_spent_short": "Total Spent",
   "accounts_current_month_expenses_title": "This Month's Expenses",
-  "accounts_current_month_expenses_desc": "Total invoiced amount for the current month.",
+  "accounts_current_month_expenses_desc": "Total invoiced amount for the current month and fixed expenses.",
   "accounts_cash_flow_profitability_title": "Profitability & Future Outlook",
   "accounts_cash_flow_profitability_desc": "Insights into your business's financial health and potential.",
   "accounts_cash_flow_analysis_title": "Cash Flow Analysis",
@@ -833,5 +833,7 @@
   "accounts_budget_saved_desc": "Monthly budget has been updated.",
   "accounts_budget_invalid_amount": "Please enter a valid, non-negative budget amount.",
   "accounts_budget_exceeded_by": "Exceeded by {{amount}}",
-  "accounts_budget_remaining": "{{amount}} remaining"
+  "accounts_budget_remaining": "{{amount}} remaining",
+  "accounts_toast_amount_updated_desc": "Amount updated."
 }
+

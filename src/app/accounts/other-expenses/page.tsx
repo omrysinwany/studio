@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, PlusCircle, Landmark, ArrowLeft, Edit2, Trash2, Home, Building, Droplet, Zap, Save } from 'lucide-react';
+import { Loader2, PlusCircle, Landmark, ArrowLeft, Edit2, Trash2, Home, Building, Droplet, Zap, Save, X } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,6 +39,8 @@ export interface ExpenseTemplate {
 const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
 const EXPENSE_TEMPLATES_STORAGE_KEY_BASE = 'invoTrack_expenseTemplates';
+const SPECIAL_EXPENSE_AMOUNTS_KEY_BASE = 'invoTrack_specialExpenseAmounts';
+
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
@@ -66,6 +68,10 @@ export default function OtherExpensesPage() {
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
   const [expenseTemplates, setExpenseTemplates] = useState<ExpenseTemplate[]>([]);
   const [activeExpenseTab, setActiveExpenseTab] = useState<string>('');
+  const [specialExpenseAmounts, setSpecialExpenseAmounts] = useState<Record<string, number>>({});
+  const [editingSpecialExpenseKey, setEditingSpecialExpenseKey] = useState<string | null>(null);
+  const [tempSpecialExpenseAmount, setTempSpecialExpenseAmount] = useState<string>('');
+
 
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
@@ -79,6 +85,7 @@ export default function OtherExpensesPage() {
       const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
       const templatesStorageKey = getStorageKey(EXPENSE_TEMPLATES_STORAGE_KEY_BASE, user.id);
+      const specialAmountsStorageKey = getStorageKey(SPECIAL_EXPENSE_AMOUNTS_KEY_BASE, user.id);
 
       const storedCategories = localStorage.getItem(categoriesStorageKey);
       const defaultInternalCategories = [SPECIAL_CATEGORY_KEYS.ELECTRICITY, SPECIAL_CATEGORY_KEYS.WATER];
@@ -113,6 +120,18 @@ export default function OtherExpensesPage() {
 
       const storedTemplates = localStorage.getItem(templatesStorageKey);
       setExpenseTemplates(storedTemplates ? JSON.parse(storedTemplates) : []);
+      
+      const storedSpecialAmounts = localStorage.getItem(specialAmountsStorageKey);
+      const initialSpecialAmounts: Record<string, number> = storedSpecialAmounts ? JSON.parse(storedSpecialAmounts) : {};
+      // Ensure Property Tax and Rent have default 0 if not present
+      if (initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] === undefined) {
+        initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] = 0;
+      }
+      if (initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.RENT] === undefined) {
+        initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.RENT] = 0;
+      }
+      setSpecialExpenseAmounts(initialSpecialAmounts);
+
       setIsLoadingData(false);
     } else if (!authLoading && !user) {
         router.push('/login');
@@ -132,6 +151,13 @@ export default function OtherExpensesPage() {
       localStorage.setItem(expensesStorageKey, JSON.stringify(expenses));
     }
   };
+  
+  const saveSpecialExpenseAmounts = (amounts: Record<string, number>) => {
+     if (typeof window !== 'undefined' && user) {
+       const specialAmountsStorageKey = getStorageKey(SPECIAL_EXPENSE_AMOUNTS_KEY_BASE, user.id);
+       localStorage.setItem(specialAmountsStorageKey, JSON.stringify(amounts));
+     }
+   };
 
   const saveExpenseTemplates = (templates: ExpenseTemplate[]) => {
     if (typeof window !== 'undefined' && user) {
@@ -258,36 +284,68 @@ export default function OtherExpensesPage() {
     setShowAddExpenseDialog(true);
   };
 
-  const openEditSpecialExpenseDialog = (internalCatKey: string) => {
-    const latestExpenseForCategory = otherExpenses
-      .filter(exp => exp._internalCategoryKey === internalCatKey)
-      .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+  const handleEditSpecialExpense = (key: string) => {
+    setEditingSpecialExpenseKey(key);
+    setTempSpecialExpenseAmount(String(specialExpenseAmounts[key] || 0));
+  };
 
-    let categoryLabel = '';
-    if (internalCatKey === SPECIAL_CATEGORY_KEYS.PROPERTY_TAX) {
-        categoryLabel = t('accounts_other_expenses_tab_property_tax');
-    } else if (internalCatKey === SPECIAL_CATEGORY_KEYS.RENT) {
-        categoryLabel = t('accounts_other_expenses_tab_rent');
-    } else {
-        categoryLabel = t(`accounts_other_expenses_tab_${internalCatKey}` as any, { defaultValue: internalCatKey.charAt(0).toUpperCase() + internalCatKey.slice(1) });
+  const handleCancelEditSpecialExpense = () => {
+    setEditingSpecialExpenseKey(null);
+    setTempSpecialExpenseAmount('');
+  };
+
+  const handleSaveSpecialExpense = (key: string) => {
+    const amount = parseFloat(tempSpecialExpenseAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast({ title: t('error_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive"});
+      return;
     }
+    const updatedAmounts = { ...specialExpenseAmounts, [key]: amount };
+    setSpecialExpenseAmounts(updatedAmounts);
+    saveSpecialExpenseAmounts(updatedAmounts);
     
+    // Optionally, also create/update a corresponding record in `otherExpenses`
+    // This part might need more thought: how to uniquely identify/update these?
+    // For now, let's assume we always create a new record when the fixed amount is "saved"
+    // to reflect a payment or commitment.
+    const categoryLabel = t(`accounts_other_expenses_tab_${key}` as any, { defaultValue: key.charAt(0).toUpperCase() + key.slice(1) });
     const currentMonthYear = format(new Date(), 'MMMM yyyy');
-    const defaultDescription = `${categoryLabel} - ${currentMonthYear}`;
+    const description = `${categoryLabel} - ${currentMonthYear}`;
 
-    if (latestExpenseForCategory) {
-        setEditingExpense(latestExpenseForCategory);
-        setPrefillDataForDialog({}); 
+     // Find if an expense for this special category and current month already exists
+    const existingSpecialExpenseIndex = otherExpenses.findIndex(exp => 
+      exp._internalCategoryKey === key &&
+      isValid(parseISO(exp.date)) &&
+      format(parseISO(exp.date), 'MMMM yyyy') === currentMonthYear
+    );
+    
+    let newExpenseData: Omit<OtherExpense, 'id'> & { id?: string };
+    if (existingSpecialExpenseIndex > -1) {
+        // Update existing
+        const existingId = otherExpenses[existingSpecialExpenseIndex].id;
+        newExpenseData = {
+            id: existingId,
+            description: description,
+            amount: amount,
+            date: otherExpenses[existingSpecialExpenseIndex].date, // Keep original date if updating within same month
+            category: categoryLabel, // Display category name
+            _internalCategoryKey: key,
+        };
     } else {
-        setEditingExpense(null); 
-        setPrefillDataForDialog({ 
-            category: categoryLabel, 
-            _internalCategoryKey: internalCatKey,
-            description: defaultDescription,
+        // Create new
+        newExpenseData = {
+            description: description,
+            amount: amount,
             date: new Date().toISOString(),
-         });
+            category: categoryLabel, // Display category name
+            _internalCategoryKey: key,
+        };
     }
-    setShowAddExpenseDialog(true);
+    handleAddOrUpdateExpense(newExpenseData);
+
+    setEditingSpecialExpenseKey(null);
+    setTempSpecialExpenseAmount('');
+    toast({ title: t('settings_accountant_toast_save_success_title'), description: `${categoryLabel} ${t('accounts_toast_amount_updated_desc')}`});
   };
 
 
@@ -311,7 +369,7 @@ export default function OtherExpensesPage() {
   };
 
   const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return t('invoices_na');
+    if (value === undefined || value === null) return `${t('currency_symbol')}0`; // Show ₪0 if not set
     return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
   };
 
@@ -356,9 +414,7 @@ export default function OtherExpensesPage() {
                 categoryLabel = t('accounts_other_expenses_tab_rent');
             }
             const CategoryIcon = getCategoryIcon(specialCatKey);
-            const latestExpenseForCategory = otherExpenses
-                .filter(exp => exp._internalCategoryKey === specialCatKey)
-                .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+            const currentAmount = specialExpenseAmounts[specialCatKey] ?? 0;
 
             return (
                 <Card key={specialCatKey} className="shadow-md scale-fade-in delay-100 flex flex-col">
@@ -369,33 +425,64 @@ export default function OtherExpensesPage() {
                             </CardTitle>
                             <CardDescription>{t('accounts_other_expenses_recurring_desc', { category: categoryLabel.toLowerCase() })}</CardDescription>
                         </div>
-                         <Button variant="ghost" size="icon" onClick={() => openEditSpecialExpenseDialog(specialCatKey)} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                            <Edit2 className="h-4 w-4" />
-                            <span className="sr-only">{t('edit_button')}</span>
-                         </Button>
+                         {editingSpecialExpenseKey !== specialCatKey && (
+                           <Button variant="ghost" size="icon" onClick={() => handleEditSpecialExpense(specialCatKey)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                <Edit2 className="h-4 w-4" />
+                                <span className="sr-only">{t('edit_button')}</span>
+                           </Button>
+                         )}
                     </CardHeader>
                     <CardContent className="space-y-1 flex-grow">
-                         {latestExpenseForCategory ? (
-                             <>
-                                <p className="text-2xl font-bold text-primary">{formatCurrency(latestExpenseForCategory.amount)}</p>
-                                <p className="text-xs text-muted-foreground">
-                                    {t('accounts_other_expenses_last_recorded_on')}{' '}
-                                    <strong className="font-semibold">{formatDateDisplay(latestExpenseForCategory.date)}</strong>
-                                </p>
-                             </>
+                        {editingSpecialExpenseKey === specialCatKey ? (
+                             <div className="space-y-2">
+                                <Label htmlFor={`special-amount-${specialCatKey}`} className="sr-only">{t('accounts_add_expense_amount_label')}</Label>
+                                <Input
+                                    id={`special-amount-${specialCatKey}`}
+                                    type="number"
+                                    value={tempSpecialExpenseAmount}
+                                    onChange={(e) => setTempSpecialExpenseAmount(e.target.value)}
+                                    placeholder={t('accounts_add_expense_amount_placeholder', {currency_symbol: t('currency_symbol')})}
+                                    className="h-10"
+                                    min="0"
+                                    step="any"
+                                />
+                            </div>
                         ) : (
-                            <p className="text-sm text-muted-foreground py-4">{t('accounts_other_expenses_no_record_yet')}</p>
+                            <p className="text-2xl font-bold text-primary">{formatCurrency(currentAmount)}</p>
                         )}
+                          {/* Display last recorded payment if available, even when editing amount */}
+                         {otherExpenses.filter(exp => exp._internalCategoryKey === specialCatKey).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0] && editingSpecialExpenseKey !== specialCatKey && (
+                           <p className="text-xs text-muted-foreground">
+                             {t('accounts_other_expenses_last_recorded_on')}{' '}
+                             <strong className="font-semibold">
+                               {formatDateDisplay(otherExpenses.filter(exp => exp._internalCategoryKey === specialCatKey).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0].date)}
+                             </strong>
+                           </p>
+                         )}
+                         {(!otherExpenses.find(exp => exp._internalCategoryKey === specialCatKey) && editingSpecialExpenseKey !== specialCatKey) && (
+                            <p className="text-sm text-muted-foreground py-1">{t('accounts_other_expenses_no_record_yet')}</p>
+                         )}
+
                     </CardContent>
                      <CardFooter className="border-t pt-3 pb-3">
-                         <Button
-                           onClick={() => openEditSpecialExpenseDialog(specialCatKey)}
-                           size="sm"
-                           className="w-full bg-primary hover:bg-primary/90"
-                         >
-                           {latestExpenseForCategory ? <Edit2 className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" /> }
-                           {latestExpenseForCategory ? t('accounts_edit_expense_dialog_title') : t('accounts_record_payment_button')}
-                         </Button>
+                        {editingSpecialExpenseKey === specialCatKey ? (
+                            <div className="flex gap-2 w-full">
+                                <Button onClick={handleCancelEditSpecialExpense} variant="outline" size="sm" className="flex-1">
+                                     <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
+                                </Button>
+                                <Button onClick={() => handleSaveSpecialExpense(specialCatKey)} size="sm" className="flex-1 bg-primary hover:bg-primary/90">
+                                    <Save className="mr-2 h-4 w-4" /> {t('save_button')}
+                                </Button>
+                            </div>
+                        ) : (
+                             <Button
+                               onClick={() => handleEditSpecialExpense(specialCatKey)}
+                               size="sm"
+                               className="w-full bg-primary hover:bg-primary/90"
+                             >
+                                <Edit2 className="mr-2 h-4 w-4" /> {t('accounts_record_payment_button')}
+                             </Button>
+                        )}
                      </CardFooter>
                 </Card>
             );
@@ -469,6 +556,11 @@ export default function OtherExpensesPage() {
                       </div>
                     )}
                   </div>
+                   <div className="flex justify-end pt-4 mt-4 border-t">
+                        <Button onClick={() => openAddDialogForVariableCategory(activeExpenseTab)} className="bg-primary hover:bg-primary/90">
+                            <PlusCircle className="mr-2 h-4 w-4" /> {t('accounts_add_expense_button_general')}
+                        </Button>
+                    </div>
                 </TabsContent>
               ))}
             </Tabs>
@@ -501,3 +593,4 @@ export default function OtherExpensesPage() {
     </div>
   );
 }
+
