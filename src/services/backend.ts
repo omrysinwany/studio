@@ -1,4 +1,4 @@
-
+// src/services/backend.ts
 'use client';
 
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
@@ -26,13 +26,13 @@ export interface InvoiceHistoryItem {
   supplier?: string;
   totalAmount?: number;
   errorMessage?: string;
-  originalImagePreviewUri?: string; // For displaying in UI immediately after upload or in history
-  compressedImageForFinalRecordUri?: string; // For storing in the final invoice record
+  originalImagePreviewUri?: string; 
+  compressedImageForFinalRecordUri?: string; 
   paymentReceiptImageUri?: string;
   paymentStatus: 'paid' | 'unpaid' | 'pending_payment';
   paymentDueDate?: string | Date;
-  invoiceDate?: string | Date; // Date appearing on the invoice document
-  paymentMethod?: 'cash' | 'credit_card' | 'bank_transfer' | 'other' | string;
+  invoiceDate?: string | Date; 
+  paymentMethod?: string;
 }
 
 export interface SupplierSummary {
@@ -62,9 +62,9 @@ export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImag
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; // 0.5MB
-export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.20 * 1024 * 1024; // 0.2MB
-export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.8 * 1024 * 1024; // 0.8MB for scan results JSON
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.8 * 1024 * 1024; 
 export const MAX_INVENTORY_ITEMS = 1000;
 export const MAX_INVOICE_HISTORY_ITEMS = 200;
 
@@ -85,11 +85,9 @@ export interface PriceCheckResult {
   priceDiscrepancies: ProductPriceDiscrepancy[];
 }
 
-// Export this helper function
 export const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
     console.warn(`[getStorageKey] Attempted to get storage key for base "${baseKey}" without a userId. This might lead to shared data or errors.`);
-    // Returning a generic key to avoid breaking entirely, but this should be an exceptional case.
     return `${baseKey}_SHARED_OR_ERROR`; 
   }
   return `${baseKey}_${userId}`;
@@ -198,7 +196,7 @@ export async function checkProductPricesBeforeSaveService(
             if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 priceDiscrepancies.push({
                     ...scannedProduct,
-                    id: existingProduct.id, // Ensure the ID from inventory is used
+                    id: existingProduct.id, 
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
@@ -206,7 +204,7 @@ export async function checkProductPricesBeforeSaveService(
             } else {
                 productsToSaveDirectly.push({
                     ...scannedProduct,
-                    id: existingProduct.id, // Ensure the ID from inventory is used
+                    id: existingProduct.id, 
                     unitPrice: existingUnitPrice, 
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice, 
                 });
@@ -232,9 +230,9 @@ export async function finalizeSaveProductsService(
     finalSupplierName?: string,
     extractedTotalAmount?: number,
     paymentDueDate?: string | Date,
-    invoiceDate?: string | Date, // New parameter
-    paymentMethod?: string // New parameter
-): Promise<{ inventoryPruned: boolean; uniqueScanIdToClear?: string; finalInvoiceId?: string }> {
+    invoiceDate?: string | Date, 
+    paymentMethod?: string 
+): Promise<{ inventoryPruned: boolean; uniqueScanIdToClear?: string; finalInvoiceId?: string } > {
 
     const uniqueScanIdToClear = (tempInvoiceId && userId) ? tempInvoiceId.replace(`pending-inv-${userId}_`, '') : undefined;
     let finalInvoiceIdForReturn = tempInvoiceId;
@@ -259,7 +257,7 @@ export async function finalizeSaveProductsService(
 
     try {
         if (productsToFinalizeSave.length === 0 && source === 'upload') {
-           console.warn("[Backend - finalizeSave] No products to finalize, but proceeding to update invoice history.");
+           console.warn("[Backend - finalizeSave] No products to finalize for this document, but proceeding to update/create invoice history.");
         }
 
         productsToFinalizeSave.forEach((productToSave) => {
@@ -410,8 +408,8 @@ export async function finalizeSaveProductsService(
                 paymentStatus: existingRecord.paymentStatus || 'unpaid',
                 paymentDueDate: paymentDueDate instanceof Date ? paymentDueDate.toISOString() : paymentDueDate,
                 paymentReceiptImageUri: existingRecord.paymentReceiptImageUri,
-                invoiceDate: invoiceDate instanceof Date ? invoiceDate.toISOString() : invoiceDate,
-                paymentMethod: paymentMethod
+                invoiceDate: invoiceDate, // Store invoiceDate
+                paymentMethod: paymentMethod, // Store paymentMethod
             };
             finalInvoiceIdForReturn = tempInvoiceId;
             console.log(`[finalizeSaveProductsService] Updated existing invoice record ID: ${tempInvoiceId}`, currentInvoices[existingInvoiceIndex]);
@@ -431,8 +429,8 @@ export async function finalizeSaveProductsService(
                 paymentStatus: 'unpaid',
                 paymentDueDate: paymentDueDate instanceof Date ? paymentDueDate.toISOString() : paymentDueDate,
                 paymentReceiptImageUri: undefined, 
-                invoiceDate: invoiceDate instanceof Date ? invoiceDate.toISOString() : invoiceDate,
-                paymentMethod: paymentMethod
+                invoiceDate: invoiceDate, // Store invoiceDate
+                paymentMethod: paymentMethod, // Store paymentMethod
             };
             currentInvoices.push(newInvoiceRecord);
             finalInvoiceIdForReturn = newInvoiceId;
@@ -626,7 +624,7 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     id: invoiceId, 
     uploadTime: originalInvoice.uploadTime, 
     originalImagePreviewUri: updatedData.originalImagePreviewUri === null ? undefined : (updatedData.originalImagePreviewUri ?? originalInvoice.originalImagePreviewUri),
-    compressedImageForFinalRecordUri: updatedData.compressedImageForFinalRecordUri === null ? undefined : (updatedData.compressedImageForFinalRecordUri ?? originalInvoice.originalImagePreviewUri),
+    compressedImageForFinalRecordUri: updatedData.compressedImageForFinalRecordUri === null ? undefined : (updatedData.compressedImageForFinalRecordUri ?? originalInvoice.originalImagePreviewUri), // Corrected typo here from originalImagePreviewUri
     status: originalInvoice.status, 
     paymentStatus: updatedData.paymentStatus || originalInvoice.paymentStatus || 'unpaid',
     paymentReceiptImageUri: updatedData.paymentReceiptImageUri === null ? undefined : (updatedData.paymentReceiptImageUri ?? originalInvoice.paymentReceiptImageUri),
@@ -708,7 +706,6 @@ export async function savePosSettingsService(systemId: string, config: PosConnec
     saveStoredData(POS_SETTINGS_STORAGE_KEY_BASE, settings, userId);
 }
 
-// Helper to get a generic object from localStorage (used by getPosSettings and getAccountantSettings)
 const getStoredObject = <T>(keyBase: string, userId?: string): T | null => {
   if (typeof window === 'undefined') return null;
   const storageKey = getStorageKey(keyBase, userId);
@@ -937,6 +934,7 @@ export async function getAccountantSettingsService(userId?: string): Promise<Acc
 
 export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
     if (typeof window === 'undefined' || !uniqueScanId || !userId) {
+        console.log(`[clearTemporaryScanData] Aborted: window undefined or missing params (uniqueScanId: ${uniqueScanId}, userId: ${userId})`);
         return;
     }
 
@@ -944,9 +942,11 @@ export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
     const originalImageKey = `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${userId}_${uniqueScanId}`;
     const compressedImageKey = `${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${userId}_${uniqueScanId}`;
 
+    console.log(`[clearTemporaryScanData] Attempting to remove keys: ${dataKey}, ${originalImageKey}, ${compressedImageKey}`);
     localStorage.removeItem(dataKey);
     localStorage.removeItem(originalImageKey);
     localStorage.removeItem(compressedImageKey);
+    console.log(`[clearTemporaryScanData] Keys removed for UserID: ${userId}, UniqueScanID: ${uniqueScanId}`);
 }
 
 

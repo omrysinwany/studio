@@ -1,0 +1,131 @@
+// src/ai/flows/scan-tax-invoice.ts
+'use server';
+/**
+ * @fileOverview A flow to scan tax invoices using Gemini and extract invoice-level information.
+ *
+ * - scanTaxInvoice - A function that handles the tax invoice scanning process.
+ * - ScanTaxInvoiceInput - The input type for the scanTaxInvoice function.
+ * - ScanTaxInvoiceOutput - The return type for the scanTaxInvoice function.
+ */
+
+import { ai } from '@/ai/ai-instance';
+import { z } from 'genkit';
+import {
+  ScanTaxInvoiceInputSchema,
+  ScanTaxInvoiceOutputSchema,
+  TaxInvoicePromptOutputSchema,
+} from './tax-invoice-schemas';
+import type {
+  ScanTaxInvoiceInput,
+  ScanTaxInvoiceOutput
+} from './tax-invoice-schemas';
+
+export type { ScanTaxInvoiceInput, ScanTaxInvoiceOutput };
+
+export async function scanTaxInvoice(input: ScanTaxInvoiceInput): Promise<ScanTaxInvoiceOutput> {
+  return scanTaxInvoiceFlow(input);
+}
+
+const prompt = ai.definePrompt({
+  name: 'scanTaxInvoicePrompt',
+  input: { schema: ScanTaxInvoiceInputSchema },
+  output: { schema: TaxInvoicePromptOutputSchema },
+  prompt: `
+    Analyze the following invoice image and extract the specified details.
+    Provide the extracted data as a JSON object.
+
+    Extract the following information if present:
+    "supplierName": (string) The name of the supplier or vendor.
+    "invoiceNumber": (string) The unique invoice identifier.
+    "totalAmount": (number) The final total amount due on the invoice. Extract ONLY the numerical value, no currency symbols. Look for keywords like 'Total', 'Grand Total', 'סהכ לתשלום', 'סה"כ'.
+    "invoiceDate": (string) The date written on the invoice document (e.g., 'YYYY-MM-DD', 'DD/MM/YYYY', 'Month DD, YYYY').
+    "paymentMethod": (string) The method of payment mentioned, if any (e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check', 'מזומן', 'אשראי', 'העברה בנקאית', 'צ׳ק').
+
+    Ensure the entire output is a valid JSON object.
+    If a piece of information is not found, you can omit the key or provide a null/empty string value for it.
+    NEVER return null or an empty response if the document is an invoice. ALWAYS return a JSON object structured as described.
+
+    Invoice Image: {{media url=invoiceDataUri}}
+  `,
+});
+
+const scanTaxInvoiceFlow = ai.defineFlow<
+  typeof ScanTaxInvoiceInputSchema,
+  typeof ScanTaxInvoiceOutputSchema
+>({
+  name: 'scanTaxInvoiceFlow',
+  inputSchema: ScanTaxInvoiceInputSchema,
+  outputSchema: ScanTaxInvoiceOutputSchema,
+}, async (input, streamingCallback) => {
+  let rawOutputFromAI: z.infer<typeof TaxInvoicePromptOutputSchema> | null = null;
+  const maxRetries = 3;
+  let currentRetry = 0;
+  let delay = 1000; // Initial delay 1 second
+
+  while (currentRetry < maxRetries) {
+    try {
+      if (streamingCallback) {
+        streamingCallback({
+          index: currentRetry,
+          content: currentRetry > 0 ? `Retrying AI call for tax invoice (attempt ${currentRetry + 1})...` : 'Calling AI for tax invoice scan...'
+        });
+      }
+      const { output } = await prompt(input);
+      const validationResult = TaxInvoicePromptOutputSchema.safeParse(output);
+
+      if (!validationResult.success) {
+        console.error('AI output structure validation failed for tax invoice. Received:', output, 'Errors:', validationResult.error.flatten());
+        if (currentRetry < maxRetries - 1 && output === null) {
+          console.log(`AI returned null for tax invoice, retrying... (Attempt ${currentRetry + 1})`);
+          currentRetry++;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+          continue;
+        }
+        return {
+          error: `AI output validation failed for tax invoice: ${validationResult.error.flatten().formErrors.join(', ')}`
+        };
+      }
+      rawOutputFromAI = validationResult.data;
+      break;
+
+    } catch (promptError: any) {
+      console.error(`Error calling AI prompt for tax invoice (attempt ${currentRetry + 1}):`, promptError);
+      const isServiceUnavailable = promptError.message?.includes("503") || promptError.message?.toLowerCase().includes("service unavailable") || promptError.message?.toLowerCase().includes("model is overloaded");
+      const isRateLimit = promptError.message?.includes("429") || promptError.message?.toLowerCase().includes("rate limit");
+
+      if ((isServiceUnavailable || isRateLimit) && currentRetry < maxRetries - 1) {
+        currentRetry++;
+        if (streamingCallback) {
+          streamingCallback({
+            index: currentRetry,
+            content: `AI service temporarily unavailable for tax invoice. Retrying in ${delay / 1000}s... (Attempt ${currentRetry + 1})`
+          });
+        }
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+      } else {
+        let userErrorMessage = `Error calling AI for tax invoice: ${promptError.message || 'Unknown AI error'}`;
+        if (isServiceUnavailable) {
+          userErrorMessage = "The AI scanning service is temporarily unavailable for tax invoices due to high demand. Please try again in a few minutes.";
+        }
+        return { error: userErrorMessage };
+      }
+    }
+  }
+
+  if (!rawOutputFromAI) {
+    return { error: "AI processing failed for tax invoice after multiple retries. The AI service might be temporarily unavailable. Please try again later." };
+  }
+
+  if (streamingCallback) streamingCallback({ index: maxRetries, content: 'Tax invoice scan processing complete!' });
+
+  // Directly return the extracted fields
+  return {
+    supplierName: rawOutputFromAI.supplierName,
+    invoiceNumber: rawOutputFromAI.invoiceNumber,
+    totalAmount: rawOutputFromAI.totalAmount,
+    invoiceDate: rawOutputFromAI.invoiceDate,
+    paymentMethod: rawOutputFromAI.paymentMethod,
+  };
+});

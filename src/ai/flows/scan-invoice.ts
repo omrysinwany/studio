@@ -19,7 +19,8 @@ import {
 } from './invoice-schemas';
 import type {
   ScanInvoiceInput,
-  ScanInvoiceOutput
+  ScanInvoiceOutput,
+  PromptOutputType
 } from './invoice-schemas';
 
 
@@ -75,7 +76,10 @@ const prompt = ai.definePrompt({
     The value of "invoice_details" should be a JSON object containing the following optional keys:
     "invoice_number" (string, the invoice number from the document),
     "supplier_name" (string, the supplier's name identified on the document),
-    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה", "סה''כ כולל מע''מ". Extract ONLY the numerical value, no currency symbols).
+    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה", "סה''כ כולל מע''מ". Extract ONLY the numerical value, no currency symbols),
+    "invoice_date" (string, the date written on the invoice document, e.g., 'YYYY-MM-DD', 'DD/MM/YYYY', 'Month DD, YYYY'),
+    "payment_method" (string, the method of payment mentioned, if any, e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check', 'מזומן', 'אשראי', 'העברה בנקאית', 'צ׳ק').
+
 
     Ensure the entire output is a valid JSON object.
     If no products are found, "products" should be an empty array: \`{"products": []}\`.
@@ -87,23 +91,19 @@ const prompt = ai.definePrompt({
 });
 
 
-const scanInvoiceFlow = ai.defineFlow<
-  typeof ScanInvoiceInputSchema,
-  typeof ScanInvoiceOutputSchema
->({
+const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
   name: 'scanInvoiceFlow',
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema
 }, async (input, streamingCallback) => {
-    let rawOutputFromAI: z.infer<typeof PromptOutputSchema> | null = null;
+    let rawOutputFromAI: PromptOutputType | null = null;
     let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
-    let invoiceNumberForOutput: string | undefined = undefined;
-    let supplierForOutput: string | undefined = undefined;
-    let totalAmountForOutput: number | undefined = undefined;
+    let invoiceDetailsForOutput: Partial<Omit<ScanInvoiceOutput, 'products' | 'error'>> = {};
+
 
     const maxRetries = 3;
     let currentRetry = 0;
-    let delay = 1000; // Initial delay 1 second
+    let delay = 1000; 
 
     while (currentRetry < maxRetries) {
         try {
@@ -185,7 +185,7 @@ const scanInvoiceFlow = ai.defineFlow<
 
                 let finalUnitPrice = 0; 
 
-                if (quantity > 0 && lineTotal !== 0) { // Ensure quantity is positive for meaningful calculation
+                if (quantity > 0 && lineTotal !== 0) { 
                     finalUnitPrice = parseFloat((lineTotal / quantity).toFixed(2));
                     if (aiExtractedPurchasePrice !== undefined && Math.abs(finalUnitPrice - aiExtractedPurchasePrice) > 0.01) {
                         console.warn(`[ScanInvoiceFlow] Unit price discrepancy for "${rawProduct.product_name || rawProduct.catalog_number}". Calculated from total/qty: ${finalUnitPrice}, AI extracted purchase_price: ${aiExtractedPurchasePrice}. Prioritizing calculated value.`);
@@ -203,6 +203,7 @@ const scanInvoiceFlow = ai.defineFlow<
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
 
                 const finalProduct: z.infer<typeof FinalProductSchema> = {
+                    // id is not part of ExtractedProductSchema, will be added in backend
                     catalogNumber: rawProduct.catalog_number || 'N/A',
                     barcode: rawProduct.barcode,
                     description: description,
@@ -220,17 +221,17 @@ const scanInvoiceFlow = ai.defineFlow<
 
 
         if (rawOutputFromAI.invoice_details) {
-            invoiceNumberForOutput = rawOutputFromAI.invoice_details.invoice_number;
-            supplierForOutput = rawOutputFromAI.invoice_details.supplier_name;
-            totalAmountForOutput = rawOutputFromAI.invoice_details.invoice_total_amount;
+            invoiceDetailsForOutput.invoiceNumber = rawOutputFromAI.invoice_details.invoice_number;
+            invoiceDetailsForOutput.supplier = rawOutputFromAI.invoice_details.supplier_name;
+            invoiceDetailsForOutput.totalAmount = rawOutputFromAI.invoice_details.invoice_total_amount;
+            invoiceDetailsForOutput.invoiceDate = rawOutputFromAI.invoice_details.invoice_date;
+            invoiceDetailsForOutput.paymentMethod = rawOutputFromAI.invoice_details.payment_method;
         }
         
         if (streamingCallback) streamingCallback({ index: maxRetries +1 , content: 'Scan processing complete!' });
         return { 
             products: productsForOutput,
-            invoiceNumber: invoiceNumberForOutput,
-            supplier: supplierForOutput,
-            totalAmount: totalAmountForOutput,
+            ...invoiceDetailsForOutput
         };
 
     } catch (processingError: any) {
