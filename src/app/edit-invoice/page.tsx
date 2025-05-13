@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, Edit } from 'lucide-react';
+import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, Edit, Eye, FileText as FileTextIconLucide } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
     Product,
@@ -36,6 +36,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Label } from '@/components/ui/label';
 import { format, parseISO, isValid } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 
 interface EditableProduct extends Product {
@@ -85,6 +86,7 @@ function EditInvoiceContent() {
   const [compressedImageKeyFromParam, setCompressedImageKeyFromParam] = useState<string | null>(null);
   const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice' | null>(null);
 
+  const [isViewMode, setIsViewMode] = useState(true); // New state for view/edit mode
 
   const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
   const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
@@ -123,12 +125,13 @@ function EditInvoiceContent() {
         return;
     }
     let uniqueIdToClear: string | null = null;
+    // Prioritize dataKey for cleanup, as it's the primary key for scan results
     if (dataKey?.startsWith(TEMP_DATA_KEY_PREFIX)) {
         const prefix = `${TEMP_DATA_KEY_PREFIX}${user.id}_`;
         if (dataKey.startsWith(prefix)) {
             uniqueIdToClear = dataKey.substring(prefix.length);
         }
-    } else if (tempInvoiceId?.startsWith('pending-inv-')) {
+    } else if (tempInvoiceId?.startsWith('pending-inv-')) { // Fallback to tempInvoiceId if dataKey isn't set
         const prefix = `pending-inv-${user.id}_`;
         if (tempInvoiceId.startsWith(prefix)) {
             uniqueIdToClear = tempInvoiceId.substring(prefix.length);
@@ -310,8 +313,8 @@ function EditInvoiceContent() {
 
 
   const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
-    if (!currentUserId) { // User check is primary
-        setIsSupplierConfirmed(true); // Assume confirmed if no user context to check against
+    if (!currentUserId) { 
+        setIsSupplierConfirmed(true); 
         if (documentType === 'deliveryNote' || documentType === 'invoice') {
             setShowPaymentDueDateDialog(true);
         } else {
@@ -320,8 +323,8 @@ function EditInvoiceContent() {
         return;
     }
 
-    if (!scannedSupplierName) { // If AI didn't find a name
-        setIsSupplierConfirmed(true); // Proceed without supplier confirmation dialog
+    if (!scannedSupplierName) { 
+        setIsSupplierConfirmed(true); 
         if (documentType === 'deliveryNote' || documentType === 'invoice') {
             setShowPaymentDueDateDialog(true);
         } else {
@@ -349,7 +352,7 @@ function EditInvoiceContent() {
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName); // Use scanned name as fallback
+      setExtractedSupplierName(scannedSupplierName); 
       setIsSupplierConfirmed(true);
       if (documentType === 'deliveryNote' || documentType === 'invoice') {
           setShowPaymentDueDateDialog(true);
@@ -377,8 +380,8 @@ function EditInvoiceContent() {
           toast({ title: t('edit_invoice_toast_fail_add_supplier_title'), variant: "destructive" });
         }
       }
-    } else { // User cancelled or chose not to select/create a supplier from dialog
-      setExtractedSupplierName(aiScannedSupplierName); // Fallback to AI scanned name
+    } else { 
+      setExtractedSupplierName(aiScannedSupplierName); 
       setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
     }
     setIsSupplierConfirmed(true);
@@ -892,17 +895,134 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         );
     }
 
+    const renderReadOnlyProductItem = (product: EditableProduct) => (
+        <TableRow key={`view-${product.id}`}>
+            <TableCell className="px-2 sm:px-4 py-2">{product.catalogNumber || 'N/A'}</TableCell>
+            <TableCell className="px-2 sm:px-4 py-2">{product.description || 'N/A'}</TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.quantity, 'quantity')}</TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.unitPrice, 'currency')}</TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.lineTotal, 'currency')}</TableCell>
+        </TableRow>
+    );
+
+    const renderEditableProductItem = (product: EditableProduct) => (
+         <TableRow key={product.id}>
+            <TableCell className="px-2 sm:px-4 py-2">
+                <Input
+                value={product.catalogNumber || ''}
+                onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
+                className="min-w-[100px] h-9"
+                aria-label={t('edit_invoice_aria_catalog', { description: product.description || '' })}
+                />
+            </TableCell>
+            <TableCell className="px-2 sm:px-4 py-2">
+                <Input
+                value={product.description || ''}
+                onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
+                className="min-w-[150px] sm:min-w-[200px] h-9"
+                aria-label={t('edit_invoice_aria_description', { catalogNumber: product.catalogNumber || '' })}
+                />
+            </TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">
+                <Input
+                type="number"
+                value={formatInputValue(product.quantity, 'quantity')}
+                onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
+                className="w-20 sm:w-24 text-right h-9"
+                min="0"
+                step="any"
+                aria-label={t('edit_invoice_aria_qty', { description: product.description || '' })}
+                />
+            </TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">
+                <Input
+                type="number"
+                value={formatInputValue(product.unitPrice, 'currency')}
+                onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
+                className="w-24 sm:w-28 text-right h-9"
+                step="0.01"
+                min="0"
+                aria-label={t('edit_invoice_aria_unit_price', { description: product.description || '' })}
+                />
+            </TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">
+                <Input
+                type="number"
+                value={formatInputValue(product.lineTotal, 'currency')}
+                onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
+                className="w-24 sm:w-28 text-right h-9"
+                step="0.01"
+                min="0"
+                aria-label={t('edit_invoice_aria_line_total', { description: product.description || '' })}
+                />
+            </TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">
+                <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleRemoveRow(product.id)}
+                className="text-destructive hover:text-destructive/80 h-8 w-8"
+                aria-label={t('edit_invoice_aria_remove_row', { description: product.description || '' })}
+                >
+                <Trash2 className="h-4 w-4" />
+                </Button>
+            </TableCell>
+        </TableRow>
+    );
+
+    const renderReadOnlyTaxInvoiceDetails = () => (
+        <div className="space-y-3">
+            {extractedSupplierName && <p><span className="font-semibold">{t('invoice_details_supplier_label')}:</span> {extractedSupplierName}</p>}
+            {extractedInvoiceNumber && <p><span className="font-semibold">{t('invoice_details_invoice_number_label')}:</span> {extractedInvoiceNumber}</p>}
+            {extractedTotalAmount !== undefined && <p><span className="font-semibold">{t('invoice_details_total_amount_label')}:</span> {t('currency_symbol')}{extractedTotalAmount.toFixed(2)}</p>}
+            {extractedInvoiceDate && <p><span className="font-semibold">{t('invoice_details_invoice_date_label')}:</span> {isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'PP') : extractedInvoiceDate}</p>}
+            {extractedPaymentMethod && <p><span className="font-semibold">{t('invoice_details_payment_method_label')}:</span> {extractedPaymentMethod}</p>}
+        </div>
+    );
+
+    const renderEditableTaxInvoiceDetails = () => (
+         <div className="space-y-4">
+            <div>
+                <Label htmlFor="taxSupplierName">{t('invoice_details_supplier_label')}</Label>
+                <Input id="taxSupplierName" value={editableTaxInvoiceDetails.supplierName || extractedSupplierName || ''} onChange={(e) => handleTaxInvoiceDetailsChange('supplierName', e.target.value)} disabled={isSaving} />
+            </div>
+            <div>
+                <Label htmlFor="taxInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
+                <Input id="taxInvoiceNumber" value={editableTaxInvoiceDetails.invoiceNumber || extractedInvoiceNumber || ''} onChange={(e) => handleTaxInvoiceDetailsChange('invoiceNumber', e.target.value)} disabled={isSaving} />
+            </div>
+            <div>
+                <Label htmlFor="taxTotalAmount">{t('invoice_details_total_amount_label')}</Label>
+                <Input id="taxTotalAmount" type="number" value={editableTaxInvoiceDetails.totalAmount ?? extractedTotalAmount ?? ''} onChange={(e) => handleTaxInvoiceDetailsChange('totalAmount', e.target.value === '' ? undefined : parseFloat(e.target.value))} disabled={isSaving} />
+            </div>
+            <div>
+                <Label htmlFor="taxInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
+                <Input
+                id="taxInvoiceDate"
+                type="date"
+                value={(editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate))) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : (extractedInvoiceDate && isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'yyyy-MM-dd') : '')}
+                onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)}
+                disabled={isSaving} />
+            </div>
+            <div>
+                <Label htmlFor="taxPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
+                <Input id="taxPaymentMethod" value={editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod || ''} onChange={(e) => handleTaxInvoiceDetailsChange('paymentMethod', e.target.value)} disabled={isSaving} />
+            </div>
+        </div>
+    );
+
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
       <Card className="shadow-md scale-fade-in">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">
-            {documentType === 'invoice' ? t('edit_invoice_title_tax_invoice') : t('edit_invoice_title')}
+          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+            <FileTextIconLucide className="mr-2 h-5 w-5" />
+            {isViewMode ? t('edit_invoice_view_title') : (documentType === 'invoice' ? t('edit_invoice_title_tax_invoice') : t('edit_invoice_title'))}
           </CardTitle>
           <CardDescription>
              {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
-             {extractedSupplierName && ` | ${t('edit_invoice_supplier', { supplierName: extractedSupplierName })}`}
+             {(isViewMode ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) && 
+                ` | ${t('edit_invoice_supplier', { supplierName: (isViewMode ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) })}`}
           </CardDescription>
            {scanProcessError && (
              <Alert variant="destructive" className="mt-2">
@@ -913,36 +1033,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardHeader>
         <CardContent>
             {documentType === 'invoice' ? (
-                 <div className="space-y-4">
-                     <div>
-                         <Label htmlFor="taxSupplierName">{t('invoice_details_supplier_label')}</Label>
-                         <Input id="taxSupplierName" value={editableTaxInvoiceDetails.supplierName || ''} onChange={(e) => handleTaxInvoiceDetailsChange('supplierName', e.target.value)} disabled={isSaving} />
-                     </div>
-                     <div>
-                         <Label htmlFor="taxInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
-                         <Input id="taxInvoiceNumber" value={editableTaxInvoiceDetails.invoiceNumber || ''} onChange={(e) => handleTaxInvoiceDetailsChange('invoiceNumber', e.target.value)} disabled={isSaving} />
-                     </div>
-                     <div>
-                         <Label htmlFor="taxTotalAmount">{t('invoice_details_total_amount_label')}</Label>
-                         <Input id="taxTotalAmount" type="number" value={editableTaxInvoiceDetails.totalAmount ?? ''} onChange={(e) => handleTaxInvoiceDetailsChange('totalAmount', e.target.value === '' ? undefined : parseFloat(e.target.value))} disabled={isSaving} />
-                     </div>
-                     <div>
-                         <Label htmlFor="taxInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
-                         <Input
-                            id="taxInvoiceDate"
-                            type="date"
-                            value={editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate)) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''}
-                            onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)}
-                            disabled={isSaving} />
-                     </div>
-                     <div>
-                         <Label htmlFor="taxPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
-                         <Input id="taxPaymentMethod" value={editableTaxInvoiceDetails.paymentMethod || ''} onChange={(e) => handleTaxInvoiceDetailsChange('paymentMethod', e.target.value)} disabled={isSaving} />
-                     </div>
-                 </div>
+                 isViewMode ? renderReadOnlyTaxInvoiceDetails() : renderEditableTaxInvoiceDetails()
             ) : (
               <div className="overflow-x-auto relative">
-                <Table className="min-w-[600px]">
+                {/* Wrap table in div for overflow */}
+                <Table className="min-w-[600px]"> {/* Adjusted min-width */}
                   <TableHeader>
                     <TableRow>
                       <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -950,105 +1045,50 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                       <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
                       <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
                       <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
-                      <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>
+                      {!isViewMode && <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="px-2 sm:px-4 py-2">
-                          <Input
-                            value={product.catalogNumber || ''}
-                            onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)}
-                            className="min-w-[100px] h-9"
-                            aria-label={t('edit_invoice_aria_catalog', { description: product.description || '' })}
-                          />
-                        </TableCell>
-                        <TableCell className="px-2 sm:px-4 py-2">
-                          <Input
-                            value={product.description || ''}
-                            onChange={(e) => handleInputChange(product.id, 'description', e.target.value)}
-                            className="min-w-[150px] sm:min-w-[200px] h-9"
-                            aria-label={t('edit_invoice_aria_description', { catalogNumber: product.catalogNumber || '' })}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2">
-                          <Input
-                            type="number"
-                            value={formatInputValue(product.quantity, 'quantity')}
-                            onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)}
-                            className="w-20 sm:w-24 text-right h-9"
-                            min="0"
-                            step="any"
-                            aria-label={t('edit_invoice_aria_qty', { description: product.description || '' })}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2">
-                          <Input
-                            type="number"
-                            value={formatInputValue(product.unitPrice, 'currency')}
-                            onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)}
-                            className="w-24 sm:w-28 text-right h-9"
-                            step="0.01"
-                            min="0"
-                            aria-label={t('edit_invoice_aria_unit_price', { description: product.description || '' })}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2">
-                          <Input
-                            type="number"
-                            value={formatInputValue(product.lineTotal, 'currency')}
-                            onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)}
-                            className="w-24 sm:w-28 text-right h-9"
-                            step="0.01"
-                             min="0"
-                             aria-label={t('edit_invoice_aria_line_total', { description: product.description || '' })}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveRow(product.id)}
-                            className="text-destructive hover:text-destructive/80 h-8 w-8"
-                             aria-label={t('edit_invoice_aria_remove_row', { description: product.description || '' })}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {products.map(product => isViewMode ? renderReadOnlyProductItem(product) : renderEditableProductItem(product))}
                   </TableBody>
                 </Table>
               </div>
             )}
-          <div className="mt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-             {documentType === 'deliveryNote' && (
-                <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
-                    <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
+            <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
+                <Button variant="outline" onClick={handleGoBack} className="w-full sm:w-auto order-last sm:order-first">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
                 </Button>
-             )}
-             <Button
-                onClick={handleSaveChecks}
-                disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && !scanProcessError) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate)}
-                className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
-             >
-              {isSaving ? (
-                 <>
-                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...
-                 </>
-              ) : (
-                 <>
-                   <Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}
-                 </>
-               )}
-             </Button>
-          </div>
-             <div className="mt-6">
-                 <Button variant="outline" onClick={handleGoBack}>
-                     <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_go_back_button')}
-                 </Button>
-             </div>
+                <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
+                    {isViewMode ? (
+                        <>
+                            <Button onClick={() => setIsViewMode(false)} variant="outline" className="w-full sm:w-auto">
+                                <Edit className="mr-2 h-4 w-4" /> {t('edit_invoice_edit_data_button')}
+                            </Button>
+                            <Button onClick={handleSaveChecks} disabled={isSaving || !isSupplierConfirmed || !selectedPaymentDueDate} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                                {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_continue_button')}</>}
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            {documentType === 'deliveryNote' && (
+                                <Button variant="outline" onClick={handleAddRow} className="w-full sm:w-auto">
+                                    <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
+                                </Button>
+                            )}
+                            <Button variant="outline" onClick={() => setIsViewMode(true)} className="w-full sm:w-auto">
+                                {t('edit_invoice_cancel_edit_button')}
+                            </Button>
+                            <Button
+                                onClick={handleSaveChecks}
+                                disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && !scanProcessError) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate)}
+                                className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
+                            >
+                                {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}</>}
+                            </Button>
+                        </>
+                    )}
+                </div>
+            </div>
         </CardContent>
       </Card>
 
