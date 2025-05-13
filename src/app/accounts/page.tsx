@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 export interface OtherExpense {
@@ -178,9 +179,23 @@ export default function AccountsPage() {
             const expenseDate = parseISO(exp.date);
             if (isSameMonth(expenseDate, currentMonthDate)) {
                 let amountToAdd = exp.amount;
-                const biMonthlyCategories = ['electricity', 'water', 'property_tax']; // Use internal keys
-                if (biMonthlyCategories.includes(exp._internalCategoryKey?.toLowerCase() || '')) {
+                // Use internal keys if available, otherwise fallback to category string (lowercase for matching)
+                const internalKey = exp._internalCategoryKey?.toLowerCase();
+                const categoryString = exp.category.toLowerCase();
+                
+                const biMonthlyKeys = [
+                    'electricity', 
+                    'water', 
+                    'property_tax', 
+                    t('accounts_other_expenses_tab_electricity').toLowerCase(),
+                    t('accounts_other_expenses_tab_water').toLowerCase(),
+                    t('accounts_other_expenses_tab_property_tax').toLowerCase()
+                ];
+
+                if (internalKey && biMonthlyKeys.includes(internalKey)) {
                     amountToAdd /= 2;
+                } else if (!internalKey && biMonthlyKeys.includes(categoryString)){
+                     amountToAdd /= 2;
                 }
                 return sum + amountToAdd;
             }
@@ -190,7 +205,7 @@ export default function AccountsPage() {
             return sum;
         }
     }, 0);
-}, [otherExpenses]);
+}, [otherExpenses, t]);
 
 
   const currentMonthTotalExpenses = useMemo(() => {
@@ -212,7 +227,7 @@ export default function AccountsPage() {
 
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (daysUntilDue <= 0) {
+        if (daysUntilDue <= 0) { // Includes today
             return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
         }
         if (daysUntilDue <= 7) {
@@ -228,7 +243,8 @@ export default function AccountsPage() {
   const formatDateDisplay = (dateString: string | Date | undefined, formatStr: string = 'PP') => {
     if (!dateString) return t('invoices_na');
     try {
-      return format(parseISO(dateString as string), formatStr);
+      const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
+      return format(dateObj, formatStr);
     } catch (e) {
       console.error("Error formatting date for display:", e, "Input:", dateString);
       return t('invoices_invalid_date');
@@ -256,7 +272,7 @@ export default function AccountsPage() {
   const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
 
 
-  if (authLoading || (!user && !authLoading) || isLoadingData) {
+  if (authLoading || (!user && !authLoading)) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -264,7 +280,7 @@ export default function AccountsPage() {
       </div>
     );
   }
-  if (!user) return null;
+  if (!user) return null; // Should not reach here if redirection logic is correct
 
 
   return (
@@ -392,7 +408,7 @@ export default function AccountsPage() {
           ) : openInvoices.length === 0 ? (
             <p className="text-muted-foreground text-center py-6">{t('accounts_no_open_invoices_period')}</p>
           ) : (
-            <div className="overflow-x-auto">
+            <ScrollArea className="h-[300px] w-full rounded-md border p-1"> {/* Added max-height, border and padding for ScrollArea */}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -426,7 +442,7 @@ export default function AccountsPage() {
                   })}
                 </TableBody>
               </Table>
-            </div>
+            </ScrollArea>
           )}
         </CardContent>
       </Card>
@@ -480,3 +496,4 @@ export default function AccountsPage() {
     </div>
   );
 }
+
