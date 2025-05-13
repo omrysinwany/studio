@@ -1,3 +1,4 @@
+// src/app/upload/page.tsx
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -10,19 +11,20 @@ import { useToast } from '@/hooks/use-toast';
 import { scanInvoice } from '@/ai/flows/scan-invoice';
 import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText, Clock, CheckCircle, XCircle, Loader2, Image as ImageIcon, Info } from 'lucide-react';
+import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info } from 'lucide-react'; // Renamed FileText to FileTextIconLucide
 import {
     InvoiceHistoryItem,
     getInvoicesService,
     TEMP_DATA_KEY_PREFIX,
     TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
-    TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
     MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES,
     MAX_SCAN_RESULTS_SIZE_BYTES,
     clearTemporaryScanData,
-    finalizeSaveProductsService,
     INVOICES_STORAGE_KEY_BASE,
     MAX_INVOICE_HISTORY_ITEMS,
+    getStorageKey,
+    finalizeSaveProductsService, // Added finalizeSaveProductsService
+    TEMP_COMPRESSED_IMAGE_KEY_PREFIX, // Added TEMP_COMPRESSED_IMAGE_KEY_PREFIX
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -33,7 +35,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
-
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs
 
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
@@ -101,14 +103,6 @@ async function compressImage(base64Str: string, quality = 0.7, maxWidth = 1024, 
     });
 }
 
-const getStorageKey = (baseKey: string, userId?: string): string => {
-  if (!userId) {
-    console.warn(`[getStorageKey UploadPage] Attempted to get storage key for base "${baseKey}" without a userId.`);
-    return baseKey;
-  }
-  return `${baseKey}_${userId}`;
-};
-
 
 export default function UploadPage() {
   const { user, loading: authLoading } = useAuth();
@@ -127,6 +121,7 @@ export default function UploadPage() {
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice'>('deliveryNote');
 
 
   const fetchHistory = useCallback(async () => {
@@ -134,7 +129,7 @@ export default function UploadPage() {
     setIsLoadingHistory(true);
     try {
       const invoices = await getInvoicesService(user.id);
-      setUploadHistory(invoices.slice(0, 10)); // Show recent 10
+      setUploadHistory(invoices.slice(0, 10));
     } catch (error) {
       console.error("Failed to load upload history:", error);
       toast({
@@ -189,7 +184,7 @@ export default function UploadPage() {
     const reader = new FileReader();
     let progressInterval: NodeJS.Timeout;
 
-    const uniqueScanId = `${Date.now()}_${originalFileName}`;
+    const uniqueScanId = `${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
     const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`;
 
     const dataKey = `${TEMP_DATA_KEY_PREFIX}${user.id}_${uniqueScanId}`;
@@ -201,7 +196,6 @@ export default function UploadPage() {
     let compressedImageForFinalSaveUriSaved = false;
 
     try {
-       // Simulate upload progress
        let currentProgress = 0;
        progressInterval = setInterval(() => {
          currentProgress += 10;
@@ -212,7 +206,6 @@ export default function UploadPage() {
            setIsUploading(false);
          }
        }, 150);
-
 
        reader.readAsDataURL(selectedFile);
        reader.onloadend = async () => {
@@ -232,24 +225,20 @@ export default function UploadPage() {
            let imageForPreviewOnEditPage = originalBase64Data;
            let imageToStoreForFinalSave: string | undefined = undefined;
 
-            // Attempt to compress image for final save
             try {
                 imageToStoreForFinalSave = await compressImage(originalBase64Data);
                 console.log(`[UploadPage] Image compressed for final save. Original size: ${originalBase64Data.length}, Compressed size: ${imageToStoreForFinalSave.length}`);
                 
-                // If compressed version is significantly smaller, consider using it for AI too
                 if (imageToStoreForFinalSave.length < originalBase64Data.length * 0.8) { 
                     imageForAIScan = imageToStoreForFinalSave;
                     console.log("[UploadPage] Using compressed image for AI scan.");
                 }
-                // And also for preview if it's small enough
                 if (imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                     imageForPreviewOnEditPage = imageToStoreForFinalSave;
                     console.log("[UploadPage] Using compressed image for edit page preview as well.");
                 }
 
-
-                if (imageToStoreForFinalSave.length <= MAX_SCAN_RESULTS_SIZE_BYTES) { // Use MAX_SCAN_RESULTS_SIZE_BYTES as a general small image limit
+                if (imageToStoreForFinalSave) {
                     try {
                        localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
                        compressedImageForFinalSaveUriSaved = true;
@@ -257,17 +246,15 @@ export default function UploadPage() {
                     } catch (storageError: any) {
                        console.warn(`[UploadPage] Failed to save compressed image to localStorage (key: ${compressedImageKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
-                        // Proceed without it, originalImagePreviewUri might still be used
                     }
                 } else {
-                    console.warn(`[UploadPage] Compressed image for final save (${imageToStoreForFinalSave.length} bytes) too large for localStorage (limit approx ${MAX_SCAN_RESULTS_SIZE_BYTES} bytes). Will not be stored with invoice record directly.`);
+                    console.warn(`[UploadPage] Compressed image for final save is undefined or empty. Not storing.`);
                 }
 
             } catch (compressionError) {
                 console.warn("[UploadPage] Image compression failed, will use original for AI and potentially preview:", compressionError);
             }
 
-             // Save image for preview on edit page
             if (imageForPreviewOnEditPage) {
                 if (imageForPreviewOnEditPage.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                     try {
@@ -277,7 +264,6 @@ export default function UploadPage() {
                     } catch (storageError: any) {
                         console.warn(`[UploadPage] Failed to save original image preview to localStorage (key: ${originalImagePreviewKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(original preview)"}), variant: 'destructive', duration: 8000 });
-                        // Continue without it, edit page will show no preview
                     }
                 } else {
                      console.warn(`[UploadPage] Image for preview on edit page (${imageForPreviewOnEditPage.length} bytes) too large for localStorage (limit ${MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES} bytes). Not saving preview.`);
@@ -288,16 +274,13 @@ export default function UploadPage() {
 
            try {
                console.log("[UploadPage] Calling AI to scan invoice...");
-               const aiResponse = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => {
-                setStreamingContent(prev => `${prev}\n${update.content}`);
-               });
+               const aiResponse = await scanInvoice({ invoiceDataUri: imageForAIScan });
                scanResult = aiResponse;
 
                if (aiResponse.error) {
                    console.error("[UploadPage] AI processing returned an error:", aiResponse.error);
                    toast({ title: t('upload_toast_scan_error_title'), description: t('upload_toast_scan_error_desc', { error: aiResponse.error }), variant: 'destructive', duration: 8000 });
                    setScanError(aiResponse.error);
-                   // Still save the result with error for the edit page
                }
            } catch (aiError: any) {
                 console.error('[UploadPage] AI processing failed:', aiError);
@@ -307,7 +290,6 @@ export default function UploadPage() {
                 setScanError(errorMessage);
            }
 
-            // Save scan result (even if it's an error object)
             try {
                 const scanResultString = JSON.stringify(scanResult);
                 if (scanResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
@@ -334,7 +316,6 @@ export default function UploadPage() {
                  return;
             }
 
-           // Add PENDING invoice record to history immediately
            const pendingInvoice: InvoiceHistoryItem = {
                id: tempInvoiceId,
                fileName: originalFileName,
@@ -342,7 +323,7 @@ export default function UploadPage() {
                status: 'pending',
                paymentStatus: 'unpaid',
                originalImagePreviewUri: originalImagePreviewUriSaved ? localStorage.getItem(originalImagePreviewKey) || undefined : undefined,
-               // compressedImageForFinalRecordUri will be added by finalizeSaveProductsService if available
+               compressedImageForFinalRecordUri: compressedImageForFinalSaveUriSaved ? localStorage.getItem(compressedImageKey) || undefined : undefined,
            };
 
            try {
@@ -355,13 +336,12 @@ export default function UploadPage() {
                }
                localStorage.setItem(invoicesStorageKey, JSON.stringify(currentInvoices));
                console.log(`[UploadPage] Created PENDING invoice record ID: ${tempInvoiceId}`);
-               fetchHistory(); // Refresh history to show pending item
+               fetchHistory();
             } catch (e: any) {
                console.error("[UploadPage] Failed to create PENDING invoice record in localStorage:", e);
                 if (e.name === 'QuotaExceededError') {
                     toast({ title: t('upload_toast_storage_full_pending_title'), description: t('upload_toast_storage_full_pending_desc', { fileName: originalFileName }), variant: 'destructive', duration: 10000});
                 }
-               // Do not stop processing, try to go to edit page with what was saved
             }
 
 
@@ -372,13 +352,11 @@ export default function UploadPage() {
                });
            }
 
-           // This ensures UI reset and history refresh happens after everything.
-           // The actual navigation is handled after this promise chain
-            if (scanDataSavedForEdit) { // Only proceed if scan data (even if error) was saved
+            if (scanDataSavedForEdit) {
                 const queryParams = new URLSearchParams({
-                    key: dataKey, // Key for the scan result (JSON of ScanInvoiceOutput)
+                    key: dataKey,
                     fileName: originalFileName,
-                    tempInvoiceId: tempInvoiceId, // The ID of the PENDING invoice record
+                    tempInvoiceId: tempInvoiceId,
                 });
                 if (originalImagePreviewUriSaved) {
                     queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
@@ -498,7 +476,7 @@ export default function UploadPage() {
   }
 
   if (!user && !authLoading) {
-    return null; // Or a message encouraging login / redirect handled by useEffect in RootLayout
+    return null; 
   }
 
   return (
@@ -511,6 +489,20 @@ export default function UploadPage() {
           <CardDescription>{t('upload_description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <Tabs value={documentType} onValueChange={(value) => setDocumentType(value as 'deliveryNote' | 'invoice')}>
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="deliveryNote">{t('upload_doc_type_delivery_note')}</TabsTrigger>
+              <TabsTrigger value="invoice">{t('upload_doc_type_invoice')}</TabsTrigger>
+            </TabsList>
+            {/* Content for both tabs will be the same for now, logic can differ later */}
+            <TabsContent value="deliveryNote" className="mt-0"> 
+              {/* File input and upload button remain the same for now */}
+            </TabsContent>
+            <TabsContent value="invoice" className="mt-0">
+               {/* File input and upload button remain the same for now */}
+            </TabsContent>
+          </Tabs>
+
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <Input
               type="file"
@@ -636,7 +628,7 @@ export default function UploadPage() {
                     </div>
                   )}
                   <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]"> {/* Adjusted max height */}
+                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
                   {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.originalImagePreviewUri}
@@ -647,7 +639,10 @@ export default function UploadPage() {
                         data-ai-hint="invoice document"
                     />
                     ) : (
-                    <p className="text-muted-foreground text-center py-4">{t('invoice_details_no_image_available')}</p>
+                      <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                        <ImageIconLucide className="h-10 w-10 mb-2"/>
+                        <p>{t('invoice_details_no_image_available')}</p>
+                      </div>
                     )}
                   </div>
               </div>
