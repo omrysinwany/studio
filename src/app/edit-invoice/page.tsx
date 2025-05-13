@@ -423,8 +423,17 @@ function EditInvoiceContent() {
   const handlePaymentDueDateConfirm = (dueDate: string | Date | undefined) => {
     setSelectedPaymentDueDate(dueDate);
     setShowPaymentDueDateDialog(false);
-    if(!isNewScan) { handleSaveChecks(); }
-  };
+    if(!isNewScan && isViewMode) {
+        // If viewing an existing record and just set the due date, proceed to save.
+        proceedWithActualSave();
+    } else if (isNewScan && !isViewMode) {
+        // If it's a new scan and we are in edit mode, after setting due date, user might want to make more edits
+        // or hit save. We don't auto-save here.
+    } else if(isNewScan && isViewMode) {
+        // This is the summary view for a new scan. Once due date is set, they might want to save or edit further.
+        // No auto-save, let them click the main save/edit buttons.
+    }
+};
 
 
   const handleInputChange = (id: string, field: keyof EditableProduct, value: string | number) => {
@@ -999,7 +1008,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             <div>
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <p className="font-medium">
-                    {typeof value === 'number' ? t('currency_symbol') + value.toFixed(2) : value}
+                    {typeof value === 'number' ? t('currency_symbol') + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2}) : value}
                 </p>
             </div>
         );
@@ -1157,8 +1166,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardTitle>
           <CardDescription>
              {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
-             {(isViewMode && !isNewScan ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) &&
-                ` | ${t('edit_invoice_supplier', { supplierName: (isViewMode && !isNewScan ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) })}`}
+             {(isViewMode && !isNewScan && documentType === 'invoice' ? extractedSupplierName : 
+              !isViewMode && documentType === 'invoice' ? (editableTaxInvoiceDetails.supplierName || extractedSupplierName) : 
+              extractedSupplierName) &&
+                ` | ${t('edit_invoice_supplier', { supplierName: (isViewMode && !isNewScan && documentType === 'invoice' ? extractedSupplierName : !isViewMode && documentType === 'invoice' ? (editableTaxInvoiceDetails.supplierName || extractedSupplierName) : extractedSupplierName) })}`}
           </CardDescription>
            {scanProcessError && (
              <Alert variant="destructive" className="mt-2">
@@ -1169,52 +1180,42 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </CardHeader>
         <CardContent>
             {isViewMode && isNewScan ? (
+                // Summary View for a New Scan
                 <div className="space-y-6">
-                    {documentType === 'invoice' ? (
-                         <Card>
-                            <CardHeader><CardTitle>{t('edit_invoice_extracted_details_title')}</CardTitle></CardHeader>
-                            <CardContent>
-                                {renderReadOnlyTaxInvoiceDetails(true)}
-                            </CardContent>
-                        </Card>
-                    ) : (
-                         <Card>
-                            <CardHeader><CardTitle>{t('edit_invoice_extracted_details_title')}</CardTitle></CardHeader>
-                            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {renderScanSummaryItem(t('invoice_details_supplier_label'), extractedSupplierName)}
-                                {renderScanSummaryItem(t('invoice_details_invoice_number_label'), extractedInvoiceNumber)}
-                                {renderScanSummaryItem(t('invoice_details_total_amount_label'), extractedTotalAmount)}
-                                {renderScanSummaryItem(t('invoice_details_invoice_date_label'), extractedInvoiceDate ? (isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'PP') : extractedInvoiceDate) : undefined)}
-                                {renderScanSummaryItem(t('invoice_details_payment_method_label'), extractedPaymentMethod)}
-                            </CardContent>
-                        </Card>
-                    )}
+                     {/* Invoice Details Section */}
+                    <Card>
+                        <CardHeader><CardTitle>{t('edit_invoice_extracted_details_title')}</CardTitle></CardHeader>
+                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {renderScanSummaryItem(t('invoice_details_supplier_label'), extractedSupplierName)}
+                            {renderScanSummaryItem(t('invoice_details_invoice_number_label'), extractedInvoiceNumber)}
+                            {renderScanSummaryItem(t('invoice_details_total_amount_label'), extractedTotalAmount)}
+                            {renderScanSummaryItem(t('invoice_details_invoice_date_label'), extractedInvoiceDate ? (isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'PP') : extractedInvoiceDate) : undefined)}
+                            {renderScanSummaryItem(t('invoice_details_payment_method_label'), extractedPaymentMethod)}
+                        </CardContent>
+                    </Card>
 
+                    {/* Products Table Section (only for delivery notes) */}
                     {documentType === 'deliveryNote' && (
                          <div className="mt-6"> {/* No surrounding card for products table in summary view */}
                             <h2 className="text-xl font-semibold text-primary mb-3">{t('edit_invoice_extracted_products_title')} ({products.length})</h2>
                             {products.length > 0 ? (
                                 <div className="overflow-x-auto relative border rounded-md">
-                                    <Table className="min-w-full sm:min-w-[600px]"> {/* Ensure table can be wider than screen */}
-                                    <TableHeader>
-                                        <TableRow>
+                                    <Table className="min-w-full sm:min-w-[600px]"><TableHeader><TableRow>
                                         <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
                                         <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_product_name')}</TableHead>
                                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
                                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
                                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
+                                        </TableRow></TableHeader><TableBody>
                                         {products.map(product => renderReadOnlyProductItem(product, true))}
-                                    </TableBody>
-                                    </Table>
+                                    </TableBody></Table>
                                 </div>
                             ) : (
                                 <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
                             )}
                         </div>
                     )}
+                     {/* Image Preview Section */}
                      {displayedOriginalImageUrl && (
                         <Card className="mt-6">
                             <CardHeader><CardTitle>{t('edit_invoice_image_preview_label')}</CardTitle></CardHeader>
@@ -1223,6 +1224,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                             </CardContent>
                         </Card>
                     )}
+                    {/* Action Buttons Section */}
                     <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
                         <Button variant="outline" onClick={handleGoBack} className="w-full sm:w-auto order-last sm:order-first">
                             <ArrowLeft className="mr-2 h-4 w-4" /> {t('edit_invoice_discard_scan_button')}
@@ -1242,13 +1244,13 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                     </div>
                 </div>
             ) : isViewMode && !isNewScan ? (
+                // View Mode for an Existing Record
                 <>
                   {documentType === 'invoice' ? renderReadOnlyTaxInvoiceDetails(false) : (
+                     // View mode for delivery note
                      <>
                       <div className="overflow-x-auto relative border rounded-md">
-                        <Table className="min-w-full sm:min-w-[600px]"> 
-                          <TableHeader>
-                            <TableRow>
+                        <Table className="min-w-full sm:min-w-[600px]"><TableHeader><TableRow>
                               <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
                               <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_product_name')}</TableHead>
                               <TableHead className="hidden md:table-cell px-2 sm:px-4 py-2">{t('edit_invoice_th_full_description')}</TableHead>
@@ -1256,12 +1258,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                               <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
                               <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
                               <TableHead className="text-center px-2 sm:px-4 py-2">{t('edit_invoice_th_barcode')}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
+                            </TableRow></TableHeader><TableBody>
                             {products.length > 0 ? products.map(product => renderReadOnlyProductItem(product)) : <TableRow><TableCell colSpan={7} className="text-center">{t('edit_invoice_no_products_associated')}</TableCell></TableRow>}
-                          </TableBody>
-                        </Table>
+                          </TableBody></Table>
                       </div>
                        {displayedOriginalImageUrl && (
                             <div className="mt-6">
@@ -1283,25 +1282,22 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   </div>
                 </>
             ) : (
+                // Edit Mode (for new or existing)
                 <>
                 {documentType === 'invoice' ? renderEditableTaxInvoiceDetails() : (
+                // Edit mode for delivery note
                 <>
                   <div className="overflow-x-auto relative border rounded-md">
-                    <Table className="min-w-full sm:min-w-[600px]"> 
-                    <TableHeader>
-                        <TableRow>
+                    <Table className="min-w-[600px]"><TableHeader><TableRow>
                         <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
                         <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_description')}</TableHead>
                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
                         <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                        </TableRow></TableHeader><TableBody>
                         {products.map(product => renderEditableProductItem(product))}
-                    </TableBody>
-                    </Table>
+                    </TableBody></Table>
                   </div>
                     {!isViewMode && displayedOriginalImageUrl && (
                         <div className="mt-4">
@@ -1364,7 +1360,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             setShowPaymentDueDateDialog(false);
             toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
             setSelectedPaymentDueDate(undefined); 
-            if(!isNewScan) { handleSaveChecks(); }
+            if(!isNewScan && isViewMode) { handleSaveChecks(); }
           }}
         />
       )}
