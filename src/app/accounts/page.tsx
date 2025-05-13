@@ -49,7 +49,7 @@ const ITEMS_PER_PAGE_OPEN_INVOICES = 4;
 const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
     console.warn(`[getStorageKey AccountsPage] Attempted to get storage key for base "${baseKey}" without a userId.`);
-    return baseKey;
+    return `${baseKey}_${userId || 'SHARED_OR_ERROR'}`;
   }
   return `${baseKey}_${userId}`;
 };
@@ -111,11 +111,11 @@ export default function AccountsPage() {
   };
 
   useEffect(() => {
-    if (authLoading) return; // Wait until auth state is determined
+    if (authLoading) return; 
     if (!user) {
-      router.push('/login'); // Redirect if not authenticated
+      router.push('/login'); 
     } else {
-      fetchAccountData(); // Fetch data if authenticated
+      fetchAccountData(); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
@@ -170,17 +170,40 @@ export default function AccountsPage() {
 
 
   const currentMonthTotalExpensesFromInvoices = useMemo(() => {
-    const currentMonth = new Date();
+    const currentMonthStart = startOfMonth(new Date());
+    const currentMonthEnd = endOfMonth(new Date());
     let totalExpenses = 0;
+
     allInvoices.forEach(invoice => {
-        if (!invoice.uploadTime) return;
-        try {
-            const invoiceDate = parseISO(invoice.uploadTime as string);
-            if (isSameMonth(invoiceDate, currentMonth) && invoice.status === 'completed') {
+        if (invoice.status !== 'completed') return; // Only consider completed invoices
+
+        let relevantDateForExpense: Date | null = null;
+
+        // Prioritize paymentDueDate
+        if (invoice.paymentDueDate) {
+            try {
+                const dueDate = parseISO(invoice.paymentDueDate as string);
+                if (isValid(dueDate)) {
+                    relevantDateForExpense = dueDate;
+                }
+            } catch (e) { /* ignore invalid date parsing for due date */ }
+        }
+        
+        // If no valid paymentDueDate, fall back to uploadTime
+        if (!relevantDateForExpense && invoice.uploadTime) {
+             try {
+                const upTime = parseISO(invoice.uploadTime as string);
+                if (isValid(upTime)) {
+                    relevantDateForExpense = upTime;
+                }
+            } catch (e) { /* ignore invalid date parsing for upload time */ }
+        }
+
+        // Check if the relevantDateForExpense (either paymentDueDate or uploadTime) is within the current month
+        if (relevantDateForExpense) {
+            if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
                 totalExpenses += (invoice.totalAmount || 0);
             }
-        } catch (e) {
-            console.error("Invalid date in currentMonthExpenses (invoices):", invoice.uploadTime);
         }
     });
     return totalExpenses;
@@ -194,7 +217,7 @@ export default function AccountsPage() {
             const expenseDate = parseISO(exp.date);
             if (isSameMonth(expenseDate, currentMonthDate)) {
                 let amountToAdd = exp.amount;
-                // Use internal keys if available, otherwise fallback to category string (lowercase for matching)
+                
                 const internalKey = exp._internalCategoryKey?.toLowerCase();
                 const categoryString = exp.category.toLowerCase();
                 
@@ -357,13 +380,13 @@ export default function AccountsPage() {
         <CardHeader>
             <div className="flex justify-between items-center">
                 <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title')}
+                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('This Month\'s Expenses')}
                 </CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setIsEditingBudget(!isEditingBudget)} className="h-8 w-8">
                     {isEditingBudget ? <Save className="h-4 w-4 text-primary" /> : <Edit2 className="h-4 w-4 text-muted-foreground" />}
                 </Button>
             </div>
-            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+            <CardDescription>{t('Summary of all recorded expenses for the current calendar month.')}</CardDescription>
         </CardHeader>
         <CardContent>
             {isLoadingData ? (
@@ -538,4 +561,3 @@ export default function AccountsPage() {
     </div>
   );
 }
-
