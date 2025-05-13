@@ -24,6 +24,7 @@ import {
     TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
     getStorageKey,
     InvoiceHistoryItem,
+    getInvoicesService,
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
@@ -37,6 +38,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Label } from '@/components/ui/label';
 import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
+import NextImage from 'next/image';
 
 
 interface EditableProduct extends Product {
@@ -64,6 +66,11 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     return String(value);
 };
 
+const isValidImageSrc = (src: string | undefined | null): src is string => {
+  if (!src || typeof src !== 'string') return false;
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
+};
+
 
 function EditInvoiceContent() {
   const { user, loading: authLoading } = useAuth();
@@ -80,13 +87,15 @@ function EditInvoiceContent() {
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [scanProcessError, setScanProcessError] = useState<string | null>(null);
 
-  const [dataKey, setDataKey] = useState<string | null>(null);
-  const [tempInvoiceId, setTempInvoiceId] = useState<string | null>(null);
-  const [originalImagePreviewKey, setOriginalImagePreviewKey] = useState<string | null>(null);
-  const [compressedImageKeyFromParam, setCompressedImageKeyFromParam] = useState<string | null>(null);
+  // States to store the initial temporary keys
+  const [initialDataKey, setInitialDataKey] = useState<string | null>(null);
+  const [initialTempInvoiceId, setInitialTempInvoiceId] = useState<string | null>(null);
+  const [initialOriginalImagePreviewKey, setInitialOriginalImagePreviewKey] = useState<string | null>(null);
+  const [initialCompressedImageKey, setInitialCompressedImageKey] = useState<string | null>(null);
+
   const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice' | null>(null);
 
-  const [isViewMode, setIsViewMode] = useState(true); // New state for view/edit mode
+  const [isViewMode, setIsViewMode] = useState(true);
 
   const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
   const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
@@ -94,6 +103,10 @@ function EditInvoiceContent() {
   const [extractedInvoiceDate, setExtractedInvoiceDate] = useState<string | undefined>(undefined);
   const [extractedPaymentMethod, setExtractedPaymentMethod] = useState<string | undefined>(undefined);
   const [editableTaxInvoiceDetails, setEditableTaxInvoiceDetails] = useState<EditableTaxInvoiceDetails>({});
+
+  // State for displaying images
+  const [displayedOriginalImageUrl, setDisplayedOriginalImageUrl] = useState<string | null>(null);
+  const [displayedCompressedImageUrl, setDisplayedCompressedImageUrl] = useState<string | null>(null);
 
 
   const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
@@ -118,203 +131,253 @@ function EditInvoiceContent() {
     }
   }, [user, authLoading, router]);
 
-
-   const cleanupTemporaryData = useCallback(() => {
+  const cleanupTemporaryDataAfterSave = useCallback(() => {
     if (!user?.id) {
-        console.warn("[EditInvoice] cleanupTemporaryData called, but user ID is missing. Cannot reliably clear data.");
+        console.warn("[EditInvoice] cleanupTemporaryDataAfterSave called, but user ID is missing.");
         return;
     }
-    let uniqueIdToClear: string | null = null;
-    // Prioritize dataKey for cleanup, as it's the primary key for scan results
-    if (dataKey?.startsWith(TEMP_DATA_KEY_PREFIX)) {
-        const prefix = `${TEMP_DATA_KEY_PREFIX}${user.id}_`;
-        if (dataKey.startsWith(prefix)) {
-            uniqueIdToClear = dataKey.substring(prefix.length);
-        }
-    } else if (tempInvoiceId?.startsWith('pending-inv-')) { // Fallback to tempInvoiceId if dataKey isn't set
-        const prefix = `pending-inv-${user.id}_`;
-        if (tempInvoiceId.startsWith(prefix)) {
-            uniqueIdToClear = tempInvoiceId.substring(prefix.length);
-        }
-    }
-
+    // Use the initial keys stored in state for cleanup
+    const uniqueIdToClear = initialTempInvoiceId ? initialTempInvoiceId.replace(`pending-inv-${user.id}_`, '') : (initialDataKey ? initialDataKey.replace(`${TEMP_DATA_KEY_PREFIX}${user.id}_`, '') : null);
 
     if (uniqueIdToClear) {
         clearTemporaryScanData(uniqueIdToClear, user.id);
-        console.log(`[EditInvoice] Triggered cleanup for scan result associated with UserID: ${user.id}, Unique ID: ${uniqueIdToClear}`);
+        console.log(`[EditInvoice] Triggered cleanup for scan result associated with UserID: ${user.id}, Unique ID: ${uniqueIdToClear} using initial keys.`);
     } else {
-        console.log("[EditInvoice] cleanupTemporaryData called, but no dataKey or relevant tempInvoiceId found to clear for the current user.");
+        console.log("[EditInvoice] cleanupTemporaryDataAfterSave: No initial dataKey or tempInvoiceId found in state to derive uniqueIdToClear.");
     }
-  }, [dataKey, tempInvoiceId, user?.id]);
+  }, [user?.id, initialDataKey, initialTempInvoiceId]);
 
 
   useEffect(() => {
-    if (!user) return;
-    const key = searchParams.get('key');
+    if (!user || initialDataLoaded) return;
+
+    const keyParam = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
     const tempInvIdParam = searchParams.get('tempInvoiceId');
     const compressedKeyParam = searchParams.get('compressedImageKey');
     const docTypeParam = searchParams.get('docType') as 'deliveryNote' | 'invoice' | null;
+    const invoiceIdParam = searchParams.get('invoiceId'); // For loading existing invoices
 
-    setDataKey(key);
-    setTempInvoiceId(tempInvIdParam);
-    setCompressedImageKeyFromParam(compressedKeyParam);
-    setDocumentType(docTypeParam);
+    // Store initial keys for cleanup later
+    setInitialDataKey(keyParam);
+    setInitialTempInvoiceId(tempInvIdParam);
+    setInitialCompressedImageKey(compressedKeyParam);
 
     let uniquePartFromKeyOrTempId: string | null = null;
-    if (key?.startsWith(`${TEMP_DATA_KEY_PREFIX}${user.id}_`)) {
-        uniquePartFromKeyOrTempId = key.substring(`${TEMP_DATA_KEY_PREFIX}${user.id}_`.length);
+    if (keyParam?.startsWith(`${TEMP_DATA_KEY_PREFIX}${user.id}_`)) {
+        uniquePartFromKeyOrTempId = keyParam.substring(`${TEMP_DATA_KEY_PREFIX}${user.id}_`.length);
     } else if (tempInvIdParam?.startsWith(`pending-inv-${user.id}_`)) {
         uniquePartFromKeyOrTempId = tempInvIdParam.substring(`pending-inv-${user.id}_`.length);
     }
 
     if (uniquePartFromKeyOrTempId) {
-        setOriginalImagePreviewKey(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user.id}_${uniquePartFromKeyOrTempId}`);
+        setInitialOriginalImagePreviewKey(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user.id}_${uniquePartFromKeyOrTempId}`);
     }
 
-
-    let hasAttemptedLoad = false;
 
     if (nameParam) {
       setOriginalFileName(decodeURIComponent(nameParam));
     } else {
         setOriginalFileName(t('edit_invoice_unknown_document'));
     }
-
-    if (key) {
-        hasAttemptedLoad = true;
-        let storedData: string | null = null;
-        try {
-            storedData = localStorage.getItem(key);
-        } catch(e) {
-            console.error("Error reading from localStorage for key:", key, e);
-            setErrorLoading(t('edit_invoice_error_localstorage_read'));
-            setIsLoading(false);
-            setInitialDataLoaded(true);
-            cleanupTemporaryData();
-            return;
-        }
+    setDocumentType(docTypeParam);
 
 
-        if (!storedData) {
-            setErrorLoading(t('edit_invoice_error_scan_results_not_found_key', {key}));
-            setProducts([]);
-            setEditableTaxInvoiceDetails({});
-            toast({
-              title: t('edit_invoice_toast_error_loading_title'),
-              description: t('edit_invoice_toast_error_loading_desc_not_found_with_key', {key}),
+    const loadData = async () => {
+        setIsLoading(true);
+        setErrorLoading(null);
+        setScanProcessError(null);
+
+        if (invoiceIdParam) { // Loading an existing, finalized invoice
+            try {
+                const inv = await getInvoicesService(user.id).then(all => all.find(i => i.id === invoiceIdParam));
+                if (inv) {
+                    setOriginalFileName(inv.fileName);
+                    setDocumentType(inv.documentType);
+                    setExtractedSupplierName(inv.supplier);
+                    setExtractedInvoiceNumber(inv.invoiceNumber);
+                    setExtractedTotalAmount(inv.totalAmount);
+                    setExtractedInvoiceDate(inv.invoiceDate ? (inv.invoiceDate as string) : undefined);
+                    setExtractedPaymentMethod(inv.paymentMethod);
+                    setSelectedPaymentDueDate(inv.paymentDueDate);
+                    setEditableTaxInvoiceDetails({ // Also set for tax invoices
+                        supplierName: inv.supplier,
+                        invoiceNumber: inv.invoiceNumber,
+                        totalAmount: inv.totalAmount,
+                        invoiceDate: inv.invoiceDate ? (inv.invoiceDate as string) : undefined,
+                        paymentMethod: inv.paymentMethod,
+                    });
+                    setDisplayedOriginalImageUrl(inv.originalImagePreviewUri || null);
+                    setDisplayedCompressedImageUrl(inv.compressedImageForFinalRecordUri || null);
+
+                    if (inv.documentType === 'deliveryNote') {
+                        // This part is tricky: products are not directly linked to invoices in current localStorage setup.
+                        // For simplicity, when viewing an existing delivery note, we might show all products or none.
+                        // Or, ideally, the products that were part of THIS invoice (would require linking products to invoices)
+                        // For now, let's assume we can't easily get *just* the products for *this* invoice.
+                        // We could load all products and the user edits them in context of the supplier/invoice number.
+                        // Or, if `finalizeSaveProductsService` returned the products for THIS invoice, we'd load those.
+                        // For now, we will clear products for existing, assuming user will re-add if needed or this page is for review.
+                        // This is a limitation of not having a relational DB.
+                        // Let's try to load products from what was originally scanned if `keyParam` is also present.
+                        // If not, an empty product list or all products could be shown for general editing context.
+                        // This needs to be rethought if specific products for a *past* invoice must be shown.
+                        // For now, if just invoiceIdParam is present, we can't reliably get ONLY its products.
+                        // Let's assume for viewing a *saved* invoice, if product data was part of its original scan (via keyParam), we'd load it.
+                        // This scenario is complex because the keyParam points to *temporary* scan data.
+                        // For viewing a truly *existing* (not just-saved) invoice, product loading is ambiguous.
+                        // We will keep products empty here, assuming the user is viewing the invoice summary.
+                        // Or they will add items if it was a delivery note context.
+                        const allUserProducts = await getProductsService(user.id);
+                        // This is still all products. A better way would be to store product IDs on the invoice item.
+                        // For now, if it's a delivery note, we can't truly re-populate *only* its items.
+                        // Let's just show an empty table if it's not a fresh scan.
+                        setProducts([]);
+                    }
+                    setIsSupplierConfirmed(true); // Assume supplier is confirmed for existing invoices
+                } else {
+                    setErrorLoading(t('edit_invoice_error_invoice_not_found_id', { invoiceId: invoiceIdParam }));
+                }
+            } catch (e) {
+                console.error("Error loading existing invoice:", e);
+                setErrorLoading(t('edit_invoice_error_loading_existing'));
+            }
+        } else if (keyParam) { // Loading from a temporary scan result
+            let storedData: string | null = null;
+            try {
+                storedData = localStorage.getItem(keyParam);
+                // Also load image URIs from their respective keys
+                if(initialOriginalImagePreviewKey) setDisplayedOriginalImageUrl(localStorage.getItem(initialOriginalImagePreviewKey));
+                if(initialCompressedImageKey) setDisplayedCompressedImageUrl(localStorage.getItem(initialCompressedImageKey));
+
+            } catch(e) {
+                console.error("Error reading from localStorage for key:", keyParam, e);
+                setErrorLoading(t('edit_invoice_error_localstorage_read'));
+                cleanupTemporaryDataAfterSave();
+                setIsLoading(false);
+                setInitialDataLoaded(true);
+                return;
+            }
+
+            if (!storedData) {
+                setErrorLoading(t('edit_invoice_error_scan_results_not_found_key', {key: keyParam}));
+                toast({
+                  title: t('edit_invoice_toast_error_loading_title'),
+                  description: t('edit_invoice_toast_error_loading_desc_not_found_with_key', {key: keyParam}),
+                  variant: "destructive",
+                });
+                cleanupTemporaryDataAfterSave();
+                setIsLoading(false);
+                setInitialDataLoaded(true);
+                return;
+            }
+
+            let parsedData: ScanInvoiceOutput | ScanTaxInvoiceOutput;
+            try {
+                parsedData = JSON.parse(storedData);
+            } catch (jsonParseError) {
+                 console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
+                 cleanupTemporaryDataAfterSave();
+                 setErrorLoading(t('edit_invoice_error_invalid_json'));
+                  toast({
+                      title: t('edit_invoice_toast_error_loading_title'),
+                      description: t('edit_invoice_toast_error_loading_desc_invalid_format'),
+                      variant: "destructive",
+                  });
+                setProducts([]);
+                setEditableTaxInvoiceDetails({});
+                setIsLoading(false);
+                setInitialDataLoaded(true);
+                return;
+            }
+
+            const generalError = (parsedData as any).error;
+            if (generalError) {
+              setScanProcessError(generalError);
+            }
+
+            if (docTypeParam === 'invoice') {
+                const taxData = parsedData as ScanTaxInvoiceOutput;
+                setProducts([]);
+                setEditableTaxInvoiceDetails({
+                    supplierName: taxData.supplierName,
+                    invoiceNumber: taxData.invoiceNumber,
+                    totalAmount: taxData.totalAmount,
+                    invoiceDate: taxData.invoiceDate,
+                    paymentMethod: taxData.paymentMethod,
+                });
+                setExtractedSupplierName(taxData.supplierName);
+                setExtractedInvoiceNumber(taxData.invoiceNumber);
+                setExtractedTotalAmount(taxData.totalAmount);
+                setExtractedInvoiceDate(taxData.invoiceDate);
+                setExtractedPaymentMethod(taxData.paymentMethod);
+                setAiScannedSupplierName(taxData.supplierName);
+                checkSupplier(taxData.supplierName, user.id);
+
+            } else if (docTypeParam === 'deliveryNote') {
+                const productData = parsedData as ScanInvoiceOutput;
+                if (productData && Array.isArray(productData.products)) {
+                  const productsWithIds = productData.products.map((p: Product, index: number) => ({
+                    ...p,
+                    id: p.id || `prod-temp-${Date.now()}-${index}`,
+                    _originalId: p.id,
+                    quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
+                    lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
+                     unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number' && p.lineTotal !== 0)
+                                ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
+                                : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
+                    minStockLevel: p.minStockLevel ?? undefined,
+                    maxStockLevel: p.maxStockLevel ?? undefined,
+                    salePrice: p.salePrice ?? undefined,
+                  }));
+                  setProducts(productsWithIds);
+                  setEditableTaxInvoiceDetails({});
+                  setExtractedInvoiceNumber(productData.invoiceNumber);
+                  setAiScannedSupplierName(productData.supplier);
+                  setExtractedSupplierName(productData.supplier);
+                  setExtractedTotalAmount(productData.totalAmount);
+                  setExtractedInvoiceDate(productData.invoiceDate);
+                  setExtractedPaymentMethod(productData.paymentMethod);
+                  checkSupplier(productData.supplier, user.id);
+                } else if (!productData.error){
+                    console.error("Parsed product data is missing 'products' array or is invalid:", productData);
+                    setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
+                    setProducts([]);
+                    toast({
+                       title: t('edit_invoice_toast_error_loading_title'),
+                       description: t('edit_invoice_toast_error_loading_desc_invalid_structure'),
+                       variant: "destructive",
+                    });
+                }
+            } else {
+                 console.error("Unknown or missing docTypeParam:", docTypeParam, "Parsed Data:", parsedData);
+                 setErrorLoading(t('edit_invoice_error_unknown_document_type'));
+                 setProducts([]);
+                 setEditableTaxInvoiceDetails({});
+            }
+        } else if (!initialDataLoaded) { // No key and not an existing invoice ID, and first load
+           setErrorLoading(t('edit_invoice_error_no_key_or_id'));
+           setProducts([]);
+           setEditableTaxInvoiceDetails({});
+           toast({
+              title: t('edit_invoice_toast_no_data_title'),
+              description: t('edit_invoice_toast_no_data_desc'),
               variant: "destructive",
             });
-            cleanupTemporaryData();
-            setIsLoading(false);
-            setInitialDataLoaded(true);
-            return;
         }
-
-        let parsedData: ScanInvoiceOutput | ScanTaxInvoiceOutput;
-        try {
-            parsedData = JSON.parse(storedData);
-        } catch (jsonParseError) {
-             console.error("Failed to parse JSON data from localStorage:", jsonParseError, "Raw data:", storedData);
-             cleanupTemporaryData();
-             setErrorLoading(t('edit_invoice_error_invalid_json'));
-              toast({
-                  title: t('edit_invoice_toast_error_loading_title'),
-                  description: t('edit_invoice_toast_error_loading_desc_invalid_format'),
-                  variant: "destructive",
-              });
-            setProducts([]);
-            setEditableTaxInvoiceDetails({});
-            setIsLoading(false);
-            setInitialDataLoaded(true);
-            return;
-        }
-        
-        const generalError = (parsedData as any).error;
-        if (generalError) {
-          setScanProcessError(generalError);
-        }
-
-
-        if (docTypeParam === 'invoice') {
-            const taxData = parsedData as ScanTaxInvoiceOutput;
-            setProducts([]); 
-            setEditableTaxInvoiceDetails({
-                supplierName: taxData.supplierName,
-                invoiceNumber: taxData.invoiceNumber,
-                totalAmount: taxData.totalAmount,
-                invoiceDate: taxData.invoiceDate,
-                paymentMethod: taxData.paymentMethod,
-            });
-            setExtractedSupplierName(taxData.supplierName); 
-            setAiScannedSupplierName(taxData.supplierName);
-            checkSupplier(taxData.supplierName, user.id);
-
-        } else if (docTypeParam === 'deliveryNote') {
-            const productData = parsedData as ScanInvoiceOutput;
-            if (productData && Array.isArray(productData.products)) {
-              const productsWithIds = productData.products.map((p: Product, index: number) => ({
-                ...p,
-                id: p.id || `prod-temp-${Date.now()}-${index}`,
-                _originalId: p.id,
-                quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
-                lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-                 unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number' && p.lineTotal !== 0)
-                            ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
-                            : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
-                minStockLevel: p.minStockLevel ?? undefined,
-                maxStockLevel: p.maxStockLevel ?? undefined,
-                salePrice: p.salePrice ?? undefined,
-              }));
-              setProducts(productsWithIds);
-              setEditableTaxInvoiceDetails({}); 
-              setExtractedInvoiceNumber(productData.invoiceNumber);
-              setAiScannedSupplierName(productData.supplier);
-              setExtractedSupplierName(productData.supplier); 
-              setExtractedTotalAmount(productData.totalAmount);
-              setExtractedInvoiceDate(productData.invoiceDate);
-              setExtractedPaymentMethod(productData.paymentMethod);
-              checkSupplier(productData.supplier, user.id);
-            } else if (!productData.error){
-                console.error("Parsed product data is missing 'products' array or is invalid:", productData);
-                setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
-                setProducts([]);
-                toast({
-                   title: t('edit_invoice_toast_error_loading_title'),
-                   description: t('edit_invoice_toast_error_loading_desc_invalid_structure'),
-                   variant: "destructive",
-                });
-            }
-        } else {
-             console.error("Unknown or missing docTypeParam:", docTypeParam, "Parsed Data:", parsedData);
-             setErrorLoading(t('edit_invoice_error_unknown_document_type'));
-             setProducts([]);
-             setEditableTaxInvoiceDetails({});
-        }
-         setErrorLoading(null);
-
-    } else if (!initialDataLoaded) {
-       hasAttemptedLoad = true;
-       setErrorLoading(t('edit_invoice_error_no_key'));
-       setProducts([]);
-       setEditableTaxInvoiceDetails({});
-       toast({
-          title: t('edit_invoice_toast_no_data_title'),
-          description: t('edit_invoice_toast_no_data_desc'),
-          variant: "destructive",
-        });
-    }
-
-    setIsLoading(false);
-    if (hasAttemptedLoad) {
+        setIsLoading(false);
         setInitialDataLoaded(true);
-    }
-  }, [searchParams, toast, initialDataLoaded, cleanupTemporaryData, t, user]);
+    };
+
+    loadData();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, user, toast, t]); // Removed cleanupTemporaryDataAfterSave, it's called specifically
 
 
   const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
-    if (!currentUserId) { 
-        setIsSupplierConfirmed(true); 
+    if (!currentUserId) {
+        setIsSupplierConfirmed(true);
         if (documentType === 'deliveryNote' || documentType === 'invoice') {
             setShowPaymentDueDateDialog(true);
         } else {
@@ -323,8 +386,8 @@ function EditInvoiceContent() {
         return;
     }
 
-    if (!scannedSupplierName) { 
-        setIsSupplierConfirmed(true); 
+    if (!scannedSupplierName) {
+        setIsSupplierConfirmed(true);
         if (documentType === 'deliveryNote' || documentType === 'invoice') {
             setShowPaymentDueDateDialog(true);
         } else {
@@ -352,7 +415,7 @@ function EditInvoiceContent() {
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName); 
+      setExtractedSupplierName(scannedSupplierName);
       setIsSupplierConfirmed(true);
       if (documentType === 'deliveryNote' || documentType === 'invoice') {
           setShowPaymentDueDateDialog(true);
@@ -380,8 +443,8 @@ function EditInvoiceContent() {
           toast({ title: t('edit_invoice_toast_fail_add_supplier_title'), variant: "destructive" });
         }
       }
-    } else { 
-      setExtractedSupplierName(aiScannedSupplierName); 
+    } else {
+      setExtractedSupplierName(aiScannedSupplierName);
       setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
     }
     setIsSupplierConfirmed(true);
@@ -493,22 +556,20 @@ function EditInvoiceContent() {
 
   const proceedWithFinalSave = async (finalProductsToSave: Product[]) => {
       setIsSaving(true);
-      if (!user?.id) {
+      if (!user?.id || !documentType) {
           toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
           setIsSaving(false);
           return;
       }
       try {
-          console.log("[EditInvoice] Proceeding with final save. Products:", JSON.stringify(finalProductsToSave.slice(0,2)));
-
           const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => rest);
 
           let finalFileNameForSave = originalFileName;
-          const finalSupplierNameForSave = extractedSupplierName || editableTaxInvoiceDetails.supplierName;
-          const finalInvoiceNumberForSave = extractedInvoiceNumber || editableTaxInvoiceDetails.invoiceNumber;
-          const finalTotalAmountForSave = extractedTotalAmount ?? editableTaxInvoiceDetails.totalAmount;
-          const finalInvoiceDate = extractedInvoiceDate || editableTaxInvoiceDetails.invoiceDate;
-          const finalPaymentMethod = extractedPaymentMethod || editableTaxInvoiceDetails.paymentMethod;
+          const finalSupplierNameForSave = extractedSupplierName;
+          const finalInvoiceNumberForSave = extractedInvoiceNumber;
+          const finalTotalAmountForSave = extractedTotalAmount;
+          const finalInvoiceDateForSave = extractedInvoiceDate;
+          const finalPaymentMethodForSave = extractedPaymentMethod;
 
 
           if(finalSupplierNameForSave && finalInvoiceNumberForSave) {
@@ -519,33 +580,49 @@ function EditInvoiceContent() {
             finalFileNameForSave = `Invoice_${finalInvoiceNumberForSave}`;
           }
 
-          console.log(`[EditInvoice] Finalizing save for file: ${finalFileNameForSave}, tempInvoiceId: ${tempInvoiceId}, UserID: ${user.id}`);
-
-          await finalizeSaveProductsService(
+          const result = await finalizeSaveProductsService(
             productsForService,
             finalFileNameForSave,
-            'upload',
+            documentType,
             user.id,
-            tempInvoiceId || undefined,
+            initialTempInvoiceId || undefined, // Use initial temp ID
             finalInvoiceNumberForSave,
             finalSupplierNameForSave,
             finalTotalAmountForSave,
             selectedPaymentDueDate,
-            finalInvoiceDate,
-            finalPaymentMethod,
-            originalImagePreviewKey,
-            compressedImageKeyFromParam
+            finalInvoiceDateForSave,
+            finalPaymentMethodForSave,
+            displayedOriginalImageUrl || undefined, // Pass displayed URIs
+            displayedCompressedImageUrl || undefined
           );
 
-          cleanupTemporaryData();
-          console.log("[EditInvoice] All temporary localStorage keys cleared after successful save.");
+          cleanupTemporaryDataAfterSave();
 
+          if (result.finalInvoiceRecord) {
+            setOriginalFileName(result.finalInvoiceRecord.fileName);
+            setInitialTempInvoiceId(result.finalInvoiceRecord.id); // Update temp ID to final ID
+            setDocumentType(result.finalInvoiceRecord.documentType);
+            setExtractedSupplierName(result.finalInvoiceRecord.supplier);
+            setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
+            setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
+            setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
+            setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
+            setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate);
+            setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
+            setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
 
-          toast({
-              title: t('edit_invoice_toast_products_saved_title'),
-              description: t('edit_invoice_toast_products_saved_desc'),
-          });
-          router.push('/inventory?refresh=true');
+            if (result.savedProductsWithFinalIds) {
+                setProducts(result.savedProductsWithFinalIds.map(p => ({ ...p, _originalId: p.id })));
+            }
+            setScanError(result.finalInvoiceRecord.errorMessage || null);
+            setIsViewMode(true);
+             toast({
+                title: t('edit_invoice_toast_products_saved_title'),
+                description: t('edit_invoice_toast_products_saved_desc'),
+            });
+          } else {
+            throw new Error(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
+          }
 
       } catch (error: any) {
           console.error("Failed to finalize save products:", error);
@@ -570,7 +647,7 @@ function EditInvoiceContent() {
 
   const proceedWithFinalSaveForTaxInvoice = async () => {
     setIsSaving(true);
-    if (!user?.id) {
+    if (!user?.id || !documentType) {
       toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
       setIsSaving(false);
       return;
@@ -580,8 +657,8 @@ function EditInvoiceContent() {
       const finalSupplierNameForSave = editableTaxInvoiceDetails.supplierName || extractedSupplierName;
       const finalInvoiceNumberForSave = editableTaxInvoiceDetails.invoiceNumber || extractedInvoiceNumber;
       const finalTotalAmountForSave = editableTaxInvoiceDetails.totalAmount ?? extractedTotalAmount;
-      const finalInvoiceDate = editableTaxInvoiceDetails.invoiceDate || extractedInvoiceDate;
-      const finalPaymentMethod = editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod;
+      const finalInvoiceDateForSave = editableTaxInvoiceDetails.invoiceDate || extractedInvoiceDate;
+      const finalPaymentMethodForSave = editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod;
 
       if(finalSupplierNameForSave && finalInvoiceNumberForSave) {
         finalFileNameForSave = `${finalSupplierNameForSave}_${finalInvoiceNumberForSave}`;
@@ -591,29 +668,54 @@ function EditInvoiceContent() {
         finalFileNameForSave = `Invoice_${finalInvoiceNumberForSave}`;
       }
 
-      console.log(`[EditInvoice] Finalizing TAX INVOICE save for file: ${finalFileNameForSave}, tempInvoiceId: ${tempInvoiceId}`);
-      await finalizeSaveProductsService(
-        [],
+      const result = await finalizeSaveProductsService(
+        [], // No products for tax invoice
         finalFileNameForSave,
-        'upload',
+        documentType,
         user.id,
-        tempInvoiceId || undefined,
+        initialTempInvoiceId || undefined,
         finalInvoiceNumberForSave,
         finalSupplierNameForSave,
         finalTotalAmountForSave,
         selectedPaymentDueDate,
-        finalInvoiceDate,
-        finalPaymentMethod,
-        originalImagePreviewKey,
-        compressedImageKeyFromParam
+        finalInvoiceDateForSave,
+        finalPaymentMethodForSave,
+        displayedOriginalImageUrl || undefined,
+        displayedCompressedImageUrl || undefined
       );
-      cleanupTemporaryData();
-      toast({
-        title: t('edit_invoice_toast_invoice_details_saved_title'),
-        description: t('edit_invoice_toast_invoice_details_saved_desc'),
-      });
-      router.push('/invoices?view=paid');
 
+      cleanupTemporaryDataAfterSave();
+
+      if (result.finalInvoiceRecord) {
+        setOriginalFileName(result.finalInvoiceRecord.fileName);
+        setInitialTempInvoiceId(result.finalInvoiceRecord.id); // Update to final ID
+        setDocumentType(result.finalInvoiceRecord.documentType);
+        setExtractedSupplierName(result.finalInvoiceRecord.supplier);
+        setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
+        setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
+        setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
+        setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
+        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate);
+        setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
+        setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
+
+        setProducts([]);
+        setEditableTaxInvoiceDetails({
+             supplierName: result.finalInvoiceRecord.supplier,
+             invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
+             totalAmount: result.finalInvoiceRecord.totalAmount,
+             invoiceDate: result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined,
+             paymentMethod: result.finalInvoiceRecord.paymentMethod,
+        });
+        setScanError(result.finalInvoiceRecord.errorMessage || null);
+        setIsViewMode(true);
+        toast({
+            title: t('edit_invoice_toast_invoice_details_saved_title'),
+            description: t('edit_invoice_toast_invoice_details_saved_desc'),
+        });
+      } else {
+        throw new Error(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned for tax invoice."}));
+      }
     } catch (error: any) {
       console.error("Failed to finalize save for tax invoice:", error);
       if (error instanceof DOMException && error.name === 'QuotaExceededError') {
@@ -699,14 +801,14 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
             const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
 
-            const needsSalePrice = p.salePrice === undefined || p.salePrice === null;
+            const needsSalePrice = p.salePrice === undefined || p.salePrice === null; // Check if salePrice is missing
             return isProductConsideredNew || needsSalePrice;
         });
 
         if (newProductsNeedingDetails.length > 0) {
             setProductsForNextStep(productsReadyForDetailCheck);
             setPromptingForNewProductDetails(newProductsNeedingDetails);
-            setIsBarcodePromptOpen(true);
+            setIsBarcodePromptOpen(true); // This opens the BarcodePromptDialog
             setIsSaving(false);
         } else {
             await proceedWithFinalSave(productsReadyForDetailCheck);
@@ -776,7 +878,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
 
     const handleGoBack = () => {
-        cleanupTemporaryData();
+        cleanupTemporaryDataAfterSave();
         router.push('/upload');
     };
 
@@ -900,8 +1002,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             <TableCell className="px-2 sm:px-4 py-2">{product.catalogNumber || 'N/A'}</TableCell>
             <TableCell className="px-2 sm:px-4 py-2">{product.description || 'N/A'}</TableCell>
             <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.quantity, 'quantity')}</TableCell>
-            <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.unitPrice, 'currency')}</TableCell>
-            <TableCell className="text-right px-2 sm:px-4 py-2">{formatInputValue(product.lineTotal, 'currency')}</TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">{t('currency_symbol')}{formatInputValue(product.unitPrice, 'currency')}</TableCell>
+            <TableCell className="text-right px-2 sm:px-4 py-2">{t('currency_symbol')}{formatInputValue(product.lineTotal, 'currency')}</TableCell>
         </TableRow>
     );
 
@@ -977,6 +1079,12 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             {extractedTotalAmount !== undefined && <p><span className="font-semibold">{t('invoice_details_total_amount_label')}:</span> {t('currency_symbol')}{extractedTotalAmount.toFixed(2)}</p>}
             {extractedInvoiceDate && <p><span className="font-semibold">{t('invoice_details_invoice_date_label')}:</span> {isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'PP') : extractedInvoiceDate}</p>}
             {extractedPaymentMethod && <p><span className="font-semibold">{t('invoice_details_payment_method_label')}:</span> {extractedPaymentMethod}</p>}
+            {displayedOriginalImageUrl && (
+                <div className="mt-4">
+                    <p className="font-semibold mb-2">{t('edit_invoice_image_preview_label')}:</p>
+                    <NextImage src={displayedOriginalImageUrl} alt={t('edit_invoice_image_preview_alt')} width={500} height={700} className="rounded-md border" data-ai-hint="document scan" />
+                </div>
+            )}
         </div>
     );
 
@@ -999,7 +1107,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 <Input
                 id="taxInvoiceDate"
                 type="date"
-                value={(editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate))) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : (extractedInvoiceDate && isValid(parseISO(extractedInvoiceDate)) ? format(parseISO(extractedInvoiceDate), 'yyyy-MM-dd') : '')}
+                value={ (editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate))) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : (extractedInvoiceDate && isValid(parseISO(extractedInvoiceDate))) ? format(parseISO(extractedInvoiceDate), 'yyyy-MM-dd') : '' }
                 onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)}
                 disabled={isSaving} />
             </div>
@@ -1007,6 +1115,12 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 <Label htmlFor="taxPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
                 <Input id="taxPaymentMethod" value={editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod || ''} onChange={(e) => handleTaxInvoiceDetailsChange('paymentMethod', e.target.value)} disabled={isSaving} />
             </div>
+            {displayedOriginalImageUrl && (
+                <div className="mt-4">
+                     <p className="font-semibold mb-2">{t('edit_invoice_image_preview_label')}:</p>
+                    <NextImage src={displayedOriginalImageUrl} alt={t('edit_invoice_image_preview_alt')} width={500} height={700} className="rounded-md border" data-ai-hint="document scan"/>
+                </div>
+            )}
         </div>
     );
 
@@ -1021,7 +1135,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           </CardTitle>
           <CardDescription>
              {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
-             {(isViewMode ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) && 
+             {(isViewMode ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) &&
                 ` | ${t('edit_invoice_supplier', { supplierName: (isViewMode ? extractedSupplierName : (editableTaxInvoiceDetails.supplierName || extractedSupplierName)) })}`}
           </CardDescription>
            {scanProcessError && (
@@ -1035,8 +1149,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             {documentType === 'invoice' ? (
                  isViewMode ? renderReadOnlyTaxInvoiceDetails() : renderEditableTaxInvoiceDetails()
             ) : (
+              <>
               <div className="overflow-x-auto relative">
-                {/* Wrap table in div for overflow */}
                 <Table className="min-w-[600px]"> {/* Adjusted min-width */}
                   <TableHeader>
                     <TableRow>
@@ -1053,6 +1167,19 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                   </TableBody>
                 </Table>
               </div>
+               {isViewMode && displayedOriginalImageUrl && (
+                    <div className="mt-6">
+                        <p className="font-semibold mb-2 text-lg">{t('edit_invoice_image_preview_label')}:</p>
+                        <NextImage src={displayedOriginalImageUrl} alt={t('edit_invoice_image_preview_alt')} width={600} height={850} className="rounded-md border shadow-md" data-ai-hint="document scan" />
+                    </div>
+                )}
+                {!isViewMode && displayedOriginalImageUrl && (
+                     <div className="mt-4">
+                        <p className="font-semibold mb-2">{t('edit_invoice_image_preview_label')}:</p>
+                        <NextImage src={displayedOriginalImageUrl} alt={t('edit_invoice_image_preview_alt')} width={500} height={700} className="rounded-md border" data-ai-hint="document scan"/>
+                    </div>
+                )}
+              </>
             )}
             <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
                 <Button variant="outline" onClick={handleGoBack} className="w-full sm:w-auto order-last sm:order-first">
@@ -1064,9 +1191,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                             <Button onClick={() => setIsViewMode(false)} variant="outline" className="w-full sm:w-auto">
                                 <Edit className="mr-2 h-4 w-4" /> {t('edit_invoice_edit_data_button')}
                             </Button>
-                            <Button onClick={handleSaveChecks} disabled={isSaving || !isSupplierConfirmed || !selectedPaymentDueDate} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
-                                {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_continue_button')}</>}
-                            </Button>
+                            {/* Save button is only relevant if changes can be made, so perhaps remove from pure view mode or disable if no changes */}
                         </>
                     ) : (
                         <>
@@ -1121,8 +1246,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onCancel={() => {
             setShowPaymentDueDateDialog(false);
             toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
-            setSelectedPaymentDueDate(undefined);
-            handleSaveChecks();
+            setSelectedPaymentDueDate(undefined); // Explicitly set to undefined
+            handleSaveChecks(); // Proceed with save even if skipped
           }}
         />
       )}
