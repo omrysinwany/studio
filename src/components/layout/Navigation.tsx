@@ -1,8 +1,9 @@
+// src/components/layout/Navigation.tsx
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileTextIcon as FileText, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -46,13 +47,10 @@ export default function Navigation() {
       { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
       { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s' },
       { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s' },
-      { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s' },
+      { href: '/invoices', labelKey: 'nav_documents', icon: FileText, animationDelay: '0.4s' },
       { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s' },
       { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s' },
       { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s' },
-      // POS Integration and Accountant Details are now only in Settings page
-      // { href: '/settings/pos-integration', labelKey: 'nav_pos_integration', icon: Plug, animationDelay: '0.8s' },
-      // { href: '/settings/accountant', labelKey: 'nav_accountant_details', icon: MailIcon, animationDelay: '0.9s' },
     ];
   };
 
@@ -60,15 +58,12 @@ export default function Navigation() {
 
   useEffect(() => {
     if (authLoading) {
-      return; // Wait for authentication to load
+      return; 
     }
-    // Define protected and public paths
     const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts', '/accounts/other-expenses'];
-    const publicPaths = ['/login', '/register']; // Add any other public paths like /about, /contact
+    const publicPaths = ['/login', '/register']; 
     const isAuthPage = publicPaths.includes(pathname);
-    // Check if current path starts with any of the protected paths
     const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path) && path !== '/');
-
 
     if (!user && isProtectedPage) {
         router.push('/login');
@@ -205,9 +200,14 @@ export default function Navigation() {
               ) : (
                 <>
                    {/* Apply button styles directly to Link */}
-                   <Link href="/login" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "flex items-center")}>
-                       <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                   </Link>
+                   <Button variant="ghost" size="sm" asChild>
+                    <Link href="/login">
+                       {/* The Link component must have exactly one child when used with asChild */}
+                       <span className="flex items-center">
+                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                       </span>
+                    </Link>
+                   </Button>
                   <Button size="sm" className="transition-transform hover:scale-105" asChild>
                     <Link href="/register">
                        <span className="flex items-center">

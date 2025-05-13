@@ -26,6 +26,7 @@ import { Progress } from '@/components/ui/progress';
 export interface OtherExpense {
   id: string;
   category: string;
+  _internalCategoryKey?: string;
   description: string;
   amount: number;
   date: string; // ISO date string
@@ -113,6 +114,7 @@ export default function AccountsPage() {
     } else {
       fetchAccountData();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
 
 
@@ -177,7 +179,7 @@ export default function AccountsPage() {
             if (isSameMonth(expenseDate, currentMonthDate)) {
                 let amountToAdd = exp.amount;
                 const biMonthlyCategories = ['electricity', 'water', 'property_tax']; // Use internal keys
-                if (biMonthlyCategories.includes(exp.category?.toLowerCase() || exp._internalCategoryKey?.toLowerCase() || '')) {
+                if (biMonthlyCategories.includes(exp._internalCategoryKey?.toLowerCase() || '')) {
                     amountToAdd /= 2;
                 }
                 return sum + amountToAdd;
@@ -254,7 +256,7 @@ export default function AccountsPage() {
   const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
 
 
-  if (authLoading || (!user && !authLoading)) {
+  if (authLoading || (!user && !authLoading) || isLoadingData) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -478,4 +480,3 @@ export default function AccountsPage() {
     </div>
   );
 }
-

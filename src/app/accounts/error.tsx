@@ -1,3 +1,4 @@
+// src/app/accounts/error.tsx
 'use client';
 
 import { useEffect } from 'react';

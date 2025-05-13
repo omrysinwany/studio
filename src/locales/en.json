@@ -794,7 +794,7 @@
   "accounts_add_expense_desc_label": "Description",
   "accounts_add_expense_desc_placeholder": "e.g., Office rent for June",
   "accounts_add_expense_amount_label": "Amount ({{currency_symbol}})",
-  "accounts_add_expense_amount_placeholder": "e.g., ₪1500",
+  "accounts_add_expense_amount_placeholder": "e.g., {{currency_symbol}}1500",
   "accounts_add_expense_date_label": "Date",
   "accounts_add_expense_category_label": "Category",
   "accounts_add_expense_category_placeholder": "Select a category",
