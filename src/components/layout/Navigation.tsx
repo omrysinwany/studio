@@ -50,6 +50,9 @@ export default function Navigation() {
       { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s' },
       { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s' },
       { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s' },
+      // POS Integration and Accountant Details are now only in Settings page
+      // { href: '/settings/pos-integration', labelKey: 'nav_pos_integration', icon: Plug, animationDelay: '0.8s' },
+      // { href: '/settings/accountant', labelKey: 'nav_accountant_details', icon: MailIcon, animationDelay: '0.9s' },
     ];
   };
 
@@ -60,18 +63,16 @@ export default function Navigation() {
       return; // Wait for authentication to load
     }
     // Define protected and public paths
-    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts'];
+    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts', '/accounts/other-expenses'];
     const publicPaths = ['/login', '/register']; // Add any other public paths like /about, /contact
     const isAuthPage = publicPaths.includes(pathname);
     // Check if current path starts with any of the protected paths
-    const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path));
+    const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path) && path !== '/');
 
 
     if (!user && isProtectedPage) {
-        // If user is not logged in and trying to access a protected page
         router.push('/login');
     } else if (user && isAuthPage) {
-        // If user is logged in and trying to access a login/register page
         router.push('/');
     }
   }, [user, authLoading, pathname, router]);
@@ -203,13 +204,10 @@ export default function Navigation() {
                 </DropdownMenu>
               ) : (
                 <>
-                   <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">
-                       <span className="flex items-center">
-                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                       </span>
-                    </Link>
-                  </Button>
+                   {/* Apply button styles directly to Link */}
+                   <Link href="/login" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "flex items-center")}>
+                       <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                   </Link>
                   <Button size="sm" className="transition-transform hover:scale-105" asChild>
                     <Link href="/register">
                        <span className="flex items-center">
