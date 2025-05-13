@@ -26,7 +26,7 @@ import {
     InvoiceHistoryItem,
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
-import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas'; // Import new type
+import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BarcodePromptDialog from '@/components/barcode-prompt-dialog';
 import UnitPriceConfirmationDialog from '@/components/unit-price-confirmation-dialog';
@@ -42,12 +42,11 @@ interface EditableProduct extends Product {
   _originalId?: string;
 }
 
-// Define a type for the editable tax invoice details
 interface EditableTaxInvoiceDetails {
     supplierName?: string;
     invoiceNumber?: string;
     totalAmount?: number;
-    invoiceDate?: string; // Stored as ISO string, displayed as 'yyyy-MM-dd'
+    invoiceDate?: string; 
     paymentMethod?: string;
 }
 
@@ -181,7 +180,18 @@ function EditInvoiceContent() {
 
     if (key) {
         hasAttemptedLoad = true;
-        const storedData = localStorage.getItem(key);
+        let storedData: string | null = null;
+        try {
+            storedData = localStorage.getItem(key);
+        } catch(e) {
+            console.error("Error reading from localStorage for key:", key, e);
+            setErrorLoading(t('edit_invoice_error_localstorage_read'));
+            setIsLoading(false);
+            setInitialDataLoaded(true);
+            cleanupTemporaryData();
+            return;
+        }
+
 
         if (!storedData) {
             setErrorLoading(t('edit_invoice_error_scan_results_not_found_key', {key}));
@@ -225,7 +235,7 @@ function EditInvoiceContent() {
 
         if (docTypeParam === 'invoice') {
             const taxData = parsedData as ScanTaxInvoiceOutput;
-            setProducts([]); // No products for tax invoice
+            setProducts([]); 
             setEditableTaxInvoiceDetails({
                 supplierName: taxData.supplierName,
                 invoiceNumber: taxData.invoiceNumber,
@@ -254,10 +264,10 @@ function EditInvoiceContent() {
                 salePrice: p.salePrice ?? undefined,
               }));
               setProducts(productsWithIds);
-              setEditableTaxInvoiceDetails({}); // Clear tax invoice details
+              setEditableTaxInvoiceDetails({}); 
               setExtractedInvoiceNumber(productData.invoiceNumber);
               setAiScannedSupplierName(productData.supplier);
-              setExtractedSupplierName(productData.supplier); // Set for supplier confirmation
+              setExtractedSupplierName(productData.supplier); 
               setExtractedTotalAmount(productData.totalAmount);
               setExtractedInvoiceDate(productData.invoiceDate);
               setExtractedPaymentMethod(productData.paymentMethod);
@@ -509,8 +519,8 @@ function EditInvoiceContent() {
             selectedPaymentDueDate,
             finalInvoiceDate,
             finalPaymentMethod,
-            originalImagePreviewKey, // Pass originalImagePreviewKey
-            compressedImageKeyFromParam // Pass compressedImageKeyFromParam
+            originalImagePreviewKey, 
+            compressedImageKeyFromParam 
           );
 
           cleanupTemporaryData();
@@ -580,8 +590,8 @@ function EditInvoiceContent() {
         selectedPaymentDueDate,
         finalInvoiceDate,
         finalPaymentMethod,
-        originalImagePreviewKey, // Pass originalImagePreviewKey
-        compressedImageKeyFromParam // Pass compressedImageKeyFromParam
+        originalImagePreviewKey, 
+        compressedImageKeyFromParam 
       );
       cleanupTemporaryData();
       toast({
@@ -628,7 +638,6 @@ function EditInvoiceContent() {
         return;
     }
 
-    // For deliveryNote
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
@@ -911,8 +920,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                          <Input 
                             id="taxInvoiceDate" 
                             type="date" 
-                            value={editableTaxInvoiceDetails.invoiceDate ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''} 
-                            onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} 
+                            value={editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate)) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''} 
+                            onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value && isValid(parseISO(e.target.value)) ? parseISO(e.target.value).toISOString() : undefined)} 
                             disabled={isSaving} />
                      </div>
                      <div>
@@ -921,9 +930,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      </div>
                  </div>
             ) : (
-              // Wrap table in div for overflow
               <div className="overflow-x-auto relative">
-                <Table className="min-w-[600px]"> {/* Adjusted min-width */}
+                <Table className="min-w-[600px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
