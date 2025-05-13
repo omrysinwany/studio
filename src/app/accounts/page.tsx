@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; // Import Link
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,6 +43,7 @@ export interface ExpenseTemplate {
 
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
 const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
+const ITEMS_PER_PAGE_OPEN_INVOICES = 5;
 
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
@@ -70,6 +71,7 @@ export default function AccountsPage() {
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [tempBudget, setTempBudget] = useState<string>('');
+  const [currentOpenInvoicePage, setCurrentOpenInvoicePage] = useState(1);
 
 
   useEffect(() => {
@@ -153,6 +155,19 @@ export default function AccountsPage() {
         }
       });
   }, [filteredInvoices]);
+
+  const totalOpenInvoicePages = Math.ceil(openInvoices.length / ITEMS_PER_PAGE_OPEN_INVOICES);
+  const displayedOpenInvoices = useMemo(() => {
+    const startIndex = (currentOpenInvoicePage - 1) * ITEMS_PER_PAGE_OPEN_INVOICES;
+    return openInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE_OPEN_INVOICES);
+  }, [openInvoices, currentOpenInvoicePage]);
+
+  const handleOpenInvoicePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalOpenInvoicePages) {
+        setCurrentOpenInvoicePage(newPage);
+    }
+  };
+
 
   const currentMonthTotalExpensesFromInvoices = useMemo(() => {
     const currentMonth = new Date();
@@ -408,7 +423,8 @@ export default function AccountsPage() {
           ) : openInvoices.length === 0 ? (
             <p className="text-muted-foreground text-center py-6">{t('accounts_no_open_invoices_period')}</p>
           ) : (
-            <ScrollArea className="h-[300px] w-full rounded-md border p-1">
+            <>
+            <ScrollArea className="whitespace-nowrap rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -420,7 +436,7 @@ export default function AccountsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {openInvoices.map((invoice) => {
+                  {displayedOpenInvoices.map((invoice) => {
                     const dueDateStatus = getDueDateStatus(invoice.paymentDueDate);
                     const IconComponent = dueDateStatus?.icon;
                     return (
@@ -444,6 +460,32 @@ export default function AccountsPage() {
               </Table>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
+            {totalOpenInvoicePages > 1 && (
+                <div className="flex items-center justify-end space-x-2 py-4">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenInvoicePageChange(currentOpenInvoicePage - 1)}
+                        disabled={currentOpenInvoicePage === 1}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        <span className="sr-only">{t('inventory_pagination_previous')}</span>
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                        {t('inventory_pagination_page_info_simple', { currentPage: currentOpenInvoicePage, totalPages: totalOpenInvoicePages})}
+                    </span>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenInvoicePageChange(currentOpenInvoicePage + 1)}
+                        disabled={currentOpenInvoicePage === totalOpenInvoicePages}
+                    >
+                         <span className="sr-only">{t('inventory_pagination_next')}</span>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
