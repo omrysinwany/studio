@@ -43,7 +43,7 @@ export interface ExpenseTemplate {
 
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
 const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
-const ITEMS_PER_PAGE_OPEN_INVOICES = 5;
+const ITEMS_PER_PAGE_OPEN_INVOICES = 3;
 
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
@@ -111,11 +111,11 @@ export default function AccountsPage() {
   };
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading) return; // Wait until auth state is determined
     if (!user) {
-      router.push('/login');
+      router.push('/login'); // Redirect if not authenticated
     } else {
-      fetchAccountData();
+      fetchAccountData(); // Fetch data if authenticated
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
@@ -287,7 +287,7 @@ export default function AccountsPage() {
   const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
 
 
-  if (authLoading || (!user && !authLoading)) {
+  if (authLoading || (!user && !authLoading)) { // Show loading state while auth is resolving or if user not resolved yet
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -424,7 +424,7 @@ export default function AccountsPage() {
             <p className="text-muted-foreground text-center py-6">{t('accounts_no_open_invoices_period')}</p>
           ) : (
             <>
-            <ScrollArea className="whitespace-nowrap rounded-md border">
+            <div className="overflow-x-auto relative border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -458,8 +458,7 @@ export default function AccountsPage() {
                   })}
                 </TableBody>
               </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
+            </div>
             {totalOpenInvoicePages > 1 && (
                 <div className="flex items-center justify-end space-x-2 py-4">
                     <Button
