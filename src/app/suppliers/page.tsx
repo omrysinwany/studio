@@ -45,7 +45,7 @@ import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 4;
 
 type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpent' ;
 type SortDirection = 'asc' | 'desc';
@@ -347,7 +347,7 @@ export default function SuppliersPage() {
   }, [allInvoices, dateRange]);
 
 
-  if (authLoading || isLoading || !user) {
+  if (authLoading || isLoading) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -355,6 +355,7 @@ export default function SuppliersPage() {
       </div>
     );
   }
+  if (!user && !authLoading) return null;
 
 
   return (
@@ -497,7 +498,7 @@ export default function SuppliersPage() {
                 {t('inventory_pagination_previous')}
               </Button>
               <span className="text-sm text-muted-foreground">
-                {t('inventory_pagination_page_info', { currentPage: currentPage, totalPages: totalPages, totalItems: totalItems })}
+                {t('inventory_pagination_page_info_simple', { currentPage: currentPage, totalPages: totalPages})}
               </span>
               <Button
                 variant="outline"
@@ -729,3 +730,4 @@ export default function SuppliersPage() {
     </div>
   );
 }
+

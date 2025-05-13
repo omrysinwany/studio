@@ -43,7 +43,7 @@ export interface ExpenseTemplate {
 
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
 const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
-const ITEMS_PER_PAGE_OPEN_INVOICES = 3;
+const ITEMS_PER_PAGE_OPEN_INVOICES = 4;
 
 
 const getStorageKey = (baseKey: string, userId?: string): string => {
@@ -287,7 +287,7 @@ export default function AccountsPage() {
   const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
 
 
-  if (authLoading || (!user && !authLoading)) { // Show loading state while auth is resolving or if user not resolved yet
+  if (authLoading || isLoadingData) { 
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -295,7 +295,7 @@ export default function AccountsPage() {
       </div>
     );
   }
-  if (!user) return null; // Should not reach here if redirection logic is correct
+  if (!user && !authLoading) return null; 
 
 
   return (
@@ -538,3 +538,4 @@ export default function AccountsPage() {
     </div>
   );
 }
+
