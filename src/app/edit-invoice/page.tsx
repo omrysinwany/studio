@@ -92,7 +92,7 @@ function EditInvoiceContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
-  const [scanProcessError, setScanProcessError] = useState<string | null>(null);
+  const [scanProcessError, setScanProcessErrorState] = useState<string | null>(null); // Renamed to avoid conflict
 
   const [initialDataKey, setInitialDataKey] = useState<string | null>(null);
   const [initialTempInvoiceId, setInitialTempInvoiceId] = useState<string | null>(null);
@@ -101,7 +101,7 @@ function EditInvoiceContent() {
 
   const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice' | null>(null);
 
-  const [isViewMode, setIsViewMode] = useState(true); // Start in view mode
+  const [isViewMode, setIsViewMode] = useState(true);
   const [isEditingTaxDetails, setIsEditingTaxDetails] = useState(false);
   const [isEditingDeliveryNoteProducts, setIsEditingDeliveryNoteProducts] = useState(false);
 
@@ -197,7 +197,7 @@ function EditInvoiceContent() {
     const loadData = async () => {
         setIsLoading(true);
         setErrorLoading(null);
-        setScanProcessError(null);
+        setScanProcessErrorState(null);
         setIsViewMode(true); // Reset to view mode on new data load
 
         if (invoiceIdParam) {
@@ -303,7 +303,7 @@ function EditInvoiceContent() {
 
             const generalError = (parsedData as any).error;
             if (generalError) {
-              setScanProcessError(generalError);
+              setScanProcessErrorState(generalError);
             }
 
             if (docTypeParam === 'invoice') {
@@ -326,7 +326,7 @@ function EditInvoiceContent() {
                 setExtractedInvoiceDate(taxData.invoiceDate);
                 setExtractedPaymentMethod(taxData.paymentMethod);
                 setAiScannedSupplierName(taxData.supplierName);
-                if (user?.id) checkSupplier(taxData.supplierName, user.id); else {setIsSupplierConfirmed(true); if (docTypeParam === 'invoice') { /* No payment due date for pure invoices initially */ } else { setShowPaymentDueDateDialog(true); }}
+                if (user?.id) checkSupplier(taxData.supplierName, user.id); else {setIsSupplierConfirmed(true); setShowPaymentDueDateDialog(true); }
 
 
             } else if (docTypeParam === 'deliveryNote') {
@@ -343,10 +343,10 @@ function EditInvoiceContent() {
                                 : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
                     minStockLevel: p.minStockLevel ?? undefined,
                     maxStockLevel: p.maxStockLevel ?? undefined,
+                    salePrice: p.salePrice ?? undefined,
                   }));
                   setProducts(productsWithIds);
                   setInitialScannedProducts(productsWithIds);
-                  // For delivery notes, populate editableTaxInvoiceDetails from the productData.invoice_details equivalent if available
                   const deliveryNoteInvoiceDetails = {
                       supplierName: productData.supplier,
                       invoiceNumber: productData.invoiceNumber,
@@ -363,7 +363,7 @@ function EditInvoiceContent() {
                   setExtractedTotalAmount(productData.totalAmount);
                   setExtractedInvoiceDate(productData.invoiceDate);
                   setExtractedPaymentMethod(productData.paymentMethod);
-                  if (user?.id) checkSupplier(productData.supplier, user.id); else {setIsSupplierConfirmed(true); if (docTypeParam === 'invoice') { /* No payment due date for pure invoices initially */ } else { setShowPaymentDueDateDialog(true); }}
+                  if (user?.id) checkSupplier(productData.supplier, user.id); else {setIsSupplierConfirmed(true); setShowPaymentDueDateDialog(true); }
                 } else if (!productData.error){
                     console.error("Parsed product data is missing 'products' array or is invalid:", productData);
                     setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
@@ -478,12 +478,12 @@ function EditInvoiceContent() {
 
           if (['quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
             const stringValue = String(value);
-            if ((field === 'minStockLevel' || field === 'maxStockLevel') && stringValue.trim() === '') {
+            if ((field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') && stringValue.trim() === '') {
               numericValue = undefined;
             } else {
               numericValue = parseFloat(stringValue.replace(/,/g, ''));
               if (isNaN(numericValue as number)) {
-                numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
+                numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
               }
             }
             (updatedProduct as any)[field] = numericValue;
@@ -553,6 +553,7 @@ function EditInvoiceContent() {
       barcode: undefined,
       minStockLevel: undefined,
       maxStockLevel: undefined,
+      salePrice: undefined,
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
   };
@@ -639,8 +640,8 @@ function EditInvoiceContent() {
             setEditableTaxInvoiceDetails(finalTaxDetails);
             setInitialScannedTaxDetails(finalTaxDetails);
 
-            setScanProcessError(result.finalInvoiceRecord.errorMessage || null);
-            setIsViewMode(true); // Switch to view mode after successful save
+            setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
+            setIsViewMode(true);
              toast({
                 title: t('edit_invoice_toast_products_saved_title'),
                 description: t('edit_invoice_toast_products_saved_desc'),
@@ -738,12 +739,14 @@ function EditInvoiceContent() {
         };
         setEditableTaxInvoiceDetails(finalTaxDetails);
         setInitialScannedTaxDetails(finalTaxDetails);
-        setScanProcessError(result.finalInvoiceRecord.errorMessage || null);
-        setIsViewMode(true); // Switch to view mode after successful save
+        setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
+        setIsViewMode(true);
         toast({
             title: t('edit_invoice_toast_invoice_details_saved_title'),
             description: t('edit_invoice_toast_invoice_details_saved_desc'),
         });
+        // Navigate to /invoices after saving a tax invoice
+        router.push('/invoices');
       } else {
         throw new Error(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned for tax invoice."}));
       }
@@ -956,7 +959,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             setExtractedInvoiceDate(editableTaxInvoiceDetails.invoiceDate);
             setExtractedPaymentMethod(editableTaxInvoiceDetails.paymentMethod);
         }
-        setInitialScannedTaxDetails({...editableTaxInvoiceDetails}); // Update initial for next view/edit
+        setInitialScannedTaxDetails({...editableTaxInvoiceDetails});
         setIsEditingTaxDetails(false);
         setIsViewMode(true);
         toast({ title: t('edit_invoice_toast_section_updated_title'), description: t('edit_invoice_toast_section_updated_desc') });
@@ -969,7 +972,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     };
 
     const handleSaveEditProducts = () => {
-        setInitialScannedProducts(products.map(p => ({...p}))); // Update initial for next view/edit
+        setInitialScannedProducts(products.map(p => ({...p})));
         setIsEditingDeliveryNoteProducts(false);
         setIsViewMode(true);
         toast({ title: t('edit_invoice_toast_products_updated_title_section'), description: t('edit_invoice_toast_section_updated_desc') });
@@ -1255,18 +1258,26 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-      <Card className="shadow-md scale-fade-in overflow-hidden"> {/* Added overflow-hidden */}
+      <Card className="shadow-md scale-fade-in overflow-hidden">
         <CardHeader>
-          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-            <FileTextIconLucide className="mr-2 h-5 w-5" />
-            {t('edit_invoice_scan_summary_title')}
-          </CardTitle>
+          <div className="flex flex-row items-center justify-between">
+            <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <FileTextIconLucide className="mr-2 h-5 w-5" />
+                {documentType === 'invoice' ? t('edit_invoice_tax_invoice_details_title') : t('edit_invoice_scan_summary_title')}
+            </CardTitle>
+             {!isEditingTaxDetails && isViewMode && (
+                <Button variant="ghost" size="icon" onClick={() => { setIsEditingTaxDetails(true); setIsViewMode(false); }} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">{t('edit_button')}</span>
+                </Button>
+            )}
+          </div>
           <CardDescription>
              {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
              {(documentType === 'invoice' ? (isEditingTaxDetails ? editableTaxInvoiceDetails.supplierName : (initialScannedTaxDetails.supplierName || extractedSupplierName)) : (isEditingTaxDetails ? editableTaxInvoiceDetails.supplierName : extractedSupplierName)) &&
                 ` | ${t('edit_invoice_supplier', { supplierName: (documentType === 'invoice' ? (isEditingTaxDetails ? editableTaxInvoiceDetails.supplierName : (initialScannedTaxDetails.supplierName || extractedSupplierName)) : (isEditingTaxDetails ? editableTaxInvoiceDetails.supplierName : extractedSupplierName)) })}`}
           </CardDescription>
-           {scanProcessError && !isSaving && ( // Only show if not currently saving (save error handled by toast)
+           {scanProcessError && !isSaving && (
              <Alert variant="destructive" className="mt-2">
                 <AlertTitle>{t('edit_invoice_scan_process_error_title')}</AlertTitle>
                 <AlertDescription>{scanProcessError}</AlertDescription>
@@ -1274,16 +1285,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
            )}
         </CardHeader>
         <CardContent className="space-y-6">
-            <div className="border rounded-lg p-4">
-                <div className="flex flex-row items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold">{documentType === 'invoice' ? t('edit_invoice_tax_invoice_details_title') : t('edit_invoice_extracted_details_title')}</h3>
-                    {!isEditingTaxDetails && isViewMode && (
-                        <Button variant="ghost" size="icon" onClick={() => { setIsEditingTaxDetails(true); setIsViewMode(false); }} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">{t('edit_button')}</span>
-                        </Button>
-                    )}
-                </div>
+            <div className={cn("border rounded-lg p-4", isEditingTaxDetails && "bg-muted/20")}>
                 {isEditingTaxDetails ? renderEditableTaxInvoiceDetails() : renderReadOnlyTaxInvoiceDetails()}
                  {isEditingTaxDetails && (
                     <CardFooter className="flex justify-end gap-2 pt-4 px-0 pb-0">
@@ -1306,8 +1308,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                          )}
                      </div>
                      {products.length > 0 ? (
-                         <div className="overflow-x-auto relative border rounded-md">
-                             <Table className="min-w-full sm:min-w-[600px]"> {/* Ensure table can be wider than screen */}
+                         <div className={cn("overflow-x-auto relative border rounded-md", isEditingDeliveryNoteProducts && "bg-muted/20 p-4")}>
+                             <Table className="min-w-full sm:min-w-[600px]">
                              <TableHeader>
                                  <TableRow>
                                  <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -1327,7 +1329,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                          <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
                      )}
                      {isEditingDeliveryNoteProducts && (
-                         <div className="flex justify-between items-center pt-4 mt-2 border-t">
+                         <div className="flex justify-between items-center pt-4 mt-2">
                              <Button variant="outline" onClick={handleAddRow}>
                                  <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                              </Button>
@@ -1349,7 +1351,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push('/invoices')} className="w-full sm:w-auto order-last sm:order-first">
                     <ArrowLeft className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_discard_scan_button') : t('edit_invoice_go_back_to_invoices_button')}
                 </Button>
-                {(isViewMode || isNewScan) && ( // Show save only in view mode or if it's a new scan
+                {(isViewMode || isNewScan) && (
                      <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
                         <Button
                             onClick={handleSaveChecks}
