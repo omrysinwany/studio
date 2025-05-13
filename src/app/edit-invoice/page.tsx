@@ -929,7 +929,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     const handleCancelEditTaxDetails = () => {
         setEditableTaxInvoiceDetails(initialScannedTaxDetails);
         if (documentType === 'deliveryNote') {
-          // For delivery notes, reset extracted details from initial scan if available or to undefined
           setExtractedSupplierName(initialScannedTaxDetails.supplierName);
           setExtractedInvoiceNumber(initialScannedTaxDetails.invoiceNumber);
           setExtractedTotalAmount(initialScannedTaxDetails.totalAmount);
@@ -940,8 +939,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     };
 
     const handleSaveEditTaxDetails = () => {
-        // Logic to update the main extracted fields based on editableTaxInvoiceDetails
-        // This makes the changes visible immediately in read-only mode after saving section
         if (documentType === 'invoice') {
             setExtractedSupplierName(editableTaxInvoiceDetails.supplierName);
             setExtractedInvoiceNumber(editableTaxInvoiceDetails.invoiceNumber);
@@ -949,8 +946,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             setExtractedInvoiceDate(editableTaxInvoiceDetails.invoiceDate);
             setExtractedPaymentMethod(editableTaxInvoiceDetails.paymentMethod);
         } else if (documentType === 'deliveryNote') {
-            // For delivery notes, editableTaxInvoiceDetails might hold these directly or
-            // you might have separate state for them. For now, assume they are in editableTaxInvoiceDetails.
              setExtractedSupplierName(editableTaxInvoiceDetails.supplierName);
             setExtractedInvoiceNumber(editableTaxInvoiceDetails.invoiceNumber);
             setExtractedTotalAmount(editableTaxInvoiceDetails.totalAmount);
@@ -962,12 +957,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     };
 
     const handleCancelEditProducts = () => {
-        setProducts(initialScannedProducts.map(p => ({...p}))); // Deep copy to avoid mutation issues
+        setProducts(initialScannedProducts.map(p => ({...p}))); 
         setIsEditingDeliveryNoteProducts(false);
     };
 
     const handleSaveEditProducts = () => {
-        // Products state is already updated by handleInputChange
         setIsEditingDeliveryNoteProducts(false);
         toast({ title: t('edit_invoice_toast_products_updated_title_section'), description: t('edit_invoice_toast_section_updated_desc') });
     };
@@ -1196,7 +1190,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 paymentMethod: extractedPaymentMethod,
             };
 
-        // Check if all relevant fields are empty or undefined
         const noDetailsAvailable = Object.values(detailsToDisplay).every(
              val => val === undefined || val === null || String(val).trim() === ''
         );
@@ -1294,57 +1287,54 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 )}
             </Card>
 
+             {/* Products Table - No longer wrapped in a Card */}
             {documentType === 'deliveryNote' && (
                  <div className="mt-6">
-                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="text-xl font-semibold text-primary">{t('edit_invoice_extracted_products_title')} ({products.length})</CardTitle>
-                            {!isEditingDeliveryNoteProducts && (
-                                <Button variant="ghost" size="icon" onClick={() => {
-                                    setProducts(initialScannedProducts.map(p => ({...p})));
-                                    setIsEditingDeliveryNoteProducts(true);
-                                }} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                                    <Edit className="h-4 w-4" />
-                                    <span className="sr-only">{t('edit_button')}</span>
-                                </Button>
-                            )}
-                        </CardHeader>
-                        <CardContent>
-                            {products.length > 0 ? (
-                                <div className="overflow-x-auto relative border rounded-md">
-                                    <Table className="min-w-full sm:min-w-[600px]"> {/* Ensure table can be wider than screen */}
-                                    <TableHeader>
-                                        <TableRow>
-                                        <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
-                                        <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_description')}</TableHead>
-                                        <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
-                                        <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
-                                        <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
-                                        {isEditingDeliveryNoteProducts && <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {products.map(product => isEditingDeliveryNoteProducts ? renderEditableProductItem(product) : renderReadOnlyProductItem(product, true))}
-                                    </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
-                            )}
-                        </CardContent>
-                        {isEditingDeliveryNoteProducts && (
-                            <CardFooter className="flex justify-end gap-2 pt-4">
-                                {products.length > 0 && (
-                                    <Button variant="outline" onClick={handleAddRow} className="mr-auto">
-                                        <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
-                                    </Button>
-                                )}
+                     <div className="flex flex-row items-center justify-between mb-2">
+                         <h2 className="text-xl font-semibold text-primary">{t('edit_invoice_extracted_products_title')} ({products.length})</h2>
+                         {!isEditingDeliveryNoteProducts && (
+                             <Button variant="ghost" size="icon" onClick={() => {
+                                 setProducts(initialScannedProducts.map(p => ({...p})));
+                                 setIsEditingDeliveryNoteProducts(true);
+                             }} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                 <Edit className="h-4 w-4" />
+                                 <span className="sr-only">{t('edit_button')}</span>
+                             </Button>
+                         )}
+                     </div>
+                     {products.length > 0 ? (
+                         <div className="overflow-x-auto relative border rounded-md">
+                             <Table className="min-w-full sm:min-w-[600px]">
+                             <TableHeader>
+                                 <TableRow>
+                                 <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
+                                 <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_description')}</TableHead>
+                                 <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
+                                 <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
+                                 <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
+                                 {isEditingDeliveryNoteProducts && <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>}
+                                 </TableRow>
+                             </TableHeader>
+                             <TableBody>
+                                 {products.map(product => isEditingDeliveryNoteProducts ? renderEditableProductItem(product) : renderReadOnlyProductItem(product, true))}
+                             </TableBody>
+                             </Table>
+                         </div>
+                     ) : (
+                         <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
+                     )}
+                     {isEditingDeliveryNoteProducts && (
+                         <div className="flex justify-between items-center pt-4 mt-2 border-t">
+                             <Button variant="outline" onClick={handleAddRow}>
+                                 <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
+                             </Button>
+                             <div className="flex gap-2">
                                 <Button variant="outline" onClick={handleCancelEditProducts} disabled={isSaving}>{t('cancel_button')}</Button>
                                 <Button onClick={handleSaveEditProducts} disabled={isSaving || products.length === 0}>{t('save_button')}</Button>
-                            </CardFooter>
-                        )}
-                     </Card>
-                </div>
+                             </div>
+                         </div>
+                     )}
+                 </div>
             )}
              {displayedOriginalImageUrl && (
                 <Card className="mt-6">
@@ -1459,5 +1449,6 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+
 
 
