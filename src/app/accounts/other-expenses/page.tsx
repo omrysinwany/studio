@@ -122,15 +122,15 @@ export default function OtherExpensesPage() {
       setExpenseTemplates(storedTemplates ? JSON.parse(storedTemplates) : []);
       
       const storedSpecialAmounts = localStorage.getItem(specialAmountsStorageKey);
-      const initialSpecialAmounts: Record<string, number> = storedSpecialAmounts ? JSON.parse(storedSpecialAmounts) : {};
+      const initialSpecialAmountsData: Record<string, number> = storedSpecialAmounts ? JSON.parse(storedSpecialAmounts) : {};
       // Ensure Property Tax and Rent have default 0 if not present
-      if (initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] === undefined) {
-        initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] = 0;
+      if (initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] === undefined) {
+        initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] = 0;
       }
-      if (initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.RENT] === undefined) {
-        initialSpecialAmounts[SPECIAL_CATEGORY_KEYS.RENT] = 0;
+      if (initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.RENT] === undefined) {
+        initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.RENT] = 0;
       }
-      setSpecialExpenseAmounts(initialSpecialAmounts);
+      setSpecialExpenseAmounts(initialSpecialAmountsData);
 
       setIsLoadingData(false);
     } else if (!authLoading && !user) {
@@ -304,10 +304,6 @@ export default function OtherExpensesPage() {
     setSpecialExpenseAmounts(updatedAmounts);
     saveSpecialExpenseAmounts(updatedAmounts);
     
-    // Optionally, also create/update a corresponding record in `otherExpenses`
-    // This part might need more thought: how to uniquely identify/update these?
-    // For now, let's assume we always create a new record when the fixed amount is "saved"
-    // to reflect a payment or commitment.
     const categoryLabel = t(`accounts_other_expenses_tab_${key}` as any, { defaultValue: key.charAt(0).toUpperCase() + key.slice(1) });
     const currentMonthYear = format(new Date(), 'MMMM yyyy');
     const description = `${categoryLabel} - ${currentMonthYear}`;
@@ -475,13 +471,8 @@ export default function OtherExpensesPage() {
                                 </Button>
                             </div>
                         ) : (
-                             <Button
-                               onClick={() => handleEditSpecialExpense(specialCatKey)}
-                               size="sm"
-                               className="w-full bg-primary hover:bg-primary/90"
-                             >
-                                <Edit2 className="mr-2 h-4 w-4" /> {t('accounts_record_payment_button')}
-                             </Button>
+                            // No button is displayed here when not editing as per user request
+                            null
                         )}
                      </CardFooter>
                 </Card>
@@ -593,4 +584,3 @@ export default function OtherExpensesPage() {
     </div>
   );
 }
-
