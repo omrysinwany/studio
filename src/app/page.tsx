@@ -1,4 +1,4 @@
-
+// src/app/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -26,7 +26,7 @@ import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBe
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
-import { Skeleton } from "@/components/ui/skeleton"; // Added import for Skeleton
+import { Skeleton } from "@/components/ui/skeleton";
 
 
 export interface OtherExpense {
@@ -107,7 +107,7 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     isCurrency: true,
-    iconColor: 'text-green-500 dark:text-green-400', // Distinct color for profit
+    iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
   {
@@ -142,7 +142,7 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/accounts?filter=unpaid',
     isCurrency: true,
-    iconColor: 'text-orange-500 dark:text-orange-400', // Distinct color
+    iconColor: 'text-orange-500 dark:text-orange-400',
     defaultVisible: true,
   },
   {
@@ -185,7 +185,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
     const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
     return {
         visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-        kpiOrder: defaultVisible.map(kpi => kpi.id), // Default order matches default visible
+        kpiOrder: defaultVisible.map(kpi => kpi.id),
     };
   }
   const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
@@ -193,19 +193,15 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      // Validate that stored preferences are still valid against current allKpiConfigurations
       const allKpiIdsSet = new Set(allKpiConfigurations.map(kpi => kpi.id));
       const validVisibleKpiIds = parsed.visibleKpiIds.filter((id: string) => allKpiIdsSet.has(id));
       const validKpiOrder = parsed.kpiOrder.filter((id: string) => allKpiIdsSet.has(id));
 
-      // Ensure all currently available defaultVisible KPIs are included if not in stored preferences
-      // (e.g., after an app update adds a new default KPI)
       allKpiConfigurations.forEach(kpi => {
         if (kpi.defaultVisible && !validVisibleKpiIds.includes(kpi.id)) {
           validVisibleKpiIds.push(kpi.id);
         }
         if (!validKpiOrder.includes(kpi.id)) {
-            // Add new KPIs to the end of the order if they are not already there
            validKpiOrder.push(kpi.id);
         }
       });
@@ -215,11 +211,10 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
       console.error("Error parsing KPI preferences from localStorage:", e);
     }
   }
-  // Fallback to default if nothing stored or parsing failed
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Ensure default order reflects allKpiConfigurations
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
   };
 };
 
@@ -255,7 +250,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
              if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
              return [value.toLocaleString(), name];
           }}
-          labelFormatter={() => ''} // Hide label in tooltip
+          labelFormatter={() => ''}
         />
         <XAxis dataKey="name" hide />
         <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
@@ -298,7 +293,7 @@ export default function Home() {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
     } else if (!authLoading) {
-        const defaultGuestPrefs = getKpiPreferences(); // Get defaults if no user (though this case is handled by GuestHomePage)
+        const defaultGuestPrefs = getKpiPreferences();
         setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
@@ -329,8 +324,8 @@ export default function Home() {
 
 
       const unpaidInvoices = invoices.filter(
-        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))
-      ).sort((a, b) => new Date(a.paymentDueDate!).getTime() - new Date(b.paymentDueDate!).getTime());
+        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))
+      ).sort((a, b) => new Date(a.paymentDueDate as string).getTime() - new Date(b.paymentDueDate as string).getTime());
       const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
 
 
@@ -347,8 +342,8 @@ export default function Home() {
       invoices.forEach(invoice => {
           if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
-          if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
-              relevantDateForExpense = parseISO(invoice.paymentDueDate);
+          if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
+              relevantDateForExpense = parseISO(invoice.paymentDueDate as string);
           } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
               relevantDateForExpense = parseISO(invoice.uploadTime as string);
           }
@@ -406,7 +401,7 @@ export default function Home() {
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
         time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp'),
-        link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}` // Updated to go to scanned docs
+        link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
 
@@ -445,7 +440,7 @@ export default function Home() {
     if (user) {
       fetchKpiData();
     } else if (!authLoading) {
-      setIsLoadingKpis(false); // Not loading if no user and auth is done
+      setIsLoadingKpis(false);
     }
   }, [user, authLoading, fetchKpiData]);
 
@@ -458,8 +453,8 @@ export default function Home() {
     router.push('/inventory');
   };
 
-  const handleReportsClick = () => {
-    router.push('/reports');
+  const handleAccountsClick = () => {
+    router.push('/accounts');
   };
 
   const formatLargeNumber = (num: number | undefined, decimals = 1, isCurrency = false, isInteger = false): string => {
@@ -550,31 +545,34 @@ export default function Home() {
              {t('home_welcome_title')}
           </h1>
 
-           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
+          <div className="mb-8 md:mb-12 scale-fade-in delay-200">
             <Button
               size="lg"
-              className="w-full bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
+              className="w-full max-w-md mx-auto bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
               onClick={handleScanClick}
             >
               <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full border-primary text-primary hover:bg-primary/5 shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
-              onClick={handleInventoryClick}
-            >
-              <Package className="mr-2 h-5 w-5" /> {t('home_inventory_button')}
-            </Button>
-            <Button
-              variant="secondary"
-              size="lg"
-              className="w-full bg-gradient-to-br from-secondary to-muted text-secondary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-6 sm:py-7"
-              onClick={handleReportsClick}
-            >
-              <BarChart2 className="mr-2 h-5 w-5" /> {t('home_reports_button')}
-            </Button>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-md mx-auto">
+                 <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-3 sm:py-4"
+                    onClick={handleInventoryClick}
+                    >
+                    <Package className="mr-2 h-5 w-5" /> {t('home_inventory_button')}
+                </Button>
+                <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-base transform hover:-translate-y-1 py-3 sm:py-4"
+                    onClick={handleAccountsClick}
+                    >
+                    <CreditCard className="mr-2 h-5 w-5" /> {t('nav_accounts')}
+                </Button>
+            </div>
           </div>
+
 
           <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
             <CardHeader className="pb-4">
@@ -718,7 +716,7 @@ export default function Home() {
                                 <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                     {kpiData.nextPaymentDueInvoice.supplier || t('home_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, 2, true)}
                                 </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate), 'PP') : t('home_unknown_date')}
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP') : t('home_unknown_date')}
                             </p>
                         ) : (
                             <div className="text-muted-foreground mt-1 text-center py-4">
@@ -777,7 +775,7 @@ export default function Home() {
                 </Link>
               </Button>
               <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                <Link href="/inventory"> {/* Or a dedicated "add product" page if you create one */}
+                <Link href="/inventory">
                   <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
                 </Link>
               </Button>
@@ -796,4 +794,3 @@ export default function Home() {
     </div>
   );
 }
-
