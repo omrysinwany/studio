@@ -21,13 +21,14 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, Image as ImageIconLucide } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
+ import { format, parseISO, subDays, startOfMonth, endOfMonth, isValid } from 'date-fns';
+ import { enUS, he } from 'date-fns/locale';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
  import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
@@ -88,7 +89,7 @@ const formatNumber = (
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
 
-const isValidImageSrc = (src: string | undefined): src is string => {
+const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
@@ -103,7 +104,7 @@ const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
 export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) {
   const { user, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,7 +122,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     errorMessage: false,
     originalImagePreviewUri: false,
     compressedImageForFinalRecordUri: false,
-    paymentReceiptImageUri: false,
+    paymentReceiptImageUri: true, // Show receipt image in grid view by default
     paymentDueDate: false,
     documentType: false,
     invoiceDate: false,
@@ -209,12 +210,18 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
          if (dateRange?.from) {
             const startDate = new Date(dateRange.from);
             startDate.setHours(0, 0, 0, 0);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) >= startDate);
+            filteredData = filteredData.filter(inv => {
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime as string) : null;
+                return invDate ? invDate >= startDate : false;
+            });
          }
          if (dateRange?.to) {
             const endDate = new Date(dateRange.to);
             endDate.setHours(23, 59, 59, 999);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) <= endDate);
+            filteredData = filteredData.filter(inv => {
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime as string) : null;
+                return invDate ? invDate <= endDate : false;
+            });
          }
          if (filterDocumentType) {
            filteredData = filteredData.filter(inv => inv.documentType === filterDocumentType);
@@ -282,7 +289,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
-        item.fileName.toLowerCase().includes(lowerSearchTerm) ||
+        (item.fileName || '').toLowerCase().includes(lowerSearchTerm) ||
         (item.invoiceNumber && item.invoiceNumber.toLowerCase().includes(lowerSearchTerm)) ||
         (item.supplier && item.supplier.toLowerCase().includes(lowerSearchTerm))
       );
@@ -320,6 +327,9 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
       { key: 'documentType', labelKey: 'invoices_document_type_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
+      { key: 'compressedImageForFinalRecordUri', labelKey: 'invoices_col_compressed_uri', sortable: false, className: 'hidden' },
+
    ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'paymentReceiptImageUri' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentStatus' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
@@ -329,9 +339,10 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
      try {
         const dateObj = typeof date === 'string' ? parseISO(date) : date;
         if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
+        const dateLocale = locale === 'he' ? he : enUS;
         return window.innerWidth < 640
-             ? format(dateObj, 'dd/MM/yy')
-             : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+             ? format(dateObj, 'dd/MM/yy', {locale: dateLocale})
+             : format(dateObj, 'PPp', {locale: dateLocale});
      } catch (e) {
        console.error("Error formatting date:", e, "Input:", date);
        return t('invoices_invalid_date');
@@ -512,8 +523,8 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     const lastMonthEnd = endOfMonth(subDays(today, today.getDate())); 
 
     const lastMonthInvoices = paidUserInvoices.filter(invoice => {
-      const uploadDate = new Date(invoice.uploadTime as string);
-      return uploadDate >= lastMonthStart && uploadDate <= lastMonthEnd;
+      const uploadDate = invoice.uploadTime ? new Date(invoice.uploadTime as string) : null;
+      return uploadDate ? (uploadDate >= lastMonthStart && uploadDate <= lastMonthEnd) : false;
     });
 
     setSelectedInvoiceIds(lastMonthInvoices.map(invoice => invoice.id));
@@ -829,7 +840,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                               <Checkbox
                                 checked={selectedInvoiceIds.includes(item.id)}
                                 onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)}
-                                aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                                aria-label={t('invoice_export_select_aria', { fileName: item.fileName || ''})}
                               />
                            </TableCell>
                         )}
@@ -840,8 +851,8 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                                    size="icon"
                                    className="text-primary hover:text-primary/80 h-7 w-7"
                                    onClick={() => handleViewDetails(item)}
-                                   title={t('invoices_view_details_title', { fileName: item.fileName })}
-                                   aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
+                                   title={t('invoices_view_details_title', { fileName: item.fileName || '' })}
+                                   aria-label={t('invoices_view_details_aria', { fileName: item.fileName || '' })}
                                >
                                    <Info className="h-4 w-4" />
                                </Button>
@@ -853,7 +864,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                                 variant="link"
                                 className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
                                 onClick={() => handleViewDetails(item)}
-                                title={t('invoices_view_details_title', { fileName: item.fileName })}
+                                title={t('invoices_view_details_title', { fileName: item.fileName || ''})}
                               >
                                 {item.fileName}
                             </Button>
@@ -931,7 +942,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                        <Checkbox
                           checked={selectedInvoiceIds.includes(item.id)}
                           onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)}
-                          aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                          aria-label={t('invoice_export_select_aria', { fileName: item.fileName || ''})}
                           className="bg-background/70 hover:bg-background border-primary"
                       />
                   </div>
@@ -939,7 +950,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                     {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (
                       <NextImage
                         src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} // Fallback to original if receipt missing
-                        alt={t('paid_invoices_receipt_image_alt', { fileName: item.fileName })}
+                        alt={t('paid_invoices_receipt_image_alt', { fileName: item.fileName || '' })}
                         layout="fill"
                         objectFit="cover"
                         className="rounded-t-lg"
@@ -1072,7 +1083,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                   {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri) ? (
                     <NextImage
                         src={selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri!}
-                        alt={t('paid_invoices_receipt_image_alt', { fileName: selectedInvoiceDetails.fileName })}
+                        alt={t('paid_invoices_receipt_image_alt', { fileName: selectedInvoiceDetails.fileName || '' })}
                         width={800}
                         height={1100}
                         className="rounded-md object-contain mx-auto"
@@ -1116,7 +1127,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                             <AlertDialogHeaderComponent>
                                 <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
                                 <AlertDialogDescriptionComponent>
-                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName })}
+                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName || '' })}
                                 </AlertDialogDescriptionComponent>
                             </AlertDialogHeaderComponent>
                             <AlertDialogFooterComponent>
@@ -1191,7 +1202,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                         {isExporting ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                {t('sending')}...
+                                {t('sending')}
                             </>
                         ) : (
                             <>
@@ -1212,7 +1223,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                 setShowReceiptUploadDialog(isOpen);
                 if (!isOpen) setInvoiceForReceiptUpload(null);
             }}
-            invoiceFileName={invoiceForReceiptUpload.fileName}
+            invoiceFileName={invoiceForReceiptUpload.fileName || ''}
             onConfirmUpload={async (receiptUri) => {
                 await handlePaymentReceiptUploaded(invoiceForReceiptUpload.id, receiptUri);
             }}
@@ -1221,4 +1232,3 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
     </>
   );
 }
-

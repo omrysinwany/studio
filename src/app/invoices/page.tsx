@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, XCircle, CheckCircle as CheckCircleIcon, Clock, Link as LinkIcon } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, XCircle, Clock, Link as LinkIcon, Image as ImageIconLucide } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -101,7 +101,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    originalImagePreviewUri: false,
+    originalImagePreviewUri: true, // Show image in grid view by default
     compressedImageForFinalRecordUri: false,
     paymentReceiptImageUri: false,
     paymentStatus: true,
@@ -187,7 +187,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
             const startDate = new Date(dateRange.from);
             startDate.setHours(0, 0, 0, 0);
             filteredData = filteredData.filter(inv => {
-                const invDate = inv.uploadTime ? parseISO(inv.uploadTime) : null;
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime as string) : null;
                 return invDate ? invDate >= startDate : false;
             });
          }
@@ -195,7 +195,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
             const endDate = new Date(dateRange.to);
             endDate.setHours(23, 59, 59, 999);
             filteredData = filteredData.filter(inv => {
-                const invDate = inv.uploadTime ? parseISO(inv.uploadTime) : null;
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime as string) : null;
                 return invDate ? invDate <= endDate : false;
             });
          }
@@ -263,7 +263,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(item =>
-        item.fileName.toLowerCase().includes(lowerSearchTerm) ||
+        (item.fileName || '').toLowerCase().includes(lowerSearchTerm) ||
         (item.invoiceNumber && item.invoiceNumber.toLowerCase().includes(lowerSearchTerm)) ||
         (item.supplier && item.supplier.toLowerCase().includes(lowerSearchTerm))
       );
@@ -306,7 +306,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
       { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
 
    const formatDate = (dateString: Date | string | undefined) => {
      if (!dateString) return t('invoices_na');
@@ -399,7 +399,8 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
             errorMessage: editedInvoiceData.errorMessage || undefined,
             paymentStatus: editedInvoiceData.paymentStatus || selectedInvoiceDetails.paymentStatus,
             paymentDueDate: editedInvoiceData.paymentDueDate,
-            originalImagePreviewUri: editedInvoiceData.originalImagePreviewUri === null ? undefined : editedInvoiceData.originalImagePreviewUri,
+            originalImagePreviewUri: editedInvoiceData.originalImagePreviewUri === null ? undefined : (editedInvoiceData.originalImagePreviewUri ?? selectedInvoiceDetails.originalImagePreviewUri),
+            compressedImageForFinalRecordUri: editedInvoiceData.compressedImageForFinalRecordUri === null ? undefined : (editedInvoiceData.compressedImageForFinalRecordUri ?? selectedInvoiceDetails.compressedImageForFinalRecordUri),
             documentType: editedInvoiceData.documentType || selectedInvoiceDetails.documentType,
             invoiceDate: editedInvoiceData.invoiceDate,
             paymentMethod: editedInvoiceData.paymentMethod,
@@ -450,7 +451,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
             await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, undefined);
             toast({
                 title: t('toast_invoice_payment_status_updated_title'),
-                description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName, status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
+                description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.fileName || '', status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
             });
             fetchInvoices();
         } catch (error) {
@@ -474,7 +475,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptImageUriParam);
         toast({
             title: t('paid_invoices_toast_receipt_uploaded_title'),
-            description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: invoiceForReceiptUpload.fileName }),
+            description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: invoiceForReceiptUpload.fileName || '' }),
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
@@ -530,7 +531,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             case 'completed':
                 variant = 'secondary';
                 className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-                icon = <CheckCircleIcon className="mr-1 h-3 w-3" />;
+                icon = <CheckCircle className="mr-1 h-3 w-3" />;
                 labelKey = 'invoice_status_completed';
                 break;
             case 'processing':
@@ -805,7 +806,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                          {header.key === 'selection' ? (
                               <Checkbox
                                   checked={selectedForBulkDelete.length > 0 && selectedForBulkDelete.length === displayedScannedInvoices.length && displayedScannedInvoices.length > 0}
-                                  onCheckedChange={handleSelectAllForBulkDelete}
+                                  onCheckedChange={(checked) => handleSelectAllForBulkDelete(!!checked)}
                                   aria-label={t('invoice_export_select_all_aria')}
                                   className="mx-auto"
                               />
@@ -846,7 +847,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                               <Checkbox
                                 checked={selectedForBulkDelete.includes(item.id)}
                                 onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
-                                aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                                aria-label={t('invoice_export_select_aria', { fileName: item.fileName || ''})}
                               />
                            </TableCell>
                         )}
@@ -857,8 +858,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                    size="icon"
                                    className="text-primary hover:text-primary/80 h-7 w-7"
                                    onClick={() => handleViewDetails(item)}
-                                   title={t('invoices_view_details_title', { fileName: item.fileName })}
-                                   aria-label={t('invoices_view_details_aria', { fileName: item.fileName })}
+                                   title={t('invoices_view_details_title', { fileName: item.fileName || '' })}
+                                   aria-label={t('invoices_view_details_aria', { fileName: item.fileName || '' })}
                                >
                                    <Info className="h-4 w-4" />
                                </Button>
@@ -870,7 +871,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                 variant="link"
                                 className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
                                 onClick={() => handleViewDetails(item)}
-                                title={t('invoices_view_details_title', { fileName: item.fileName })}
+                                title={t('invoices_view_details_title', { fileName: item.fileName || ''})}
                               >
                                 {item.fileName}
                             </Button>
@@ -953,15 +954,15 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                        <Checkbox
                           checked={selectedForBulkDelete.includes(item.id)}
                           onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
-                          aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                          aria-label={t('invoice_export_select_aria', { fileName: item.fileName || ''})}
                           className="bg-background/70 hover:bg-background border-primary"
                       />
                   </div>
                   <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item)}>
                     {isValidImageSrc(item.originalImagePreviewUri) ? (
                       <NextImage
-                        src={item.originalImagePreviewUri}
-                        alt={t('invoices_preview_alt', { fileName: item.fileName })}
+                        src={item.originalImagePreviewUri!}
+                        alt={t('invoices_preview_alt', { fileName: item.fileName || '' })}
                         layout="fill"
                         objectFit="cover"
                         className="rounded-t-lg"
@@ -969,7 +970,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       />
                     ) : (
                       <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                        {item.documentType === 'invoice' ? <FileTextIcon className="h-12 w-12 text-muted-foreground" /> : <FileTextIcon className="h-12 w-12 text-muted-foreground" />}
+                        {item.documentType === 'invoice' ? <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" />}
                       </div>
                     )}
                      <div className="absolute top-2 right-2 flex flex-col gap-1">
@@ -994,21 +995,24 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
                           <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
                       </Button>
-                      {(item.status === 'pending' || item.status === 'error') && (
+                      {(item.status === 'pending' || item.status === 'error') && user && (
                         <Button
                           variant="ghost"
                           size="sm"
                           className="w-full justify-start text-xs text-amber-600 hover:text-amber-700"
                           onClick={(e) => {
                             e.stopPropagation();
+                            const uniqueScanId = item.id.startsWith(`pending-inv-${user.id}_`) ? item.id.replace(`pending-inv-${user.id}_`, '') : item.id;
+
                              const queryParams = new URLSearchParams({
-                                key: `${TEMP_DATA_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`,
-                                fileName: encodeURIComponent(item.fileName),
+                                key: `${getStorageKey(TEMP_DATA_KEY_PREFIX, user.id)}_${uniqueScanId}`,
+                                fileName: encodeURIComponent(item.fileName || 'unknown_doc'),
                                 tempInvoiceId: item.id,
                                 docType: item.documentType,
                             });
-                            if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
-                             if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+                            if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, user.id)}_${uniqueScanId}`);
+                            if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, user.id)}_${uniqueScanId}`);
+
                             router.push(`/edit-invoice?${queryParams.toString()}`);
                           }}
                         >
@@ -1119,17 +1123,17 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 </div>
               ) : (
                 <>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                      <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_document_section_title')}</h3>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
                       <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
-                      <div className="flex items-center">
+                       <div className="flex items-center">
                         <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
                       </div>
                   </div>
                   <Separator className="my-3"/>
-                   <div className="space-y-3">
+                   <div className="space-y-2">
                      <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_financial_section_title')}</h3>
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
@@ -1161,7 +1165,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                         <NextImage
                             src={selectedInvoiceDetails.originalImagePreviewUri!}
-                            alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName })}
+                            alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName || '' })}
                             width={800}
                             height={1100}
                             className="rounded-md object-contain mx-auto"
@@ -1205,7 +1209,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             <AlertDialogHeaderComponent>
                                 <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
                                 <AlertDialogDescriptionComponent>
-                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName })}
+                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.fileName || '' })}
                                 </AlertDialogDescriptionComponent>
                             </AlertDialogHeaderComponent>
                             <AlertDialogFooterComponent>
@@ -1246,7 +1250,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     setShowReceiptUploadDialog(isOpen);
                     if (!isOpen) setInvoiceForReceiptUpload(null);
                 }}
-                invoiceFileName={invoiceForReceiptUpload.fileName}
+                invoiceFileName={invoiceForReceiptUpload.fileName || ''}
                 onConfirmUpload={async (receiptUri) => {
                     if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid'){
                         await handleConfirmReceiptUpload(receiptUri);
