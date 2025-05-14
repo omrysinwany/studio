@@ -568,7 +568,7 @@ export default function Home() {
                 </div>
           </div>
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl rounded-lg p-6">
+          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-6">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
@@ -800,4 +800,3 @@ export default function Home() {
     </div>
   );
 }
-
