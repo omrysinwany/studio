@@ -106,10 +106,11 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    background-image: url('https://picsum.photos/1920/1080?grayscale&blur=2'); /* Using Picsum for a random, real, subtle image */
+    /* Fixed, subtle placeholder image */
+    background-image: url('https://placehold.co/1920x1080/EEEEEE/CCCCCC.png?text=%20'); /* Light gray, no text */
     background-size: cover;
     background-position: center;
-    opacity: 0.1; /* Kept opacity at 0.1 for better visibility */
+    opacity: 0.1; /* Keep opacity subtle */
     z-index: -1; /* Behind all content */
     pointer-events: none; /* Allow clicks to pass through */
   }
@@ -126,21 +127,11 @@ body {
     overflow: hidden;
   }
 
-  .home-background::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url('https://placehold.co/1920x1080.png?text=Page+Specific+BG'); /* Placeholder for page-specific background */
-    background-size: cover;
-    background-position: center;
-    opacity: 0.1; /* Subtle */
-    z-index: -1; /* Ensure it's behind page content but above global body background if layered */
-    animation: fadeInBackground 2s ease-in-out forwards;
-  }
+  /* No need for home-background::before if the body::before is sufficient */
 
   @keyframes fadeInBackground {
     from { opacity: 0; }
-    to { opacity: 0.1; }
+    to { opacity: 0.1; } /* Match body::before opacity */
   }
 
   /* Simple fade-in animation for content */
@@ -168,7 +159,7 @@ body {
   }
 
   /* Staggered animation delays - optional, can be applied inline or via specific classes */
-  .delay-100 { animation-delay: 0.1s !important; } /* Use !important if Tailwind specificity is an issue */
+  .delay-100 { animation-delay: 0.1s !important; }
   .delay-200 { animation-delay: 0.2s !important; }
   .delay-300 { animation-delay: 0.3s !important; }
   .delay-400 { animation-delay: 0.4s !important; }
@@ -197,7 +188,8 @@ body {
 
   /* Styles for home container gradient (if different from global) */
   .homeContainerGradient {
-    background: linear-gradient(180deg, hsla(var(--background) / 0.95) 0%, hsla(var(--muted) / 0.5) 100%);
+    /* This might be redundant if the body::before is styled globally */
+    /* background: linear-gradient(180deg, hsla(var(--background) / 0.95) 0%, hsla(var(--muted) / 0.5) 100%); */
     position: relative;
     overflow: hidden;
   }
@@ -210,7 +202,7 @@ body {
       radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.03) 0%, transparent 30%),
       radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.03) 0%, transparent 30%);
     opacity: 0.7;
-    z-index: -1; /* Ensure it's behind homeContainerGradient content but above body::before if layered */
+    z-index: 0; /* Ensure it's behind homeContainerGradient content but potentially above body::before if layered explicitly */
     animation: subtleShimmer 20s infinite alternate ease-in-out;
   }
 
