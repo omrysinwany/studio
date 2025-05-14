@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings, GripVertical } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -22,10 +22,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
-// Removed SCSS import as it was causing build issues and not strictly necessary for this component's current styling
-// import styles from "./page.module.scss";
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
+import KpiCustomizationSheet from '@/components/KpiCustomizationSheet'; // Import the new component
 
 export interface OtherExpense {
   id: string;
@@ -51,7 +50,7 @@ interface KpiData {
   currentMonthTotalExpenses?: number;
 }
 
-interface KpiConfig {
+export interface KpiConfig {
   id: string;
   titleKey: string;
   icon: React.ElementType;
@@ -64,10 +63,9 @@ interface KpiConfig {
   showProgress?: boolean;
   progressValue?: (data: KpiData | null) => number;
   iconColor?: string;
-  defaultVisible?: boolean; // To manage default visibility
+  defaultVisible?: boolean;
 }
 
-// Master list of all available KPIs
 const allKpiConfigurations: KpiConfig[] = [
   {
     id: 'totalItems',
@@ -140,28 +138,35 @@ const allKpiConfigurations: KpiConfig[] = [
   },
 ];
 
-const getKpiPreferences = (userId?: string): string[] => {
+const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder: string[] } => {
   if (typeof window === 'undefined' || !userId) {
-    return allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
+    const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
+    return {
+        visibleKpiIds: defaultVisible.map(kpi => kpi.id),
+        kpiOrder: defaultVisible.map(kpi => kpi.id),
+    };
   }
   const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
   const stored = localStorage.getItem(key);
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.every(id => typeof id === 'string')) {
+      if (Array.isArray(parsed.visibleKpiIds) && parsed.visibleKpiIds.every((id: any) => typeof id === 'string') &&
+          Array.isArray(parsed.kpiOrder) && parsed.kpiOrder.every((id: any) => typeof id === 'string')) {
         return parsed;
       }
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
     }
   }
-  // Default to all visible KPIs if none stored or error
-  return allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
+  const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
+  return {
+    visibleKpiIds: defaultVisible.map(kpi => kpi.id),
+    kpiOrder: defaultVisible.map(kpi => kpi.id),
+  };
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const saveKpiPreferences = (preferences: string[], userId?: string) => {
+const saveKpiPreferences = (preferences: { visibleKpiIds: string[], kpiOrder: string[] }, userId?: string) => {
   if (typeof window === 'undefined' || !userId) return;
   const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
   try {
@@ -217,17 +222,16 @@ export default function Home() {
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
   const [visibleKpiConfigs, setVisibleKpiConfigs] = useState<KpiConfig[]>([]);
-
+  const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
-      const preferredKpiIds = getKpiPreferences(user.id);
-      const newVisibleConfigs = preferredKpiIds
-        .map(id => allKpiConfigurations.find(config => config.id === id))
+      const preferences = getKpiPreferences(user.id);
+      const newVisibleConfigs = preferences.kpiOrder
+        .map(id => allKpiConfigurations.find(config => config.id === id && preferences.visibleKpiIds.includes(id)))
         .filter(config => config !== undefined) as KpiConfig[];
       setVisibleKpiConfigs(newVisibleConfigs);
     } else if (!authLoading) {
-      // For guest users, show default KPIs or an empty list if that's preferred
       const defaultGuestKpiIds = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
        const defaultGuestConfigs = defaultGuestKpiIds
         .map(id => allKpiConfigurations.find(config => config.id === id))
@@ -275,8 +279,8 @@ export default function Home() {
             let relevantDateForExpense: Date | null = null;
             if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
                 relevantDateForExpense = parseISO(invoice.paymentDueDate);
-            } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime))) {
-                relevantDateForExpense = parseISO(invoice.uploadTime);
+            } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
+                relevantDateForExpense = parseISO(invoice.uploadTime as string);
             }
 
 
@@ -416,6 +420,18 @@ export default function Home() {
     return formatLargeNumber(value, isInteger ? 0 : (isCurrency ? 2 : 1), isCurrency, isInteger);
   };
 
+  const handleSavePreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
+    if (user) {
+        saveKpiPreferences(newPreferences, user.id);
+        const newVisible = newPreferences.kpiOrder
+            .map(id => allKpiConfigurations.find(config => config.id === id && newPreferences.visibleKpiIds.includes(id)))
+            .filter(config => config !== undefined) as KpiConfig[];
+        setVisibleKpiConfigs(newVisible);
+        toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
+    }
+  };
+
+
    if (authLoading) {
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
@@ -474,12 +490,11 @@ export default function Home() {
             </Alert>
           )}
 
-          {/* Placeholder for KPI Customization - to be implemented later */}
-          {/* <div className="flex justify-end mb-4">
-            <Button variant="outline" size="sm" onClick={() => console.log("Open KPI Customization Modal")}>
-              <Settings className="mr-2 h-4 w-4" /> Customize Dashboard
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => setIsCustomizeSheetOpen(true)}>
+              <Settings className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
             </Button>
-          </div> */}
+          </div>
 
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
@@ -544,6 +559,14 @@ export default function Home() {
           </div>
         </div>
       </TooltipProvider>
+      <KpiCustomizationSheet
+        isOpen={isCustomizeSheetOpen}
+        onOpenChange={setIsCustomizeSheetOpen}
+        allKpis={allKpiConfigurations}
+        currentVisibleKpiIds={visibleKpiConfigs.map(kpi => kpi.id)}
+        currentKpiOrder={visibleKpiConfigs.map(kpi => kpi.id)}
+        onSavePreferences={handleSavePreferences}
+      />
     </div>
   );
 }
