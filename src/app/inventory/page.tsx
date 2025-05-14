@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Plus, Minus } from 'lucide-react'; // Added ImageIconLucide
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Plus, Minus } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -112,9 +112,9 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false,
+    unitPrice: false, // Default hidden
     salePrice: true,
-    lineTotal: false,
+    lineTotal: false, // Default hidden
     minStockLevel: false,
     maxStockLevel: false,
   });
@@ -301,7 +301,7 @@ export default function InventoryPage() {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const columnDefinitions: { key: keyof Product | 'actions' | 'id' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = [
+    const columnDefinitions: { key: keyof Product | 'actions' | 'id' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string, isNumeric?: boolean }[] = [
         { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2' },
         { key: 'imageUrl', labelKey: 'inventory_col_image', sortable: false, className: 'w-12 text-center px-1 sm:px-2 py-1', headerClassName: 'text-center px-1 sm:px-2 py-1'},
         { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
@@ -309,12 +309,12 @@ export default function InventoryPage() {
         { key: 'id', labelKey: 'inventory_col_id', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
@@ -446,7 +446,6 @@ export default function InventoryPage() {
    }
 
    if (!user && !authLoading) {
-    // This case should be handled by the useEffect redirect, but as a fallback:
     return null;
    }
 
@@ -666,14 +665,16 @@ export default function InventoryPage() {
                          {visibleColumns.catalogNumber && <p><strong>{t('inventory_col_catalog')}:</strong> {item.catalogNumber || t('invoices_na')}</p>}
                          {/* Quantity display with +/- buttons */}
                          <div className="flex items-center gap-2">
-                            <strong>{t('inventory_col_qty')}:</strong>
-                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => item.id && handleQuantityChange(item.id, -1)} disabled={updatingQuantityProductId === item.id}>
-                                <Minus className="h-3 w-3" />
-                            </Button>
-                            <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
-                            <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => item.id && handleQuantityChange(item.id, 1)} disabled={updatingQuantityProductId === item.id}>
-                                <Plus className="h-3 w-3" />
-                            </Button>
+                            <p className="flex items-center">
+                                <strong>{t('inventory_col_qty')}:</strong>
+                                <Button variant="outline" size="icon" className="h-6 w-6 mx-1" onClick={() => item.id && handleQuantityChange(item.id, -1)} disabled={updatingQuantityProductId === item.id}>
+                                    <Minus className="h-3 w-3" />
+                                </Button>
+                                <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
+                                <Button variant="outline" size="icon" className="h-6 w-6 mx-1" onClick={() => item.id && handleQuantityChange(item.id, 1)} disabled={updatingQuantityProductId === item.id}>
+                                    <Plus className="h-3 w-3" />
+                                </Button>
+                            </p>
                          </div>
                          {item.quantity === 0 && <Badge variant="destructive" className="mt-1 text-[9px] px-1 py-0">{t('inventory_badge_out_of_stock')}</Badge>}
                          {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="mt-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
@@ -696,9 +697,8 @@ export default function InventoryPage() {
                        <TableHead
                          key={header.key}
                          className={cn(
-                           header.className,
-                           header.headerClassName, // Apply header specific classes
-                           "text-center", // Always center header text
+                           "text-center px-2 sm:px-4 py-2", // Default centered
+                           header.headerClassName,
                            header.sortable && "cursor-pointer hover:bg-muted/50",
                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                          )}
@@ -893,4 +893,3 @@ export default function InventoryPage() {
      </div>
    );
 }
-

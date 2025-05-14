@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function Error({
   error,
@@ -14,6 +15,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -22,9 +24,9 @@ export default function Error({
     <div className="container mx-auto p-4 md:p-8 flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))]">
       <Alert variant="destructive" className="max-w-lg text-center">
         <AlertTriangle className="h-6 w-6 mx-auto mb-2" />
-        <AlertTitle className="text-xl font-semibold">Something went wrong!</AlertTitle>
+        <AlertTitle className="text-xl font-semibold">{t('error_title')}</AlertTitle>
         <AlertDescription className="mt-2 mb-4">
-          {error.message || "An unexpected error occurred while loading the product details."}
+          {error.message || t('product_detail_error_unexpected')}
         </AlertDescription>
         <div className="flex gap-2 justify-center">
             <Button
@@ -32,10 +34,10 @@ export default function Error({
                 () => reset()
               }
             >
-              Try again
+              {t('try_again_button')}
             </Button>
             <Button variant="outline" asChild>
-                <Link href="/inventory">Back to Inventory</Link>
+                <Link href="/inventory">{t('product_detail_back_to_inventory_button')}</Link>
             </Button>
         </div>
       </Alert>

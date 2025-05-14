@@ -36,7 +36,7 @@ const formatDisplayNumber = (
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
     const { decimals = 2, useGrouping = true } = options || {};
-    const shekelSymbol = "₪";
+    const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(undefined, {
@@ -206,7 +206,7 @@ export default function ProductDetailPage() {
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === undefined || editedProduct.minStockLevel === null ? undefined : Number(editedProduct.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === undefined || editedProduct.maxStockLevel === null ? undefined : Number(editedProduct.maxStockLevel),
-        imageUrl: editedProduct.imageUrl || product.imageUrl, // Save imageUrl
+        imageUrl: editedProduct.imageUrl || product.imageUrl,
       };
 
       await updateProductService(product.id, productToSave, user.id);
@@ -535,7 +535,7 @@ export default function ProductDetailPage() {
             ) : (
                 product.imageUrl && (
                     <div className="mb-4 relative h-48 w-full rounded overflow-hidden border" data-ai-hint="product photo">
-                        <NextImage src={product.imageUrl} alt={product.shortName || product.description} layout="fill" objectFit="contain" />
+                        <NextImage src={product.imageUrl} alt={product.shortName || product.description || ''} layout="fill" objectFit="contain" />
                     </div>
                 )
             )}
@@ -544,7 +544,7 @@ export default function ProductDetailPage() {
                     <ImageIcon className="h-12 w-12 text-muted-foreground" />
                 </div>
             )}
-             {!isEditing && product.imageUrl && ( // This ensures separator is only shown when image is present in view mode
+             {!isEditing && product.imageUrl && (
                 <Separator className="my-4" />
             )}
 
@@ -584,4 +584,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
