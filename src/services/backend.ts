@@ -1,3 +1,4 @@
+
 // src/services/backend.ts
 'use client';
 
@@ -15,6 +16,7 @@ export interface Product {
   lineTotal: number;
   minStockLevel?: number;
   maxStockLevel?: number;
+  imageUrl?: string; // Added for product image
   // Internal fields for editing
   _originalId?: string;
 }
@@ -70,11 +72,11 @@ export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImag
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
-export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024; // Example: 0.4MB
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.15 * 1024 * 1024; // Example: 0.15MB
 export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024; // Reduced to 0.5MB
 export const MAX_INVENTORY_ITEMS = 1000;
-export const MAX_INVOICE_HISTORY_ITEMS = 100; // Reduced to 100
+export const MAX_INVOICE_HISTORY_ITEMS = 100;
 
 
 interface StoredPosSettings {
@@ -148,10 +150,7 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
         return true;
       } catch (retryError) {
         console.error(`[saveStoredData Backend] Error writing ${storageKey} to localStorage even after cleanup:`, retryError);
-        // Do not re-throw the original error here, as we've already logged the issue.
-        // Let the application decide how to handle the ultimate failure.
-        // Instead, throw the retryError to indicate the final failure state.
-        throw retryError; // Or throw a new custom error: new Error("Failed to save data after cleanup due to storage quota.")
+        throw retryError; 
       }
     } else {
       throw error; // Re-throw other errors
@@ -207,21 +206,23 @@ export async function checkProductPricesBeforeSaveService(
             if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 priceDiscrepancies.push({
                     ...scannedProduct,
-                    id: existingProduct.id,
+                    id: existingProduct.id, // Use the ID of the existing product
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
                     minStockLevel: scannedProduct.minStockLevel ?? existingProduct.minStockLevel,
                     maxStockLevel: scannedProduct.maxStockLevel ?? existingProduct.maxStockLevel,
+                    imageUrl: scannedProduct.imageUrl ?? existingProduct.imageUrl,
                 });
             } else {
                 productsToSaveDirectly.push({
                     ...scannedProduct,
-                    id: existingProduct.id,
+                    id: existingProduct.id, // Use the ID of the existing product
                     unitPrice: existingUnitPrice, // Keep existing unit price if no significant change
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
                     minStockLevel: scannedProduct.minStockLevel ?? existingProduct.minStockLevel,
                     maxStockLevel: scannedProduct.maxStockLevel ?? existingProduct.maxStockLevel,
+                    imageUrl: scannedProduct.imageUrl ?? existingProduct.imageUrl,
                 });
             }
         } else {
@@ -244,8 +245,8 @@ export async function finalizeSaveProductsService(
     extractedInvoiceNumber?: string,
     finalSupplierName?: string,
     extractedTotalAmount?: number,
-    paymentDueDate?: string, // Changed to string
-    invoiceDate?: string, // Changed to string
+    paymentDueDate?: string, 
+    invoiceDate?: string, 
     paymentMethod?: string,
     originalImagePreviewUriToSave?: string,
     compressedImageForFinalRecordUriToSave?: string
@@ -320,7 +321,7 @@ export async function finalizeSaveProductsService(
                  } else if (documentType === 'invoice' && tempInvoiceId?.includes('_sync')) { 
                     existingProduct.quantity = quantityToAdd; 
                  }
-                // Keep existing prices unless new scan explicitly overrides them AND they are valid
+                
                 existingProduct.unitPrice = (unitPrice && unitPrice > 0) ? unitPrice : existingProduct.unitPrice;
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
@@ -329,6 +330,7 @@ export async function finalizeSaveProductsService(
                 existingProduct.salePrice = salePrice ?? existingProduct.salePrice;
                 existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
+                existingProduct.imageUrl = productToSave.imageUrl ?? existingProduct.imageUrl;
                 existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
                 processedProductsForReturn.push({...existingProduct});
             } else {
@@ -349,6 +351,7 @@ export async function finalizeSaveProductsService(
                     shortName: productToSave.shortName || (productToSave.description || 'No Description').split(' ').slice(0, 3).join(' '),
                     minStockLevel: productToSave.minStockLevel,
                     maxStockLevel: productToSave.maxStockLevel,
+                    imageUrl: productToSave.imageUrl,
                 };
                 updatedInventory.push(newProductEntry);
                 processedProductsForReturn.push({...newProductEntry});
@@ -460,7 +463,7 @@ export async function finalizeSaveProductsService(
         }
 
         if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
-            currentInvoices.sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
+            currentInvoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
             currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
             console.warn(`[Backend - finalizeSave] Invoice history pruned to ${MAX_INVOICE_HISTORY_ITEMS} items.`);
         }
@@ -515,6 +518,7 @@ export async function getProductsService(userId?: string): Promise<Product[]> {
         salePrice: item.salePrice ?? undefined,
         minStockLevel: item.minStockLevel ?? undefined,
         maxStockLevel: item.maxStockLevel ?? undefined,
+        imageUrl: item.imageUrl ?? undefined,
       };
   });
   return inventoryWithDefaults;
@@ -550,7 +554,7 @@ export async function updateProductService(productId: string, updatedData: Parti
   const productAfterUpdateAttempt: Product = {
     ...existingProduct,
     ...updatedData,
-    id: productId,
+    id: productId, // Ensure ID remains unchanged
   };
 
    if (updatedData.quantity !== undefined || updatedData.unitPrice !== undefined) {
@@ -575,6 +579,8 @@ export async function updateProductService(productId: string, updatedData: Parti
     productAfterUpdateAttempt.maxStockLevel = updatedData.maxStockLevel === null || updatedData.maxStockLevel === undefined
                                   ? undefined
                                   : (Number.isFinite(Number(updatedData.maxStockLevel)) ? Number(updatedData.maxStockLevel) : existingProduct.maxStockLevel);
+    
+    productAfterUpdateAttempt.imageUrl = updatedData.imageUrl === null ? undefined : (updatedData.imageUrl ?? existingProduct.imageUrl);
 
 
   currentInventory[productIndex] = productAfterUpdateAttempt;
@@ -615,7 +621,7 @@ export async function getInvoicesService(userId?: string): Promise<InvoiceHistor
     id: inv.id || `inv-get-${Date.now()}-${userId.slice(0,3)}-${Math.random().toString(36).substring(2, 9)}`,
     uploadTime: inv.uploadTime, // Assuming it's already an ISO string
     paymentStatus: inv.paymentStatus || 'unpaid',
-    documentType: inv.documentType || 'deliveryNote',
+    documentType: inv.documentType || 'deliveryNote', // Default to deliveryNote if not specified
     paymentReceiptImageUri: inv.paymentReceiptImageUri || undefined,
     originalImagePreviewUri: inv.originalImagePreviewUri || undefined,
     compressedImageForFinalRecordUri: inv.compressedImageForFinalRecordUri || undefined,
@@ -881,37 +887,24 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
   if (!userId) {
     throw new Error("User authentication is required to delete suppliers.");
   }
-  const storageKey = getStorageKey(SUPPLIERS_STORAGE_KEY_BASE, userId);
-
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers: Array<{ name: string; phone?: string; email?: string }> = [];
-  try {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      suppliers = JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error(`Error reading suppliers from localStorage key ${storageKey}:`, e);
-    // Allow to proceed, will effectively "not find" the supplier if list is empty
-  }
-
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
   const initialLength = suppliers.length;
   const updatedSuppliers = suppliers.filter(s => s.name !== supplierName);
 
   if (updatedSuppliers.length === initialLength) {
     if (suppliers.some(s => s.name === supplierName)) {
-      console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was in the list for user ${userId} but filter did not remove it. Key: ${storageKey}.`);
+      console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was in the list for user ${userId} but filter did not remove it.`);
        throw new Error(`Failed to delete supplier "${supplierName}" due to an internal error.`);
     } else {
-       // This is not an error, just means the supplier didn't exist.
-       console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId} (key: ${storageKey}). No deletion occurred.`);
+       console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId}. No deletion occurred.`);
     }
   }
 
   const success = saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, updatedSuppliers, userId);
   if (!success && updatedSuppliers.length < initialLength) { // Only error if a deletion was expected but save failed
-    console.error(`[deleteSupplierService] Failed to save updated supplier list for user ${userId} to key "${storageKey}" after attempting to delete "${supplierName}".`);
+    console.error(`[deleteSupplierService] Failed to save updated supplier list for user ${userId} after attempting to delete "${supplierName}".`);
   }
 }
 
@@ -930,7 +923,7 @@ export async function updateSupplierContactInfoService(supplierName: string, con
       ...suppliers[supplierIndex],
       phone: contactInfo.phone,
       email: contactInfo.email,
-      name: supplierName
+      name: supplierName // Ensure name is preserved
     };
   } else {
     console.warn(`[updateSupplierContactInfoService] Supplier "${supplierName}" not found for user ${userId}. Creating new entry.`);
@@ -1023,12 +1016,9 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
                 continue; // Skip keys not belonging to the target user if userIdToClear is provided
             }
 
-            // Extract timestamp from the key (assuming format: PREFIX_USERID_TIMESTAMP_FILENAME)
             const parts = key.split('_');
             let timestamp: number | null = null;
             
-            // Find the part that is a 13+ digit number (timestamp)
-            // Example: invoTrackTempScan_user123_1678886400000_invoice.pdf
             const timestampString = parts.find(part => /^\d{13,}$/.test(part));
             if (timestampString) {
               timestamp = parseInt(timestampString, 10);
@@ -1038,9 +1028,7 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
             if (timestamp && !isNaN(timestamp) && (now - timestamp > EXPIRY_DURATION_MS)) {
               keysToRemove.push(key);
             } else if (!timestamp && emergencyClear) {
-              // If no clear timestamp and it's an emergency clear for a specific user, remove it.
-              // Or if emergencyClear and no userIdToClear, remove all temp keys without clear timestamp.
-              if (userIdToClear || !key.includes('_SHARED_OR_ERROR_')) { // Avoid deleting general shared keys unless explicitly targeting them
+              if (userIdToClear || !key.includes('_SHARED_OR_ERROR_')) { 
                  console.warn(`[clearOldTemporaryScanData Emergency] No clear timestamp in key "${key}", but clearing due to emergency mode for user: ${userIdToClear || 'all users'}.`);
                  keysToRemove.push(key);
               }

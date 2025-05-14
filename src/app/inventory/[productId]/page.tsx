@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend';
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
+import NextImage from 'next/image'; // For displaying product images
 
 
 // Helper to format numbers for display
@@ -73,9 +74,9 @@ const formatIntegerQuantity = (
     t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return formatDisplayNumber(0, t, { decimals: 0, useGrouping: false });
+        return "0"; // Removed currency symbol for quantity
     }
-    return formatDisplayNumber(Math.round(value), t, { decimals: 0, useGrouping: true });
+    return Math.round(value).toLocaleString(undefined, { useGrouping: true });
 };
 
 export default function ProductDetailPage() {
@@ -205,6 +206,7 @@ export default function ProductDetailPage() {
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === undefined || editedProduct.minStockLevel === null ? undefined : Number(editedProduct.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === undefined || editedProduct.maxStockLevel === null ? undefined : Number(editedProduct.maxStockLevel),
+        imageUrl: editedProduct.imageUrl || product.imageUrl, // Save imageUrl
       };
 
       await updateProductService(product.id, productToSave, user.id);
@@ -481,6 +483,15 @@ export default function ProductDetailPage() {
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
                   />
+                   <Label htmlFor="imageUrl" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_image_url')}</Label>
+                   <Input
+                      id="imageUrl"
+                      value={editedProduct.imageUrl || ''}
+                      onChange={(e) => handleInputChange('imageUrl', e.target.value)}
+                      className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
+                      placeholder={t('product_detail_image_url_placeholder')}
+                      disabled={isSaving || isDeleting}
+                    />
               </>
            ) : (
                <>
@@ -515,7 +526,28 @@ export default function ProductDetailPage() {
             )}
         </CardHeader>
         <CardContent className="space-y-1 sm:space-y-2">
-           <Separator className="my-4" />
+            {isEditing ? (
+                editedProduct.imageUrl && (
+                    <div className="mb-4 relative h-48 w-full rounded overflow-hidden border" data-ai-hint="product photo">
+                        <NextImage src={editedProduct.imageUrl} alt={editedProduct.shortName || editedProduct.description || ''} layout="fill" objectFit="contain" />
+                    </div>
+                )
+            ) : (
+                product.imageUrl && (
+                    <div className="mb-4 relative h-48 w-full rounded overflow-hidden border" data-ai-hint="product photo">
+                        <NextImage src={product.imageUrl} alt={product.shortName || product.description} layout="fill" objectFit="contain" />
+                    </div>
+                )
+            )}
+            {!isEditing && !product.imageUrl && (
+                 <div className="mb-4 h-48 w-full rounded border bg-muted flex items-center justify-center">
+                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                </div>
+            )}
+             {!isEditing && product.imageUrl && ( // This ensures separator is only shown when image is present in view mode
+                <Separator className="my-4" />
+            )}
+
 
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
              {isEditing ? (
