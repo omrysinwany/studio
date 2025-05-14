@@ -1,9 +1,10 @@
+
 // src/components/layout/Navigation.tsx
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText as FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -22,9 +23,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import React, { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
-// Removed LanguageContext and useLanguage imports
-// import { useLanguage, Locale } from '@/context/LanguageContext'; 
-// import { useTranslation } from '@/hooks/useTranslation'; // Still using useTranslation for keys if not fully removed
+import { useLanguage, Locale } from '@/context/LanguageContext';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -32,35 +32,36 @@ export default function Navigation() {
   const router = useRouter();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  // Removed locale and setLocale from useLanguage
-  // const { locale, setLocale } = useLanguage(); 
-  // const { t } = useTranslation(); // t will now return keys
+  const { locale, setLocale } = useLanguage();
+  const { t } = useTranslation();
 
-  const navItemsLoggedIn = [
-    { href: '/', label: 'Home', icon: Home, animationDelay: '0.1s' },
-    { href: '/upload', label: 'Upload', icon: ScanLine, animationDelay: '0.2s' },
-    { href: '/inventory', label: 'Inventory', icon: Package, animationDelay: '0.3s' },
-    { href: '/invoices', label: 'Documents', icon: FileText, animationDelay: '0.4s' },
-    { href: '/accounts', label: 'Accounts', icon: CreditCard, animationDelay: '0.5s' },
-    { href: '/suppliers', label: 'Suppliers', icon: Briefcase, animationDelay: '0.6s' },
-    { href: '/reports', label: 'Reports', icon: BarChart2, animationDelay: '0.7s' },
+  const navItemsBase = [
+    { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
+    { href: '/upload', labelKey: 'nav_upload', icon: ScanLine, animationDelay: '0.2s', protected: true },
+    { href: '/inventory', labelKey: 'nav_inventory', icon: Package, animationDelay: '0.3s', protected: true },
+    { href: '/invoices', labelKey: 'nav_documents', icon: FileTextIcon, animationDelay: '0.4s', protected: true },
+    { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s', protected: true },
+    { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s', protected: true },
+    { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s', protected: true },
   ];
 
   const navItemsLoggedOut = [
-    { href: '/', label: 'Home', icon: Home, animationDelay: '0.1s' },
-    { href: '/login', label: 'Login', icon: LogIn, animationDelay: '0.2s' },
-    { href: '/register', label: 'Register', icon: UserPlus, animationDelay: '0.3s' },
+    { href: '/', labelKey: 'nav_home', icon: Home, animationDelay: '0.1s' },
+    { href: '/login', labelKey: 'nav_login', icon: LogIn, animationDelay: '0.2s' },
+    { href: '/register', labelKey: 'nav_register', icon: UserPlus, animationDelay: '0.3s' },
   ];
-  
-  const currentNavItems = user ? navItemsLoggedIn : navItemsLoggedOut;
+
+  const currentNavItems = user
+    ? navItemsBase.map(item => ({ ...item, label: t(item.labelKey) }))
+    : navItemsLoggedOut.map(item => ({ ...item, label: t(item.labelKey) }));
 
 
   useEffect(() => {
     if (authLoading) {
-      return; 
+      return;
     }
-    const protectedPaths = ['/upload', '/inventory', '/invoices', '/suppliers', '/reports', '/settings', '/settings/pos-integration', '/settings/accountant', '/edit-invoice', '/paid-invoices', '/accounts', '/accounts/other-expenses'];
-    const publicPaths = ['/login', '/register']; 
+    const protectedPaths = navItemsBase.filter(item => item.protected).map(item => item.href);
+    const publicPaths = ['/login', '/register'];
     const isAuthPage = publicPaths.includes(pathname);
     const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path) && path !== '/');
 
@@ -69,7 +70,7 @@ export default function Navigation() {
     } else if (user && isAuthPage) {
         router.push('/');
     }
-  }, [user, authLoading, pathname, router]);
+  }, [user, authLoading, pathname, router, navItemsBase]);
 
 
   const handleLogout = () => {
@@ -88,11 +89,8 @@ export default function Navigation() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const changeLanguage = (newLocale: string) => { // Changed Locale to string
-    // setLocale(newLocale as Locale); // Locale type removed
-    localStorage.setItem('locale', newLocale); // Keep storing for potential future use
-    document.documentElement.lang = newLocale;
-    document.documentElement.dir = newLocale === 'he' ? 'rtl' : 'ltr';
+  const changeLanguage = (newLocale: string) => {
+    setLocale(newLocale as Locale);
     if (isMobileSheetOpen) setIsMobileSheetOpen(false);
   };
 
@@ -106,7 +104,7 @@ export default function Navigation() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
-          <span className="text-primary">InvoTrack</span>
+          <span className="text-primary">{t('app_name_short')}</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
@@ -124,39 +122,39 @@ export default function Navigation() {
                aria-current={pathname === item.href ? 'page' : undefined}
             >
               <item.icon className="h-4 w-4" />
-              {item.label} {/* Use hardcoded label */}
+              {item.label}
             </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
+        <div className="flex items-center gap-1 sm:gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
            <DropdownMenu>
              <DropdownMenuTrigger asChild>
-               <Button variant="ghost" size="icon" className='hidden md:inline-flex transition-transform hover:scale-110'>
-                  <Wand2 className="h-[1.2rem] w-[1.2rem]" />
-                  <span className="sr-only">Appearance Settings</span>
+               <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 transition-transform hover:scale-110">
+                  <Wand2 className="h-[1.1rem] w-[1.1rem] sm:h-[1.2rem] sm:w-[1.2rem]" />
+                  <span className="sr-only">{t('nav_appearance_settings_tooltip')}</span>
                </Button>
              </DropdownMenuTrigger>
              <DropdownMenuContent align="end" className="w-56">
-               <DropdownMenuLabel>Appearance Settings</DropdownMenuLabel>
+               <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
                <DropdownMenuSeparator />
-               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Theme</DropdownMenuLabel>
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
                <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                  <DropdownMenuRadioItem value="light">
-                   <Sun className="mr-2 h-4 w-4" /> Light
+                   <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="dark">
-                   <Moon className="mr-2 h-4 w-4" /> Dark
+                   <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
                  </DropdownMenuRadioItem>
                  <DropdownMenuRadioItem value="system">
-                   <SettingsIcon className="mr-2 h-4 w-4" /> System
+                   <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
                  </DropdownMenuRadioItem>
                </DropdownMenuRadioGroup>
                <DropdownMenuSeparator />
-               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Language</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={typeof window !== 'undefined' ? localStorage.getItem('locale') || 'en' : 'en'} onValueChange={(value) => changeLanguage(value as string)}>
-                  <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="he">Hebrew</DropdownMenuRadioItem>
+               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
+                  <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
              </DropdownMenuContent>
            </DropdownMenu>
@@ -185,12 +183,12 @@ export default function Navigation() {
                     <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
                         <SettingsIcon className="mr-2 h-4 w-4" />
-                        <span>Settings</span>
+                        <span>{t('nav_settings')}</span>
                       </DropdownMenuItem>
                      <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
-                      <span>Logout</span>
+                      <span>{t('nav_logout')}</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -199,7 +197,7 @@ export default function Navigation() {
                    <Button variant="ghost" size="sm" asChild>
                     <Link href="/login">
                        <span className="flex items-center">
-                        <LogIn className="mr-1 h-4 w-4" /> Login
+                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
                     </Link>
                    </Button>
@@ -207,7 +205,7 @@ export default function Navigation() {
                     <Link href="/register">
                        <span className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
-                        Register
+                        {t('nav_register')}
                        </span>
                     </Link>
                   </Button>
@@ -220,15 +218,15 @@ export default function Navigation() {
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon" className="transition-transform hover:scale-110">
                     <Menu className="h-6 w-6" />
-                     <span className="sr-only">Toggle Navigation</span>
+                     <span className="sr-only">{t('nav_toggle_navigation_tooltip')}</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-full max-w-xs p-0 flex flex-col bg-background">
-                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                    <SheetTitle className="sr-only">{t('nav_menu_title')}</SheetTitle>
                    <div className="p-4 border-b">
                       <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
-                          <span className="text-primary">InvoTrack</span>
+                          <span className="text-primary">{t('app_name_short')}</span>
                       </Link>
                     </div>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
@@ -262,20 +260,20 @@ export default function Navigation() {
                                     </div>
                                      <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
-                                        Settings
+                                        {t('nav_settings')}
                                      </Button>
                                    <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
-                                      Logout
+                                      {t('nav_logout')}
                                    </Button>
                                </div>
                            ) : (
                                <div className="flex flex-col gap-2">
                                    <Button variant="outline" className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/login')}>
-                                      <LogIn className="mr-2 h-5 w-5" /> Login
+                                      <LogIn className="mr-2 h-5 w-5" /> {t('nav_login')}
                                    </Button>
                                    <Button className="justify-center text-base py-3 h-auto" onClick={() => handleMobileNavClick('/register')}>
-                                      <UserPlus className="mr-2 h-5 w-5" /> Register
+                                      <UserPlus className="mr-2 h-5 w-5" /> {t('nav_register')}
                                    </Button>
                                </div>
                            )}
@@ -285,30 +283,30 @@ export default function Navigation() {
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
                                <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
-                                  <Wand2 className="h-5 w-5" /> Appearance Settings
+                                  <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
                                </Button>
                              </DropdownMenuTrigger>
                              <DropdownMenuPortal>
                                   <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
-                                   <DropdownMenuLabel>Appearance Settings</DropdownMenuLabel>
+                                   <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
                                    <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Theme</DropdownMenuLabel>
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
                                    <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
                                      <DropdownMenuRadioItem value="light">
-                                       <Sun className="mr-2 h-4 w-4" /> Light
+                                       <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="dark">
-                                       <Moon className="mr-2 h-4 w-4" /> Dark
+                                       <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
                                      </DropdownMenuRadioItem>
                                      <DropdownMenuRadioItem value="system">
-                                       <SettingsIcon className="mr-2 h-4 w-4" /> System
+                                       <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
                                      </DropdownMenuRadioItem>
                                    </DropdownMenuRadioGroup>
                                    <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">Language</DropdownMenuLabel>
-                                    <DropdownMenuRadioGroup value={typeof window !== 'undefined' ? localStorage.getItem('locale') || 'en' : 'en'} onValueChange={(value) => changeLanguage(value as string)}>
-                                      <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
-                                      <DropdownMenuRadioItem value="he">Hebrew</DropdownMenuRadioItem>
+                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
+                                    <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
+                                      <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
                                     </DropdownMenuRadioGroup>
                                  </DropdownMenuContent>
                               </DropdownMenuPortal>
