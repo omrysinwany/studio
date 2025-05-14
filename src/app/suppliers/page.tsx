@@ -44,7 +44,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { useIsMobile } from '@/hooks/use-mobile'; // Import useIsMobile
+import { useIsMobile } from '@/hooks/use-mobile'; 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 const ITEMS_PER_PAGE = 4;
@@ -121,6 +122,8 @@ const supplierChartConfig = {
   },
 } satisfies React.ComponentProps<typeof ChartContainer>["config"];
 
+type PaymentTermOption = 'immediate' | 'net30' | 'net60' | 'eom' | 'custom';
+
 
 export default function SuppliersPage() {
   const { user, loading: authLoading } = useAuth();
@@ -142,7 +145,11 @@ export default function SuppliersPage() {
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
 
   const [isEditingContact, setIsEditingContact] = useState(false);
-  const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string, paymentTerms?: string }>({});
+  const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
+  const [isEditingPaymentTerms, setIsEditingPaymentTerms] = useState(false);
+  const [editedPaymentTermsOption, setEditedPaymentTermsOption] = useState<PaymentTermOption>('custom');
+  const [customPaymentTerm, setCustomPaymentTerm] = useState('');
+
   const [isSavingContact, setIsSavingContact] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -168,7 +175,7 @@ export default function SuppliersPage() {
         getInvoicesService(user.id)
       ]);
       setSuppliers(summaries);
-      setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime })));
+      setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime as string })));
     } catch (error) {
       console.error("Failed to fetch supplier data:", error);
       toast({
@@ -221,9 +228,9 @@ export default function SuppliersPage() {
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = valA.localeCompare(valB);
         } else {
-          // Handle null/undefined for lastActivityDate (treat as oldest)
-          if (valA === undefined && valB !== undefined) comparison = 1; // a comes after b (older)
-          else if (valA !== undefined && valB === undefined) comparison = -1; // a comes before b (newer)
+          
+          if (valA === undefined && valB !== undefined) comparison = 1; 
+          else if (valA !== undefined && valB === undefined) comparison = -1; 
           else comparison = 0;
         }
         return sortDirection === 'asc' ? comparison : -comparison;
@@ -247,8 +254,23 @@ export default function SuppliersPage() {
 
   const handleViewSupplierDetails = (supplier: SupplierSummary) => {
     setSelectedSupplier(supplier);
-    setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '', paymentTerms: supplier.paymentTerms || '' });
+    setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '' });
+    
+    const terms = supplier.paymentTerms || '';
+    const predefinedOptions: PaymentTermOption[] = ['immediate', 'net30', 'net60', 'eom'];
+    const matchingOption = predefinedOptions.find(opt => t(`suppliers_payment_terms_option_${opt}`) === terms);
+
+    if (matchingOption) {
+        setEditedPaymentTermsOption(matchingOption);
+        setCustomPaymentTerm('');
+    } else {
+        setEditedPaymentTermsOption('custom');
+        setCustomPaymentTerm(terms);
+    }
+
     setIsEditingContact(false);
+    setIsEditingPaymentTerms(false);
+
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplier === supplier.name)
                                       .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
     setSelectedSupplierInvoices(invoicesForSupplier);
@@ -299,6 +321,35 @@ export default function SuppliersPage() {
       toast({ title: t('suppliers_toast_update_fail_title'), description: t('suppliers_toast_update_fail_desc', { message: error.message }), variant: "destructive" });
     } finally {
       setIsSavingContact(false);
+    }
+  };
+
+  const handleSavePaymentTerms = async () => {
+    if (!selectedSupplier || !user) return;
+    setIsSavingContact(true); // Re-use for loading state
+    let finalPaymentTerm: string;
+    if (editedPaymentTermsOption === 'custom') {
+        if (!customPaymentTerm.trim()) {
+            toast({ title: t('error_title'), description: t('suppliers_payment_terms_custom_empty_error'), variant: 'destructive'});
+            setIsSavingContact(false);
+            return;
+        }
+        finalPaymentTerm = customPaymentTerm.trim();
+    } else {
+        finalPaymentTerm = t(`suppliers_payment_terms_option_${editedPaymentTermsOption}`);
+    }
+
+    try {
+        await updateSupplierContactInfoService(selectedSupplier.name, { paymentTerms: finalPaymentTerm }, user.id);
+        setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, paymentTerms: finalPaymentTerm } : s));
+        setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
+        toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
+        setIsEditingPaymentTerms(false);
+    } catch (error: any) {
+        console.error("Failed to update payment terms:", error);
+        toast({ title: t('suppliers_toast_update_fail_title'), description: t('suppliers_toast_update_fail_desc', { message: error.message }), variant: "destructive" });
+    } finally {
+        setIsSavingContact(false);
     }
   };
 
@@ -593,8 +644,8 @@ export default function SuppliersPage() {
             ) : supplierSpendingData.length === 0 ? (
                 <p className="text-muted-foreground text-center py-6">{t('accounts_no_spending_data_period')}</p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <ScrollArea className={cn("overflow-x-auto", isMobile ? "max-h-[250px]" : "max-h-[350px]")}>
+                <div className={cn("grid grid-cols-1 items-center", supplierSpendingData.length > 0 && "md:grid-cols-2 gap-6")}>
+                    <ScrollArea className={cn("overflow-x-auto", isMobile ? "max-h-[250px]" : "max-h-[350px]", supplierSpendingData.length === 0 && "hidden md:block")}>
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -612,11 +663,12 @@ export default function SuppliersPage() {
                             </TableBody>
                         </Table>
                     </ScrollArea>
-                    <div className={cn("h-[250px] md:h-[350px]", isMobile && "mt-4")}>
+                    <div className={cn("h-[250px] md:h-[350px]", isMobile && supplierSpendingData.length > 0 && "mt-4", supplierSpendingData.length === 0 && "md:col-span-2 flex items-center justify-center")}>
+                       {supplierSpendingData.length > 0 ? (
                         <ChartContainer config={supplierChartConfig} className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 10: 30, left: isMobile ? 5 : 10, bottom: 20}}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={isMobile ? 8 : 10} />
                                     <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5 }} interval={0} />
                                     <RechartsRechartsTooltip
@@ -637,6 +689,9 @@ export default function SuppliersPage() {
                                 </BarChart>
                             </ResponsiveContainer>
                         </ChartContainer>
+                        ) : (
+                             <p className="text-muted-foreground text-center py-6">{t('accounts_no_spending_data_period')}</p>
+                        )}
                     </div>
                 </div>
             )}
@@ -704,7 +759,7 @@ export default function SuppliersPage() {
                           />
                         </div>
                         <div className="flex gap-2 pt-2">
-                          <Button size="sm" onClick={() => setIsEditingContact(false)} variant="outline" disabled={isSavingContact}>
+                          <Button size="sm" onClick={() => {setIsEditingContact(false); setEditedContactInfo({phone: selectedSupplier.phone || '', email: selectedSupplier.email || ''})}} variant="outline" disabled={isSavingContact}>
                             <X className="mr-1 h-4 w-4" /> {t('cancel_button')}
                           </Button>
                           <Button size="sm" onClick={handleSaveContactInfo} disabled={isSavingContact}>
@@ -730,25 +785,43 @@ export default function SuppliersPage() {
                  <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-base flex items-center"><Clock className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_payment_terms_title')}</CardTitle>
-                         {!isEditingContact && ( // Controlled by the same edit button as contact info
-                          <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)} className="h-8 w-8">
+                         {!isEditingPaymentTerms && (
+                          <Button variant="ghost" size="icon" onClick={() => setIsEditingPaymentTerms(true)} className="h-8 w-8">
                             <Edit className="h-4 w-4" />
                           </Button>
                         )}
                     </CardHeader>
                     <CardContent className="text-sm">
-                        {isEditingContact ? (
-                             <div>
-                                {/* <Label htmlFor="supplierPaymentTerms" className="text-xs">{t('suppliers_payment_terms_label')}</Label> */}
-                                <Input
-                                    id="supplierPaymentTerms"
-                                    value={editedContactInfo.paymentTerms || ''}
-                                    onChange={(e) => setEditedContactInfo(prev => ({ ...prev, paymentTerms: e.target.value }))}
-                                    placeholder={t('suppliers_payment_terms_placeholder')}
-                                    className="h-9 mt-1"
-                                    disabled={isSavingContact}
-                                />
-                                 {/* Save/Cancel buttons are shared with contact info */}
+                        {isEditingPaymentTerms ? (
+                             <div className="space-y-2">
+                                <Select value={editedPaymentTermsOption} onValueChange={(value) => setEditedPaymentTermsOption(value as PaymentTermOption)}>
+                                    <SelectTrigger className="h-9 mt-1">
+                                        <SelectValue placeholder={t('suppliers_payment_terms_select_placeholder')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {(['immediate', 'net30', 'net60', 'eom', 'custom'] as PaymentTermOption[]).map(opt => (
+                                            <SelectItem key={opt} value={opt}>{t(`suppliers_payment_terms_option_${opt}`)}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {editedPaymentTermsOption === 'custom' && (
+                                    <Input
+                                        value={customPaymentTerm}
+                                        onChange={(e) => setCustomPaymentTerm(e.target.value)}
+                                        placeholder={t('suppliers_payment_terms_custom_placeholder')}
+                                        className="h-9 mt-1"
+                                        disabled={isSavingContact}
+                                    />
+                                )}
+                                <div className="flex gap-2 pt-2">
+                                  <Button size="sm" onClick={() => {setIsEditingPaymentTerms(false); const terms = selectedSupplier.paymentTerms || ''; const pO: PaymentTermOption[] = ['immediate', 'net30', 'net60', 'eom']; const mO = pO.find(opt=>t(`suppliers_payment_terms_option_${opt}`)===terms); if(mO){setEditedPaymentTermsOption(mO);setCustomPaymentTerm('')}else{setEditedPaymentTermsOption('custom');setCustomPaymentTerm(terms)}}} variant="outline" disabled={isSavingContact}>
+                                    <X className="mr-1 h-4 w-4" /> {t('cancel_button')}
+                                  </Button>
+                                  <Button size="sm" onClick={handleSavePaymentTerms} disabled={isSavingContact}>
+                                    {isSavingContact ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
+                                    {t('save_button')}
+                                  </Button>
+                                </div>
                             </div>
                         ) : (
                            <p>{selectedSupplier.paymentTerms || t('suppliers_na')}</p>
@@ -760,18 +833,20 @@ export default function SuppliersPage() {
                     <CardHeader>
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
-                    <CardContent className="min-h-[200px] p-0 sm:pb-2">
+                    <CardContent className="min-h-[200px] p-0 sm:pb-2 overflow-hidden"> {/* Added overflow-hidden */}
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                             <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -35 : -25, bottom: isMobile ? 25 : 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 30 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
-                            <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/>
-                            <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
-                            <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
-                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <div className="w-full sm:w-11/12 mx-auto"> {/* Reduced width for non-mobile, centered */}
+                            <ResponsiveContainer width="100%" height={200}>
+                                <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
+                                <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 40 : 50}/>
+                                <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
+                                <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
+                                <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
                         ) : (
                         <p className="text-sm text-muted-foreground text-center py-4">{t('suppliers_no_spending_data')}</p>
                         )}

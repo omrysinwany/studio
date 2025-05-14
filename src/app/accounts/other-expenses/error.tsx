@@ -30,7 +30,7 @@ export default function Error({
         </AlertDescription>
         <div className="flex gap-2 justify-center">
             <Button onClick={() => reset()}>
-              {t('edit_invoice_try_again')}
+              {t('try_again_button')}
             </Button>
             <Button variant="outline" asChild>
                 <Link href="/accounts">{t('back_to_accounts_button')}</Link>

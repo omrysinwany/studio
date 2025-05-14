@@ -15,7 +15,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell, TrendingUp, DollarSign, Info } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService } from '@/services/backend';
+import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -25,27 +25,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
-export interface OtherExpense {
-  id: string;
-  category: string;
-  _internalCategoryKey?: string;
-  description: string;
-  amount: number;
-  date: string; // ISO date string
-}
-
-const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
-const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
 const ITEMS_PER_PAGE_OPEN_INVOICES = 4;
-
-
-const getStorageKey = (baseKey: string, userId?: string): string => {
-  if (!userId) {
-    console.warn(`[getStorageKey AccountsPage] Attempted to get storage key for base "${baseKey}" without a userId.`);
-    return `${baseKey}_${userId || 'SHARED_OR_ERROR'}`;
-  }
-  return `${baseKey}_${userId}`;
-};
 
 
 export default function AccountsPage() {
@@ -69,7 +49,9 @@ export default function AccountsPage() {
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && user) {
+    if (!authLoading && !user) {
+      router.push('/login');
+    } else if (user) {
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
       const storedExpenses = localStorage.getItem(expensesStorageKey);
       if (storedExpenses) {
@@ -92,12 +74,11 @@ export default function AccountsPage() {
         console.error("Failed to load user settings for reminders:", err);
         toast({ title: t('error_title'), description: t('settings_notification_toast_load_error_desc'), variant: "destructive" });
       });
-
     }
-  }, [user, t, toast]);
+  }, [user, authLoading, router, t, toast]);
 
 
-  const fetchAccountData = async () => {
+  const fetchAccountData = useCallback(async () => {
     if (!user) return;
     setIsLoadingData(true);
     try {
@@ -113,17 +94,13 @@ export default function AccountsPage() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [user, toast, t]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push('/login');
-    } else {
+    if (user) {
       fetchAccountData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, router]);
+  }, [user, fetchAccountData]);
 
 
   const filteredInvoicesByDateRange = useMemo(() => {
@@ -150,12 +127,12 @@ export default function AccountsPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return filteredInvoicesByDateRange // Use already date-filtered invoices
+    return filteredInvoicesByDateRange 
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
-            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate) : null;
-            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate) : null;
+            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string) : null;
+            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string) : null;
 
             const isAOverdue = dateA ? isBefore(dateA, today) : false;
             const isBOverdue = dateB ? isBefore(dateB, today) : false;
@@ -195,16 +172,23 @@ export default function AccountsPage() {
         if (invoice.status !== 'completed') return;
 
         let relevantDateForExpense: Date | null = null;
-        if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
-            relevantDateForExpense = parseISO(invoice.paymentDueDate);
-        } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime))) {
-            relevantDateForExpense = parseISO(invoice.uploadTime);
+        // Prioritize paymentDueDate if it's valid and within the current month
+        if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
+            const paymentDate = parseISO(invoice.paymentDueDate as string);
+            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
+                relevantDateForExpense = paymentDate;
+            }
+        }
+        // Fallback to uploadTime if paymentDueDate isn't relevant or not set for the current month
+        if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
+            const uploadDate = parseISO(invoice.uploadTime as string);
+             if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
+                relevantDateForExpense = uploadDate;
+            }
         }
 
         if (relevantDateForExpense) {
-            if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                totalInvoiceExpenses += (invoice.totalAmount || 0);
-            }
+            totalInvoiceExpenses += (invoice.totalAmount || 0);
         }
     });
 
@@ -244,18 +228,11 @@ export default function AccountsPage() {
     startDate.setHours(0,0,0,0);
     endDate.setHours(23,59,59,999);
 
-    const income = allInvoices
-        .filter(inv => inv.paymentStatus === 'paid' && inv.uploadTime && parseISO(inv.uploadTime) >= startDate && parseISO(inv.uploadTime) <= endDate)
+    const invoiceCosts = allInvoices
+        .filter(inv => inv.uploadTime && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && inv.status === 'completed')
         .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
     
-    const liabilitiesFromInvoices = allInvoices
-        .filter(inv => 
-            (inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment') && 
-            inv.uploadTime && parseISO(inv.uploadTime) >= startDate && parseISO(inv.uploadTime) <= endDate
-        )
-        .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-
-    const liabilitiesFromOtherExpenses = otherExpenses
+    const otherExpensesInRange = otherExpenses
         .filter(exp => {
             if (!exp.date || !isValid(parseISO(exp.date))) return false;
             const expenseDate = parseISO(exp.date);
@@ -272,27 +249,14 @@ export default function AccountsPage() {
                 t('accounts_other_expenses_tab_property_tax').toLowerCase()
             ];
              if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                const expenseMonth = getMonth(parseISO(exp.date));
-                const expenseYear = getYear(parseISO(exp.date));
-                const startMonth = getMonth(startDate);
-                const startYear = getYear(startDate);
-                const endMonth = getMonth(endDate);
-                const endYear = getYear(endDate);
-
-                // If the expense is bi-monthly, only count half if the range covers one of the two months
-                if(!((expenseYear === startYear && expenseMonth === startMonth) && (expenseYear === endYear && expenseMonth === endMonth))) {
-                    // A more sophisticated check would be needed if ranges can span multiple bi-monthly periods.
-                    // For simplicity, if the range overlaps the expense's month, count half.
-                }
-                 amountToAdd /= 2; 
+                amountToAdd /= 2; 
             }
             return sum + amountToAdd;
         }, 0);
     
-    const totalLiabilities = liabilitiesFromInvoices + liabilitiesFromOtherExpenses;
-    const netBalance = income - totalLiabilities;
+    const totalRecordedExpenses = invoiceCosts + otherExpensesInRange;
 
-    return { income, totalLiabilities, netBalance };
+    return { invoiceCosts, otherExpensesInRange, totalRecordedExpenses };
   }, [allInvoices, otherExpenses, dateRange, t]);
 
 
@@ -320,7 +284,7 @@ export default function AccountsPage() {
             amount 
         }))
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5); // Top 5
+        .slice(0, 5); 
   }, [otherExpenses, dateRange, t]);
 
 
@@ -530,16 +494,16 @@ export default function AccountsPage() {
         <CardContent className="space-y-4">
              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="p-3 border rounded-md bg-muted/30">
-                    <p className="text-sm text-muted-foreground flex items-center"><TrendingUp className="mr-1 h-4 w-4 text-green-500"/>{t('accounts_total_income_label')}</p>
-                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.income)}</p>
+                    <p className="text-sm text-muted-foreground flex items-center"><TrendingDownIcon className="mr-1 h-4 w-4 text-red-500"/>{t('accounts_total_invoice_costs_label')}</p>
+                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.invoiceCosts)}</p>
                 </div>
                 <div className="p-3 border rounded-md bg-muted/30">
-                    <p className="text-sm text-muted-foreground flex items-center"><TrendingDownIcon className="mr-1 h-4 w-4 text-red-500"/>{t('accounts_total_liabilities_label')}</p>
-                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.totalLiabilities)}</p>
+                    <p className="text-sm text-muted-foreground flex items-center"><TrendingDownIcon className="mr-1 h-4 w-4 text-red-500"/>{t('accounts_total_other_expenses_label')}</p>
+                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.otherExpensesInRange)}</p>
                 </div>
                 <div className="p-3 border rounded-md bg-muted/30">
-                    <p className="text-sm text-muted-foreground flex items-center"><Banknote className="mr-1 h-4 w-4 text-blue-500"/>{t('accounts_net_balance_label')}</p>
-                    <p className={cn("text-2xl font-semibold", financialSummaries.netBalance < 0 && "text-destructive")}>{formatCurrency(financialSummaries.netBalance)}</p>
+                    <p className="text-sm text-muted-foreground flex items-center"><Banknote className="mr-1 h-4 w-4 text-destructive"/>{t('accounts_total_recorded_expenses_label')}</p>
+                    <p className="text-2xl font-semibold text-destructive">{formatCurrency(financialSummaries.totalRecordedExpenses)}</p>
                 </div>
             </div>
         </CardContent>
@@ -665,7 +629,6 @@ export default function AccountsPage() {
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 ) : (
-                     // Assuming totalOtherExpensesForCurrentMonth is calculated similarly or passed down
                     <p className="text-2xl font-bold">{formatCurrency(otherExpenses.filter(exp => isSameMonth(parseISO(exp.date), new Date())).reduce((sum, exp) => sum + exp.amount, 0))}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">

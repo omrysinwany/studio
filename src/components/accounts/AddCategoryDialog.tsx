@@ -34,12 +34,12 @@ const AddCategoryDialog: React.FC<AddCategoryDialogProps> = ({
     if (categoryName.trim()) {
       onAddCategory(categoryName.trim());
       setCategoryName(''); 
-      onOpenChange(false); // Close dialog on successful add
+      onOpenChange(false); 
     }
   };
 
   const handleClose = () => {
-    setCategoryName(''); // Reset input on close
+    setCategoryName(''); 
     onOpenChange(false);
   };
 

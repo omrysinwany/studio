@@ -9,8 +9,8 @@ import {
   SheetTitle,
   SheetDescription,
   SheetFooter,
-  SheetClose, // Import SheetClose
-} from '@/components/ui/sheet'; // Changed from Dialog
+  SheetClose, 
+} from '@/components/ui/sheet'; 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import type { OtherExpense, ExpenseTemplate } from '@/app/accounts/other-expenses/page';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { ScrollArea } from '@/components/ui/scroll-area'; 
 
 interface AddExpenseDialogProps {
   isOpen: boolean;
@@ -35,7 +35,7 @@ interface AddExpenseDialogProps {
   existingTemplates: ExpenseTemplate[];
   otherExpenses: OtherExpense[];
   editingExpense?: OtherExpense | null;
-  prefillData?: Partial<Omit<OtherExpense, 'id'>>; // For pre-filling specific fields
+  prefillData?: Partial<Omit<OtherExpense, 'id'>>; 
 }
 
 const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
@@ -65,8 +65,8 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
     setAmount(prefill?.amount ?? expenseToEdit?.amount ?? '');
     setDate(prefill?.date ? parseISO(prefill.date) : (expenseToEdit?.date ? parseISO(expenseToEdit.date) : new Date()));
     
-    const initialCategory = prefill?._internalCategoryKey || // Prioritize internal key from prefill
-                            expenseToEdit?._internalCategoryKey || // Then from editing expense
+    const initialCategory = prefill?._internalCategoryKey || 
+                            expenseToEdit?._internalCategoryKey || 
                             (preselectedCategory && categories.includes(preselectedCategory) 
                               ? preselectedCategory 
                               : (categories.length > 0 ? categories[0] : ''));
@@ -104,7 +104,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
               setDescription(templateForCategory.description);
               setAmount(templateForCategory.amount);
             } else {
-              // If no recent expense and no template, clear fields for general categories
+              
               setDescription('');
               setAmount('');
             }
@@ -117,15 +117,15 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
 
 
   const handleSubmit = () => {
-    const internalCatKey = selectedCategory; // Assuming selectedCategory now holds the internal key
+    const internalCatKey = selectedCategory; 
     const categoryLabel = t(`accounts_other_expenses_tab_${internalCatKey}` as any, { defaultValue: internalCatKey.charAt(0).toUpperCase() + internalCatKey.slice(1) });
 
     const expenseData: Omit<OtherExpense, 'id'> & { id?: string; _internalCategoryKey?: string } = {
       description: description.trim(),
       amount: Number(amount),
       date: date ? date.toISOString() : new Date().toISOString(),
-      category: categoryLabel, // Use the display label for the 'category' field
-      _internalCategoryKey: internalCatKey, // Store the internal key
+      category: categoryLabel, 
+      _internalCategoryKey: internalCatKey, 
     };
     if (editingExpense) {
       expenseData.id = editingExpense.id;
@@ -263,7 +263,7 @@ const AddExpenseDialog: React.FC<AddExpenseDialogProps> = ({
             </div>
         </ScrollArea>
         <SheetFooter className="p-4 sm:p-6 border-t flex-col sm:flex-row gap-2 shrink-0">
-            {/* Use SheetClose for the cancel button */}
+            
             <SheetClose asChild>
                 <Button variant="outline" className="w-full sm:w-auto">
                     <X className="mr-2 h-4 w-4" /> {t('cancel_button')}

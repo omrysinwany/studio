@@ -24,7 +24,7 @@ export default function AccountsLoading() {
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="text-xl font-semibold text-primary flex items-center">
-            <Banknote className="mr-2 h-5 w-5 text-red-500" /> {/* Changed from TrendingDown */}
+            <Banknote className="mr-2 h-5 w-5 text-red-500" /> 
             <Skeleton className="h-6 w-48" /> {/* "This Month's Expenses" */}
           </CardTitle>
           <CardDescription>
@@ -117,7 +117,7 @@ export default function AccountsLoading() {
        <Card className="shadow-md">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <Info className="mr-2 h-5 w-5" /> {/* Changed icon */}
+                <Info className="mr-2 h-5 w-5" /> 
                 <Skeleton className="h-6 w-64" /> {/* "Profitability & Future Outlook" */}
               </CardTitle>
               <CardDescription>

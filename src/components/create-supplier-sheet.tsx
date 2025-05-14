@@ -20,7 +20,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 interface CreateSupplierSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onCreateSupplier: (name: string, contactInfo: { phone?: string; email?: string }) => Promise<void>;
+  onCreateSupplier: (name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }) => Promise<void>;
 }
 
 const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
@@ -32,8 +32,16 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
+
+  const resetForm = () => {
+    setName('');
+    setPhone('');
+    setEmail('');
+    setPaymentTerms('');
+  };
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -49,11 +57,10 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
     try {
       await onCreateSupplier(name.trim(), { 
         phone: phone.trim() || undefined, 
-        email: email.trim() || undefined 
+        email: email.trim() || undefined,
+        paymentTerms: paymentTerms.trim() || undefined,
       });
-      setName('');
-      setPhone('');
-      setEmail('');
+      resetForm();
     } catch (error: any) {
       console.error("Error in handleSubmit for create supplier:", error)
     } finally {
@@ -62,7 +69,10 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+    <Sheet open={isOpen} onOpenChange={(open) => {
+        onOpenChange(open);
+        if (!open) resetForm();
+    }}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="text-lg sm:text-xl flex items-center">
@@ -105,6 +115,17 @@ const CreateSupplierSheet: React.FC<CreateSupplierSheetProps> = ({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t('suppliers_create_email_placeholder')}
+              className="mt-1"
+              disabled={isSaving}
+            />
+          </div>
+           <div>
+            <Label htmlFor="newSupplierPaymentTerms">{t('suppliers_create_payment_terms_label')}</Label>
+            <Input
+              id="newSupplierPaymentTerms"
+              value={paymentTerms}
+              onChange={(e) => setPaymentTerms(e.target.value)}
+              placeholder={t('suppliers_create_payment_terms_placeholder')}
               className="mt-1"
               disabled={isSaving}
             />

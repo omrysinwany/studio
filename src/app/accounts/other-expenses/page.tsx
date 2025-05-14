@@ -80,7 +80,9 @@ export default function OtherExpensesPage() {
   const [prefillDataForDialog, setPrefillDataForDialog] = useState<Partial<Omit<OtherExpense, 'id'> & { isSpecialFixedExpense?: boolean }>>({});
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && user) {
+    if (!authLoading && !user) {
+        router.push('/login');
+    } else if (user) {
       setIsLoadingData(true);
       const categoriesStorageKey = getStorageKey(EXPENSE_CATEGORIES_STORAGE_KEY_BASE, user.id);
       const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
@@ -123,18 +125,18 @@ export default function OtherExpensesPage() {
       
       const storedSpecialAmounts = localStorage.getItem(specialAmountsStorageKey);
       const initialSpecialAmountsData: Record<string, number> = storedSpecialAmounts ? JSON.parse(storedSpecialAmounts) : {};
-      // Ensure Property Tax and Rent have default 0 if not present
-      if (initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] === undefined) {
-        initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.PROPERTY_TAX] = 0;
-      }
-      if (initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.RENT] === undefined) {
-        initialSpecialAmountsData[SPECIAL_CATEGORY_KEYS.RENT] = 0;
-      }
+      
+      Object.values(SPECIAL_CATEGORY_KEYS).forEach(key => {
+        if(initialSpecialAmountsData[key] === undefined) {
+            const mostRecentExpense = parsedExpenses
+                .filter(exp => exp._internalCategoryKey === key)
+                .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
+            initialSpecialAmountsData[key] = mostRecentExpense?.amount || 0;
+        }
+      });
       setSpecialExpenseAmounts(initialSpecialAmountsData);
 
       setIsLoadingData(false);
-    } else if (!authLoading && !user) {
-        router.push('/login');
     }
   }, [user, authLoading, router, t, activeExpenseTab]); 
 
@@ -286,7 +288,7 @@ export default function OtherExpensesPage() {
 
   const handleEditSpecialExpense = (key: string) => {
     setEditingSpecialExpenseKey(key);
-    setTempSpecialExpenseAmount(String(specialExpenseAmounts[key] || 0));
+    setTempSpecialExpenseAmount(String(specialExpenseAmounts[key] || ''));
   };
 
   const handleCancelEditSpecialExpense = () => {
@@ -296,7 +298,7 @@ export default function OtherExpensesPage() {
 
   const handleSaveSpecialExpense = (key: string) => {
     const amount = parseFloat(tempSpecialExpenseAmount);
-    if (isNaN(amount) || amount < 0) {
+    if (isNaN(amount) || amount <= 0) {
       toast({ title: t('error_title'), description: t('accounts_toast_expense_invalid_amount_desc'), variant: "destructive"});
       return;
     }
@@ -308,32 +310,28 @@ export default function OtherExpensesPage() {
     const currentMonthYear = format(new Date(), 'MMMM yyyy');
     const description = `${categoryLabel} - ${currentMonthYear}`;
 
-     // Find if an expense for this special category and current month already exists
-    const existingSpecialExpenseIndex = otherExpenses.findIndex(exp => 
+    const existingSpecialExpenseForThisMonth = otherExpenses.find(exp => 
       exp._internalCategoryKey === key &&
       isValid(parseISO(exp.date)) &&
-      format(parseISO(exp.date), 'MMMM yyyy') === currentMonthYear
+      format(parseISO(exp.date), 'yyyy-MM') === format(new Date(), 'yyyy-MM') 
     );
     
     let newExpenseData: Omit<OtherExpense, 'id'> & { id?: string };
-    if (existingSpecialExpenseIndex > -1) {
-        // Update existing
-        const existingId = otherExpenses[existingSpecialExpenseIndex].id;
+    if (existingSpecialExpenseForThisMonth) {
         newExpenseData = {
-            id: existingId,
+            id: existingSpecialExpenseForThisMonth.id,
             description: description,
             amount: amount,
-            date: otherExpenses[existingSpecialExpenseIndex].date, // Keep original date if updating within same month
-            category: categoryLabel, // Display category name
+            date: existingSpecialExpenseForThisMonth.date,
+            category: categoryLabel,
             _internalCategoryKey: key,
         };
     } else {
-        // Create new
         newExpenseData = {
             description: description,
             amount: amount,
             date: new Date().toISOString(),
-            category: categoryLabel, // Display category name
+            category: categoryLabel,
             _internalCategoryKey: key,
         };
     }
@@ -365,7 +363,7 @@ export default function OtherExpensesPage() {
   };
 
   const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return `${t('currency_symbol')}0`; // Show ₪0 if not set
+    if (value === undefined || value === null) return `${t('currency_symbol')}0`; 
     return `${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
   };
 
@@ -411,6 +409,9 @@ export default function OtherExpensesPage() {
             }
             const CategoryIcon = getCategoryIcon(specialCatKey);
             const currentAmount = specialExpenseAmounts[specialCatKey] ?? 0;
+            const latestExpenseForCategory = otherExpenses
+                .filter(exp => exp._internalCategoryKey === specialCatKey)
+                .sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0];
 
             return (
                 <Card key={specialCatKey} className="shadow-md scale-fade-in delay-100 flex flex-col">
@@ -437,7 +438,7 @@ export default function OtherExpensesPage() {
                                     type="number"
                                     value={tempSpecialExpenseAmount}
                                     onChange={(e) => setTempSpecialExpenseAmount(e.target.value)}
-                                    placeholder={t('accounts_add_expense_amount_placeholder', {currency_symbol: t('currency_symbol')})}
+                                    placeholder={t('accounts_fixed_expense_amount_placeholder', {currency_symbol: t('currency_symbol')})}
                                     className="h-10"
                                     min="0"
                                     step="any"
@@ -446,16 +447,15 @@ export default function OtherExpensesPage() {
                         ) : (
                             <p className="text-2xl font-bold text-primary">{formatCurrency(currentAmount)}</p>
                         )}
-                          {/* Display last recorded payment if available, even when editing amount */}
-                         {otherExpenses.filter(exp => exp._internalCategoryKey === specialCatKey).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0] && editingSpecialExpenseKey !== specialCatKey && (
+                         {latestExpenseForCategory && editingSpecialExpenseKey !== specialCatKey && (
                            <p className="text-xs text-muted-foreground">
                              {t('accounts_other_expenses_last_recorded_on')}{' '}
-                             <strong className="font-semibold">
-                               {formatDateDisplay(otherExpenses.filter(exp => exp._internalCategoryKey === specialCatKey).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())[0].date)}
+                             <strong>
+                               {formatDateDisplay(latestExpenseForCategory.date)}
                              </strong>
                            </p>
                          )}
-                         {(!otherExpenses.find(exp => exp._internalCategoryKey === specialCatKey) && editingSpecialExpenseKey !== specialCatKey) && (
+                         {(!latestExpenseForCategory && editingSpecialExpenseKey !== specialCatKey) && (
                             <p className="text-sm text-muted-foreground py-1">{t('accounts_other_expenses_no_record_yet')}</p>
                          )}
 
@@ -471,7 +471,6 @@ export default function OtherExpensesPage() {
                                 </Button>
                             </div>
                         ) : (
-                            // No button is displayed here when not editing as per user request
                             null
                         )}
                      </CardFooter>
