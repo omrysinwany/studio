@@ -11,7 +11,7 @@ import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, Trendi
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE } from '@/services/backend';
+import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE } from '@/services/backend';
 import {
   calculateInventoryValue,
   calculateTotalItems,
@@ -26,7 +26,7 @@ import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore, format as formatDateFns } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
-import styles from "./page.module.scss"; // Assuming styles are defined here
+import styles from "./page.module.scss";
 import { Skeleton } from "@/components/ui/skeleton";
 
 
@@ -55,7 +55,7 @@ export interface KpiConfig {
   id: string;
   titleKey: string;
   icon: React.ElementType;
-  getValue: (data: KpiData | null, t: (key: string) => string) => string; // Value is now a string for formatted display
+  getValue: (data: KpiData | null, t: (key: string, params?: Record<string, string | number>) => string) => string; // Value is now a string for formatted display
   descriptionKey: string;
   link: string;
   showTrend?: boolean;
@@ -79,20 +79,19 @@ const formatLargeNumber = (
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
     const absNum = Math.abs(num);
 
-    if (absNum < 10000 || isInteger && absNum < 1000) { // Display full number for integers below 1000 or any number below 10000
-        return prefix + num.toLocaleString(undefined, {
+    if (absNum < 10000 || (isInteger && absNum < 1000)) {
+        return prefix + num.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
             minimumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals),
             maximumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals)
         });
     }
 
-
     const si = [
       { value: 1, symbol: "" },
-      { value: 1E3, symbol: t('number_suffix_thousand') }, // K
-      { value: 1E6, symbol: t('number_suffix_million') }, // M
-      { value: 1E9, symbol: t('number_suffix_billion') }, // B
-      { value: 1E12, symbol: t('number_suffix_trillion') } // T
+      { value: 1E3, symbol: t('number_suffix_thousand') },
+      { value: 1E6, symbol: t('number_suffix_million') },
+      { value: 1E9, symbol: t('number_suffix_billion') },
+      { value: 1E12, symbol: t('number_suffix_trillion') }
     ];
     const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
     let i;
@@ -131,31 +130,31 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'inventoryValue',
     titleKey: 'home_kpi_inventory_value_title',
     icon: DollarSign,
-    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 2, true),
+    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true), // Ensure 0 decimals for currency here for consistency
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
     showTrend: true,
-    iconColor: 'text-accent',
+    iconColor: 'text-green-500 dark:text-green-400', // Changed to green for positive value
     defaultVisible: true,
   },
   {
     id: 'grossProfit',
     titleKey: 'home_kpi_gross_profit_title',
     icon: HandCoins,
-    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 2, true),
+    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true), // Ensure 0 decimals
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
-    iconColor: 'text-green-500 dark:text-green-400',
+    iconColor: 'text-emerald-500 dark:text-emerald-400',
     defaultVisible: true,
   },
   {
     id: 'currentMonthExpenses',
     titleKey: 'home_kpi_current_month_expenses_title',
     icon: CreditCard,
-    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 2, true),
+    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true), // Ensure 0 decimals
     descriptionKey: 'home_kpi_current_month_expenses_desc',
     link: '/accounts',
-    iconColor: 'text-destructive',
+    iconColor: 'text-red-500 dark:text-red-400',
     defaultVisible: true,
   },
   {
@@ -174,9 +173,9 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'amountToPay',
     titleKey: 'home_kpi_amount_to_pay_title',
     icon: Banknote,
-    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 2, true),
+    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true), // Ensure 0 decimals
     descriptionKey: 'home_kpi_amount_to_pay_desc',
-    link: '/accounts?filter=unpaid', // Assuming unpaid filter exists or will be added
+    link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
     iconColor: 'text-orange-500 dark:text-orange-400',
     defaultVisible: true,
   },
@@ -188,17 +187,17 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_documents_processed_30d_desc',
     link: '/invoices',
     iconColor: 'text-blue-500 dark:text-blue-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
   {
     id: 'averageInvoiceValue',
     titleKey: 'home_kpi_average_invoice_value_title',
     icon: BarChart2,
-    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 2, true),
+    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true), // Ensure 0 decimals
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
   {
     id: 'suppliersCount',
@@ -208,7 +207,7 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_suppliers_count_desc',
     link: '/suppliers',
     iconColor: 'text-teal-500 dark:text-teal-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
 ];
 
@@ -217,7 +216,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
     const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
     return {
         visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-        kpiOrder: defaultVisible.map(kpi => kpi.id), // Default order is the order in allKpiConfigurations
+        kpiOrder: defaultVisible.map(kpi => kpi.id),
     };
   }
   const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
@@ -226,32 +225,27 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
     try {
       const parsed = JSON.parse(stored);
       const allKpiIdsSet = new Set(allKpiConfigurations.map(kpi => kpi.id));
-      // Filter out any IDs that are no longer valid KPIs
       const validVisibleKpiIds = Array.isArray(parsed.visibleKpiIds) ? parsed.visibleKpiIds.filter((id: string) => allKpiIdsSet.has(id)) : [];
       const validKpiOrder = Array.isArray(parsed.kpiOrder) ? parsed.kpiOrder.filter((id: string) => allKpiIdsSet.has(id)) : [];
 
-      // Ensure all default visible KPIs are included if not present
       allKpiConfigurations.forEach(kpi => {
         if (kpi.defaultVisible && !validVisibleKpiIds.includes(kpi.id)) {
           validVisibleKpiIds.push(kpi.id);
         }
-        // Ensure all KPIs are in the order list, add new ones to the end
         if (!validKpiOrder.includes(kpi.id)) {
-           validKpiOrder.push(kpi.id); // Add new KPIs to the end of the order
+           validKpiOrder.push(kpi.id);
         }
       });
       
       return { visibleKpiIds: validVisibleKpiIds, kpiOrder: validKpiOrder };
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
-      // Fallback to default if parsing fails
     }
   }
-  // Default preferences if nothing stored or parsing failed
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Full order
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
   };
 };
 
@@ -287,10 +281,10 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
              if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
              return [value.toLocaleString(), name];
           }}
-          labelFormatter={() => ''} // No label on the tooltip itself
+          labelFormatter={() => ''}
         />
         <XAxis dataKey="name" hide />
-        <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide /> {/* Adjusted domain for better visualization */}
+        <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
         <Line
           type="monotone"
           dataKey={dataKey}
@@ -320,18 +314,16 @@ export default function Home() {
   const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
 
   const visibleKpiConfigs = useMemo(() => {
-    // Ensure kpiOrder is used to sort, and then filter by visibleKpiIds
     return userKpiPreferences.kpiOrder
-      .map(id => allKpiConfigurations.find(config => config.id === id)) // Map to full config objects
-      .filter(config => config !== undefined && userKpiPreferences.visibleKpiIds.includes(config.id)) as KpiConfig[]; // Filter out undefined and non-visible
+      .map(id => allKpiConfigurations.find(config => config.id === id))
+      .filter(config => config !== undefined && userKpiPreferences.visibleKpiIds.includes(config.id)) as KpiConfig[];
   }, [userKpiPreferences]);
 
   useEffect(() => {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
     } else if (!authLoading) {
-        // For guests, load default preferences (not tied to a user ID)
-        const defaultGuestPrefs = getKpiPreferences(); // Call without userId to get defaults
+        const defaultGuestPrefs = getKpiPreferences();
         setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
@@ -343,44 +335,35 @@ export default function Home() {
     setIsLoadingKpis(true);
     setKpiError(null);
     try {
-      // Simulate fetching data
-      // In a real app, these would be API calls or service calls
-      const [products, invoicesData, suppliers] = await Promise.all([
+      const [products, invoicesData, suppliers, userSettings] = await Promise.all([
         getProductsService(user.id),
         getInvoicesService(user.id),
-        getSupplierSummariesService(user.id) // Assuming you have this service
+        getSupplierSummariesService(user.id),
+        getUserSettingsService(user.id)
       ]);
       
-      // Ensure uploadTime is a string for consistent sorting and processing
       const invoices = invoicesData.map(inv => ({
         ...inv,
-        uploadTime: inv.uploadTime // Assuming uploadTime is already a string (ISO format)
+        uploadTime: inv.uploadTime
       }));
-
 
       const otherExpensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
       const storedOtherExpenses = typeof window !== 'undefined' ? localStorage.getItem(otherExpensesStorageKey) : null;
       const otherExpensesData: OtherExpense[] = storedOtherExpenses ? JSON.parse(storedOtherExpenses) : [];
 
-
-      // Calculate KPIs
       const totalItems = calculateTotalItems(products);
       const inventoryValue = calculateInventoryValue(products);
 
-      const allLowStockItems = getLowStockItems(products);
+      const allLowStockItems = getLowStockItems(products, userSettings?.lowStockThreshold);
       const lowStockItemsCount = allLowStockItems.length;
-      // Get top 2 critical low stock items (sorted by quantity ascending, then by name)
       const criticalLowStockProducts = allLowStockItems
-        .sort((a,b) => (a.quantity ?? 0) - (b.quantity ?? 0) || (a.shortName || a.description).localeCompare(b.shortName || b.description) )
+        .sort((a,b) => (a.quantity ?? 0) - (b.quantity ?? 0) || (a.shortName || a.description || '').localeCompare(b.shortName || b.description || '') )
         .slice(0,2);
 
-
-      // Find next payment due
       const unpaidInvoices = invoices.filter(
         invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))
       ).sort((a, b) => new Date(a.paymentDueDate as string).getTime() - new Date(b.paymentDueDate as string).getTime());
       const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
-
 
       const amountRemainingToPay = unpaidInvoices.reduce(
         (sum, invoice) => sum + (invoice.totalAmount || 0),
@@ -393,37 +376,32 @@ export default function Home() {
       let totalExpensesFromInvoices = 0;
 
       invoices.forEach(invoice => {
-          if (invoice.status !== 'completed') return; // Only consider completed invoices for expense calculation
-          // Determine the relevant date for expense allocation
+          if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
           if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
               relevantDateForExpense = parseISO(invoice.paymentDueDate as string);
           } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
-              // Fallback to uploadTime if paymentDueDate is not available/valid
               relevantDateForExpense = parseISO(invoice.uploadTime as string);
           }
 
           if (relevantDateForExpense) {
-              // Check if the relevant date falls within the current month
               if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
                   totalExpensesFromInvoices += (invoice.totalAmount || 0);
               }
           }
       });
 
-      // Calculate 'Other Expenses' for the current month
       const totalOtherExpensesForMonth = otherExpensesData.reduce((sum, exp) => {
-          if (!exp.date || !isValid(parseISO(exp.date))) return sum; // Skip if date is invalid
+          if (!exp.date || !isValid(parseISO(exp.date))) return sum;
           try {
               const expenseDate = parseISO(exp.date);
               if (isSameMonth(expenseDate, new Date())) {
                   let amountToAdd = exp.amount;
-                  // Adjust for bi-monthly expenses (e.g., electricity, water, property_tax)
                   const internalKey = exp._internalCategoryKey?.toLowerCase();
-                  const categoryString = exp.category?.toLowerCase(); // Ensure category exists before toLowerCase
-                  const biMonthlyKeys = ['electricity', 'water', 'property_tax', t('accounts_other_expenses_tab_electricity').toLowerCase(), t('accounts_other_expenses_tab_water').toLowerCase(), t('accounts_other_expenses_tab_property_tax').toLowerCase()];
+                  const categoryString = exp.category?.toLowerCase();
+                  const biMonthlyKeys = ['electricity', 'water', 'property_tax', 'rent', t('accounts_other_expenses_tab_electricity').toLowerCase(), t('accounts_other_expenses_tab_water').toLowerCase(), t('accounts_other_expenses_tab_property_tax').toLowerCase(), t('accounts_other_expenses_tab_rent').toLowerCase()];
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
-                       amountToAdd /= 2; // Assuming the recorded amount is for 2 months
+                       // No division by 2 for bi-monthly, as they are entered for the month they occur
                   }
                   return sum + amountToAdd;
               }
@@ -434,35 +412,30 @@ export default function Home() {
           }
       }, 0);
       const calculatedCurrentMonthTotalExpenses = totalExpensesFromInvoices + totalOtherExpensesForMonth;
-      // Documents processed in the last 30 days
       const thirtyDaysAgo = subDays(new Date(), 30);
       const documentsProcessed30d = invoices.filter(inv =>
-          inv.status === 'completed' && // Only count completed documents
-          inv.uploadTime && // Ensure uploadTime exists
+          inv.status === 'completed' &&
+          inv.uploadTime &&
           parseISO(inv.uploadTime as string) >= thirtyDaysAgo
       ).length;
-      // Average Invoice Value
       const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
       const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
       const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
-      // Suppliers Count
-      const suppliersCount = suppliers.length; // Assuming getSupplierSummariesService returns an array
+      const suppliersCount = suppliers.length;
 
-      // Mock trend data for inventory value (replace with real data if available)
       const mockInventoryValueTrend = [
         { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
         { name: 'Day 2', value: inventoryValue * 0.98 + Math.random() * 1000 - 500 },
         { name: 'Day 3', value: inventoryValue * 0.96 + Math.random() * 1000 - 500 },
         { name: 'Day 4', value: inventoryValue * 1.02 + Math.random() * 1000 - 500 },
         { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
-      ].map(d => ({...d, value: Math.max(0, Math.round(d.value))})); // Ensure value is not negative and is rounded
+      ].map(d => ({...d, value: Math.max(0, Math.round(d.value))}));
 
-      // Mock recent activity
       const recentInvoices = invoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()).slice(0,3);
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
-        params: { supplier: inv.supplier || t('invoices_unknown_supplier') }, // Use t for unknown supplier
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp'), // Use date-fns for formatting
+        params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? require('date-fns/locale/he') : require('date-fns/locale/en-US') }),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -473,8 +446,8 @@ export default function Home() {
         lowStockItemsCount,
         criticalLowStockProducts,
         nextPaymentDueInvoice,
-        recentActivity: mockRecentActivity, // Use mock activity
-        latestDocName: invoices.length > 0 ? invoices[0].fileName : undefined, // Example for latest doc
+        recentActivity: mockRecentActivity,
+        latestDocName: invoices.length > 0 ? invoices[0].fileName : undefined,
         inventoryValueTrend: mockInventoryValueTrend,
         inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
         grossProfit,
@@ -496,14 +469,12 @@ export default function Home() {
     } finally {
       setIsLoadingKpis(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, t]); // Added t to dependency array
+  }, [user, authLoading, t, toast]);
 
   useEffect(() => {
     if (user) {
       fetchKpiData();
     } else if (!authLoading) {
-      // If not loading and no user (guest), set loading KPIs to false
       setIsLoadingKpis(false);
     }
   }, [user, authLoading, fetchKpiData]);
@@ -511,14 +482,6 @@ export default function Home() {
 
   const handleScanClick = () => {
     router.push('/upload');
-  };
-
-  const handleInventoryClick = () => {
-    router.push('/inventory');
-  };
-
-  const handleAccountsClick = () => {
-    router.push('/accounts');
   };
 
   const renderKpiValueDisplay = (valueString: string) => {
@@ -531,9 +494,9 @@ export default function Home() {
 
 
   const handleSavePreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
-    if (user) { // Only save for logged-in users
+    if (user) {
         saveKpiPreferences(newPreferences, user.id);
-        setUserKpiPreferences(newPreferences); // Update local state to re-render
+        setUserKpiPreferences(newPreferences);
         toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
     }
   };
@@ -572,25 +535,28 @@ export default function Home() {
                   <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
                 </Button>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 max-w-xs mx-auto">
-                     <Button
+                    <Button
                         variant="outline"
                         size="default"
                         className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-sm transform hover:-translate-y-0.5 py-2.5 sm:py-3"
-                        onClick={handleInventoryClick}
+                        asChild
                         >
-                        <Package className="mr-2 h-4 w-4" /> {t('home_inventory_button')}
+                        <Link href="/inventory">
+                            <Package className="mr-2 h-4 w-4" /> {t('nav_inventory')}
+                        </Link>
                     </Button>
                     <Button
                         variant="outline"
                         size="default"
                         className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-sm transform hover:-translate-y-0.5 py-2.5 sm:py-3"
-                        onClick={handleAccountsClick}
+                        asChild
                         >
-                        <CreditCard className="mr-2 h-4 w-4" /> {t('nav_accounts')}
+                        <Link href="/invoices">
+                            <FileTextIcon className="mr-2 h-4 w-4" /> {t('nav_documents')}
+                        </Link>
                     </Button>
                 </div>
           </div>
-
 
           <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
             <CardHeader className="pb-4">
@@ -673,7 +639,7 @@ export default function Home() {
                                 {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && kpiData.inventoryValue !== undefined && (
                                     <CardFooter className="text-xs sm:text-sm px-3 sm:px-4 pb-2 pt-0 mt-auto">
                                         <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                            {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 2, true)}
+                                            {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 0, true)}
                                         </p>
                                     </CardFooter>
                                 )}
@@ -740,9 +706,9 @@ export default function Home() {
                             kpiData?.nextPaymentDueInvoice ? (
                                 <p className="text-muted-foreground mt-1">
                                     <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
-                                        {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 2, true)}
+                                        {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                     </Link>
-                                    {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP') : t('home_unknown_date')}
+                                    {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? require('date-fns/locale/he') : require('date-fns/locale/en-US') }) : t('home_unknown_date')}
                                 </p>
                             ) : (
                                  <div className="text-muted-foreground mt-1 text-center py-4">
@@ -807,7 +773,7 @@ export default function Home() {
                     </Link>
                 </Button>
                 <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/inventory"> {/* Assuming direct link to inventory for now, can be specific add product page later */}
+                    <Link href="/inventory">
                     <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
                     </Link>
                 </Button>
@@ -826,3 +792,6 @@ export default function Home() {
     </div>
   );
 }
+
+
+    
