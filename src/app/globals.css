@@ -106,11 +106,11 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    /* Fixed, subtle placeholder image - REMOVED TEXT PARAMETER */
-    background-image: url('https://placehold.co/1920x1080/EEEEEE/CCCCCC.png'); /* Light gray, no text */
+    /* Using a direct, more visible image for testing */
+    background-image: url('https://picsum.photos/1920/1080');
     background-size: cover;
     background-position: center;
-    opacity: 0.1; /* Keep opacity subtle */
+    opacity: 0.3; /* Increased opacity for testing */
     z-index: -1; /* Behind all content */
     pointer-events: none; /* Allow clicks to pass through */
   }
@@ -131,7 +131,7 @@ body {
 
   @keyframes fadeInBackground {
     from { opacity: 0; }
-    to { opacity: 0.1; } /* Match body::before opacity */
+    to { opacity: 0.3; } /* Match body::before opacity */
   }
 
   /* Simple fade-in animation for content */
