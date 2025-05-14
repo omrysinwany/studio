@@ -3,14 +3,14 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, GripVertical, Briefcase } from "lucide-react";
+import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService } from '@/services/backend';
+import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct } from '@/services/backend';
 import {
   calculateInventoryValue,
   calculateTotalItems,
@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
-import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays } from 'date-fns';
+import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
@@ -44,6 +44,9 @@ interface KpiData {
   totalItems: number;
   inventoryValue: number;
   lowStockItemsCount: number;
+  criticalLowStockProducts: BackendProduct[]; // For Actionable Insights
+  nextPaymentDueInvoice: InvoiceHistoryItem | null; // For Actionable Insights
+  recentActivity: { description: string; time: string; link?: string }[]; // For Recent Activity
   latestDocName?: string;
   inventoryValueTrend?: { name: string; value: number }[];
   inventoryValuePrevious?: number;
@@ -195,29 +198,16 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
         const validVisible = parsed.visibleKpiIds.filter((id: string) => allIds.has(id));
         const validOrder = parsed.kpiOrder.filter((id: string) => allIds.has(id));
         
-        // Ensure all defaultVisible KPIs are included if not explicitly excluded
-        const defaultVisibleKpiIds = allKpiConfigurations.filter(kpi => kpi.defaultVisible).map(kpi => kpi.id);
-        const currentVisibleSet = new Set(validVisible);
-        defaultVisibleKpiIds.forEach(id => {
-          // Only add default if it's not in currentVisibleSet (meaning it wasn't *explicitly made invisible*)
-          // This logic needs refinement: if a user explicitly hides a default, it should stay hidden.
-          // A better way is to initialize preferences with defaults and let user change.
-          // For now, let's assume if it's a default and not in currentVisible, it should be added.
-          // This might re-add previously hidden default KPIs.
-          // A more robust solution is to store *all* KPI visibilities.
-        });
-
         return { visibleKpiIds: validVisible, kpiOrder: validOrder };
       }
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
     }
   }
-  // Default if no preferences stored or parsing failed
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Default order includes all
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
   };
 };
 
@@ -278,11 +268,10 @@ export default function Home() {
   const [kpiError, setKpiError] = useState<string | null>(null);
 
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
-    { visibleKpiIds: [], kpiOrder: [] } // Initial empty state
+    { visibleKpiIds: [], kpiOrder: [] } 
   );
   const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
 
-  // Update displayed KPIs when preferences change
   const visibleKpiConfigs = useMemo(() => {
     return userKpiPreferences.kpiOrder
       .filter(id => userKpiPreferences.visibleKpiIds.includes(id))
@@ -293,8 +282,8 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
-    } else if (!authLoading) { // For guest users or when auth is done loading and no user
-        const defaultGuestPrefs = getKpiPreferences(); // Get default preferences
+    } else if (!authLoading) { 
+        const defaultGuestPrefs = getKpiPreferences(); 
         setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
@@ -310,7 +299,7 @@ export default function Home() {
         const [products, invoices, suppliers] = await Promise.all([
           getProductsService(user.id),
           getInvoicesService(user.id),
-          getSupplierSummariesService(user.id) // Fetch suppliers
+          getSupplierSummariesService(user.id)
         ]);
 
         const otherExpensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
@@ -319,16 +308,23 @@ export default function Home() {
 
         const totalItems = calculateTotalItems(products);
         const inventoryValue = calculateInventoryValue(products);
-        const lowStockItemsCount = getLowStockItems(products).length;
-        const grossProfit = calculateTotalPotentialGrossProfit(products);
+        
+        const allLowStockItems = getLowStockItems(products);
+        const lowStockItemsCount = allLowStockItems.length;
+        const criticalLowStockProducts = allLowStockItems.sort((a,b) => a.quantity - b.quantity).slice(0,2);
+
 
         const unpaidInvoices = invoices.filter(
-          invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment'
-        );
+          invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate
+        ).sort((a, b) => new Date(a.paymentDueDate!).getTime() - new Date(b.paymentDueDate!).getTime());
+        const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
+
+
         const amountRemainingToPay = unpaidInvoices.reduce(
           (sum, invoice) => sum + (invoice.totalAmount || 0),
           0
         );
+        const grossProfit = calculateTotalPotentialGrossProfit(products);
 
         const currentMonthStart = startOfMonth(new Date());
         const currentMonthEnd = endOfMonth(new Date());
@@ -371,23 +367,16 @@ export default function Home() {
             }
         }, 0);
         const calculatedCurrentMonthTotalExpenses = totalExpensesFromInvoices + totalOtherExpensesForMonth;
-
-        // Documents processed in the last 30 days
         const thirtyDaysAgo = subDays(new Date(), 30);
         const documentsProcessed30d = invoices.filter(inv => 
             inv.status === 'completed' && 
             inv.uploadTime && 
-            parseISO(inv.uploadTime) >= thirtyDaysAgo
+            parseISO(inv.uploadTime as string) >= thirtyDaysAgo
         ).length;
-
-        // Average invoice value
         const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
         const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
         const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
-
-        // Total suppliers count
         const suppliersCount = suppliers.length;
-
 
         const mockInventoryValueTrend = [
           { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
@@ -397,10 +386,20 @@ export default function Home() {
           { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
         ].map(d => ({...d, value: Math.max(0, d.value)}));
 
+        // Mock recent activity
+        const mockRecentActivity = [
+            { description: t('home_recent_activity_mock_invoice_added', { supplier: "ספק לדוגמה"}), time: t('home_recent_activity_mock_time_ago', { minutes: 5})},
+            { description: t('home_recent_activity_mock_product_updated', {product: "מוצר הדגמה"}), time: t('home_recent_activity_mock_time_ago', { minutes: 30})},
+            { description: t('home_recent_activity_mock_report_generated'), time: t('home_recent_activity_mock_time_ago_hour')},
+        ];
+
         setKpiData({
           totalItems,
           inventoryValue,
           lowStockItemsCount,
+          criticalLowStockProducts,
+          nextPaymentDueInvoice,
+          recentActivity: mockRecentActivity,
           inventoryValueTrend: mockInventoryValueTrend,
           inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
           grossProfit,
@@ -425,8 +424,8 @@ export default function Home() {
     }
     if (user) {
       fetchKpiData();
-    } else if (!authLoading) { // If not loading and no user, it's a guest
-      setIsLoadingKpis(false); // Stop loading for guest view
+    } else if (!authLoading) { 
+      setIsLoadingKpis(false); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, toast, t]);
@@ -522,9 +521,9 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainer)}>
+    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background", styles.homeContainer)}>
       <TooltipProvider>
-        <div className="w-full max-w-4xl text-center">
+        <div className="w-full max-w-5xl text-center">
           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
            {t('home_greeting', { username: user?.username || 'User' })}
           </p>
@@ -558,6 +557,26 @@ export default function Home() {
             </Button>
           </div>
 
+          {/* Quick Actions Section */}
+          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button variant="outline" asChild>
+                <Link href="/accounts/other-expenses">
+                  <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/inventory"> {/* Or a dedicated "add product" page if you create one */}
+                  <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
 
            {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
@@ -573,7 +592,7 @@ export default function Home() {
             </Button>
           </div>
 
-          <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300", styles.kpiGrid)}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
              {visibleKpiConfigs.map((kpi, index) => {
                 const Icon = kpi.icon;
                 const value = kpi.getValue(kpiData);
@@ -590,8 +609,8 @@ export default function Home() {
                           <CardContent className="pt-1 pb-2 px-4">
                             <div className="text-2xl sm:text-3xl font-bold text-primary flex items-baseline">
                                 {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}
-                                {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                                    kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
+                                {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && value !== undefined && value !== kpiData.inventoryValuePrevious && (
+                                    value > kpiData.inventoryValuePrevious ?
                                     <TrendingUp className="h-4 w-4 text-green-500 ml-1.5 shrink-0" /> :
                                     <TrendingDown className="h-4 w-4 text-red-500 ml-1.5 shrink-0" />
                                 )}
@@ -633,6 +652,86 @@ export default function Home() {
                 );
              })}
           </div>
+
+           {/* Actionable Insights Section */}
+            <Card className="mt-6 md:mt-8 scale-fade-in delay-400 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader>
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Critical Low Stock */}
+                    <div>
+                        <h3 className="text-md font-semibold text-foreground flex items-center">
+                            <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
+                            {t('home_critical_low_stock_title')}
+                        </h3>
+                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
+                         kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
+                            <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                            {kpiData.criticalLowStockProducts.map(product => (
+                                <li key={product.id}>
+                                <Link href={`/inventory/${product.id}`} className="hover:underline text-accent">
+                                    {product.shortName || product.description}
+                                </Link> ({t('home_stock_level_label')}: {product.quantity})
+                                </li>
+                            ))}
+                            </ul>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">{t('home_no_critical_low_stock')}</p>
+                        )}
+                    </div>
+
+                    {/* Next Payment Due */}
+                    <div>
+                        <h3 className="text-md font-semibold text-foreground flex items-center">
+                            <BellRing className="mr-2 h-4 w-4 text-primary" />
+                            {t('home_next_payment_due_title')}
+                        </h3>
+                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
+                         kpiData?.nextPaymentDueInvoice ? (
+                            <p className="text-sm text-muted-foreground">
+                                <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-accent">
+                                    {kpiData.nextPaymentDueInvoice.supplier || t('home_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, 2, true)}
+                                </Link>
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? new Date(kpiData.nextPaymentDueInvoice.paymentDueDate).toLocaleDateString() : t('home_unknown_date')}
+                            </p>
+                        ) : (
+                            <p className="text-sm text-muted-foreground">{t('home_no_upcoming_payments')}</p>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+            
+            {/* Recent Activity Section */}
+            <Card className="mt-6 md:mt-8 scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader>
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
+                     kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
+                        <ul className="space-y-2">
+                        {kpiData.recentActivity.map((activity, index) => (
+                            <li key={index} className="text-sm text-muted-foreground">
+                                {activity.link ? (
+                                    <Link href={activity.link} className="hover:underline text-accent">{activity.description}</Link>
+                                ) : (
+                                    activity.description
+                                )} - <span className="text-xs">{activity.time}</span>
+                            </li>
+                        ))}
+                        </ul>
+                    ) : (
+                        <p className="text-sm text-muted-foreground">{t('home_no_recent_activity')}</p>
+                    )}
+                </CardContent>
+            </Card>
+
+
         </div>
       </TooltipProvider>
       <KpiCustomizationSheet
@@ -677,5 +776,3 @@ export default function Home() {
 // Progress.displayName = ProgressPrimitive.Root.displayName
 //
 // export { Progress }
-
-
