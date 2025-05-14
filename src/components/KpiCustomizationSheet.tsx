@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { KpiConfig } from '@/app/page';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Save, X, ArrowUp, ArrowDown } from 'lucide-react'; // Removed GripVertical
+import { Save, X, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface KpiCustomizationSheetProps {
   isOpen: boolean;
@@ -101,7 +101,28 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
             if (!kpi) return null;
             return (
               <div key={kpi.id} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md group">
-                {/* Removed GripVertical icon */}
+                <div className="flex flex-col gap-1 mr-2"> {/* Container for arrow buttons on the left */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveKpi(index, 'up')}
+                    disabled={index === 0}
+                    className="h-7 w-7 p-1 opacity-70 group-hover:opacity-100 disabled:opacity-30"
+                    aria-label={t('move_up_button')}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveKpi(index, 'down')}
+                    disabled={index === editableKpiOrder.length - 1}
+                    className="h-7 w-7 p-1 opacity-70 group-hover:opacity-100 disabled:opacity-30"
+                    aria-label={t('move_down_button')}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </div>
                 <Checkbox
                   id={`kpi-toggle-${kpi.id}`}
                   checked={selectedKpiIds.has(kpi.id)}
@@ -110,28 +131,6 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
                 <Label htmlFor={`kpi-toggle-${kpi.id}`} className="flex-1 text-sm font-normal cursor-pointer">
                   {t(kpi.titleKey)}
                 </Label>
-                <div className="flex gap-1 ml-auto"> {/* Ensure buttons are aligned to the right */}
-                  <Button
-                    variant="ghost"
-                    size="icon" 
-                    onClick={() => moveKpi(index, 'up')}
-                    disabled={index === 0}
-                    className="h-8 w-8 p-1.5 opacity-70 group-hover:opacity-100 disabled:opacity-30"
-                    aria-label={t('move_up_button')}
-                  >
-                    <ArrowUp className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => moveKpi(index, 'down')}
-                    disabled={index === editableKpiOrder.length - 1}
-                    className="h-8 w-8 p-1.5 opacity-70 group-hover:opacity-100 disabled:opacity-30"
-                    aria-label={t('move_down_button')}
-                  >
-                    <ArrowDown className="h-5 w-5" />
-                  </Button>
-                </div>
               </div>
             );
           })}
