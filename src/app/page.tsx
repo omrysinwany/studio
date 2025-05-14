@@ -17,6 +17,7 @@ import {
   calculateTotalItems,
   getLowStockItems,
   calculateTotalPotentialGrossProfit,
+  calculateAverageOrderValue,
 } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -24,6 +25,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore, format as formatDateFns } from 'date-fns';
+import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale'; // Correctly import locales
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
@@ -302,7 +304,7 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
@@ -354,7 +356,7 @@ export default function Home() {
       const totalItems = calculateTotalItems(products);
       const inventoryValue = calculateInventoryValue(products);
 
-      const allLowStockItems = getLowStockItems(products, userSettings?.lowStockThreshold);
+      const allLowStockItems = getLowStockItems(products, userSettings?.reminderDaysBefore); // Assuming reminderDaysBefore is the low stock threshold
       const lowStockItemsCount = allLowStockItems.length;
       const criticalLowStockProducts = allLowStockItems
         .sort((a,b) => (a.quantity ?? 0) - (b.quantity ?? 0) || (a.shortName || a.description || '').localeCompare(b.shortName || b.description || '') )
@@ -378,15 +380,20 @@ export default function Home() {
       invoices.forEach(invoice => {
           if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
+          // Prioritize paymentDueDate if it exists and is valid
           if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
               relevantDateForExpense = parseISO(invoice.paymentDueDate as string);
+          // Fallback to uploadTime if paymentDueDate is not set or invalid
           } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
               relevantDateForExpense = parseISO(invoice.uploadTime as string);
           }
 
           if (relevantDateForExpense) {
               if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                  totalExpensesFromInvoices += (invoice.totalAmount || 0);
+                  // Only add if the invoice is marked as 'unpaid', 'pending_payment', or 'paid'
+                  if (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid') {
+                     totalExpensesFromInvoices += (invoice.totalAmount || 0);
+                  }
               }
           }
       });
@@ -399,7 +406,13 @@ export default function Home() {
                   let amountToAdd = exp.amount;
                   const internalKey = exp._internalCategoryKey?.toLowerCase();
                   const categoryString = exp.category?.toLowerCase();
-                  const biMonthlyKeys = ['electricity', 'water', 'property_tax', 'rent', t('accounts_other_expenses_tab_electricity').toLowerCase(), t('accounts_other_expenses_tab_water').toLowerCase(), t('accounts_other_expenses_tab_property_tax').toLowerCase(), t('accounts_other_expenses_tab_rent').toLowerCase()];
+                  // Adjusted keys to match other_expenses page for bi-monthly
+                  const biMonthlyKeys = ['electricity', 'water', 'property_tax', 'rent',
+                                         t('accounts_other_expenses_tab_electricity').toLowerCase(),
+                                         t('accounts_other_expenses_tab_water').toLowerCase(),
+                                         t('accounts_other_expenses_tab_property_tax').toLowerCase(),
+                                         t('accounts_other_expenses_tab_rent').toLowerCase()];
+
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
                        // No division by 2 for bi-monthly, as they are entered for the month they occur
                   }
@@ -435,7 +448,7 @@ export default function Home() {
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? require('date-fns/locale/he') : require('date-fns/locale/en-US') }),
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: locale === 'he' ? heLocale : enUSLocale }),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -469,7 +482,7 @@ export default function Home() {
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast]);
+  }, [user, authLoading, t, toast, locale]);
 
   useEffect(() => {
     if (user) {
@@ -708,7 +721,7 @@ export default function Home() {
                                     <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                         {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                     </Link>
-                                    {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? require('date-fns/locale/he') : require('date-fns/locale/en-US') }) : t('home_unknown_date')}
+                                    {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: locale === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                                 </p>
                             ) : (
                                  <div className="text-muted-foreground mt-1 text-center py-4">
@@ -793,5 +806,3 @@ export default function Home() {
   );
 }
 
-
-    
