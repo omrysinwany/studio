@@ -1,3 +1,4 @@
+
 // src/app/suppliers/page.tsx
 'use client';
 
@@ -8,9 +9,9 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2, CalendarDays, BarChartHorizontalBig } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
 import {
   Sheet,
   SheetContent,
@@ -43,11 +44,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+import { useIsMobile } from '@/hooks/use-mobile'; // Import useIsMobile
 
 
 const ITEMS_PER_PAGE = 4;
 
-type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount'> | 'totalSpent' ;
+type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount' | 'lastActivityDate'> | 'totalSpent' ;
 type SortDirection = 'asc' | 'desc';
 
 
@@ -55,7 +57,7 @@ const formatDateDisplay = (date: Date | string | undefined, t: (key: string) => 
   if (!date) return t('suppliers_na');
   try {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
-    if (isNaN(dateObj.getTime())) return t('suppliers_invalid_date');
+    if (isNaN(dateObj.getTime()) || !isValid(dateObj)) return t('suppliers_invalid_date');
     return format(dateObj, f);
   } catch (e) {
     console.error("Error formatting date:", e, "Input:", date);
@@ -124,6 +126,7 @@ export default function SuppliersPage() {
   const { user, loading: authLoading } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
@@ -139,10 +142,10 @@ export default function SuppliersPage() {
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
 
   const [isEditingContact, setIsEditingContact] = useState(false);
-  const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
+  const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string, paymentTerms?: string }>({});
   const [isSavingContact, setIsSavingContact] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ // For supplier spending
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
@@ -183,7 +186,7 @@ export default function SuppliersPage() {
         fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Removed toast and t as they are stable
+  }, [user]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -204,13 +207,24 @@ export default function SuppliersPage() {
 
     if (sortKey) {
       result.sort((a, b) => {
-        const valA = a[sortKey as keyof SupplierSummary];
-        const valB = b[sortKey as keyof SupplierSummary];
+        let valA = a[sortKey as keyof SupplierSummary];
+        let valB = b[sortKey as keyof SupplierSummary];
+
+        if (sortKey === 'lastActivityDate') {
+          valA = a.lastActivityDate ? new Date(a.lastActivityDate).getTime() : 0;
+          valB = b.lastActivityDate ? new Date(b.lastActivityDate).getTime() : 0;
+        }
+        
         let comparison = 0;
         if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = valA.localeCompare(valB);
+        } else {
+          // Handle null/undefined for lastActivityDate (treat as oldest)
+          if (valA === undefined && valB !== undefined) comparison = 1; // a comes after b (older)
+          else if (valA !== undefined && valB === undefined) comparison = -1; // a comes before b (newer)
+          else comparison = 0;
         }
         return sortDirection === 'asc' ? comparison : -comparison;
       });
@@ -233,7 +247,7 @@ export default function SuppliersPage() {
 
   const handleViewSupplierDetails = (supplier: SupplierSummary) => {
     setSelectedSupplier(supplier);
-    setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '' });
+    setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '', paymentTerms: supplier.paymentTerms || '' });
     setIsEditingContact(false);
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplier === supplier.name)
                                       .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
@@ -260,14 +274,14 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Ensure chronological order for chart
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
   };
 
   const navigateToInvoiceDetails = (invoiceId: string) => {
-    router.push(`/invoices?viewInvoiceId=${invoiceId}`); // Assuming Invoices page can handle this query param
+    router.push(`/invoices?tab=scanned-docs&viewInvoiceId=${invoiceId}`);
     setIsDetailSheetOpen(false);
   };
 
@@ -288,11 +302,11 @@ export default function SuppliersPage() {
     }
   };
 
-  const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string }) => {
+  const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }) => {
     if(!user) return;
     try {
       const newSupplier = await createSupplierService(name, contactInfo, user.id);
-      setSuppliers(prev => [newSupplier, ...prev]); // Add to the beginning of the list
+      setSuppliers(prev => [newSupplier, ...prev]);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
     } catch (error: any) {
@@ -320,11 +334,10 @@ export default function SuppliersPage() {
     }
   };
 
-  // Supplier Spending Data for the main page card
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true; // if no date range, include all
+        if (!dateRange?.from || !invoice.uploadTime) return true;
         const invoiceDate = parseISO(invoice.uploadTime as string);
         const startDate = new Date(dateRange.from);
         startDate.setHours(0, 0, 0, 0);
@@ -427,65 +440,116 @@ export default function SuppliersPage() {
                 </PopoverContent>
             </Popover>
           </div>
-
-          <div className="overflow-x-auto relative">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('name')}>
-                    {t('suppliers_col_name')} {sortKey === 'name' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
-                  </TableHead>
-                  <TableHead className="text-center cursor-pointer hover:bg-muted/50" onClick={() => handleSort('invoiceCount')}>
-                    {t('suppliers_col_orders')} {sortKey === 'invoiceCount' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
-                  </TableHead>
-                   <TableHead className="text-center">{t('suppliers_col_actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedSuppliers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center">
-                      {t('suppliers_no_suppliers_found')}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedSuppliers.map((supplier) => (
-                    <TableRow key={supplier.name} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">{supplier.name}</TableCell>
-                      <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
-                       <TableCell className="text-center space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
-                          <Info className="h-4 w-4 text-primary" />
+            {isMobile ? (
+                paginatedSuppliers.length === 0 ? (
+                     <div className="text-center py-10 text-muted-foreground">
+                        <Briefcase className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                        <p>{t('suppliers_no_suppliers_found')}</p>
+                        <Button variant="link" onClick={() => setIsCreateSheetOpen(true)} className="mt-1 text-primary">
+                            {t('suppliers_add_new_button')}
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title={t('suppliers_delete_title', { supplierName: supplier.name })} disabled={isDeletingSupplier}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {t('suppliers_delete_confirm_desc', { supplierName: supplier.name })}
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
-                                {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {t('suppliers_delete_confirm_action')}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </TableCell>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                        {paginatedSuppliers.map((supplier) => (
+                            <Card key={supplier.name} className="hover:shadow-md transition-shadow">
+                                <CardHeader className="pb-2">
+                                    <div className="flex justify-between items-start">
+                                        <CardTitle className="text-base font-semibold truncate" title={supplier.name}>
+                                            {supplier.name}
+                                        </CardTitle>
+                                        <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} className="h-7 w-7 text-primary hover:text-primary/80 flex-shrink-0">
+                                            <Info className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="text-xs space-y-1 pt-1">
+                                    {supplier.phone && (
+                                        <a href={`tel:${supplier.phone}`} className="flex items-center text-muted-foreground hover:text-primary">
+                                            <Phone className="mr-1.5 h-3 w-3" /> {supplier.phone}
+                                        </a>
+                                    )}
+                                    {supplier.email && (
+                                        <a href={`mailto:${supplier.email}`} className="flex items-center text-muted-foreground hover:text-primary truncate">
+                                            <Mail className="mr-1.5 h-3 w-3" /> {supplier.email}
+                                        </a>
+                                    )}
+                                    <p>{t('suppliers_col_orders')}: {supplier.invoiceCount}</p>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )
+            ) : (
+              <div className="overflow-x-auto relative">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('name')}>
+                        {t('suppliers_col_name')} {sortKey === 'name' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
+                      </TableHead>
+                      <TableHead className="text-center cursor-pointer hover:bg-muted/50" onClick={() => handleSort('invoiceCount')}>
+                        {t('suppliers_col_orders')} {sortKey === 'invoiceCount' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
+                      </TableHead>
+                      <TableHead className="text-center cursor-pointer hover:bg-muted/50 hidden md:table-cell" onClick={() => handleSort('lastActivityDate')}>
+                        {t('suppliers_col_last_activity')} {sortKey === 'lastActivityDate' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
+                      </TableHead>
+                      <TableHead className="text-center">{t('suppliers_col_actions')}</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedSuppliers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={isMobile ? 3 : 4} className="h-24 text-center">
+                            <div className="text-center py-10 text-muted-foreground">
+                                <Briefcase className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                                <p>{t('suppliers_no_suppliers_found')}</p>
+                                <Button variant="link" onClick={() => setIsCreateSheetOpen(true)} className="mt-1 text-primary">
+                                    {t('suppliers_add_new_button')}
+                                </Button>
+                            </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paginatedSuppliers.map((supplier) => (
+                        <TableRow key={supplier.name} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">{supplier.name}</TableCell>
+                          <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
+                          <TableCell className="text-center hidden md:table-cell">{supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate, t, 'PP') : t('suppliers_na')}</TableCell>
+                           <TableCell className="text-center space-x-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
+                              <Info className="h-4 w-4 text-primary" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" title={t('suppliers_delete_title', { supplierName: supplier.name })} disabled={isDeletingSupplier}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {t('suppliers_delete_confirm_desc', { supplierName: supplier.name })}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
+                                    {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    {t('suppliers_delete_confirm_action')}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
 
           {totalPages > 1 && (
             <div className="flex items-center justify-end space-x-2 py-4">
@@ -530,7 +594,7 @@ export default function SuppliersPage() {
                 <p className="text-muted-foreground text-center py-6">{t('accounts_no_spending_data_period')}</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="overflow-x-auto max-h-[350px]">
+                    <ScrollArea className={cn("overflow-x-auto", isMobile ? "max-h-[250px]" : "max-h-[350px]")}>
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -547,14 +611,14 @@ export default function SuppliersPage() {
                                 ))}
                             </TableBody>
                         </Table>
-                    </div>
-                    <div className="h-[300px] md:h-[350px]">
+                    </ScrollArea>
+                    <div className={cn("h-[250px] md:h-[350px]", isMobile && "mt-4")}>
                         <ChartContainer config={supplierChartConfig} className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: 30, left: 20, bottom: 20}}>
+                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 10: 30, left: isMobile ? 5 : 10, bottom: 20}}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                    <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={10} />
-                                    <RechartsYAxis dataKey="name" type="category" width={80} tick={{fontSize: 10, dy: 5 }} interval={0} />
+                                    <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={isMobile ? 8 : 10} />
+                                    <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5 }} interval={0} />
                                     <RechartsRechartsTooltip
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                         formatter={(value: number) => [formatCurrencyDisplay(value, t), t(supplierChartConfig.totalAmount.labelKey) ]}
@@ -569,7 +633,7 @@ export default function SuppliersPage() {
                                             ))}
                                         </ul>
                                     )}/>
-                                    <Bar dataKey="totalAmount" fill="var(--color-totalAmount)" radius={[0, 4, 4, 0]} barSize={15}/>
+                                    <Bar dataKey="totalAmount" fill="var(--color-totalAmount)" radius={[0, 4, 4, 0]} barSize={isMobile ? 10 : 15}/>
                                 </BarChart>
                             </ResponsiveContainer>
                         </ChartContainer>
@@ -580,7 +644,7 @@ export default function SuppliersPage() {
       </Card>
 
       <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl flex flex-col p-0">
+        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
             <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || t('suppliers_details_title_generic')}</SheetTitle>
             <SheetDescription>
@@ -589,7 +653,7 @@ export default function SuppliersPage() {
           </SheetHeader>
           {selectedSupplier && (
             <ScrollArea className="flex-grow">
-              <div className="p-4 sm:p-6 space-y-6">
+              <div className="p-4 sm:p-6 space-y-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base flex items-center"><DollarSign className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_total_spending')}</CardTitle>
@@ -597,6 +661,9 @@ export default function SuppliersPage() {
                   <CardContent>
                     <p className="text-2xl font-bold text-primary">{formatCurrencyDisplay(selectedSupplier.totalSpent,t)}</p>
                     <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
+                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?supplier=${encodeURIComponent(selectedSupplier.name)}`)}>
+                       {t('suppliers_view_all_documents_button')}
+                     </Button>
                   </CardContent>
                 </Card>
 
@@ -604,7 +671,7 @@ export default function SuppliersPage() {
                   <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle className="text-base flex items-center"><Info className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_contact_info')}</CardTitle>
                     {!isEditingContact && (
-                      <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)}>
+                      <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)} className="h-8 w-8">
                         <Edit className="h-4 w-4" />
                       </Button>
                     )}
@@ -648,27 +715,61 @@ export default function SuppliersPage() {
                       </>
                     ) : (
                       <>
-                        <p className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.phone || t('suppliers_na')}</p>
-                        <p className="flex items-center"><Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/> {selectedSupplier.email || t('suppliers_na')}</p>
+                        <p className="flex items-center">
+                            <Phone className="mr-2 h-3.5 w-3.5 text-muted-foreground"/>
+                            {selectedSupplier.phone ? <a href={`tel:${selectedSupplier.phone}`} className="hover:underline">{selectedSupplier.phone}</a> : t('suppliers_na')}
+                        </p>
+                        <p className="flex items-center">
+                            <Mail className="mr-2 h-3.5 w-3.5 text-muted-foreground"/>
+                            {selectedSupplier.email ? <a href={`mailto:${selectedSupplier.email}`} className="hover:underline truncate">{selectedSupplier.email}</a> : t('suppliers_na')}
+                        </p>
                       </>
                     )}
                   </CardContent>
                 </Card>
+                 <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-base flex items-center"><Clock className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_payment_terms_title')}</CardTitle>
+                         {!isEditingContact && ( // Controlled by the same edit button as contact info
+                          <Button variant="ghost" size="icon" onClick={() => setIsEditingContact(true)} className="h-8 w-8">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                    </CardHeader>
+                    <CardContent className="text-sm">
+                        {isEditingContact ? (
+                             <div>
+                                {/* <Label htmlFor="supplierPaymentTerms" className="text-xs">{t('suppliers_payment_terms_label')}</Label> */}
+                                <Input
+                                    id="supplierPaymentTerms"
+                                    value={editedContactInfo.paymentTerms || ''}
+                                    onChange={(e) => setEditedContactInfo(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                                    placeholder={t('suppliers_payment_terms_placeholder')}
+                                    className="h-9 mt-1"
+                                    disabled={isSavingContact}
+                                />
+                                 {/* Save/Cancel buttons are shared with contact info */}
+                            </div>
+                        ) : (
+                           <p>{selectedSupplier.paymentTerms || t('suppliers_na')}</p>
+                        )}
+                    </CardContent>
+                 </Card>
 
                  <Card>
                     <CardHeader>
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="min-h-[200px] p-0 sm:pb-2">
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
                         <ResponsiveContainer width="100%" height={200}>
-                            <BarChart data={monthlySpendingData} margin={{ top: 5, right: 0, left: -25, bottom: 5 }}>
+                             <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -35 : -25, bottom: isMobile ? 25 : 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <RechartsXAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
-                            <RechartsYAxis fontSize={10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false}/>
+                            <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 30 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
+                            <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/>
                             <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
-                            <RechartsRechartsLegend wrapperStyle={{fontSize: "12px"}}/>
-                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')}/>
+                            <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
+                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
                             </BarChart>
                         </ResponsiveContainer>
                         ) : (
@@ -683,7 +784,7 @@ export default function SuppliersPage() {
                   </CardHeader>
                   <CardContent>
                     {selectedSupplierInvoices.length > 0 ? (
-                      <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                      <ScrollArea className="space-y-3 max-h-60 pr-2">
                         {selectedSupplierInvoices.slice(0, 10).map((invoice, index) => (
                           <React.Fragment key={invoice.id}>
                             <div className="flex items-start space-x-3">
@@ -705,7 +806,7 @@ export default function SuppliersPage() {
                             </div>
                           </React.Fragment>
                         ))}
-                      </div>
+                      </ScrollArea>
                     ) : (
                       <p className="text-sm text-muted-foreground text-center py-4">{t('suppliers_no_invoices_found_for_supplier')}</p>
                     )}

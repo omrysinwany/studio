@@ -46,6 +46,8 @@ export interface SupplierSummary {
   totalSpent: number;
   phone?: string;
   email?: string;
+  paymentTerms?: string;
+  lastActivityDate?: string; // Added for sorting by last activity
 }
 
 export interface AccountantSettings {
@@ -72,11 +74,11 @@ export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImag
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024; // Example: 0.4MB
-export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.15 * 1024 * 1024; // Example: 0.15MB
-export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024; // Reduced to 0.5MB
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024;
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.15 * 1024 * 1024;
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024;
 export const MAX_INVENTORY_ITEMS = 1000;
-export const MAX_INVOICE_HISTORY_ITEMS = 100;
+export const MAX_INVOICE_HISTORY_ITEMS = 200; // Increased limit slightly
 
 
 interface StoredPosSettings {
@@ -150,7 +152,7 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
         return true;
       } catch (retryError) {
         console.error(`[saveStoredData Backend] Error writing ${storageKey} to localStorage even after cleanup:`, retryError);
-        throw retryError; 
+        throw retryError;
       }
     } else {
       throw error; // Re-throw other errors
@@ -238,15 +240,15 @@ export async function checkProductPricesBeforeSaveService(
 
 export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
-    originalFileName: string,
+    originalFileNameFromUpload: string, // Renamed for clarity
     documentType: 'deliveryNote' | 'invoice',
     userId?: string,
     tempInvoiceId?: string,
     extractedInvoiceNumber?: string,
     finalSupplierName?: string,
     extractedTotalAmount?: number,
-    paymentDueDate?: string, 
-    invoiceDate?: string, 
+    paymentDueDate?: string,
+    invoiceDate?: string,
     paymentMethod?: string,
     originalImagePreviewUriToSave?: string,
     compressedImageForFinalRecordUriToSave?: string
@@ -268,7 +270,7 @@ export async function finalizeSaveProductsService(
       throw authError;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay
 
     let currentInventory = await getProductsService(userId);
     let currentInvoices = await getInvoicesService(userId);
@@ -290,9 +292,11 @@ export async function finalizeSaveProductsService(
             const salePrice = productToSave.salePrice !== undefined && !isNaN(parseFloat(String(productToSave.salePrice))) ? parseFloat(String(productToSave.salePrice)) : undefined;
             let lineTotal = parseFloat(String(productToSave.lineTotal)) || 0;
 
-            if (quantityToAdd !== 0 && lineTotal !== 0 && unitPrice === 0) {
+            // Recalculate unitPrice if it seems incorrect or missing but lineTotal and quantity are present
+            if (quantityToAdd !== 0 && lineTotal !== 0) {
                 const calculatedUnitPrice = parseFloat((lineTotal / quantityToAdd).toFixed(2));
-                 if (Math.abs(calculatedUnitPrice - unitPrice) > 0.01 || unitPrice === 0) {
+                 if (unitPrice === 0 || Math.abs(calculatedUnitPrice - unitPrice) > 0.01 ) {
+                    console.log(`[finalizeSaveProductsService] For product ${productToSave.catalogNumber || productToSave.description}, unit price was ${unitPrice}, recalculated to ${calculatedUnitPrice} based on total/qty.`);
                     unitPrice = calculatedUnitPrice;
                 }
             }
@@ -316,13 +320,14 @@ export async function finalizeSaveProductsService(
 
             if (existingIndex !== -1) {
                 const existingProduct = updatedInventory[existingIndex];
-                 if (documentType === 'deliveryNote') {
-                    existingProduct.quantity += quantityToAdd;
-                 } else if (documentType === 'invoice' && tempInvoiceId?.includes('_sync')) { 
-                    existingProduct.quantity = quantityToAdd; 
+                 if (documentType === 'deliveryNote') { // Only add quantity for delivery notes
+                    existingProduct.quantity = (existingProduct.quantity || 0) + quantityToAdd;
+                 } else if (documentType === 'invoice' && tempInvoiceId?.includes('_sync')) {
+                    existingProduct.quantity = quantityToAdd;
                  }
-                
-                existingProduct.unitPrice = (unitPrice && unitPrice > 0) ? unitPrice : existingProduct.unitPrice;
+                // For all document types, update other details if provided in productToSave
+                // Prioritize new unitPrice if it's different and non-zero, otherwise keep existing.
+                existingProduct.unitPrice = (unitPrice && unitPrice > 0 && Math.abs(unitPrice - existingProduct.unitPrice) > 0.001) ? unitPrice : existingProduct.unitPrice;
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
                 existingProduct.barcode = productToSave.barcode === null ? undefined : (productToSave.barcode ?? existingProduct.barcode);
@@ -331,9 +336,9 @@ export async function finalizeSaveProductsService(
                 existingProduct.minStockLevel = productToSave.minStockLevel ?? existingProduct.minStockLevel;
                 existingProduct.maxStockLevel = productToSave.maxStockLevel ?? existingProduct.maxStockLevel;
                 existingProduct.imageUrl = productToSave.imageUrl ?? existingProduct.imageUrl;
-                existingProduct.lineTotal = parseFloat((existingProduct.quantity * existingProduct.unitPrice).toFixed(2));
+                existingProduct.lineTotal = parseFloat(((existingProduct.quantity || 0) * existingProduct.unitPrice).toFixed(2));
                 processedProductsForReturn.push({...existingProduct});
-            } else {
+            } else { // New product
                 if (!productToSave.catalogNumber && !productToSave.description && !productToSave.barcode) {
                     console.warn("[Backend finalizeSave] Skipping adding product with no identifier:", productToSave);
                     return;
@@ -345,7 +350,7 @@ export async function finalizeSaveProductsService(
                     quantity: quantityToAdd,
                     unitPrice: unitPrice,
                     salePrice: salePrice,
-                    lineTotal: lineTotal,
+                    lineTotal: lineTotal, // Use lineTotal from scan for new products, or recalculate if needed
                     catalogNumber: productToSave.catalogNumber || 'N/A',
                     description: productToSave.description || 'No Description',
                     shortName: productToSave.shortName || (productToSave.description || 'No Description').split(' ').slice(0, 3).join(' '),
@@ -392,7 +397,8 @@ export async function finalizeSaveProductsService(
                                         ? extractedTotalAmount
                                         : parseFloat(calculatedInvoiceTotalAmountFromProducts.toFixed(2));
 
-        let finalGeneratedFileName = originalFileName;
+        // Construct file name based on supplier and invoice number if available
+        let finalGeneratedFileName = originalFileNameFromUpload; // Fallback to original uploaded file name
         if (finalSupplierName && finalSupplierName.trim() !== '') {
             finalGeneratedFileName = finalSupplierName.trim();
             if (extractedInvoiceNumber && extractedInvoiceNumber.trim() !== '') {
@@ -404,7 +410,7 @@ export async function finalizeSaveProductsService(
 
 
         if (!tempInvoiceId) {
-            const msg = `CRITICAL: tempInvoiceId is missing for source 'upload', UserID: ${userId}. File: ${originalFileName}. Cannot update/create invoice status.`;
+            const msg = `CRITICAL: tempInvoiceId is missing for source 'upload', UserID: ${userId}. File: ${originalFileNameFromUpload}. Cannot update/create invoice status.`;
             console.error(`[finalizeSaveProductsService] ${msg}`);
             const criticalError = new Error("Failed to finalize invoice record: Missing temporary ID. Inventory might be updated, but the document status is not. Please check manually.");
             (criticalError as any).isInvoiceSaveError = true;
@@ -419,26 +425,27 @@ export async function finalizeSaveProductsService(
             const existingRecord = currentInvoices[existingInvoiceIndex];
             currentInvoices[existingInvoiceIndex] = {
                 ...existingRecord,
-                fileName: finalGeneratedFileName,
+                fileName: finalGeneratedFileName, // Use the constructed file name
                 status: finalStatus,
                 documentType: documentType,
                 invoiceNumber: extractedInvoiceNumber || existingRecord.invoiceNumber,
                 supplier: finalSupplierName || existingRecord.supplier,
                 totalAmount: finalInvoiceTotalAmount,
-                originalImagePreviewUri: originalImagePreviewUriToSave,
-                compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave,
-                errorMessage: errorMessageOnProductFail || existingRecord.errorMessage,
+                originalImagePreviewUri: originalImagePreviewUriToSave || existingRecord.originalImagePreviewUri,
+                compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave || existingRecord.compressedImageForFinalRecordUri,
+                errorMessage: errorMessageOnProductFail || existingRecord.errorMessage, // Keep existing error if new one isn't there
                 paymentStatus: existingRecord.paymentStatus || 'unpaid',
-                paymentDueDate: paymentDueDate,
+                paymentDueDate: paymentDueDate, // Updated
                 paymentReceiptImageUri: existingRecord.paymentReceiptImageUri,
-                invoiceDate: invoiceDate,
-                paymentMethod: paymentMethod,
+                invoiceDate: invoiceDate, // Added
+                paymentMethod: paymentMethod, // Added
             };
             finalInvoiceRecord = currentInvoices[existingInvoiceIndex];
             console.log(`[finalizeSaveProductsService] Updated existing invoice record ID: ${tempInvoiceId}`, currentInvoices[existingInvoiceIndex]);
         } else {
-            // This case should ideally not happen if pendingInvoice was created correctly
-            const newInvoiceId = `inv-${Date.now()}-${userId.slice(0,3)}-fallback`;
+            // This case means a PENDING record was not found, which is unexpected if upload process worked.
+            // Create a new record with a more robust ID generation.
+            const newInvoiceId = `inv-${Date.now()}-${userId.slice(0,3)}-${Math.random().toString(36).substring(2,9)}`;
             const newInvoiceRecordData: InvoiceHistoryItem = {
                 id: newInvoiceId,
                 fileName: finalGeneratedFileName,
@@ -452,14 +459,14 @@ export async function finalizeSaveProductsService(
                 compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave,
                 errorMessage: errorMessageOnProductFail || "Pending record was missing, created as new.",
                 paymentStatus: 'unpaid',
-                paymentDueDate: paymentDueDate,
+                paymentDueDate: paymentDueDate, // Updated
                 paymentReceiptImageUri: undefined,
-                invoiceDate: invoiceDate,
-                paymentMethod: paymentMethod,
+                invoiceDate: invoiceDate, // Added
+                paymentMethod: paymentMethod, // Added
             };
             currentInvoices.push(newInvoiceRecordData);
             finalInvoiceRecord = newInvoiceRecordData;
-            console.log(`[finalizeSaveProductsService] Created new invoice record ID: ${newInvoiceId}`, newInvoiceRecordData);
+            console.log(`[finalizeSaveProductsService] Created new invoice record ID: ${newInvoiceId} (pending record not found for ${tempInvoiceId})`, newInvoiceRecordData);
         }
 
         if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
@@ -476,7 +483,7 @@ export async function finalizeSaveProductsService(
         } catch (storageError) {
             console.error(`Critical error saving invoices to localStorage for user ${userId}:`, storageError);
             const saveError = new Error(`Failed to save invoice history: ${(storageError as Error).message}`);
-            (saveError as any).updatedBySaveProducts = true;
+            (saveError as any).updatedBySaveProducts = true; // Custom flag
              if(uniqueScanIdToClear) (saveError as any).uniqueScanIdToClear = uniqueScanIdToClear;
             throw saveError;
         }
@@ -579,7 +586,7 @@ export async function updateProductService(productId: string, updatedData: Parti
     productAfterUpdateAttempt.maxStockLevel = updatedData.maxStockLevel === null || updatedData.maxStockLevel === undefined
                                   ? undefined
                                   : (Number.isFinite(Number(updatedData.maxStockLevel)) ? Number(updatedData.maxStockLevel) : existingProduct.maxStockLevel);
-    
+
     productAfterUpdateAttempt.imageUrl = updatedData.imageUrl === null ? undefined : (updatedData.imageUrl ?? existingProduct.imageUrl);
 
 
@@ -786,8 +793,10 @@ export interface AuthResponse {
   user: User;
 }
 
+// Mock services for login and register
 export async function registerService(userData: any): Promise<AuthResponse> {
-  await new Promise(resolve => setTimeout(resolve, 500));
+  console.log("Mock registerService called with:", userData);
+  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
   if (!userData.username || !userData.email || !userData.password) {
     throw new Error("Username, email, and password are required for registration.");
   }
@@ -796,24 +805,30 @@ export async function registerService(userData: any): Promise<AuthResponse> {
     username: userData.username,
     email: userData.email,
   };
+  // In a real app, you'd save the user to a database here
+  console.log("Mock user registered:", newUser);
   return {
-    token: 'mock_register_token_' + newUser.id,
+    token: 'mock_register_token_' + newUser.id, // Generate a mock token
     user: newUser,
   };
 }
 
 export async function loginService(credentials: any): Promise<AuthResponse> {
-  await new Promise(resolve => setTimeout(resolve, 500));
+  console.log("Mock loginService called with:", credentials);
+  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
   if (!credentials.username || !credentials.password) {
     throw new Error("Username and password are required.");
   }
+  // In a real app, you'd verify credentials against a database
+  // For this mock, we'll just create a user object
   const loggedInUser: User = {
-     id: `user-mock-${credentials.username.toLowerCase().replace(/\s+/g, '')}`,
+     id: `user-mock-${credentials.username.toLowerCase().replace(/\s+/g, '')}`, // Create a somewhat predictable ID
     username: credentials.username,
     email: `${credentials.username.toLowerCase().replace(/\s+/g, '')}@example.com`,
   };
+  console.log("Mock user logged in:", loggedInUser);
   return {
-    token: 'mock_login_token_' + loggedInUser.id,
+    token: 'mock_login_token_' + loggedInUser.id, // Generate a mock token
     user: loggedInUser,
   };
 }
@@ -822,100 +837,128 @@ export async function loginService(credentials: any): Promise<AuthResponse> {
 // --- Supplier Management ---
 export async function getSupplierSummariesService(userId?: string): Promise<SupplierSummary[]> {
   if (!userId) {
+    console.warn("[getSupplierSummariesService] No user ID provided. Returning empty array.");
     return [];
   }
   const invoices = await getInvoicesService(userId);
-  const storedSuppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
+  const storedSuppliers = getStoredData<{ name: string; phone?: string; email?: string, paymentTerms?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
 
   const supplierMap = new Map<string, SupplierSummary>();
 
+  // Initialize map with all stored suppliers
   storedSuppliers.forEach(s => {
-    if (s && s.name) {
+    if (s && s.name) { // Ensure supplier and name exist
       supplierMap.set(s.name, {
         name: s.name,
         invoiceCount: 0,
         totalSpent: 0,
-        phone: s.phone,
-        email: s.email
+        phone: s.phone || undefined,
+        email: s.email || undefined,
+        paymentTerms: s.paymentTerms || undefined,
+        lastActivityDate: undefined // Will be populated from invoices
       });
     }
   });
 
+  // Aggregate data from invoices
   invoices.forEach(invoice => {
-    if (invoice.supplier && invoice.status === 'completed') {
-      const existingSupplierSummary = supplierMap.get(invoice.supplier);
-      if (existingSupplierSummary) {
-        existingSupplierSummary.invoiceCount += 1;
-        existingSupplierSummary.totalSpent += (invoice.totalAmount || 0);
-      } else {
-        if (!supplierMap.has(invoice.supplier)) {
-             supplierMap.set(invoice.supplier, {
-                name: invoice.supplier,
-                invoiceCount: 1,
-                totalSpent: invoice.totalAmount || 0,
-                phone: undefined,
-                email: undefined
-             });
-        }
+    if (invoice.supplier && invoice.status === 'completed') { // Only count completed invoices for spending
+      let summary = supplierMap.get(invoice.supplier);
+      if (!summary) {
+        // If supplier from invoice doesn't exist in storedSuppliers, create a basic entry
+        // This can happen if an invoice was recorded before the supplier was formally added
+        summary = {
+          name: invoice.supplier,
+          invoiceCount: 0,
+          totalSpent: 0,
+          phone: undefined,
+          email: undefined,
+          paymentTerms: undefined,
+          lastActivityDate: undefined
+        };
+        supplierMap.set(invoice.supplier, summary);
+      }
+      summary.invoiceCount += 1;
+      summary.totalSpent += (invoice.totalAmount || 0);
+
+      // Update last activity date
+      if (!summary.lastActivityDate || new Date(invoice.uploadTime as string) > new Date(summary.lastActivityDate)) {
+        summary.lastActivityDate = invoice.uploadTime as string;
       }
     }
   });
-  return Array.from(supplierMap.values()).sort((a,b) => b.totalSpent - a.totalSpent);
+
+  return Array.from(supplierMap.values()).sort((a, b) => {
+    if (a.lastActivityDate && b.lastActivityDate) {
+      return new Date(b.lastActivityDate).getTime() - new Date(a.lastActivityDate).getTime();
+    } else if (a.lastActivityDate) {
+      return -1; // a has activity, b doesn't
+    } else if (b.lastActivityDate) {
+      return 1; // b has activity, a doesn't
+    }
+    return a.name.localeCompare(b.name); // Fallback to name sorting
+  });
 }
 
 
-export async function createSupplierService(name: string, contactInfo: { phone?: string; email?: string }, userId?: string): Promise<SupplierSummary> {
+export async function createSupplierService(name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }, userId?: string): Promise<SupplierSummary> {
   if (!userId) {
     throw new Error("User authentication is required to create suppliers.");
   }
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string, paymentTerms?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
 
   if (suppliers.some(s => s.name.toLowerCase() === name.toLowerCase())) {
     throw new Error(`Supplier with name "${name}" already exists.`);
   }
 
-  const newSupplierData = { name, phone: contactInfo.phone, email: contactInfo.email };
+  const newSupplierData = { name, phone: contactInfo.phone, email: contactInfo.email, paymentTerms: contactInfo.paymentTerms };
   suppliers.push(newSupplierData);
   saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, suppliers, userId);
 
-  return { name, invoiceCount: 0, totalSpent: 0, ...contactInfo };
+  return { name, invoiceCount: 0, totalSpent: 0, ...contactInfo, lastActivityDate: undefined };
 }
 
 export async function deleteSupplierService(supplierName: string, userId?: string): Promise<void> {
   if (!userId) {
+    console.error(`[deleteSupplierService] UserID is required to delete supplier ${supplierName}. Aborting.`);
     throw new Error("User authentication is required to delete suppliers.");
   }
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []); // Fetch current suppliers
   const initialLength = suppliers.length;
   const updatedSuppliers = suppliers.filter(s => s.name !== supplierName);
 
   if (updatedSuppliers.length === initialLength) {
-    if (suppliers.some(s => s.name === supplierName)) {
-      console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was in the list for user ${userId} but filter did not remove it.`);
-       throw new Error(`Failed to delete supplier "${supplierName}" due to an internal error.`);
-    } else {
-       console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId}. No deletion occurred.`);
-    }
+     if (!suppliers.some(s => s.name === supplierName)) {
+        console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found for user ${userId}. No deletion occurred.`);
+        // Optionally throw an error or return a specific status if the supplier must exist to be deleted
+        // throw new Error(`Supplier with name "${supplierName}" not found.`);
+        return; // Or just exit if not finding is not an error condition
+     } else {
+        // This case implies the filter didn't work as expected, which is unlikely with simple name comparison
+        console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was found but filter failed for user ${userId}.`);
+        throw new Error(`Failed to delete supplier "${supplierName}" due to an internal filtering error.`);
+     }
   }
 
-  const success = saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, updatedSuppliers, userId);
-  if (!success && updatedSuppliers.length < initialLength) { // Only error if a deletion was expected but save failed
+  const success = saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, updatedSuppliers, userId); // Save the filtered list
+  if (!success) { // This check might be redundant if saveStoredData throws on failure
     console.error(`[deleteSupplierService] Failed to save updated supplier list for user ${userId} after attempting to delete "${supplierName}".`);
+    // Depending on desired behavior, you might re-throw or handle this (e.g., by trying to restore original list)
   }
 }
 
 
-export async function updateSupplierContactInfoService(supplierName: string, contactInfo: { phone?: string; email?: string }, userId?: string): Promise<void> {
+export async function updateSupplierContactInfoService(supplierName: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }, userId?: string): Promise<void> {
   if (!userId) {
     throw new Error("User authentication is required to update suppliers.");
   }
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  let suppliers = getStoredData<{ name: string; phone?: string; email?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
+  let suppliers = getStoredData<{ name: string; phone?: string; email?: string, paymentTerms?: string }>(SUPPLIERS_STORAGE_KEY_BASE, userId, []);
   const supplierIndex = suppliers.findIndex(s => s.name === supplierName);
 
   if (supplierIndex !== -1) {
@@ -923,6 +966,7 @@ export async function updateSupplierContactInfoService(supplierName: string, con
       ...suppliers[supplierIndex],
       phone: contactInfo.phone,
       email: contactInfo.email,
+      paymentTerms: contactInfo.paymentTerms,
       name: supplierName // Ensure name is preserved
     };
   } else {
@@ -1018,7 +1062,7 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
 
             const parts = key.split('_');
             let timestamp: number | null = null;
-            
+
             const timestampString = parts.find(part => /^\d{13,}$/.test(part));
             if (timestampString) {
               timestamp = parseInt(timestampString, 10);
@@ -1028,7 +1072,7 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
             if (timestamp && !isNaN(timestamp) && (now - timestamp > EXPIRY_DURATION_MS)) {
               keysToRemove.push(key);
             } else if (!timestamp && emergencyClear) {
-              if (userIdToClear || !key.includes('_SHARED_OR_ERROR_')) { 
+              if (userIdToClear || !key.includes('_SHARED_OR_ERROR_')) {
                  console.warn(`[clearOldTemporaryScanData Emergency] No clear timestamp in key "${key}", but clearing due to emergency mode for user: ${userIdToClear || 'all users'}.`);
                  keysToRemove.push(key);
               }
