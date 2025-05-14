@@ -1,7 +1,7 @@
 // src/app/accounts/page.tsx
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell, TrendingUp, DollarSign, Info } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey } from '@/services/backend';
+import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey, MONTHLY_BUDGET_STORAGE_KEY_BASE } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -127,7 +127,7 @@ export default function AccountsPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return filteredInvoicesByDateRange 
+    return filteredInvoicesByDateRange
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
@@ -229,9 +229,9 @@ export default function AccountsPage() {
     endDate.setHours(23,59,59,999);
 
     const invoiceCosts = allInvoices
-        .filter(inv => inv.uploadTime && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && inv.status === 'completed')
+        .filter(inv => inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && inv.status === 'completed')
         .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-    
+
     const otherExpensesInRange = otherExpenses
         .filter(exp => {
             if (!exp.date || !isValid(parseISO(exp.date))) return false;
@@ -249,11 +249,11 @@ export default function AccountsPage() {
                 t('accounts_other_expenses_tab_property_tax').toLowerCase()
             ];
              if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                amountToAdd /= 2; 
+                amountToAdd /= 2;
             }
             return sum + amountToAdd;
         }, 0);
-    
+
     const totalRecordedExpenses = invoiceCosts + otherExpensesInRange;
 
     return { invoiceCosts, otherExpensesInRange, totalRecordedExpenses };
@@ -277,14 +277,14 @@ export default function AccountsPage() {
             const categoryKey = exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_');
             categoryMap[categoryKey] = (categoryMap[categoryKey] || 0) + exp.amount;
         });
-    
+
     return Object.entries(categoryMap)
-        .map(([key, amount]) => ({ 
-            name: t(`accounts_other_expenses_tab_${key}` as any, {defaultValue: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}), 
-            amount 
+        .map(([key, amount]) => ({
+            name: t(`accounts_other_expenses_tab_${key}` as any, {defaultValue: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}),
+            amount
         }))
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5); 
+        .slice(0, 5);
   }, [otherExpenses, dateRange, t]);
 
 
@@ -322,7 +322,7 @@ export default function AccountsPage() {
              return { textKey: 'accounts_due_date_reminder_active', params: { days: daysUntilDue }, variant: 'outline', icon: Bell, isReminderActive };
         }
 
-        return null; 
+        return null;
     } catch(e) {
         console.error("Error in getDueDateStatus:", e);
         return null;
@@ -629,7 +629,10 @@ export default function AccountsPage() {
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 ) : (
-                    <p className="text-2xl font-bold">{formatCurrency(otherExpenses.filter(exp => isSameMonth(parseISO(exp.date), new Date())).reduce((sum, exp) => sum + exp.amount, 0))}</p>
+                    <p className="text-2xl font-bold">{formatCurrency(otherExpenses.filter(exp => {
+                        try { return isValid(parseISO(exp.date)) && isSameMonth(parseISO(exp.date), new Date())} catch { return false;}
+                        }).reduce((sum, exp) => sum + exp.amount, 0))}
+                    </p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">
                     {t('accounts_other_expenses_total_for_current_month')}
