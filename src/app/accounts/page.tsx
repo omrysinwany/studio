@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
-import { format, parseISO, differenceInCalendarDays, isBefore, startOfMonth, endOfMonth, isValid, isSameMonth } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isBefore, startOfMonth, endOfMonth, isValid, isSameMonth, getMonth, getYear } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell, TrendingUp, DollarSign, Info } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -32,14 +32,6 @@ export interface OtherExpense {
   description: string;
   amount: number;
   date: string; // ISO date string
-}
-
-export interface ExpenseTemplate {
-  id: string; // Unique ID for the template
-  name: string; // User-defined name for the template
-  category: string;
-  description: string;
-  amount: number;
 }
 
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
@@ -94,9 +86,6 @@ export default function AccountsPage() {
       getUserSettingsService(user.id).then(settings => {
         setUserSettings(settings);
         if (settings && settings.reminderDaysBefore === undefined) {
-          // If reminderDaysBefore is not set, prompt user or set a default
-          // For now, let's assume we might want to prompt or set a default if it's the first time
-          // This logic can be expanded
           console.log("Reminder days not set, consider prompting user or setting a default.");
         }
       }).catch(err => {
@@ -137,7 +126,7 @@ export default function AccountsPage() {
   }, [user, authLoading, router]);
 
 
-  const filteredInvoices = useMemo(() => {
+  const filteredInvoicesByDateRange = useMemo(() => {
     if (!dateRange?.from) return allInvoices;
     const startDate = new Date(dateRange.from);
     startDate.setHours(0, 0, 0, 0);
@@ -150,7 +139,7 @@ export default function AccountsPage() {
         const invoiceDate = parseISO(invoice.uploadTime as string);
         return invoiceDate >= startDate && invoiceDate <= endDate;
       } catch (e) {
-        console.error("Invalid date encountered in filteredInvoices:", invoice.uploadTime);
+        console.error("Invalid date encountered in filteredInvoicesByDateRange:", invoice.uploadTime);
         return false;
       }
     });
@@ -161,7 +150,7 @@ export default function AccountsPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return filteredInvoices
+    return filteredInvoicesByDateRange // Use already date-filtered invoices
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
@@ -183,7 +172,7 @@ export default function AccountsPage() {
             return 0;
         }
       });
-  }, [filteredInvoices]);
+  }, [filteredInvoicesByDateRange]);
 
   const totalOpenInvoicePages = Math.ceil(openInvoices.length / ITEMS_PER_PAGE_OPEN_INVOICES);
   const displayedOpenInvoices = useMemo(() => {
@@ -197,72 +186,44 @@ export default function AccountsPage() {
     }
   };
 
-
-  const currentMonthTotalExpensesFromInvoices = useMemo(() => {
+  const currentMonthTotalExpenses = useMemo(() => {
     const currentMonthStart = startOfMonth(new Date());
     const currentMonthEnd = endOfMonth(new Date());
-    let totalExpenses = 0;
+    let totalInvoiceExpenses = 0;
 
     allInvoices.forEach(invoice => {
         if (invoice.status !== 'completed') return;
 
         let relevantDateForExpense: Date | null = null;
-
-        // Prioritize paymentDueDate for expense recognition if available and valid
-        if (invoice.paymentDueDate) {
-            try {
-                const dueDate = parseISO(invoice.paymentDueDate);
-                if (isValid(dueDate)) {
-                    relevantDateForExpense = dueDate;
-                }
-            } catch (e) { /* ignore invalid date parsing for due date */ }
-        }
-        
-        // Fallback to uploadTime if paymentDueDate is not set or invalid
-        if (!relevantDateForExpense && invoice.uploadTime) {
-             try {
-                const upTime = parseISO(invoice.uploadTime);
-                if (isValid(upTime)) {
-                    relevantDateForExpense = upTime;
-                }
-            } catch (e) { /* ignore invalid date parsing for upload time */ }
+        if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
+            relevantDateForExpense = parseISO(invoice.paymentDueDate);
+        } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime))) {
+            relevantDateForExpense = parseISO(invoice.uploadTime);
         }
 
         if (relevantDateForExpense) {
-            // Check if the relevant date falls within the current month
             if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                totalExpenses += (invoice.totalAmount || 0);
+                totalInvoiceExpenses += (invoice.totalAmount || 0);
             }
         }
     });
-    return totalExpenses;
-  }, [allInvoices]);
 
-  const totalOtherExpensesForCurrentMonth = useMemo(() => {
-    const currentMonthDate = new Date();
-    return otherExpenses.reduce((sum, exp) => {
+    const totalOtherExpensesForMonth = otherExpenses.reduce((sum, exp) => {
         if (!exp.date || !isValid(parseISO(exp.date))) return sum;
         try {
             const expenseDate = parseISO(exp.date);
-            if (isSameMonth(expenseDate, currentMonthDate)) {
+            if (isSameMonth(expenseDate, new Date())) {
                 let amountToAdd = exp.amount;
-                
                 const internalKey = exp._internalCategoryKey?.toLowerCase();
                 const categoryString = exp.category.toLowerCase();
-                
                 const biMonthlyKeys = [
-                    'electricity', 
-                    'water', 
-                    'property_tax', 
+                    'electricity', 'water', 'property_tax',
                     t('accounts_other_expenses_tab_electricity').toLowerCase(),
                     t('accounts_other_expenses_tab_water').toLowerCase(),
                     t('accounts_other_expenses_tab_property_tax').toLowerCase()
                 ];
-
-                if (internalKey && biMonthlyKeys.includes(internalKey)) {
+                if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
                     amountToAdd /= 2;
-                } else if (!internalKey && biMonthlyKeys.includes(categoryString)){
-                     amountToAdd /= 2;
                 }
                 return sum + amountToAdd;
             }
@@ -272,12 +233,95 @@ export default function AccountsPage() {
             return sum;
         }
     }, 0);
-}, [otherExpenses, t]);
+
+    return totalInvoiceExpenses + totalOtherExpensesForMonth;
+  }, [allInvoices, otherExpenses, t]);
 
 
-  const currentMonthTotalExpenses = useMemo(() => {
-    return currentMonthTotalExpensesFromInvoices + totalOtherExpensesForCurrentMonth;
-  }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesForCurrentMonth]);
+  const financialSummaries = useMemo(() => {
+    const startDate = dateRange?.from ? new Date(dateRange.from) : startOfMonth(new Date());
+    const endDate = dateRange?.to ? new Date(dateRange.to) : endOfMonth(new Date());
+    startDate.setHours(0,0,0,0);
+    endDate.setHours(23,59,59,999);
+
+    const income = allInvoices
+        .filter(inv => inv.paymentStatus === 'paid' && inv.uploadTime && parseISO(inv.uploadTime) >= startDate && parseISO(inv.uploadTime) <= endDate)
+        .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+    
+    const liabilitiesFromInvoices = allInvoices
+        .filter(inv => 
+            (inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment') && 
+            inv.uploadTime && parseISO(inv.uploadTime) >= startDate && parseISO(inv.uploadTime) <= endDate
+        )
+        .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+
+    const liabilitiesFromOtherExpenses = otherExpenses
+        .filter(exp => {
+            if (!exp.date || !isValid(parseISO(exp.date))) return false;
+            const expenseDate = parseISO(exp.date);
+            return expenseDate >= startDate && expenseDate <= endDate;
+        })
+        .reduce((sum, exp) => {
+            let amountToAdd = exp.amount;
+            const internalKey = exp._internalCategoryKey?.toLowerCase();
+            const categoryString = exp.category.toLowerCase();
+             const biMonthlyKeys = [
+                'electricity', 'water', 'property_tax',
+                t('accounts_other_expenses_tab_electricity').toLowerCase(),
+                t('accounts_other_expenses_tab_water').toLowerCase(),
+                t('accounts_other_expenses_tab_property_tax').toLowerCase()
+            ];
+             if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
+                const expenseMonth = getMonth(parseISO(exp.date));
+                const expenseYear = getYear(parseISO(exp.date));
+                const startMonth = getMonth(startDate);
+                const startYear = getYear(startDate);
+                const endMonth = getMonth(endDate);
+                const endYear = getYear(endDate);
+
+                // If the expense is bi-monthly, only count half if the range covers one of the two months
+                if(!((expenseYear === startYear && expenseMonth === startMonth) && (expenseYear === endYear && expenseMonth === endMonth))) {
+                    // A more sophisticated check would be needed if ranges can span multiple bi-monthly periods.
+                    // For simplicity, if the range overlaps the expense's month, count half.
+                }
+                 amountToAdd /= 2; 
+            }
+            return sum + amountToAdd;
+        }, 0);
+    
+    const totalLiabilities = liabilitiesFromInvoices + liabilitiesFromOtherExpenses;
+    const netBalance = income - totalLiabilities;
+
+    return { income, totalLiabilities, netBalance };
+  }, [allInvoices, otherExpenses, dateRange, t]);
+
+
+  const topExpenseCategories = useMemo(() => {
+    const startDate = dateRange?.from ? new Date(dateRange.from) : startOfMonth(new Date());
+    const endDate = dateRange?.to ? new Date(dateRange.to) : endOfMonth(new Date());
+    startDate.setHours(0,0,0,0);
+    endDate.setHours(23,59,59,999);
+
+    const categoryMap: Record<string, number> = {};
+    otherExpenses
+        .filter(exp => {
+            if (!exp.date || !isValid(parseISO(exp.date))) return false;
+            const expenseDate = parseISO(exp.date);
+            return expenseDate >= startDate && expenseDate <= endDate;
+        })
+        .forEach(exp => {
+            const categoryKey = exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_');
+            categoryMap[categoryKey] = (categoryMap[categoryKey] || 0) + exp.amount;
+        });
+    
+    return Object.entries(categoryMap)
+        .map(([key, amount]) => ({ 
+            name: t(`accounts_other_expenses_tab_${key}` as any, {defaultValue: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}), 
+            amount 
+        }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5); // Top 5
+  }, [otherExpenses, dateRange, t]);
 
 
   const getDueDateStatus = (
@@ -310,7 +354,6 @@ export default function AccountsPage() {
         if (daysUntilDue > 0 && daysUntilDue <= 7) {
             return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock, isReminderActive };
         }
-        // If it's not overdue, due today, or due in next 7 days, but a reminder is active
         if (isReminderActive) {
              return { textKey: 'accounts_due_date_reminder_active', params: { days: daysUntilDue }, variant: 'outline', icon: Bell, isReminderActive };
         }
@@ -424,7 +467,7 @@ export default function AccountsPage() {
         <CardHeader>
             <div className="flex justify-between items-center">
                 <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <Banknote className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_current_month_expenses_title_with_budget')}
+                    <Banknote className="mr-2 h-5 w-5 text-red-500" /> {t('accounts_current_month_expenses_title_with_budget')}
                 </CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setIsEditingBudget(!isEditingBudget)} className="h-8 w-8">
                     {isEditingBudget ? <Save className="h-4 w-4 text-primary" /> : <Edit2 className="h-4 w-4 text-muted-foreground" />}
@@ -477,6 +520,31 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
+       <Card className="shadow-md scale-fade-in delay-300">
+        <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <DollarSign className="mr-2 h-5 w-5 text-primary" /> {t('accounts_financial_summary_title')}
+            </CardTitle>
+            <CardDescription>{t('accounts_financial_summary_desc_period')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-3 border rounded-md bg-muted/30">
+                    <p className="text-sm text-muted-foreground flex items-center"><TrendingUp className="mr-1 h-4 w-4 text-green-500"/>{t('accounts_total_income_label')}</p>
+                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.income)}</p>
+                </div>
+                <div className="p-3 border rounded-md bg-muted/30">
+                    <p className="text-sm text-muted-foreground flex items-center"><TrendingDownIcon className="mr-1 h-4 w-4 text-red-500"/>{t('accounts_total_liabilities_label')}</p>
+                    <p className="text-2xl font-semibold">{formatCurrency(financialSummaries.totalLiabilities)}</p>
+                </div>
+                <div className="p-3 border rounded-md bg-muted/30">
+                    <p className="text-sm text-muted-foreground flex items-center"><Banknote className="mr-1 h-4 w-4 text-blue-500"/>{t('accounts_net_balance_label')}</p>
+                    <p className={cn("text-2xl font-semibold", financialSummaries.netBalance < 0 && "text-destructive")}>{formatCurrency(financialSummaries.netBalance)}</p>
+                </div>
+            </div>
+        </CardContent>
+       </Card>
+
 
       <Card className="shadow-md scale-fade-in delay-100">
         <CardHeader>
@@ -519,7 +587,7 @@ export default function AccountsPage() {
                         <TableCell className="text-center">
                           {dueDateStatus && (
                             <div className="flex items-center justify-center gap-1">
-                                {dueDateStatus.isReminderActive && !IconComponent && ( // Show bell if reminder active but no other icon
+                                {dueDateStatus.isReminderActive && !IconComponent && (
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <Bell className="h-3.5 w-3.5 text-blue-500" />
@@ -597,7 +665,8 @@ export default function AccountsPage() {
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
                 ) : (
-                    <p className="text-2xl font-bold">{formatCurrency(totalOtherExpensesForCurrentMonth)}</p>
+                     // Assuming totalOtherExpensesForCurrentMonth is calculated similarly or passed down
+                    <p className="text-2xl font-bold">{formatCurrency(otherExpenses.filter(exp => isSameMonth(parseISO(exp.date), new Date())).reduce((sum, exp) => sum + exp.amount, 0))}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">
                     {t('accounts_other_expenses_total_for_current_month')}
@@ -606,11 +675,34 @@ export default function AccountsPage() {
         </Card>
       </Link>
 
+       <Card className="shadow-md scale-fade-in delay-500">
+        <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <BarChart3 className="mr-2 h-5 w-5" /> {t('accounts_top_expense_categories_title')}
+            </CardTitle>
+            <CardDescription>{t('accounts_top_expense_categories_desc_period')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+            {topExpenseCategories.length === 0 ? (
+                <p className="text-muted-foreground text-center py-6">{t('accounts_no_top_categories_period')}</p>
+            ) : (
+                <ul className="space-y-2">
+                    {topExpenseCategories.map(cat => (
+                        <li key={cat.name} className="flex justify-between items-center p-2 border-b last:border-b-0">
+                            <span className="font-medium">{cat.name}</span>
+                            <span className="text-primary font-semibold">{formatCurrency(cat.amount)}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </CardContent>
+       </Card>
 
-      <Card className="shadow-md scale-fade-in delay-500">
+
+      <Card className="shadow-md scale-fade-in delay-600">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <BarChart3 className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}
+                <Info className="mr-2 h-5 w-5" /> {t('accounts_cash_flow_profitability_title')}
               </CardTitle>
               <CardDescription>{t('accounts_cash_flow_profitability_desc')}</CardDescription>
           </CardHeader>

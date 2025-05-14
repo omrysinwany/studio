@@ -12,34 +12,25 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     });
     return translation;
   }
-  return key; // Return the key itself as translation is removed
+  // Add new keys here for translation
+  const translations: Record<string, string> = {
+    "accounts_financial_summary_title": "Key Financial Summaries",
+    "accounts_financial_summary_desc_period": "Overview of income, liabilities, and net balance for the selected period.",
+    "accounts_total_income_label": "Total Estimated Income",
+    "accounts_total_liabilities_label": "Total Liabilities",
+    "accounts_net_balance_label": "Net Estimated Balance",
+    "accounts_top_expense_categories_title": "Top Expense Categories",
+    "accounts_top_expense_categories_desc_period": "Highest spending categories from other business expenses in the selected period.",
+    "accounts_no_top_categories_period": "No expense category data for the selected period.",
+    "accounts_no_spending_data_period": "No spending data recorded for the selected period.",
+    "accounts_supplier_spending_title": "Supplier Spending",
+    "accounts_supplier_spending_desc_period": "Spending breakdown by supplier for the selected period.",
+    "currency_symbol": "₪" // Default currency symbol, can be overridden by specific locale files if needed
+  };
+
+  return translations[key] || key; // Return the key itself if no translation is found
 };
 
 export const useTranslation = () => {
-  // In a real app, you would manage locale state (e.g., with Context or Zustand)
-  // For now, we'll keep it simple and default to English
-  // const [currentLocale, setCurrentLocale] = useState<Locale>('en');
-  // useEffect(() => {
-  //   const storedLocale = localStorage.getItem('locale') as Locale | null;
-  //   if (storedLocale) {
-  //     setCurrentLocale(storedLocale);
-  //     document.documentElement.lang = storedLocale;
-  //     document.documentElement.dir = storedLocale === 'he' ? 'rtl' : 'ltr';
-  //   } else {
-  //     document.documentElement.lang = 'en';
-  //     document.documentElement.dir = 'ltr';
-  //   }
-  // }, []);
-
-  // const setLocale = (newLocale: Locale) => {
-  //   setCurrentLocale(newLocale);
-  //   localStorage.setItem('locale', newLocale);
-  //   document.documentElement.lang = newLocale;
-  //   document.documentElement.dir = newLocale === 'he' ? 'rtl' : 'ltr';
-  //   // Force a re-render if necessary, or rely on components to re-render
-  //   // This might require a more global state management for locale if components don't update
-  //   window.location.reload(); // Simplest way to force re-render with new translations
-  // };
-
-  return { t, locale: 'en' as Locale /* setLocale */ };
+  return { t, locale: 'en' as Locale };
 };

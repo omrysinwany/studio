@@ -3,7 +3,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, CreditCard, TrendingDown, Landmark, BarChart3 } from "lucide-react";
+import { Loader2, CreditCard, TrendingDown, Landmark, BarChart3, DollarSign, Banknote, TrendingUp, Info } from "lucide-react";
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function AccountsLoading() {
@@ -24,7 +24,7 @@ export default function AccountsLoading() {
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="text-xl font-semibold text-primary flex items-center">
-            <TrendingDown className="mr-2 h-5 w-5 text-red-500" />
+            <Banknote className="mr-2 h-5 w-5 text-red-500" /> {/* Changed from TrendingDown */}
             <Skeleton className="h-6 w-48" /> {/* "This Month's Expenses" */}
           </CardTitle>
           <CardDescription>
@@ -32,9 +32,32 @@ export default function AccountsLoading() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-10 w-36" /> {/* Currency Value Skeleton */}
+          <Skeleton className="h-10 w-36 mb-2" /> {/* Currency Value Skeleton */}
+          <Skeleton className="h-4 w-32 mb-1" /> {/* Budget label skeleton */}
+          <Skeleton className="h-2 w-full max-w-sm" /> {/* Progress bar skeleton */}
         </CardContent>
       </Card>
+
+      {/* Key Financial Summaries Card Skeleton */}
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle className="text-xl font-semibold text-primary flex items-center">
+            <DollarSign className="mr-2 h-5 w-5" />
+            <Skeleton className="h-6 w-56" /> {/* "Key Financial Summaries" */}
+          </CardTitle>
+           <CardDescription>
+            <Skeleton className="h-4 w-full max-w-sm mt-1" />
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+            </div>
+        </CardContent>
+      </Card>
+
 
       {/* Open Invoices Card Skeleton */}
       <Card className="shadow-md">
@@ -72,11 +95,29 @@ export default function AccountsLoading() {
         </CardContent>
       </Card>
 
+      {/* Top Expense Categories Card Skeleton */}
+      <Card className="shadow-md">
+        <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+                <BarChart3 className="mr-2 h-5 w-5" />
+                <Skeleton className="h-6 w-64" /> {/* "Top Expense Categories" */}
+            </CardTitle>
+            <CardDescription>
+                <Skeleton className="h-4 w-full max-w-lg mt-1" />
+            </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+        </CardContent>
+      </Card>
+
       {/* Profitability & Future Outlook Card Skeleton */}
        <Card className="shadow-md">
           <CardHeader>
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                <BarChart3 className="mr-2 h-5 w-5" /> 
+                <Info className="mr-2 h-5 w-5" /> {/* Changed icon */}
                 <Skeleton className="h-6 w-64" /> {/* "Profitability & Future Outlook" */}
               </CardTitle>
               <CardDescription>
