@@ -671,7 +671,7 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     documentType: updatedData.documentType || originalInvoice.documentType,
     originalImagePreviewUri: updatedData.originalImagePreviewUri === null ? undefined : (updatedData.originalImagePreviewUri ?? originalInvoice.originalImagePreviewUri),
     compressedImageForFinalRecordUri: updatedData.compressedImageForFinalRecordUri === null ? undefined : (updatedData.compressedImageForFinalRecordUri ?? originalInvoice.compressedImageForFinalRecordUri),
-    status: originalInvoice.status,
+    status: originalInvoice.status, // Status should not be editable here directly, only through scan/save process
     paymentStatus: updatedData.paymentStatus || originalInvoice.paymentStatus || 'unpaid',
     paymentReceiptImageUri: updatedData.paymentReceiptImageUri === null ? undefined : (updatedData.paymentReceiptImageUri ?? originalInvoice.paymentReceiptImageUri),
     invoiceDate: updatedData.invoiceDate,
@@ -866,9 +866,11 @@ export async function getSupplierSummariesService(userId?: string): Promise<Supp
   });
 
   invoices.forEach(invoice => {
-    if (invoice.supplier && invoice.status === 'completed') {
+    if (invoice.supplier && invoice.status === 'completed') { // Consider only completed invoices for spending and activity
       let summary = supplierMap.get(invoice.supplier);
       if (!summary) {
+        // If supplier from invoice is not in storedSuppliers, create a temporary entry for summary
+        // This could happen if a supplier was on an invoice but not explicitly added
         summary = {
           name: invoice.supplier,
           invoiceCount: 0,
@@ -878,13 +880,16 @@ export async function getSupplierSummariesService(userId?: string): Promise<Supp
           paymentTerms: undefined,
           lastActivityDate: undefined
         };
-        supplierMap.set(invoice.supplier, summary);
+        // Do not add to supplierMap if we only want to show explicitly managed suppliers
+        // Instead, you might want to handle this case by logging or prompting user to add supplier
       }
-      summary.invoiceCount += 1;
-      summary.totalSpent += (invoice.totalAmount || 0);
+      if (summary) { // Check if summary exists (it will if it was in storedSuppliers or created above if logic allows)
+        summary.invoiceCount += 1;
+        summary.totalSpent += (invoice.totalAmount || 0);
 
-      if (!summary.lastActivityDate || new Date(invoice.uploadTime as string) > new Date(summary.lastActivityDate)) {
-        summary.lastActivityDate = invoice.uploadTime as string;
+        if (!summary.lastActivityDate || new Date(invoice.uploadTime as string) > new Date(summary.lastActivityDate)) {
+          summary.lastActivityDate = invoice.uploadTime as string;
+        }
       }
     }
   });
@@ -935,9 +940,12 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
   if (updatedSuppliers.length === initialLength) {
      if (!suppliers.some(s => s.name === supplierName)) {
         console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found for user ${userId}. No deletion occurred.`);
-        return;
+        return; // Supplier not found, nothing to delete
      } else {
         console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was found but filter failed for user ${userId}.`);
+        // This state should ideally not be reached if the filter works correctly.
+        // Re-saving the original list to prevent accidental data loss due to a filter bug.
+        saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, suppliers, userId);
         throw new Error(`Failed to delete supplier "${supplierName}" due to an internal filtering error.`);
      }
   }
@@ -945,6 +953,9 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
   const success = saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, updatedSuppliers, userId);
   if (!success) {
     console.error(`[deleteSupplierService] Failed to save updated supplier list for user ${userId} after attempting to delete "${supplierName}".`);
+     // Optionally re-save the original list or throw an error
+     saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, suppliers, userId); // Re-save original to prevent data loss
+     throw new Error(`Failed to save updated supplier list after attempting to delete "${supplierName}". Data might be inconsistent.`);
   }
 }
 
@@ -959,15 +970,18 @@ export async function updateSupplierContactInfoService(supplierName: string, con
   const supplierIndex = suppliers.findIndex(s => s.name === supplierName);
 
   if (supplierIndex !== -1) {
+    // Update existing supplier
+    // Make sure to preserve other fields if they are not part of contactInfo
+    const existingSupplier = suppliers[supplierIndex];
     suppliers[supplierIndex] = {
-      ...suppliers[supplierIndex],
-      phone: contactInfo.phone,
-      email: contactInfo.email,
-      paymentTerms: contactInfo.paymentTerms,
-      name: supplierName
+      ...existingSupplier, // Preserve existing fields
+      name: supplierName, // Keep the name as is (identifier)
+      phone: contactInfo.phone !== undefined ? contactInfo.phone : existingSupplier.phone,
+      email: contactInfo.email !== undefined ? contactInfo.email : existingSupplier.email,
+      paymentTerms: contactInfo.paymentTerms !== undefined ? contactInfo.paymentTerms : existingSupplier.paymentTerms,
     };
   } else {
-    console.warn(`[updateSupplierContactInfoService] Supplier "${supplierName}" not found for user ${userId}. Creating new entry.`);
+    console.warn(`[updateSupplierContactInfoService] Supplier "${supplierName}" not found for user ${userId}. Creating new entry as it's safer than throwing an error during general update.`);
     suppliers.push({ name: supplierName, ...contactInfo });
   }
   saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, suppliers, userId);
@@ -1112,3 +1126,5 @@ const mockAuth = {
 // Re-exporting a mock auth object to be used by AuthContext if Firebase is not fully set up client-side
 // This allows AuthContext to function with localStorage for user state management
 export { mockAuth as auth };
+
+    

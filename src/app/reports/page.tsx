@@ -4,14 +4,14 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Download, Banknote, Info, Briefcase } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Download, Banknote, Info, Briefcase, ListChecks, FileWarning } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
 import { Button } from '@/components/ui/button';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfQuarter, endOfQuarter, parseISO, isValid, isWithinInterval } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfQuarter, endOfQuarter, parseISO, isValid, isWithinInterval, differenceInDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -22,8 +22,6 @@ import {
     calculateInventoryValue,
     calculateTotalItems,
     getLowStockItems,
-    calculateGrossProfitMargin,
-    calculateInventoryTurnoverRate,
     calculateAverageOrderValue,
     calculateTotalPotentialGrossProfit
 } from '@/lib/kpi-calculations';
@@ -36,7 +34,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 
-const formatNumberWithTranslation = (
+const formatNumber = (
     value: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
@@ -44,7 +42,7 @@ const formatNumberWithTranslation = (
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(undefined, {
+        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, { // Use translated locale for formatting
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -52,12 +50,12 @@ const formatNumberWithTranslation = (
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
-    const formatted = value.toLocaleString(undefined, {
+    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, { // Use translated locale for formatting
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
     });
-    return currency ? `${t('currency_symbol')}${formatted}` : formatted;
+    return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
 };
 
 
@@ -160,30 +158,14 @@ export default function ReportsPage() {
                 getProductsService(user.id),
                 getInvoicesService(user.id),
                 getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), user.id, []),
-                getSupplierSummariesService(user.id) // Fetch suppliers for KPI
+                getSupplierSummariesService(user.id)
             ]);
             setInventory(inventoryData);
             setInvoices(invoicesData);
             setOtherExpenses(otherExpensesStored);
 
-            // Calculate KPIs that depend on suppliers immediately after fetching
-             const filteredInvoicesForKpi = invoicesData.filter(invoice => {
-                if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
-                const invoiceDate = parseISO(invoice.uploadTime);
-                return isWithinInterval(invoiceDate, {
-                    start: dateRange?.from || new Date(0),
-                    end: dateRange?.to || new Date()
-                });
-            });
-            const activeSuppliers = new Set(filteredInvoicesForKpi.map(inv => inv.supplier).filter(Boolean));
-
-            setKpis(prev => ({
-                ...prev,
-                totalActiveSuppliers: activeSuppliers.size,
-            }));
-
         } catch (error) {
-            console.error("Failed to fetch initial data:", error);
+            console.error("Failed to fetch initial data for reports:", error);
             toast({
                 title: t('reports_toast_error_fetch_title'),
                 description: t('reports_toast_error_fetch_desc'),
@@ -195,7 +177,7 @@ export default function ReportsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [toast, t, user, dateRange]); // Added dateRange to dependencies for Kpi calculation
+    }, [toast, t, user]);
 
     useEffect(() => {
         if(user) {
@@ -208,7 +190,7 @@ export default function ReportsPage() {
      const generateReports = () => {
        if (isLoading || !user) return;
 
-       const filteredInvoices = invoices.filter(invoice => {
+       const filteredInvoicesByDate = invoices.filter(invoice => {
          if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
          const invoiceDate = parseISO(invoice.uploadTime);
          return isWithinInterval(invoiceDate, {
@@ -217,7 +199,7 @@ export default function ReportsPage() {
          });
        });
 
-       const filteredOtherExpenses = otherExpenses.filter(expense => {
+       const filteredOtherExpensesByDate = otherExpenses.filter(expense => {
           if (!expense.date || !isValid(parseISO(expense.date))) return false;
           const expenseDate = parseISO(expense.date);
           return isWithinInterval(expenseDate, {
@@ -227,45 +209,55 @@ export default function ReportsPage() {
        });
 
 
+       // KPIs
        const totalValue = calculateInventoryValue(inventory);
        const totalItemsCount = calculateTotalItems(inventory);
        const lowStockItemsCount = getLowStockItems(inventory).length;
        const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory);
+       const averageInvoiceValue = calculateAverageOrderValue(filteredInvoicesByDate.filter(inv => inv.status === 'completed'));
+       const activeSuppliers = new Set(filteredInvoicesByDate.map(inv => inv.supplier).filter(Boolean));
 
+       const totalInvoiceCostsPeriod = filteredInvoicesByDate
+            .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+       const totalOtherExpensesPeriod = filteredOtherExpensesByDate
+            .reduce((sum, exp) => sum + exp.amount, 0);
+       const totalRecordedExpensesPeriod = totalInvoiceCostsPeriod + totalOtherExpensesPeriod;
 
-       const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.paymentStatus === 'paid' ? (inv.totalAmount || 0) : 0), 0);
-       const mockCogs = mockTotalRevenue * 0.65;
-       const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
-       const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
-       const averageOrderValue = calculateAverageOrderValue(filteredInvoices.filter(inv => inv.status === 'completed'));
-
-       const activeSuppliers = new Set(filteredInvoices.map(inv => inv.supplier).filter(Boolean));
+       const openInvoicesPeriod = filteredInvoicesByDate
+            .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment');
+       const numberOfOpenInvoices = openInvoicesPeriod.length;
+       const totalAmountDueFromOpenInvoices = openInvoicesPeriod
+            .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
 
        setKpis({
          totalValue,
          totalItems: totalItemsCount,
          lowStockItems: lowStockItemsCount,
-         grossProfitMargin,
-         inventoryTurnoverRate,
-         averageOrderValue,
          totalPotentialGrossProfit,
+         averageInvoiceValue,
          totalActiveSuppliers: activeSuppliers.size,
-         valueChangePercent: Math.random() * 10 - 5,
+         totalInvoiceCostsPeriod,
+         totalOtherExpensesPeriod,
+         totalRecordedExpensesPeriod,
+         numberOfOpenInvoices,
+         totalAmountDueFromOpenInvoices,
        });
 
+       // Inventory Value Over Time Chart
        const votData = [];
-       let currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
-       const endDate = dateRange?.to || new Date();
-       const numPoints = isMobile ? 5 : 10;
-       const stepDuration = (endDate.getTime() - currentDate.getTime()) / Math.max(1, numPoints -1);
+       let currentDateForVOT = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const endDateForVOT = dateRange?.to || new Date();
+       const numPointsVOT = isMobile ? 5 : 10;
+       const stepDurationVOT = (endDateForVOT.getTime() - currentDateForVOT.getTime()) / Math.max(1, numPointsVOT -1);
 
-
-       for(let i=0; i < numPoints; i++) {
-           const pointDate = new Date(currentDate.getTime() + i * stepDuration);
+       for(let i=0; i < numPointsVOT; i++) {
+           const pointDate = new Date(currentDateForVOT.getTime() + i * stepDurationVOT);
            const monthStr = format(pointDate, "MMM dd");
-           const invoicesUpToDate = invoices.filter(inv => isValid(parseISO(inv.uploadTime)) && parseISO(inv.uploadTime) <= pointDate);
-           const simulatedValue = invoicesUpToDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4);
+           // This is a simplified simulation for inventory value trend.
+           // A real implementation would require historical snapshots of inventory value.
+           const invoicesUpToPointDate = invoices.filter(inv => isValid(parseISO(inv.uploadTime)) && parseISO(inv.uploadTime) <= pointDate && inv.documentType === 'deliveryNote');
+           const simulatedValue = invoicesUpToPointDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
                date: monthStr,
                value: simulatedValue,
@@ -273,56 +265,61 @@ export default function ReportsPage() {
        }
        setValueOverTime(votData);
 
-
-       const categories = Array.from(new Set(filteredOtherExpenses.map(exp => exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_'))));
+       // Expenses by Category Chart
+       const categories = Array.from(new Set(filteredOtherExpensesByDate.map(exp => exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_'))));
         const catDistData = categories.map(catKey => {
-            const categoryExpenses = filteredOtherExpenses.filter(exp => (exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_')) === catKey);
+            const categoryExpenses = filteredOtherExpensesByDate.filter(exp => (exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_')) === catKey);
             const categoryLabel = t(`accounts_other_expenses_tab_${catKey}` as any, {defaultValue: catKey.charAt(0).toUpperCase() + catKey.slice(1).replace(/_/g, ' ')});
             return {
                 category: categoryLabel,
                 totalAmount: categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0),
-                expenses: categoryExpenses // Store expenses for drill-down
+                expenses: categoryExpenses
             };
         }).filter(c => c.totalAmount > 0).sort((a,b) => b.totalAmount - a.totalAmount);
        setExpensesByCategoryData(catDistData);
 
+       // Documents Processed Chart
        const procVolData = [];
-       currentDate = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       let currentDateForProcVol = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const endDateForProcVol = dateRange?.to || new Date();
        const procVolNumPoints = isMobile ? 3 : 5;
-       const procVolStepDuration = (endDate.getTime() - currentDate.getTime()) / Math.max(1, procVolNumPoints -1);
+       const procVolStepDuration = (endDateForProcVol.getTime() - currentDateForProcVol.getTime()) / Math.max(1, procVolNumPoints -1);
 
         for(let i=0; i< procVolNumPoints; i++) {
-           const pointDate = new Date(currentDate.getTime() + i * procVolStepDuration);
+           const pointDate = new Date(currentDateForProcVol.getTime() + i * procVolStepDuration);
            const monthStr = format(pointDate, "MMM yy");
-           const count = filteredInvoices.filter(inv => isValid(parseISO(inv.uploadTime)) && format(parseISO(inv.uploadTime), "MMM yy") === monthStr).length;
+           const count = filteredInvoicesByDate.filter(inv => isValid(parseISO(inv.uploadTime)) && format(parseISO(inv.uploadTime), "MMM yy") === monthStr && inv.status === 'completed').length;
            if(!procVolData.find(d => d.period === monthStr)) {
              procVolData.push({ period: monthStr, documents: count });
            }
        }
        setProcessingVolume(procVolData);
 
+        // Top Selling Products (Mock, needs sales data)
         const topProducts = inventory
             .filter(p => p.salePrice !== undefined && p.salePrice > 0)
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1,
-                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1)
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, // Mock
+                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1) // Mock
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
             .slice(0, 5);
        setTopSellingProducts(topProducts);
 
+       // Stock Alerts Table
         const alerts: StockAlert[] = inventory.reduce((acc, p) => {
             const minStockLevelOrDefault = p.minStockLevel ?? 10;
             const isDefaultMin = p.minStockLevel === undefined;
+            const currentQuantity = p.quantity || 0;
 
-            if (p.quantity === 0) {
-                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Out of Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
-            } else if (p.maxStockLevel !== undefined && p.quantity > p.maxStockLevel) {
-                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Over Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
-            } else if (p.quantity <= minStockLevelOrDefault) {
-                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: p.quantity, status: 'Low Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel, isDefaultMinStock: isDefaultMin });
+            if (currentQuantity === 0) {
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: currentQuantity, status: 'Out of Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+            } else if (p.maxStockLevel !== undefined && currentQuantity > p.maxStockLevel) {
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: currentQuantity, status: 'Over Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel });
+            } else if (currentQuantity <= minStockLevelOrDefault) {
+                acc.push({ id: p.id, name: p.shortName || p.description, catalogNumber: p.catalogNumber, quantity: currentQuantity, status: 'Low Stock', minStock: p.minStockLevel, maxStock: p.maxStockLevel, isDefaultMinStock: isDefaultMin });
             }
             return acc;
         }, [] as StockAlert[]);
@@ -331,14 +328,15 @@ export default function ReportsPage() {
             return statusOrder[a.status] - statusOrder[b.status];
         }));
 
-        const pnlIncome = filteredInvoices
+        // P&L Summary
+        const pnlIncome = filteredInvoicesByDate
             .filter(inv => inv.paymentStatus === 'paid')
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
-        const pnlOperatingExpenses = filteredOtherExpenses
+        const pnlOperatingExpenses = filteredOtherExpensesByDate
             .reduce((sum, exp) => sum + exp.amount, 0);
 
-        const pnlOpenLiabilities = filteredInvoices
+        const pnlOpenLiabilities = filteredInvoicesByDate
             .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment')
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
@@ -349,8 +347,9 @@ export default function ReportsPage() {
             net: pnlIncome - pnlOperatingExpenses
         });
 
+        // Supplier Liabilities
         const liabilitiesMap = new Map<string, { totalDue: number; invoiceCount: number }>();
-        filteredInvoices
+        filteredInvoicesByDate
             .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment')
             .forEach(inv => {
                 if (inv.supplier) {
@@ -367,14 +366,17 @@ export default function ReportsPage() {
             })).sort((a,b) => b.totalDue - a.totalDue)
         );
 
+        // Product Profitability
         const profitability = inventory.map(p => {
             const cost = p.unitPrice || 0;
             const sale = p.salePrice;
             let profitPerUnit: number | undefined = undefined;
             let marginPercent: number | undefined = undefined;
-            if (sale !== undefined && sale > cost) {
+            if (sale !== undefined && sale > 0 && cost >= 0) { // Ensure sale price is positive
                 profitPerUnit = sale - cost;
-                marginPercent = (profitPerUnit / sale) * 100;
+                if (sale > 0) { // Avoid division by zero for margin
+                  marginPercent = (profitPerUnit / sale) * 100;
+                }
             }
             return {
                 id: p.id,
@@ -385,21 +387,18 @@ export default function ReportsPage() {
                 potentialProfitPerUnit: profitPerUnit,
                 profitMarginPercent: marginPercent
             };
-        }).filter(p => p.potentialProfitPerUnit !== undefined);
+        }).filter(p => p.potentialProfitPerUnit !== undefined && p.potentialProfitPerUnit >= 0); // Filter for positive profit
         setProductProfitabilityData(profitability);
 
 
      };
 
-     if (user) {
+     if (user && !isLoading) { // Check if not loading to prevent running on initial empty data
         generateReports();
      }
-   }, [dateRange, toast, inventory, invoices, otherExpenses, isLoading, isMobile, t, user]);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [dateRange, inventory, invoices, otherExpenses, isLoading, isMobile, t, user]);
 
-   const pieChartData = useMemo(() => expensesByCategoryData, [expensesByCategoryData]);
-   const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
-   const processingBarChartData = useMemo(() => processingVolume, [processingVolume]);
-   const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
    const handleDatePreset = (preset: '7d' | '30d' | 'currentMonth' | 'currentQuarter') => {
         const today = new Date();
@@ -433,11 +432,11 @@ export default function ReportsPage() {
         const headerRow = headers.map(h => escapeCsvValue(h.label)).join(',');
         const rows = data.map(item =>
             headers.map(h => {
-                if (h.key === 'potentialProfitPerUnit' || h.key === 'profitMarginPercent') {
-                    return item[h.key] !== undefined ? formatNumberWithTranslation(item[h.key], t, {decimals: h.key === 'profitMarginPercent' ? 1 : 2 , currency: h.key === 'potentialProfitPerUnit'}) : '-';
+                if (h.key === 'potentialProfitPerUnit' || h.key === 'profitMarginPercent' || h.key === 'unitPrice' || h.key === 'salePrice') {
+                    return item[h.key] !== undefined ? formatNumber(item[h.key], t, {decimals: h.key === 'profitMarginPercent' ? 1 : 2 , currency: h.key !== 'profitMarginPercent'}) : '-';
                 }
-                 if (h.key === 'unitPrice' || h.key === 'salePrice') {
-                    return item[h.key] !== undefined ? formatNumberWithTranslation(item[h.key], t, { currency: true }) : '-';
+                if (h.key === 'totalDue' || h.key === 'totalAmount') {
+                    return formatNumber(item[h.key], t, {currency: true});
                 }
                 return escapeCsvValue(item[h.key]);
             }).join(',')
@@ -469,7 +468,7 @@ export default function ReportsPage() {
     };
 
 
-   if (authLoading || (isLoading && !inventory.length && !invoices.length) || !user) {
+   if (authLoading || (isLoading && !kpis) || !user) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -537,64 +536,32 @@ export default function ReportsPage() {
       </div>
 
        {/* Main KPIs Grid */}
-       {kpis && (
-           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-             <Card className="xl:col-span-1">
-               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                 <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_value')}</CardTitle>
-                 <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-               </CardHeader>
-               <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalValue, t, { currency: true })}</div>
-               </CardContent>
-             </Card>
-             <Card className="xl:col-span-1">
-               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                 <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_items')}</CardTitle>
-                 <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-               </CardHeader>
-               <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalItems, t, { decimals: 0 })}</div>
-               </CardContent>
-             </Card>
-            <Card className="xl:col-span-1">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_low_stock_items')}</CardTitle>
-                    <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.lowStockItems, t, { decimals: 0 })}</div>
-                </CardContent>
-            </Card>
-            <Card className="xl:col-span-1">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_potential_gross_profit_short')}</CardTitle>
-                    <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalPotentialGrossProfit, t, { currency: true })}</div>
-                </CardContent>
-            </Card>
-            <Card className="xl:col-span-1">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_avg_invoice_value_short')}</CardTitle>
-                    <FileTextIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.averageOrderValue, t, { currency: true })}</div>
-                </CardContent>
-            </Card>
-             <Card className="xl:col-span-1">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_active_suppliers_short')}</CardTitle>
-                    <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalActiveSuppliers, t, { decimals: 0 })}</div>
-                </CardContent>
-            </Card>
-           </div>
-       )}
+        <div className="grid gap-2 sm:gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {[
+                { titleKey: 'reports_kpi_total_value', value: kpis?.totalValue, Icon: DollarSign, currency: true, decimals: 0 },
+                { titleKey: 'reports_kpi_total_items', value: kpis?.totalItems, Icon: Package, decimals: 0 },
+                { titleKey: 'reports_kpi_low_stock_items', value: kpis?.lowStockItems, Icon: AlertTriangle, decimals: 0 },
+                { titleKey: 'reports_kpi_potential_gross_profit_short', value: kpis?.totalPotentialGrossProfit, Icon: HandCoins, currency: true },
+                { titleKey: 'reports_kpi_avg_invoice_value_short', value: kpis?.averageInvoiceValue, Icon: FileTextIcon, currency: true },
+                { titleKey: 'reports_kpi_active_suppliers_short', value: kpis?.totalActiveSuppliers, Icon: Briefcase, decimals: 0 },
+                { titleKey: 'reports_kpi_total_invoice_costs_period', value: kpis?.totalInvoiceCostsPeriod, Icon: Banknote, currency: true },
+                { titleKey: 'reports_kpi_total_other_expenses_period', value: kpis?.totalOtherExpensesPeriod, Icon: ListChecks, currency: true },
+                { titleKey: 'reports_kpi_total_recorded_expenses_period', value: kpis?.totalRecordedExpensesPeriod, Icon: DollarSign, currency: true, iconColor: "text-destructive" },
+                { titleKey: 'reports_kpi_open_invoices_count_period', value: kpis?.numberOfOpenInvoices, Icon: FileWarning, decimals: 0 },
+                { titleKey: 'reports_kpi_open_invoices_amount_period', value: kpis?.totalAmountDueFromOpenInvoices, Icon: Banknote, currency: true, iconColor: "text-orange-500" },
+            ].map((kpi, index) => (
+                <Card key={index} className={cn("xl:col-span-1", index >= 9 && "lg:col-span-2 xl:col-span-3")}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-1.5 pt-2.5 px-3">
+                        <CardTitle className="text-[11px] sm:text-xs font-medium">{t(kpi.titleKey)}</CardTitle>
+                        <kpi.Icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground", kpi.iconColor)} />
+                    </CardHeader>
+                    <CardContent className="pb-2 sm:pb-3 px-3">
+                        <div className="text-lg sm:text-xl font-bold">{formatNumber(kpi.value, t, { currency: kpi.currency, decimals: kpi.decimals })}</div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+
 
         {/* Product Profitability Report */}
         <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.05s'}}>
@@ -640,10 +607,10 @@ export default function ReportsPage() {
                                     <TableRow key={p.id}>
                                         <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{p.name}</TableCell>
                                         <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{p.catalogNumber}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(p.unitPrice, t, {currency: true})}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumberWithTranslation(p.salePrice, t, {currency: true}) : '-'}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumberWithTranslation(p.potentialProfitPerUnit, t, {currency: true}) : '-'}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.profitMarginPercent !== undefined ? `${formatNumberWithTranslation(p.profitMarginPercent, t, {decimals:1})}%` : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(p.unitPrice, t, {currency: true})}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumber(p.salePrice, t, {currency: true}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumber(p.potentialProfitPerUnit, t, {currency: true}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.profitMarginPercent !== undefined ? `${formatNumber(p.profitMarginPercent, t, {decimals:1})}%` : '-'}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -663,10 +630,10 @@ export default function ReportsPage() {
                      <CardDescription>{t('reports_chart_value_over_time_desc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-0">
-                    {lineChartData.length > 0 ? (
+                    {valueOverTime.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[180px] sm:h-[220px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={lineChartData} margin={{ top: 5, right: isMobile ? 5 : 15, left: isMobile ? -25 : -10, bottom: isMobile ? 30 : 20 }}>
+                                <LineChart data={valueOverTime} margin={{ top: 5, right: isMobile ? 5 : 15, left: isMobile ? -25 : -10, bottom: isMobile ? 30 : 20 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                                      <XAxis
                                         dataKey="date"
@@ -677,20 +644,20 @@ export default function ReportsPage() {
                                         angle={isMobile ? -60 : -45}
                                         textAnchor="end"
                                         height={isMobile ? 40 : 30}
-                                        interval={isMobile ? Math.max(0, Math.floor(lineChartData.length / 3) -1) : "preserveStartEnd"}
+                                        interval={isMobile ? Math.max(0, Math.floor(valueOverTime.length / 3) -1) : "preserveStartEnd"}
                                      />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumberWithTranslation(value / 1000, t, { decimals: 0})}k`}
+                                        tickFormatter={(value) => `${t('currency_symbol')}${formatNumber(value / 1000, t, { decimals: 0})}k`}
                                         width={isMobile ? 30 : 40}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        formatter={(value: number) => formatNumberWithTranslation(value, t, { currency: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.labelKey)}/>
                                 </LineChart>
@@ -708,10 +675,10 @@ export default function ReportsPage() {
                      <CardDescription>{t('reports_chart_docs_processed_desc')}</CardDescription>
                  </CardHeader>
                  <CardContent className="p-0 sm:p-0">
-                      {processingBarChartData.length > 0 ? (
+                      {processingVolume.length > 0 ? (
                         <ChartContainer config={chartConfig} className="h-[180px] sm:h-[220px] w-full">
                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={processingBarChartData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -20 : -15, bottom: isMobile ? 30 : 20 }}>
+                                <BarChart data={processingVolume} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -20 : -15, bottom: isMobile ? 30 : 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                                     <XAxis
                                         dataKey="period"
@@ -722,20 +689,20 @@ export default function ReportsPage() {
                                         angle={isMobile ? -60 : -45}
                                         textAnchor="end"
                                         height={isMobile ? 40 : 30}
-                                        interval={isMobile ? Math.max(0, Math.floor(processingBarChartData.length / 2) -1) : "preserveStartEnd"}
+                                        interval={isMobile ? Math.max(0, Math.floor(processingVolume.length / 2) -1) : "preserveStartEnd"}
                                     />
                                      <YAxis
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
                                         axisLine={false}
-                                        tickFormatter={(value) => formatNumberWithTranslation(value, t, { decimals: 0, useGrouping: true })}
+                                        tickFormatter={(value) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
                                         width={isMobile ? 25 : 30}
                                      />
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => formatNumberWithTranslation(value, t, { decimals: 0, useGrouping: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { decimals: 0, useGrouping: true })}
                                      />
                                     <Bar dataKey="documents" fill="var(--color-documents)" radius={isMobile ? 2 : 3} barSize={isMobile ? 10 : undefined} name={t(chartConfig.documents.labelKey)}/>
                                 </BarChart>
@@ -772,7 +739,7 @@ export default function ReportsPage() {
                  <CardContent className="p-0 sm:p-0">
                      {expensesByCategoryData.length > 0 ? (
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 md:gap-4 items-center">
-                             <div className="md:col-span-1 max-h-[280px] overflow-y-auto px-2 py-2 md:py-0">
+                             <div className={cn("md:col-span-1 max-h-[280px] overflow-y-auto px-2 py-2 md:py-0", isMobile && "w-full")}>
                                  <Table>
                                      <TableHeader>
                                          <TableRow>
@@ -784,20 +751,20 @@ export default function ReportsPage() {
                                          {expensesByCategoryData.map(item => (
                                              <TableRow key={item.category}>
                                                  <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.category}</TableCell>
-                                                 <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(item.totalAmount, t, {currency: true})}</TableCell>
+                                                 <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalAmount, t, {currency: true})}</TableCell>
                                              </TableRow>
                                          ))}
                                      </TableBody>
                                  </Table>
                              </div>
-                             <div className="md:col-span-1 flex items-center justify-center p-0 sm:pb-2 h-[180px] sm:h-[220px]">
+                             <div className={cn("md:col-span-1 flex items-center justify-center p-0 sm:pb-2 h-[180px] sm:h-[220px]", isMobile && "w-full mt-2")}>
                                   <ChartContainer config={chartConfig} className="mx-auto aspect-square h-full w-full">
                                        <ResponsiveContainer width="100%" height="100%">
                                             <RechartsPieChart onClick={handlePieChartClick}>
                                                  <RechartsTooltip
                                                      cursor={true}
                                                      content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                                     formatter={(value: number, name) => [`${name}: ${formatNumberWithTranslation(value, t, { currency: true })}`]}
+                                                     formatter={(value: number, name) => [`${name}: ${formatNumber(value, t, { currency: true })}`]}
                                                  />
                                                  <Pie
                                                      data={expensesByCategoryData}
@@ -857,18 +824,18 @@ export default function ReportsPage() {
                       <Button
                         variant="ghost" size="sm"
                         onClick={() => exportToCsv(
-                            topSellingProductsBarData,
+                            topSellingProducts,
                             [{key: 'name', label: t('reports_table_col_product')}, {key: 'quantitySold', label: t('reports_table_col_qty_sold')}, {key: 'totalValue', label: t('reports_table_col_total_value')}],
                             'top_selling_products'
                         )}
-                        disabled={topSellingProductsBarData.length === 0}
+                        disabled={topSellingProducts.length === 0}
                         className="text-xs"
                     >
                          <Download className="mr-1 h-3 w-3" /> {t('reports_export_csv_button')}
                      </Button>
                  </CardHeader>
                  <CardContent className="p-0">
-                     {topSellingProductsBarData.length > 0 ? (
+                     {topSellingProducts.length > 0 ? (
                           <div className="overflow-x-auto">
                              <Table className="min-w-full">
                                  <TableHeader>
@@ -879,11 +846,11 @@ export default function ReportsPage() {
                                      </TableRow>
                                  </TableHeader>
                                  <TableBody>
-                                     {topSellingProductsBarData.map((product, index) => (
+                                     {topSellingProducts.map((product, index) => (
                                          <TableRow key={product.id || index}>
                                              <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{product.name}</TableCell>
-                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(product.quantitySold, t, { decimals: 0 })}</TableCell>
-                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(product.totalValue, t, { currency: true })}</TableCell>
+                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, t, { decimals: 0 })}</TableCell>
+                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, t, { currency: true })}</TableCell>
                                          </TableRow>
                                      ))}
                                  </TableBody>
@@ -911,19 +878,19 @@ export default function ReportsPage() {
                          <>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_income')}</span>
-                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.income, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.income, t, {currency: true})}</span>
                             </div>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_operating_expenses')}</span>
-                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.expenses, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.expenses, t, {currency: true})}</span>
                             </div>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_open_liabilities')}</span>
-                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.liabilities, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.liabilities, t, {currency: true})}</span>
                             </div>
                             <div className={cn("flex justify-between text-base font-semibold items-center py-1.5", profitAndLossData.net < 0 && "text-destructive")}>
                                 <span>{t('reports_pnl_net_profit_loss')}</span>
-                                <span>{formatNumberWithTranslation(profitAndLossData.net, t, {currency: true})}</span>
+                                <span>{formatNumber(profitAndLossData.net, t, {currency: true})}</span>
                             </div>
                          </>
                      ) : (
@@ -963,7 +930,7 @@ export default function ReportsPage() {
                                 {supplierLiabilitiesData.map(item => (
                                     <TableRow key={item.supplierName}>
                                         <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.supplierName}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(item.totalDue, t, {currency: true})}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalDue, t, {currency: true})}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.invoiceCount}</TableCell>
                                     </TableRow>
                                 ))}
@@ -1023,13 +990,13 @@ export default function ReportsPage() {
                                         <TableRow key={alert.id}>
                                             <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{alert.name}</TableCell>
                                             <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.catalogNumber}</TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(alert.quantity, t, { decimals: 0 })}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(alert.quantity, t, { decimals: 0 })}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
-                                                    ? `${formatNumberWithTranslation(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
-                                                    : (alert.minStock !== undefined ? formatNumberWithTranslation(alert.minStock, t, { decimals: 0 }) : '-')}
+                                                    ? `${formatNumber(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
+                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, t, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumberWithTranslation(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
@@ -1073,7 +1040,7 @@ export default function ReportsPage() {
                                 <TableRow key={expense.id}>
                                     <TableCell>{expense.description}</TableCell>
                                     <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
-                                    <TableCell className="text-right">{formatNumberWithTranslation(expense.amount, t, {currency: true})}</TableCell>
+                                    <TableCell className="text-right">{formatNumber(expense.amount, t, {currency: true})}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -1085,3 +1052,5 @@ export default function ReportsPage() {
     </TooltipProvider>
   );
 }
+
+    

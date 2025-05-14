@@ -4,22 +4,22 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Package, DollarSign, TrendingUp, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Banknote, AlertTriangle, Info } from "lucide-react";
+import { Loader2, Package, DollarSign, TrendingUp, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Banknote, AlertTriangle, Info, Briefcase, ListChecks, FileWarning } from "lucide-react";
 import { useTranslation } from '@/hooks/useTranslation';
 
 export default function ReportsLoading() {
   const { t } = useTranslation();
 
-  const renderKpiSkeleton = (Icon?: React.ElementType, lines = 1, isMainKpi = false) => (
-    <Card className={isMainKpi ? "xl:col-span-2" : "xl:col-span-1"}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-        <Skeleton className="h-4 w-2/3" /> {/* Title Skeleton */}
+  const renderKpiSkeleton = (Icon?: React.ElementType, lines = 1, isMainKpi = false, colSpan = "xl:col-span-1") => (
+    <Card className={colSpan}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-1.5 pt-2.5 px-3">
+        <Skeleton className="h-3 w-2/3 sm:h-4" /> {/* Title Skeleton */}
         {Icon && <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />}
       </CardHeader>
-      <CardContent className="pb-2 sm:pb-4">
-        <Skeleton className="h-7 w-1/2 mb-1" /> {/* Value Skeleton */}
+      <CardContent className="pb-2 sm:pb-3 px-3">
+        <Skeleton className="h-6 w-1/2 sm:h-7 mb-1" /> {/* Value Skeleton */}
         {Array.from({ length: lines -1 < 0 ? 0 : lines - 1 }).map((_, i) => (
-            <Skeleton key={i} className="h-3 w-3/4 mt-1" />
+            <Skeleton key={i} className="h-2.5 w-3/4 sm:h-3 mt-1" />
         ))}
       </CardContent>
     </Card>
@@ -39,8 +39,8 @@ export default function ReportsLoading() {
     </Card>
   );
 
-  const renderTableCardSkeleton = (titleKey: string, rows = 3, cols = 3) => (
-    <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
+  const renderTableCardSkeleton = (titleKey: string, rows = 3, cols = 3, colSpan = "lg:col-span-1") => (
+    <Card className={`w-full overflow-hidden ${colSpan}`}>
       <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="h-8 w-24" />
@@ -78,41 +78,21 @@ export default function ReportsLoading() {
       </div>
 
       {/* Main KPIs Grid Skeleton */}
-      <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-7 mb-6">
-        {renderKpiSkeleton(DollarSign, 2, true)} {/* Total Inventory Value */}
-        {renderKpiSkeleton(Package, 1, false)}    {/* Total Items */}
-        {renderKpiSkeleton(AlertTriangle, 1, false)} {/* Low Stock Items */}
-        {renderKpiSkeleton(HandCoins, 1, false)}   {/* Potential Gross Profit */}
-        {renderKpiSkeleton(TrendingUp, 1, false)}  {/* Average Invoice Value */}
-        {renderKpiSkeleton(Briefcase, 1, false)} {/* Total Suppliers */}
+      <div className="grid gap-2 sm:gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 mb-6">
+        {renderKpiSkeleton(DollarSign, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(Package, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(AlertTriangle, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(HandCoins, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(FileTextIcon, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(Briefcase, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(Banknote, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(ListChecks, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(DollarSign, 1, false, "xl:col-span-1")}
+        {renderKpiSkeleton(FileWarning, 1, false, "lg:col-span-2 xl:col-span-2")}
+        {renderKpiSkeleton(Banknote, 1, false, "lg:col-span-2 xl:col-span-1")}
       </div>
 
-      {/* Product Profitability Skeleton */}
-       <Card className="w-full overflow-hidden">
-        <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-            <Skeleton className="h-6 w-1/3" />
-            <Skeleton className="h-8 w-24" /> {/* CSV Export Button Skeleton */}
-        </CardHeader>
-        <CardContent className="p-0">
-            <div className="overflow-x-auto">
-                <table className="min-w-full">
-                    <thead>
-                        <tr>
-                            {Array.from({length: 6}).map((_, i) => <th key={i} className="p-2"><Skeleton className="h-4 w-20"/></th>)}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Array.from({length: 3}).map((_, i) => (
-                            <tr key={i}>
-                                {Array.from({length: 6}).map((_, j) => <td key={j} className="p-2"><Skeleton className="h-4 w-full"/></td>)}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </CardContent>
-      </Card>
-
+      {renderTableCardSkeleton("reports_profitability_title", 3, 6, "md:col-span-full")}
 
       <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
         {renderChartCardSkeleton("reports_chart_value_over_time_title")}
@@ -141,11 +121,11 @@ export default function ReportsLoading() {
             </CardContent>
       </Card>
 
-      {renderTableCardSkeleton("reports_table_top_selling_title", 5, 3)}
+      {renderTableCardSkeleton("reports_table_top_selling_title", 5, 3, "md:col-span-full lg:col-span-1")}
 
-       <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in">
-            <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-                <Skeleton className="h-6 w-1/2"/>
+       <Card className="md:col-span-full lg:col-span-1 w-full overflow-hidden scale-fade-in">
+            <CardHeader className="pb-2 sm:pb-4 flex flex-col">
+                 <Skeleton className="h-6 w-1/2"/>
                  <Skeleton className="h-4 w-3/4 mt-1" />
             </CardHeader>
             <CardContent className="space-y-2 p-4">
@@ -157,8 +137,8 @@ export default function ReportsLoading() {
             </CardContent>
        </Card>
 
-       {renderTableCardSkeleton("reports_supplier_liabilities_title", 3, 3)}
-       {renderTableCardSkeleton("reports_table_stock_alert_title", 4, 6)}
+       {renderTableCardSkeleton("reports_supplier_liabilities_title", 3, 3, "md:col-span-full lg:col-span-1")}
+       {renderTableCardSkeleton("reports_table_stock_alert_title", 4, 6, "md:col-span-full lg:col-span-2")}
 
 
       <div className="flex justify-center items-center py-10">
@@ -168,3 +148,6 @@ export default function ReportsLoading() {
     </div>
   );
 }
+
+
+    
