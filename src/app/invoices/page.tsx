@@ -21,8 +21,8 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, ImageIcon as ImageIconLucide, Briefcase, CreditCard, CheckSquare, FileText as FileTextIcon, X, Clock, CheckCircle, XCircle, Eye, Mail as MailIcon, BookOpenCheck, ChevronLeft, ChevronRight } from 'lucide-react';
- import { useRouter } from 'next/navigation';
+ import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, XCircle, CheckCircle as CheckCircleIcon, Clock, Link as LinkIcon } from 'lucide-react';
+ import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
@@ -52,7 +52,7 @@ import {
   AlertDialogHeader as AlertDialogHeaderComponent,
   AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@/components/ui/alert-dialog"; // Correct import for AlertDialog
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -66,9 +66,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 
 
-const isValidImageSrc = (src: string | undefined): src is string => {
+const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
+  // Allow data URIs, http, https, and relative paths (if any)
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
 };
 
 type SortKey = keyof InvoiceHistoryItem | '';
@@ -88,7 +89,8 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
   const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions', boolean>>({
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>>({
+    selection: true,
     actions: true,
     id: false,
     fileName: true,
@@ -103,7 +105,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     paymentReceiptImageUri: false,
     paymentStatus: true,
     paymentDueDate: false,
-    documentType: false, 
+    documentType: false,
     invoiceDate: false,
     paymentMethod: false,
   });
@@ -120,11 +122,12 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
   const [currentScannedDocsPage, setCurrentScannedDocsPage] = useState(1);
+  const [selectedForBulkDelete, setSelectedForBulkDelete] = useState<string[]>([]);
 
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
@@ -167,7 +170,6 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
         });
 
         let filteredData = Array.from(uniqueInvoicesMap.values());
-        // Filter out "paid" invoices from this tab
         filteredData = filteredData.filter(inv => inv.paymentStatus !== 'paid');
 
 
@@ -276,8 +278,9 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
   };
 
 
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-0 bg-card z-10' },
+   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
       { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'fileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
@@ -318,7 +321,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     };
 
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions') => {
+   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions' | 'selection') => {
        setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
    };
 
@@ -334,29 +337,39 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     }
   };
 
-  const handleDeleteInvoice = async (invoiceId: string) => {
+  const handleDeleteInvoice = async (invoiceId: string | string[]) => {
     if (!user) return;
     setIsDeleting(true);
     try {
-        await deleteInvoiceService(invoiceId, user.id);
-        toast({
-            title: t('invoices_toast_deleted_title'),
-            description: t('invoices_toast_deleted_desc'),
-        });
-        fetchInvoices();
-        setShowDetailsSheet(false);
-        setSelectedInvoiceDetails(null);
-    } catch (error) {
-        console.error("Failed to delete invoice:", error);
-        toast({
-            title: t('invoices_toast_delete_fail_title'),
-            description: t('invoices_toast_delete_fail_desc'),
-            variant: "destructive",
-        });
-    } finally {
+      const idsToDelete = Array.isArray(invoiceId) ? invoiceId : [invoiceId];
+      if (idsToDelete.length === 0) {
+        toast({ title: t('invoices_toast_no_selection_delete_title'), variant: 'destructive' });
         setIsDeleting(false);
+        return;
+      }
+      for (const id of idsToDelete) {
+        await deleteInvoiceService(id, user.id);
+      }
+      toast({
+          title: idsToDelete.length > 1 ? t('invoices_toast_bulk_deleted_title') : t('invoices_toast_deleted_title'),
+          description: idsToDelete.length > 1 ? t('invoices_toast_bulk_deleted_desc', { count: idsToDelete.length }) : t('invoices_toast_deleted_desc'),
+      });
+      fetchInvoices();
+      setShowDetailsSheet(false);
+      setSelectedInvoiceDetails(null);
+      setSelectedForBulkDelete([]); // Clear selection
+    } catch (error) {
+      console.error("Failed to delete invoice(s):", error);
+      toast({
+          title: t('invoices_toast_delete_fail_title'),
+          description: t('invoices_toast_delete_fail_desc'),
+          variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
+
 
   const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | Date | undefined ) => {
      if (field === 'uploadTime' || field === 'status') return;
@@ -468,6 +481,20 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     }
 };
 
+  const handleSelectInvoiceForBulkDelete = (invoiceId: string, checked: boolean) => {
+    setSelectedForBulkDelete(prev =>
+      checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
+    );
+  };
+
+  const handleSelectAllForBulkDelete = (checked: boolean) => {
+    if (checked) {
+      setSelectedForBulkDelete(displayedScannedInvoices.map(inv => inv.id));
+    } else {
+      setSelectedForBulkDelete([]);
+    }
+  };
+
 
   if (authLoading || (isLoading && !user)) {
      return (
@@ -492,7 +519,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             case 'completed':
                 variant = 'secondary';
                 className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-                icon = <CheckCircle className="mr-1 h-3 w-3" />;
+                icon = <CheckCircleIcon className="mr-1 h-3 w-3" />;
                 labelKey = 'invoice_status_completed';
                 break;
             case 'processing':
@@ -602,7 +629,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      defaultMonth={dateRange?.from}
                      selected={dateRange}
                      onSelect={(range) => {setDateRange(range); setCurrentScannedDocsPage(1);}}
-                     numberOfMonths={1} // For mobile, show 1 month
+                     numberOfMonths={1}
                    />
                    {dateRange && (
                       <div className="p-2 border-t flex justify-end">
@@ -701,7 +728,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod').map((header) => (
+                  {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod' && h.key !== 'selection').map((header) => (
                     <DropdownMenuCheckboxItem
                       key={header.key}
                       className="capitalize"
@@ -731,6 +758,17 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
                 {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
             </Button>
+            {selectedForBulkDelete.length > 0 && (
+                <Button
+                    variant="destructive"
+                    onClick={() => handleDeleteInvoice(selectedForBulkDelete)}
+                    disabled={isDeleting}
+                    className="flex-1 md:flex-initial"
+                >
+                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                    {t('invoices_bulk_delete_button', { count: selectedForBulkDelete.length })}
+                </Button>
+            )}
           </div>
         </div>
 
@@ -747,13 +785,22 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                           header.sortable && "cursor-pointer hover:bg-muted/50",
                           header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                           'px-2 sm:px-4 py-2',
-                          header.key === 'actions' ? 'sticky left-0 bg-card z-10' : ''
+                          header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
                       <div className="flex items-center gap-1 whitespace-nowrap">
-                         {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                         {header.key === 'selection' ? (
+                              <Checkbox
+                                  checked={selectedForBulkDelete.length > 0 && selectedForBulkDelete.length === displayedScannedInvoices.length && displayedScannedInvoices.length > 0}
+                                  onCheckedChange={handleSelectAllForBulkDelete}
+                                  aria-label={t('invoice_export_select_all_aria')}
+                                  className="mx-auto"
+                              />
+                         ) : (
+                          t(header.labelKey as any, { currency_symbol: t('currency_symbol') })
+                         )}
                          {header.sortable && sortKey === header.key && (
                             <span className="text-xs" aria-hidden="true">
                                {sortDirection === 'asc' ? '▲' : '▼'}
@@ -783,8 +830,17 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 ) : (
                   displayedScannedInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                        {visibleColumns.selection && (
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
+                              <Checkbox
+                                checked={selectedForBulkDelete.includes(item.id)}
+                                onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
+                                aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                              />
+                           </TableCell>
+                        )}
                         {visibleColumns.actions && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                <Button
                                    variant="ghost"
                                    size="icon"
@@ -881,8 +937,16 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               <p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>
             ) : (
               displayedScannedInvoices.map((item) => (
-                <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in" onClick={() => handleViewDetails(item)}>
-                  <CardHeader className="p-0 relative aspect-[4/3]">
+                <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
+                   <div className="p-2 absolute top-0 left-0 z-10">
+                       <Checkbox
+                          checked={selectedForBulkDelete.includes(item.id)}
+                          onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
+                          aria-label={t('invoice_export_select_aria', { fileName: item.fileName})}
+                          className="bg-background/70 hover:bg-background border-primary"
+                      />
+                  </div>
+                  <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item)}>
                     {isValidImageSrc(item.originalImagePreviewUri) ? (
                       <NextImage
                         src={item.originalImagePreviewUri}
@@ -894,7 +958,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       />
                     ) : (
                       <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                        <ImageIconLucide className="h-12 w-12 text-muted-foreground" />
+                        {item.documentType === 'invoice' ? <FileTextIcon className="h-12 w-12 text-muted-foreground" /> : <FileTextIcon className="h-12 w-12 text-muted-foreground" />}
                       </div>
                     )}
                      <div className="absolute top-2 right-2 flex flex-col gap-1">
@@ -902,16 +966,44 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         {renderStatusBadge(item.paymentStatus, 'payment')}
                      </div>
                   </CardHeader>
-                  <CardContent className="p-3 flex-grow">
-                    <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>{item.fileName}</CardTitle>
+                  <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}>
+                    <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>
+                       {item.documentType === 'invoice' ? <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }
+                      {item.fileName}
+                    </CardTitle>
                     <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
                      {item.supplier && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplier}</p>}
+                     {item.invoiceNumber && <p className="text-xs text-muted-foreground">{t('invoice_details_invoice_number_label')}: {item.invoiceNumber}</p>}
                      {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrency(item.totalAmount)}</p>}
+                     {item.status === 'error' && item.errorMessage && (
+                         <p className="text-xs text-destructive truncate" title={item.errorMessage}>{t('invoice_status_error')}: {item.errorMessage.substring(0,30)}...</p>
+                     )}
                   </CardContent>
                    <CardFooter className="p-3 border-t">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
                           <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
                       </Button>
+                      {(item.status === 'pending' || item.status === 'error') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start text-xs text-amber-600 hover:text-amber-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                             const queryParams = new URLSearchParams({
+                                key: `${TEMP_DATA_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`,
+                                fileName: encodeURIComponent(item.fileName),
+                                tempInvoiceId: item.id,
+                                docType: item.documentType,
+                            });
+                            if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+                             if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+                            router.push(`/edit-invoice?${queryParams.toString()}`);
+                          }}
+                        >
+                          <Edit className="mr-1.5 h-3.5 w-3.5" /> {t('edit_button')}
+                        </Button>
+                      )}
                    </CardFooter>
                 </Card>
               ))
@@ -946,13 +1038,13 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
       <Sheet open={showDetailsSheet} onOpenChange={(open) => {
           setShowDetailsSheet(open);
           if (!open) {
-            setIsEditingDetails(false); // Reset edit state when closing
-            setSelectedInvoiceDetails(null); // Clear selected invoice
+            setIsEditingDetails(false);
+            setSelectedInvoiceDetails(null);
           }
       }}>
         <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
-             <SheetTitle>{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
+             <SheetTitle className="flex items-center">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
              <SheetDescription>
                 {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.fileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.fileName || '' })}
              </SheetDescription>
@@ -998,8 +1090,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                         size="sm"
                                         onClick={() => {
                                              if (pStatus === 'paid' && selectedInvoiceDetails) {
-                                                setInvoiceForReceiptUpload(selectedInvoiceDetails); // Keep current details
-                                                setEditedInvoiceData(prev => ({...prev, paymentStatus: pStatus })); // Optimistically set for dialog if needed
+                                                setInvoiceForReceiptUpload(selectedInvoiceDetails);
+                                                setEditedInvoiceData(prev => ({...prev, paymentStatus: pStatus }));
                                                 setShowReceiptUploadDialog(true);
                                             } else {
                                                handleEditDetailsInputChange('paymentStatus', pStatus);
@@ -1016,51 +1108,60 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                    <div>
+                  <div className="space-y-3">
+                     <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_document_section_title')}</h3>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
+                      <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
                       <div className="flex items-center">
                         <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
                       </div>
-                       <div className="flex items-center mt-1">
+                  </div>
+                  <Separator className="my-3"/>
+                   <div className="space-y-3">
+                     <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_financial_section_title')}</h3>
+                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrency(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDate(selectedInvoiceDetails.invoiceDate as string) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
+                      <div className="flex items-center mt-1">
                         <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
                        </div>
                        {selectedInvoiceDetails.paymentDueDate && (
                          <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDate(selectedInvoiceDetails.paymentDueDate as string)}</p>
                        )}
-                    </div>
-                    <div>
-                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrency(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
-                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDate(selectedInvoiceDetails.invoiceDate as string) : t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
-                    </div>
-                  </div>
+                   </div>
+
                   {selectedInvoiceDetails.errorMessage && (
-                    <div className="mt-2">
-                      <p className="font-semibold text-destructive">{t('invoice_details_error_message_label')}:</p>
+                    <>
+                    <Separator className="my-3"/>
+                    <div className="space-y-1">
+                      <h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3>
                       <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
                     </div>
+                    </>
                   )}
-                  <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
-                    <NextImage
-                        src={selectedInvoiceDetails.originalImagePreviewUri}
-                        alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName })}
-                        width={800}
-                        height={1100}
-                        className="rounded-md object-contain mx-auto"
-                        data-ai-hint="invoice document"
-                    />
-                    ) : (
-                    <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
-                        <ImageIconLucide className="h-10 w-10 mb-2"/>
-                        <p>{t('invoice_details_no_image_available')}</p>
-                    </div>
-                    )}
+                  <Separator className="my-3"/>
+                  <div className="space-y-2">
+                     <h3 className="text-md font-semibold text-primary border-b pb-1">
+                        {selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}
+                     </h3>
+                      {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri) ? (
+                        <NextImage
+                            src={selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri!}
+                            alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName })}
+                            width={800}
+                            height={1100}
+                            className="rounded-md object-contain mx-auto"
+                            data-ai-hint="invoice document"
+                        />
+                        ) : (
+                        <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                            <FileTextIcon className="h-10 w-10 mb-2"/>
+                            <p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p>
+                        </div>
+                        )}
                   </div>
                 </>
               )}
@@ -1105,6 +1206,19 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                     </AlertDialog>
+                     {selectedInvoiceDetails.paymentStatus === 'paid' && ( // Show update receipt button only if paid
+                         <Button
+                            variant="outline"
+                            onClick={() => {
+                                if(selectedInvoiceDetails) {
+                                    setInvoiceForReceiptUpload(selectedInvoiceDetails);
+                                    setShowReceiptUploadDialog(true);
+                                }
+                            }}
+                         >
+                           <Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_update_receipt_button')}
+                         </Button>
+                     )}
                 </>
             )}
             <SheetClose asChild>
@@ -1123,14 +1237,10 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 }}
                 invoiceFileName={invoiceForReceiptUpload.fileName}
                 onConfirmUpload={async (receiptUri) => {
-                    // Directly update the payment status after successful upload
                     if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid'){
                         await handleConfirmReceiptUpload(receiptUri);
-                        // Also update the currently edited data if the dialog was opened from edit mode
                         setEditedInvoiceData(prev => ({...prev, paymentReceiptImageUri: receiptUri}));
                     } else {
-                        // If not in edit mode, or if status wasn't 'paid' during edit trigger
-                        // this case might be less likely if dialog only opens for 'paid' status
                         await handleConfirmReceiptUpload(receiptUri);
                     }
                 }}
@@ -1143,18 +1253,18 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
 
 export default function DocumentsPage() {
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth(); // Auth check at the page level
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | ''>('');
 
 
-  useEffect(() => { // Redirection logic
+  useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     }
   }, [user, authLoading, router]);
 
-  if (authLoading || !user) { // Loading state or redirect if not logged in
+  if (authLoading || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -1179,7 +1289,7 @@ export default function DocumentsPage() {
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="w-full sm:w-auto">
-                        <BookOpenCheck className="mr-2 h-4 w-4" />
+                        <Filter className="mr-2 h-4 w-4" />
                         {filterDocumentType === 'deliveryNote' ? t('upload_doc_type_delivery_note') :
                          filterDocumentType === 'invoice' ? t('upload_doc_type_invoice') :
                          t('invoices_filter_doc_type_all')}
@@ -1227,4 +1337,3 @@ export default function DocumentsPage() {
     </div>
   );
 }
-
