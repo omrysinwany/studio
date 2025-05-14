@@ -43,11 +43,11 @@ export default function InventoryLoading() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead><Skeleton className="h-5 w-12" /></TableHead> {/* Actions */}
-                  <TableHead><Skeleton className="h-5 w-12" /></TableHead> {/* Image */}
-                  <TableHead><Skeleton className="h-5 w-32" /></TableHead> {/* Product Name */}
-                  <TableHead className="text-center"><Skeleton className="h-5 w-20" /></TableHead> {/* Quantity */}
-                  <TableHead className="text-right"><Skeleton className="h-5 w-24" /></TableHead> {/* Sale Price */}
+                  <TableHead><Skeleton className="h-5 w-12" /></TableHead>{/* Actions */}
+                  <TableHead><Skeleton className="h-5 w-12" /></TableHead>{/* Image */}
+                  <TableHead><Skeleton className="h-5 w-32" /></TableHead>{/* Product Name */}
+                  <TableHead className="text-center"><Skeleton className="h-5 w-20" /></TableHead>{/* Quantity */}
+                  <TableHead className="text-right"><Skeleton className="h-5 w-24" /></TableHead>{/* Sale Price */}
                 </TableRow>
               </TableHeader>
               <TableBody>
