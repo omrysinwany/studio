@@ -1,3 +1,4 @@
+
 // src/app/upload/page.tsx
 'use client';
 
@@ -278,13 +279,9 @@ export default function UploadPage() {
                     imageToStoreForFinalSave = originalBase64Data;
                 }
 
-                if (imageForAIScan.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                    imageForPreviewOnEditPage = imageForAIScan;
-                } else if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                     imageForPreviewOnEditPage = originalBase64Data;
-                } else {
-                    imageForPreviewOnEditPage = ''; // Prevent storing overly large images
-                    console.warn("[UploadPage] Image too large for preview on edit page even after compression attempts.");
+                if (imageToStoreForFinalSave && imageToStoreForFinalSave.length > MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                    console.warn(`[UploadPage] Compressed image for final save (${(imageToStoreForFinalSave.length / (1024*1024)).toFixed(2)}MB) exceeds limit (${(MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES / (1024*1024)).toFixed(2)}MB). Not saving it.`);
+                    imageToStoreForFinalSave = undefined; // Don't save if too large
                 }
 
                 if (imageToStoreForFinalSave) {
@@ -295,7 +292,17 @@ export default function UploadPage() {
                     } catch (storageError: any) {
                        console.warn(`[UploadPage] Failed to save compressed image for final save to localStorage (key: ${compressedImageKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
+                        compressedImageForFinalSaveUriSaved = false; // Ensure flag is false
                     }
+                }
+
+                if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                    imageForPreviewOnEditPage = originalBase64Data;
+                } else if (imageToStoreForFinalSave && imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                    imageForPreviewOnEditPage = imageToStoreForFinalSave; // Use compressed if original is too big but compressed is fine
+                } else {
+                    imageForPreviewOnEditPage = ''; // Prevent storing overly large images for edit page preview
+                    console.warn("[UploadPage] Image too large for preview on edit page even after compression attempts.");
                 }
 
 
@@ -363,9 +370,9 @@ export default function UploadPage() {
                     } else {
                         scanResult = { products: [], error: errorMsg } as ScanInvoiceOutput;
                     }
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Still save error state
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
                     scanDataSavedForEdit = true;
-                    setScanError(errorMsg); // Display error to user
+                    setScanError(errorMsg);
                     toast({ title: t('upload_toast_critical_error_save_scan_title'), description: errorMsg, variant: 'destructive', duration: 10000 });
                 } else {
                     localStorage.setItem(dataKey, JSON.stringify(scanResult));
@@ -384,48 +391,6 @@ export default function UploadPage() {
                  return;
             }
 
-           const pendingInvoice: InvoiceHistoryItem = {
-               id: tempInvoiceId,
-               fileName: originalFileName,
-               uploadTime: new Date().toISOString(),
-               status: 'pending', // Start as pending
-               paymentStatus: 'unpaid',
-               documentType: documentType,
-               // Only include URIs if they were successfully saved
-               originalImagePreviewUri: originalImagePreviewUriSaved ? localStorage.getItem(originalImagePreviewKey) || undefined : undefined,
-               compressedImageForFinalRecordUri: compressedImageForFinalSaveUriSaved ? localStorage.getItem(compressedImageKey) || undefined : undefined,
-               // Extract initial details from scan if available
-               invoiceNumber: (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber || (scanResult as ScanInvoiceOutput)?.invoiceNumber,
-               supplier: (scanResult as ScanTaxInvoiceOutput)?.supplierName || (scanResult as ScanInvoiceOutput)?.supplier,
-               totalAmount: (scanResult as ScanTaxInvoiceOutput)?.totalAmount || (scanResult as ScanInvoiceOutput)?.totalAmount,
-               invoiceDate: (scanResult as ScanTaxInvoiceOutput)?.invoiceDate || (scanResult as ScanInvoiceOutput)?.invoiceDate,
-               paymentMethod: (scanResult as ScanTaxInvoiceOutput)?.paymentMethod || (scanResult as ScanInvoiceOutput)?.paymentMethod,
-               errorMessage: scanResult?.error // Store AI error here if any
-           };
-
-           try {
-               const invoicesStorageKey = getStorageKey(INVOICES_STORAGE_KEY_BASE, user.id);
-               let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(invoicesStorageKey) || '[]');
-               currentInvoices = [pendingInvoice, ...currentInvoices];
-                if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
-                    currentInvoices.sort((a,b) => {
-                        const timeA = a.uploadTime ? new Date(a.uploadTime).getTime() : 0;
-                        const timeB = b.uploadTime ? new Date(b.uploadTime).getTime() : 0;
-                        return timeB - timeA;
-                    });
-                    currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
-                }
-               localStorage.setItem(invoicesStorageKey, JSON.stringify(currentInvoices));
-               fetchHistory();
-            } catch (e: any) {
-               console.error("[UploadPage] Failed to create PENDING invoice record in localStorage:", e);
-                if (e.name === 'QuotaExceededError') {
-                    toast({ title: t('upload_toast_storage_full_pending_title'), description: t('upload_toast_storage_full_pending_desc', { fileName: originalFileName }), variant: 'destructive', duration: 10000});
-                } else {
-                    toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: e.message}), variant: 'destructive', duration: 8000 });
-                }
-            }
-
 
            if (!scanResult?.error && scanDataSavedForEdit) {
                toast({
@@ -434,22 +399,61 @@ export default function UploadPage() {
                });
            }
 
-            if (scanDataSavedForEdit) { // Only navigate if scan data (even if error) was saved for review
+            if (scanDataSavedForEdit) {
                 const queryParams = new URLSearchParams({
                     key: dataKey,
                     fileName: encodeURIComponent(originalFileName),
-                    tempInvoiceId: tempInvoiceId, // Pass the temp ID for potential update
+                    tempInvoiceId: tempInvoiceId,
                     docType: documentType,
                 });
-                // Only add image keys if they were actually saved to avoid passing empty keys
                 if (originalImagePreviewUriSaved && localStorage.getItem(originalImagePreviewKey)) queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
                 if (compressedImageForFinalSaveUriSaved && localStorage.getItem(compressedImageKey)) queryParams.append('compressedImageKey', compressedImageKey);
+
+                // Add new invoice to history as 'pending' IMMEDIATELY
+                // This ensures it appears in history even if user navigates away before saving
+                const pendingInvoice: InvoiceHistoryItem = {
+                    id: tempInvoiceId,
+                    fileName: originalFileName,
+                    uploadTime: new Date().toISOString(),
+                    status: 'pending',
+                    documentType: documentType,
+                    originalImagePreviewUri: originalImagePreviewUriSaved ? localStorage.getItem(originalImagePreviewKey) || undefined : undefined,
+                    compressedImageForFinalRecordUri: compressedImageForFinalSaveUriSaved ? localStorage.getItem(compressedImageKey) || undefined : undefined,
+                    invoiceNumber: (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber || (scanResult as ScanInvoiceOutput)?.invoiceNumber,
+                    supplier: (scanResult as ScanTaxInvoiceOutput)?.supplierName || (scanResult as ScanInvoiceOutput)?.supplier,
+                    totalAmount: (scanResult as ScanTaxInvoiceOutput)?.totalAmount || (scanResult as ScanInvoiceOutput)?.totalAmount,
+                    paymentStatus: 'unpaid', // Default for new uploads
+                    invoiceDate: (scanResult as ScanTaxInvoiceOutput)?.invoiceDate || (scanResult as ScanInvoiceOutput)?.invoiceDate,
+                    paymentMethod: (scanResult as ScanTaxInvoiceOutput)?.paymentMethod || (scanResult as ScanInvoiceOutput)?.paymentMethod,
+                    errorMessage: scanResult?.error,
+                };
+                try {
+                    const invoicesStorageKey = getStorageKey(INVOICES_STORAGE_KEY_BASE, user.id);
+                    let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(invoicesStorageKey) || '[]');
+                    currentInvoices = [pendingInvoice, ...currentInvoices];
+                    if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
+                        currentInvoices.sort((a,b) => {
+                            const timeA = a.uploadTime ? new Date(a.uploadTime).getTime() : 0;
+                            const timeB = b.uploadTime ? new Date(b.uploadTime).getTime() : 0;
+                            return timeB - timeA;
+                        });
+                        currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
+                    }
+                   localStorage.setItem(invoicesStorageKey, JSON.stringify(currentInvoices));
+                   fetchHistory(); // Refresh history immediately
+                } catch (e: any) {
+                    console.error("[UploadPage] Failed to update invoice history in localStorage:", e);
+                    if (e.name === 'QuotaExceededError') {
+                        toast({ title: t('upload_toast_storage_full_pending_title'), description: t('upload_toast_storage_full_pending_desc', { fileName: originalFileName }), variant: 'destructive', duration: 10000});
+                    } else {
+                        toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: e.message}), variant: 'destructive', duration: 8000 });
+                    }
+                }
 
                 router.push(`/edit-invoice?${queryParams.toString()}`);
             } else {
                 console.error("[UploadPage] Temporary data (scan result and/or images) was not saved correctly, aborting navigation to edit page.");
-                // Do not clear temporary data here if it wasn't saved, as there's nothing to clear yet by uniqueScanId
-                if (!scanError && !scanResult?.error) { // Only show generic error if AI didn't already report one
+                if (!scanError && !scanResult?.error) {
                     setScanError(t('upload_toast_processing_failed_desc_generic'));
                     toast({
                        title: t('upload_toast_processing_failed_title'),
@@ -494,7 +498,7 @@ export default function UploadPage() {
     if (!dateString) return t('invoices_na');
     try {
       const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
-      if (!isValid(dateObj)) { // Check if the parsed date is valid
+      if (!isValid(dateObj)) {
           console.warn(`[UploadPage formatDate] Invalid date object for input:`, dateString);
           return t('invoices_invalid_date');
       }
@@ -546,7 +550,7 @@ export default function UploadPage() {
       return (
           <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
               {icon}
-              {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
+              {t(`invoice_status_${status}` as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
           </Badge>
       );
   };
@@ -759,14 +763,16 @@ export default function UploadPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => {
+                                    if (!user) return;
+                                    const uniqueScanId = item.id.replace(`pending-inv-${user.id}_`, '');
                                     const queryParams = new URLSearchParams({
-                                        key: `${TEMP_DATA_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`,
+                                        key: `${TEMP_DATA_KEY_PREFIX}${user.id}_${uniqueScanId}`,
                                         fileName: encodeURIComponent(item.fileName),
                                         tempInvoiceId: item.id,
                                         docType: item.documentType,
                                     });
-                                    if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
-                                    if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+                                    if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user.id}_${uniqueScanId}`);
+                                    if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${user.id}_${uniqueScanId}`);
 
                                     router.push(`/edit-invoice?${queryParams.toString()}`);
                                 }}
@@ -844,3 +850,4 @@ export default function UploadPage() {
     </div>
   );
 }
+
