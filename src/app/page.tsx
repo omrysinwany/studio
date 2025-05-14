@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info } from "lucide-react";
+import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -19,10 +19,10 @@ import {
 } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
-import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore } from 'date-fns';
+import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore, format as formatDateFns } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
@@ -44,9 +44,9 @@ interface KpiData {
   totalItems: number;
   inventoryValue: number;
   lowStockItemsCount: number;
-  criticalLowStockProducts: BackendProduct[]; // For Actionable Insights
-  nextPaymentDueInvoice: InvoiceHistoryItem | null; // For Actionable Insights
-  recentActivity: { description: string; time: string; link?: string }[]; // For Recent Activity
+  criticalLowStockProducts: BackendProduct[];
+  nextPaymentDueInvoice: InvoiceHistoryItem | null;
+  recentActivity: { description: string; time: string; link?: string }[];
   latestDocName?: string;
   inventoryValueTrend?: { name: string; value: number }[];
   inventoryValuePrevious?: number;
@@ -197,7 +197,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
         const allIds = new Set(allKpiConfigurations.map(kpi => kpi.id));
         const validVisible = parsed.visibleKpiIds.filter((id: string) => allIds.has(id));
         const validOrder = parsed.kpiOrder.filter((id: string) => allIds.has(id));
-        
+
         return { visibleKpiIds: validVisible, kpiOrder: validOrder };
       }
     } catch (e) {
@@ -244,6 +244,8 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
           }}
           labelFormatter={() => ''}
         />
+        <XAxis dataKey="name" hide />
+        <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
         <Line
           type="monotone"
           dataKey={dataKey}
@@ -268,7 +270,7 @@ export default function Home() {
   const [kpiError, setKpiError] = useState<string | null>(null);
 
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
-    { visibleKpiIds: [], kpiOrder: [] } 
+    { visibleKpiIds: [], kpiOrder: [] }
   );
   const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
 
@@ -282,153 +284,156 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
-    } else if (!authLoading) { 
-        const defaultGuestPrefs = getKpiPreferences(); 
+    } else if (!authLoading) {
+        const defaultGuestPrefs = getKpiPreferences();
         setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
 
 
-  useEffect(() => {
-    async function fetchKpiData() {
-      if (!user || authLoading) return;
+  const fetchKpiData = useCallback(async () => {
+    if (!user || authLoading) return;
 
-      setIsLoadingKpis(true);
-      setKpiError(null);
-      try {
-        const [products, invoices, suppliers] = await Promise.all([
-          getProductsService(user.id),
-          getInvoicesService(user.id),
-          getSupplierSummariesService(user.id)
-        ]);
+    setIsLoadingKpis(true);
+    setKpiError(null);
+    try {
+      const [products, invoices, suppliers] = await Promise.all([
+        getProductsService(user.id),
+        getInvoicesService(user.id),
+        getSupplierSummariesService(user.id)
+      ]);
 
-        const otherExpensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
-        const storedOtherExpenses = typeof window !== 'undefined' ? localStorage.getItem(otherExpensesStorageKey) : null;
-        const otherExpensesData: OtherExpense[] = storedOtherExpenses ? JSON.parse(storedOtherExpenses) : [];
+      const otherExpensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
+      const storedOtherExpenses = typeof window !== 'undefined' ? localStorage.getItem(otherExpensesStorageKey) : null;
+      const otherExpensesData: OtherExpense[] = storedOtherExpenses ? JSON.parse(storedOtherExpenses) : [];
 
-        const totalItems = calculateTotalItems(products);
-        const inventoryValue = calculateInventoryValue(products);
-        
-        const allLowStockItems = getLowStockItems(products);
-        const lowStockItemsCount = allLowStockItems.length;
-        const criticalLowStockProducts = allLowStockItems.sort((a,b) => a.quantity - b.quantity).slice(0,2);
+      const totalItems = calculateTotalItems(products);
+      const inventoryValue = calculateInventoryValue(products);
 
-
-        const unpaidInvoices = invoices.filter(
-          invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate
-        ).sort((a, b) => new Date(a.paymentDueDate!).getTime() - new Date(b.paymentDueDate!).getTime());
-        const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
+      const allLowStockItems = getLowStockItems(products);
+      const lowStockItemsCount = allLowStockItems.length;
+      const criticalLowStockProducts = allLowStockItems.sort((a,b) => (a.quantity ?? 0) - (b.quantity ?? 0)).slice(0,2);
 
 
-        const amountRemainingToPay = unpaidInvoices.reduce(
-          (sum, invoice) => sum + (invoice.totalAmount || 0),
-          0
-        );
-        const grossProfit = calculateTotalPotentialGrossProfit(products);
+      const unpaidInvoices = invoices.filter(
+        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate
+      ).sort((a, b) => new Date(a.paymentDueDate!).getTime() - new Date(b.paymentDueDate!).getTime());
+      const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
 
-        const currentMonthStart = startOfMonth(new Date());
-        const currentMonthEnd = endOfMonth(new Date());
-        let totalExpensesFromInvoices = 0;
 
-        invoices.forEach(invoice => {
-            if (invoice.status !== 'completed') return;
-            let relevantDateForExpense: Date | null = null;
-            if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
-                relevantDateForExpense = parseISO(invoice.paymentDueDate);
-            } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
-                relevantDateForExpense = parseISO(invoice.uploadTime as string);
-            }
+      const amountRemainingToPay = unpaidInvoices.reduce(
+        (sum, invoice) => sum + (invoice.totalAmount || 0),
+        0
+      );
+      const grossProfit = calculateTotalPotentialGrossProfit(products);
 
-            if (relevantDateForExpense) {
-                if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                    totalExpensesFromInvoices += (invoice.totalAmount || 0);
-                }
-            }
-        });
+      const currentMonthStart = startOfMonth(new Date());
+      const currentMonthEnd = endOfMonth(new Date());
+      let totalExpensesFromInvoices = 0;
 
-        const totalOtherExpensesForMonth = otherExpensesData.reduce((sum, exp) => {
-            if (!exp.date || !isValid(parseISO(exp.date))) return sum;
-            try {
-                const expenseDate = parseISO(exp.date);
-                if (isSameMonth(expenseDate, new Date())) {
-                    let amountToAdd = exp.amount;
-                    const internalKey = exp._internalCategoryKey?.toLowerCase();
-                    const categoryString = exp.category?.toLowerCase();
-                    const biMonthlyKeys = ['electricity', 'water', 'property_tax', t('accounts_other_expenses_tab_electricity').toLowerCase(), t('accounts_other_expenses_tab_water').toLowerCase(), t('accounts_other_expenses_tab_property_tax').toLowerCase()];
-                    if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
-                         amountToAdd /= 2;
-                    }
-                    return sum + amountToAdd;
-                }
-                return sum;
-            } catch (e) {
-                console.error("Invalid date for other expense in current month calculation (Home Page):", exp.date, e);
-                return sum;
-            }
-        }, 0);
-        const calculatedCurrentMonthTotalExpenses = totalExpensesFromInvoices + totalOtherExpensesForMonth;
-        const thirtyDaysAgo = subDays(new Date(), 30);
-        const documentsProcessed30d = invoices.filter(inv => 
-            inv.status === 'completed' && 
-            inv.uploadTime && 
-            parseISO(inv.uploadTime as string) >= thirtyDaysAgo
-        ).length;
-        const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
-        const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-        const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
-        const suppliersCount = suppliers.length;
+      invoices.forEach(invoice => {
+          if (invoice.status !== 'completed') return;
+          let relevantDateForExpense: Date | null = null;
+          if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
+              relevantDateForExpense = parseISO(invoice.paymentDueDate);
+          } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
+              relevantDateForExpense = parseISO(invoice.uploadTime as string);
+          }
 
-        const mockInventoryValueTrend = [
-          { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
-          { name: 'Day 2', value: inventoryValue * 0.98 + Math.random() * 1000 - 500 },
-          { name: 'Day 3', value: inventoryValue * 0.96 + Math.random() * 1000 - 500 },
-          { name: 'Day 4', value: inventoryValue * 1.02 + Math.random() * 1000 - 500 },
-          { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
-        ].map(d => ({...d, value: Math.max(0, d.value)}));
+          if (relevantDateForExpense) {
+              if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
+                  totalExpensesFromInvoices += (invoice.totalAmount || 0);
+              }
+          }
+      });
 
-        // Mock recent activity
-        const mockRecentActivity = [
-            { description: t('home_recent_activity_mock_invoice_added', { supplier: "ספק לדוגמה"}), time: t('home_recent_activity_mock_time_ago', { minutes: 5})},
-            { description: t('home_recent_activity_mock_product_updated', {product: "מוצר הדגמה"}), time: t('home_recent_activity_mock_time_ago', { minutes: 30})},
-            { description: t('home_recent_activity_mock_report_generated'), time: t('home_recent_activity_mock_time_ago_hour')},
-        ];
+      const totalOtherExpensesForMonth = otherExpensesData.reduce((sum, exp) => {
+          if (!exp.date || !isValid(parseISO(exp.date))) return sum;
+          try {
+              const expenseDate = parseISO(exp.date);
+              if (isSameMonth(expenseDate, new Date())) {
+                  let amountToAdd = exp.amount;
+                  const internalKey = exp._internalCategoryKey?.toLowerCase();
+                  const categoryString = exp.category?.toLowerCase();
+                  const biMonthlyKeys = ['electricity', 'water', 'property_tax', t('accounts_other_expenses_tab_electricity').toLowerCase(), t('accounts_other_expenses_tab_water').toLowerCase(), t('accounts_other_expenses_tab_property_tax').toLowerCase()];
+                  if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
+                       amountToAdd /= 2;
+                  }
+                  return sum + amountToAdd;
+              }
+              return sum;
+          } catch (e) {
+              console.error("Invalid date for other expense in current month calculation (Home Page):", exp.date, e);
+              return sum;
+          }
+      }, 0);
+      const calculatedCurrentMonthTotalExpenses = totalExpensesFromInvoices + totalOtherExpensesForMonth;
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      const documentsProcessed30d = invoices.filter(inv =>
+          inv.status === 'completed' &&
+          inv.uploadTime &&
+          parseISO(inv.uploadTime as string) >= thirtyDaysAgo
+      ).length;
+      const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
+      const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+      const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
+      const suppliersCount = suppliers.length;
 
-        setKpiData({
-          totalItems,
-          inventoryValue,
-          lowStockItemsCount,
-          criticalLowStockProducts,
-          nextPaymentDueInvoice,
-          recentActivity: mockRecentActivity,
-          inventoryValueTrend: mockInventoryValueTrend,
-          inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
-          grossProfit,
-          amountRemainingToPay,
-          currentMonthTotalExpenses: calculatedCurrentMonthTotalExpenses,
-          documentsProcessed30d,
-          averageInvoiceValue,
-          suppliersCount,
-        });
+      const mockInventoryValueTrend = [
+        { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
+        { name: 'Day 2', value: inventoryValue * 0.98 + Math.random() * 1000 - 500 },
+        { name: 'Day 3', value: inventoryValue * 0.96 + Math.random() * 1000 - 500 },
+        { name: 'Day 4', value: inventoryValue * 1.02 + Math.random() * 1000 - 500 },
+        { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
+      ].map(d => ({...d, value: Math.max(0, Math.round(d.value))}));
 
-      } catch (error) {
-        console.error("Failed to fetch KPI data:", error);
-        setKpiError(t('home_kpi_error_load_failed'));
-        toast({
-          title: t('error_title'),
-          description: t('home_kpi_toast_error_load_failed_desc'),
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingKpis(false);
-      }
-    }
-    if (user) {
-      fetchKpiData();
-    } else if (!authLoading) { 
-      setIsLoadingKpis(false); 
+
+      const recentInvoices = invoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()).slice(0,3);
+      const mockRecentActivity = recentInvoices.map(inv => ({
+        description: t('home_recent_activity_mock_invoice_added', { supplier: inv.supplier || t('invoices_unknown_supplier') }),
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp'),
+        link: `/invoices?viewInvoiceId=${inv.id}` // Assuming this page and query param exists
+      }));
+
+
+      setKpiData({
+        totalItems,
+        inventoryValue,
+        lowStockItemsCount,
+        criticalLowStockProducts,
+        nextPaymentDueInvoice,
+        recentActivity: mockRecentActivity,
+        inventoryValueTrend: mockInventoryValueTrend,
+        inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
+        grossProfit,
+        amountRemainingToPay,
+        currentMonthTotalExpenses: calculatedCurrentMonthTotalExpenses,
+        documentsProcessed30d,
+        averageInvoiceValue,
+        suppliersCount,
+      });
+
+    } catch (error) {
+      console.error("Failed to fetch KPI data:", error);
+      setKpiError(t('home_kpi_error_load_failed'));
+      toast({
+        title: t('error_title'),
+        description: t('home_kpi_toast_error_load_failed_desc'),
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingKpis(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, toast, t]);
+  }, [user, authLoading, t]); //Removed toast as it's stable
+
+  useEffect(() => {
+    if (user) {
+      fetchKpiData();
+    } else if (!authLoading) {
+      setIsLoadingKpis(false);
+    }
+  }, [user, authLoading, fetchKpiData]);
 
 
   const handleScanClick = () => {
@@ -521,7 +526,7 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background", styles.homeContainer)}>
+    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainer)}>
       <TooltipProvider>
         <div className="w-full max-w-5xl text-center">
           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
@@ -557,8 +562,169 @@ export default function Home() {
             </Button>
           </div>
 
-          {/* Quick Actions Section */}
           <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {kpiError && !isLoadingKpis && user && (
+                <Alert variant="destructive" className="mb-4 text-left">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{kpiError}</AlertDescription>
+                </Alert>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                {visibleKpiConfigs.map((kpi, index) => {
+                    const Icon = kpi.icon;
+                    const value = kpi.getValue(kpiData);
+                    const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
+                    return (
+                      <Tooltip key={kpi.id}>
+                        <TooltipTrigger asChild>
+                          <Link href={kpi.link} className="block hover:no-underline">
+                            <Card className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1 bg-background/90 backdrop-blur-sm border-border/50", styles.kpiCard)} style={{animationDelay: `${0.05 * index}s`}}>
+                              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                                <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
+                                <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-accent")} />
+                              </CardHeader>
+                              <CardContent className="pt-1 pb-2 px-3 sm:px-4">
+                                <div className="text-xl sm:text-2xl md:text-3xl font-bold text-primary flex items-baseline">
+                                    {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}
+                                    {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && value !== undefined && value !== kpiData.inventoryValuePrevious && (
+                                        value > kpiData.inventoryValuePrevious ?
+                                        <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
+                                        <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
+                                    )}
+                                </div>
+                                <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1">{t(kpi.descriptionKey)}</p>
+                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
+                                    <div className="mt-1 h-8">
+                                        <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--accent))" />
+                                    </div>
+                                )}
+                                {kpi.showProgress && kpiData && (
+                                    <Progress
+                                        value={progress}
+                                        className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/50"
+                                        indicatorClassName={cn(
+                                            "transition-all duration-500 ease-out",
+                                            progress > 75 ? "bg-destructive" :
+                                            progress > 50 ? "bg-yellow-500" :
+                                            "bg-accent"
+                                        )}
+                                    />
+                                )}
+                              </CardContent>
+                               {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
+                                <CardFooter className="text-[10px] sm:text-xs px-3 sm:px-4 pb-2 pt-0">
+                                    <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                                        {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
+                                    </p>
+                                </CardFooter>
+                               )}
+                            </Card>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{t(kpi.titleKey)}: {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}</p>
+                          <p className="text-xs">{t(kpi.descriptionKey)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    );
+                })}
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button variant="outline" size="sm" onClick={() => setIsCustomizeSheetOpen(true)}>
+                  <SettingsIcon className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
+            <Card className="scale-fade-in delay-400 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader>
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                    <div>
+                        <h3 className="text-base font-semibold text-foreground flex items-center">
+                            <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
+                            {t('home_critical_low_stock_title')}
+                        </h3>
+                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2"/> :
+                         kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
+                            <ul className="list-disc pl-5 text-muted-foreground mt-1 space-y-0.5">
+                            {kpiData.criticalLowStockProducts.map(product => (
+                                <li key={product.id}>
+                                <Link href={`/inventory/${product.id}`} className="hover:underline text-accent">
+                                    {product.shortName || product.description}
+                                </Link> ({t('home_stock_level_label')}: {product.quantity})
+                                </li>
+                            ))}
+                            </ul>
+                        ) : (
+                            <p className="text-muted-foreground mt-1">{t('home_no_critical_low_stock')}</p>
+                        )}
+                    </div>
+
+                    <div>
+                        <h3 className="text-base font-semibold text-foreground flex items-center">
+                            <BellRing className="mr-2 h-4 w-4 text-primary" />
+                            {t('home_next_payment_due_title')}
+                        </h3>
+                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2"/> :
+                         kpiData?.nextPaymentDueInvoice ? (
+                            <p className="text-muted-foreground mt-1">
+                                <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-accent">
+                                    {kpiData.nextPaymentDueInvoice.supplier || t('home_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, 2, true)}
+                                </Link>
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate), 'PP') : t('home_unknown_date')}
+                            </p>
+                        ) : (
+                            <p className="text-muted-foreground mt-1">{t('home_no_upcoming_payments')}</p>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader>
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2"/> :
+                     kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
+                        <ul className="space-y-1.5 text-sm">
+                        {kpiData.recentActivity.map((activity, index) => (
+                            <li key={index} className="text-muted-foreground flex justify-between items-center">
+                                <span className="truncate max-w-[70%]">
+                                    {activity.link ? (
+                                        <Link href={activity.link} className="hover:underline text-accent">{activity.description}</Link>
+                                    ) : (
+                                        activity.description
+                                    )}
+                                </span>
+                                <span className="text-xs whitespace-nowrap">{activity.time}</span>
+                            </li>
+                        ))}
+                        </ul>
+                    ) : (
+                        <p className="text-muted-foreground mt-1">{t('home_no_recent_activity')}</p>
+                    )}
+                </CardContent>
+            </Card>
+            </div>
+
+
+            <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
             <CardHeader>
               <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                 <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
@@ -571,167 +737,12 @@ export default function Home() {
                 </Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/inventory"> {/* Or a dedicated "add product" page if you create one */}
+                <Link href="/inventory">
                   <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
                 </Link>
               </Button>
             </CardContent>
           </Card>
-
-           {kpiError && !isLoadingKpis && user && (
-            <Alert variant="destructive" className="mb-6 md:mb-8 text-left scale-fade-in delay-400">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>{kpiError}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl sm:text-2xl font-semibold text-left text-foreground">{t('home_dashboard_title')}</h2>
-            <Button variant="outline" size="sm" onClick={() => setIsCustomizeSheetOpen(true)}>
-              <SettingsIcon className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
-             {visibleKpiConfigs.map((kpi, index) => {
-                const Icon = kpi.icon;
-                const value = kpi.getValue(kpiData);
-                const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
-                return (
-                  <Tooltip key={kpi.id}>
-                    <TooltipTrigger asChild>
-                      <Link href={kpi.link} className="block hover:no-underline">
-                        <Card className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1 bg-background/80 backdrop-blur-sm border-border/50", styles.kpiCard)} style={{animationDelay: `${0.1 * index}s`}}>
-                          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
-                            <Icon className={cn("h-5 w-5", kpi.iconColor || "text-accent")} />
-                          </CardHeader>
-                          <CardContent className="pt-1 pb-2 px-4">
-                            <div className="text-2xl sm:text-3xl font-bold text-primary flex items-baseline">
-                                {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}
-                                {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && value !== undefined && value !== kpiData.inventoryValuePrevious && (
-                                    value > kpiData.inventoryValuePrevious ?
-                                    <TrendingUp className="h-4 w-4 text-green-500 ml-1.5 shrink-0" /> :
-                                    <TrendingDown className="h-4 w-4 text-red-500 ml-1.5 shrink-0" />
-                                )}
-                            </div>
-                            <p className="text-xs text-muted-foreground pt-1">{t(kpi.descriptionKey)}</p>
-                            {kpi.showTrend && (
-                                <div className="mt-1">
-                                    <SparkLineChart data={kpiData?.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--accent))" />
-                                </div>
-                            )}
-                            {kpi.showProgress && kpiData && (
-                                <Progress
-                                    value={progress}
-                                    className="h-2 mt-2 bg-muted/50"
-                                    indicatorClassName={cn(
-                                        "transition-all duration-500 ease-out",
-                                        progress > 75 ? "bg-destructive" :
-                                        progress > 50 ? "bg-yellow-500" :
-                                        "bg-accent"
-                                    )}
-                                />
-                            )}
-                          </CardContent>
-                           {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                            <CardFooter className="text-xs px-4 pb-3 pt-0">
-                                <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                    {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
-                                </p>
-                            </CardFooter>
-                           )}
-                        </Card>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{t(kpi.titleKey)}: {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}</p>
-                      <p className="text-xs">{t(kpi.descriptionKey)}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-             })}
-          </div>
-
-           {/* Actionable Insights Section */}
-            <Card className="mt-6 md:mt-8 scale-fade-in delay-400 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                <CardHeader>
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                    <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
-                </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Critical Low Stock */}
-                    <div>
-                        <h3 className="text-md font-semibold text-foreground flex items-center">
-                            <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
-                            {t('home_critical_low_stock_title')}
-                        </h3>
-                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
-                         kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
-                            <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                            {kpiData.criticalLowStockProducts.map(product => (
-                                <li key={product.id}>
-                                <Link href={`/inventory/${product.id}`} className="hover:underline text-accent">
-                                    {product.shortName || product.description}
-                                </Link> ({t('home_stock_level_label')}: {product.quantity})
-                                </li>
-                            ))}
-                            </ul>
-                        ) : (
-                            <p className="text-sm text-muted-foreground">{t('home_no_critical_low_stock')}</p>
-                        )}
-                    </div>
-
-                    {/* Next Payment Due */}
-                    <div>
-                        <h3 className="text-md font-semibold text-foreground flex items-center">
-                            <BellRing className="mr-2 h-4 w-4 text-primary" />
-                            {t('home_next_payment_due_title')}
-                        </h3>
-                        {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
-                         kpiData?.nextPaymentDueInvoice ? (
-                            <p className="text-sm text-muted-foreground">
-                                <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-accent">
-                                    {kpiData.nextPaymentDueInvoice.supplier || t('home_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, 2, true)}
-                                </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? new Date(kpiData.nextPaymentDueInvoice.paymentDueDate).toLocaleDateString() : t('home_unknown_date')}
-                            </p>
-                        ) : (
-                            <p className="text-sm text-muted-foreground">{t('home_no_upcoming_payments')}</p>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
-            
-            {/* Recent Activity Section */}
-            <Card className="mt-6 md:mt-8 scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                <CardHeader>
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                    <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
-                </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground"/> : 
-                     kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
-                        <ul className="space-y-2">
-                        {kpiData.recentActivity.map((activity, index) => (
-                            <li key={index} className="text-sm text-muted-foreground">
-                                {activity.link ? (
-                                    <Link href={activity.link} className="hover:underline text-accent">{activity.description}</Link>
-                                ) : (
-                                    activity.description
-                                )} - <span className="text-xs">{activity.time}</span>
-                            </li>
-                        ))}
-                        </ul>
-                    ) : (
-                        <p className="text-sm text-muted-foreground">{t('home_no_recent_activity')}</p>
-                    )}
-                </CardContent>
-            </Card>
-
-
         </div>
       </TooltipProvider>
       <KpiCustomizationSheet
@@ -746,33 +757,3 @@ export default function Home() {
   );
 }
 
-// Ensure the Progress component's definition in progress.tsx is correct
-// It should look something like this:
-//
-// "use client"
-// import * as React from "react"
-// import * as ProgressPrimitive from "@radix-ui/react-progress"
-// import { cn } from "@/lib/utils"
-//
-// interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> {
-//   indicatorClassName?: string;
-// }
-//
-// const Progress = React.forwardRef<
-//   React.ElementRef<typeof ProgressPrimitive.Root>,
-//   ProgressProps
-// >(({ className, value, indicatorClassName, ...props }, ref) => (
-//   <ProgressPrimitive.Root
-//     ref={ref}
-//     className={cn("relative h-2 w-full overflow-hidden rounded-full bg-secondary", className)}
-//     {...props}
-//   >
-//     <ProgressPrimitive.Indicator
-//       className={cn("h-full w-full flex-1 bg-accent transition-all", indicatorClassName)}
-//       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-//     />
-//   </ProgressPrimitive.Root>
-// ))
-// Progress.displayName = ProgressPrimitive.Root.displayName
-//
-// export { Progress }
