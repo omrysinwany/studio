@@ -25,7 +25,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore, format as formatDateFns } from 'date-fns';
-import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale'; // Correctly import locales
+import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
@@ -57,7 +57,7 @@ export interface KpiConfig {
   id: string;
   titleKey: string;
   icon: React.ElementType;
-  getValue: (data: KpiData | null, t: (key: string, params?: Record<string, string | number>) => string) => string; // Value is now a string for formatted display
+  getValue: (data: KpiData | null, t: (key: string, params?: Record<string, string | number>) => string) => string;
   descriptionKey: string;
   link: string;
   showTrend?: boolean;
@@ -80,9 +80,10 @@ const formatLargeNumber = (
 
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
     const absNum = Math.abs(num);
+    const localeCode = t('locale_code_for_number_formatting');
 
     if (absNum < 10000 || (isInteger && absNum < 1000)) {
-        return prefix + num.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+        return prefix + num.toLocaleString(localeCode || undefined, {
             minimumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals),
             maximumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals)
         });
@@ -132,18 +133,18 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'inventoryValue',
     titleKey: 'home_kpi_inventory_value_title',
     icon: DollarSign,
-    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true), // Ensure 0 decimals for currency here for consistency
+    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
     showTrend: true,
-    iconColor: 'text-green-500 dark:text-green-400', // Changed to green for positive value
+    iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
   {
     id: 'grossProfit',
     titleKey: 'home_kpi_gross_profit_title',
     icon: HandCoins,
-    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true), // Ensure 0 decimals
+    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true),
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     iconColor: 'text-emerald-500 dark:text-emerald-400',
@@ -153,7 +154,7 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'currentMonthExpenses',
     titleKey: 'home_kpi_current_month_expenses_title',
     icon: CreditCard,
-    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true), // Ensure 0 decimals
+    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true),
     descriptionKey: 'home_kpi_current_month_expenses_desc',
     link: '/accounts',
     iconColor: 'text-red-500 dark:text-red-400',
@@ -175,7 +176,7 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'amountToPay',
     titleKey: 'home_kpi_amount_to_pay_title',
     icon: Banknote,
-    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true), // Ensure 0 decimals
+    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true),
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
     iconColor: 'text-orange-500 dark:text-orange-400',
@@ -195,7 +196,7 @@ const allKpiConfigurations: KpiConfig[] = [
     id: 'averageInvoiceValue',
     titleKey: 'home_kpi_average_invoice_value_title',
     icon: BarChart2,
-    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true), // Ensure 0 decimals
+    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true),
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
@@ -268,6 +269,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
   if (!data || data.length === 0) {
     return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('home_kpi_no_trend_data')}</div>;
   }
+  const localeCode = t('locale_code_for_number_formatting');
   return (
     <ResponsiveContainer width="100%" height={40}>
       <LineChart data={data}>
@@ -280,8 +282,8 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
             padding: "0.25rem 0.5rem",
           }}
           formatter={(value: number, name: string) => {
-             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
-             return [value.toLocaleString(), name];
+             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(localeCode || undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
+             return [value.toLocaleString(localeCode || undefined), name];
           }}
           labelFormatter={() => ''}
         />
@@ -356,7 +358,7 @@ export default function Home() {
       const totalItems = calculateTotalItems(products);
       const inventoryValue = calculateInventoryValue(products);
 
-      const allLowStockItems = getLowStockItems(products, userSettings?.reminderDaysBefore); // Assuming reminderDaysBefore is the low stock threshold
+      const allLowStockItems = getLowStockItems(products);
       const lowStockItemsCount = allLowStockItems.length;
       const criticalLowStockProducts = allLowStockItems
         .sort((a,b) => (a.quantity ?? 0) - (b.quantity ?? 0) || (a.shortName || a.description || '').localeCompare(b.shortName || b.description || '') )
@@ -380,17 +382,14 @@ export default function Home() {
       invoices.forEach(invoice => {
           if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
-          // Prioritize paymentDueDate if it exists and is valid
           if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
               relevantDateForExpense = parseISO(invoice.paymentDueDate as string);
-          // Fallback to uploadTime if paymentDueDate is not set or invalid
           } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
               relevantDateForExpense = parseISO(invoice.uploadTime as string);
           }
 
           if (relevantDateForExpense) {
               if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                  // Only add if the invoice is marked as 'unpaid', 'pending_payment', or 'paid'
                   if (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid') {
                      totalExpensesFromInvoices += (invoice.totalAmount || 0);
                   }
@@ -406,7 +405,6 @@ export default function Home() {
                   let amountToAdd = exp.amount;
                   const internalKey = exp._internalCategoryKey?.toLowerCase();
                   const categoryString = exp.category?.toLowerCase();
-                  // Adjusted keys to match other_expenses page for bi-monthly
                   const biMonthlyKeys = ['electricity', 'water', 'property_tax', 'rent',
                                          t('accounts_other_expenses_tab_electricity').toLowerCase(),
                                          t('accounts_other_expenses_tab_water').toLowerCase(),
@@ -414,7 +412,6 @@ export default function Home() {
                                          t('accounts_other_expenses_tab_rent').toLowerCase()];
 
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
-                       // No division by 2 for bi-monthly, as they are entered for the month they occur
                   }
                   return sum + amountToAdd;
               }
@@ -448,7 +445,7 @@ export default function Home() {
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: locale === 'he' ? heLocale : enUSLocale }),
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -571,112 +568,110 @@ export default function Home() {
                 </div>
           </div>
 
-          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
-            <CardHeader className="pb-4">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+          <div className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl rounded-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
-                </CardTitle>
+                </h2>
                 <Button variant="ghost" size="icon" onClick={() => setIsCustomizeSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
                     <SettingsIcon className="h-4 w-4" />
                     <span className="sr-only">{t('home_customize_dashboard_button')}</span>
                 </Button>
-              </div>
-               <CardDescription>{t('home_quick_overview_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {kpiError && !isLoadingKpis && user && (
-                <Alert variant="destructive" className="mb-4 text-left">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>{kpiError}</AlertDescription>
-                </Alert>
-              )}
-              {(isLoadingKpis && user) ? (
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                    {Array.from({length: Math.min(visibleKpiConfigs.length || 3, 6)}).map((_, idx) => (
-                        <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px]">
-                            <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
-                            <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
-                        </Card>
-                    ))}
-                 </div>
-              ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
-                 <div className="text-center py-8 text-muted-foreground">
-                    <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                    <p className="text-sm">{t('home_empty_state_kpis_title')}</p>
-                    <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_empty_state_kpis_action')}</Button>
-                </div>
-              ) : (
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">{t('home_quick_overview_desc')}</p>
+            
+            {kpiError && !isLoadingKpis && user && (
+            <Alert variant="destructive" className="mb-4 text-left">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{kpiError}</AlertDescription>
+            </Alert>
+            )}
+            {(isLoadingKpis && user) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                    {visibleKpiConfigs.map((kpi, index) => {
-                        const Icon = kpi.icon;
-                        const valueString = kpi.getValue(kpiData, t);
-                        const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
-                        return (
-                        <Tooltip key={kpi.id}>
-                            <TooltipTrigger asChild>
-                            <Link href={kpi.link} className="block hover:no-underline h-full">
-                                <Card className={cn("shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-[1.03] h-full text-left transform hover:-translate-y-0.5 bg-background/90 backdrop-blur-sm border-border/50 flex flex-col", styles.kpiCard)} style={{animationDelay: `${0.05 * index}s`}}>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
-                                    <CardTitle className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
-                                    <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
-                                </CardHeader>
-                                <CardContent className="pt-1 pb-2 px-3 sm:px-4 flex-grow flex flex-col justify-center">
-                                    <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-foreground flex items-baseline">
-                                        {renderKpiValueDisplay(valueString)}
-                                        {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                                            kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
-                                            <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
-                                            <TrendingDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
-                                        )}
-                                    </div>
-                                    <p className="text-xs sm:text-sm text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>
-                                    {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
-                                        <div className="mt-1.5 h-8">
-                                            <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
-                                        </div>
-                                    )}
-                                    {kpi.showProgress && kpiData && (
-                                        <Progress
-                                            value={progress}
-                                            className="h-2 sm:h-2.5 mt-2 sm:mt-2.5 bg-muted/40"
-                                            indicatorClassName={cn(
-                                                "transition-all duration-500 ease-out",
-                                                progress > 75 ? "bg-destructive" :
-                                                progress > 50 ? "bg-yellow-500" :
-                                                "bg-primary"
-                                            )}
-                                        />
-                                    )}
-                                </CardContent>
-                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && kpiData.inventoryValue !== undefined && (
-                                    <CardFooter className="text-xs sm:text-sm px-3 sm:px-4 pb-2 pt-0 mt-auto">
-                                        <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                            {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 0, true)}
-                                        </p>
-                                    </CardFooter>
-                                )}
-                                </Card>
-                            </Link>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                            <p>{t(kpi.titleKey)}: {valueString}</p>
-                            <p className="text-xs">{t(kpi.descriptionKey)}</p>
-                            </TooltipContent>
-                        </Tooltip>
-                        );
-                    })}
+                {Array.from({length: Math.min(visibleKpiConfigs.length || 3, 6)}).map((_, idx) => (
+                    <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px] kpiCard">
+                        <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                        <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                    </Card>
+                ))}
                 </div>
-              )}
-               {(kpiData && visibleKpiConfigs.length === 0 && !isLoadingKpis) && (
-                    <div className="text-center py-8 text-muted-foreground">
-                        <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                        <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
-                        <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
-                    </div>
-                )}
-            </CardContent>
-          </Card>
+            ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
+                <div className="text-center py-8 text-muted-foreground">
+                <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                <p className="text-sm">{t('home_empty_state_kpis_title')}</p>
+                <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
+            </div>
+            ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                {visibleKpiConfigs.map((kpi, index) => {
+                    const Icon = kpi.icon;
+                    const valueString = kpi.getValue(kpiData, t);
+                    const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
+                    return (
+                    <Tooltip key={kpi.id}>
+                        <TooltipTrigger asChild>
+                        <Link href={kpi.link} className="block hover:no-underline h-full">
+                            <Card className={cn("shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-background/90 backdrop-blur-sm border-border/50 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                                <CardTitle className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
+                                <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
+                            </CardHeader>
+                            <CardContent className="pt-1 pb-2 px-3 sm:px-4 flex-grow flex flex-col justify-center">
+                                <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-foreground flex items-baseline">
+                                    {renderKpiValueDisplay(valueString)}
+                                    {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
+                                        kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
+                                        <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
+                                        <TrendingDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
+                                    )}
+                                </div>
+                                <p className="text-xs sm:text-sm text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>
+                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
+                                    <div className="mt-1.5 h-8">
+                                        <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
+                                    </div>
+                                )}
+                                {kpi.showProgress && kpiData && (
+                                    <Progress
+                                        value={progress}
+                                        className="h-2 sm:h-2.5 mt-2 sm:mt-2.5 bg-muted/40"
+                                        indicatorClassName={cn(
+                                            "transition-all duration-500 ease-out",
+                                            progress > 75 ? "bg-destructive" :
+                                            progress > 50 ? "bg-yellow-500" :
+                                            "bg-primary"
+                                        )}
+                                    />
+                                )}
+                            </CardContent>
+                            {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && kpiData.inventoryValue !== undefined && (
+                                <CardFooter className="text-xs sm:text-sm px-3 sm:px-4 pb-2 pt-0 mt-auto">
+                                    <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                                        {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 0, true)}
+                                    </p>
+                                </CardFooter>
+                            )}
+                            </Card>
+                        </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                        <p>{t(kpi.titleKey)}: {valueString}</p>
+                        <p className="text-xs">{t(kpi.descriptionKey)}</p>
+                        </TooltipContent>
+                    </Tooltip>
+                    );
+                })}
+            </div>
+            )}
+            {(kpiData && visibleKpiConfigs.length === 0 && !isLoadingKpis) && (
+                <div className="text-center py-8 text-muted-foreground">
+                    <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                    <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
+                    <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
+                </div>
+            )}
+        </div>
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
                 <Card className="scale-fade-in delay-400 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
