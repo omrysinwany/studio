@@ -16,15 +16,15 @@ export interface Product {
   minStockLevel?: number;
   maxStockLevel?: number;
   // Internal fields for editing
-  _originalId?: string; 
+  _originalId?: string;
 }
 
 export interface InvoiceHistoryItem {
   id: string;
   fileName: string;
-  uploadTime: Date | string;
+  uploadTime: string; // Keep as ISO string for consistency
   status: 'pending' | 'processing' | 'completed' | 'error';
-  documentType: 'deliveryNote' | 'invoice'; // Added documentType
+  documentType: 'deliveryNote' | 'invoice';
   invoiceNumber?: string;
   supplier?: string;
   totalAmount?: number;
@@ -33,8 +33,8 @@ export interface InvoiceHistoryItem {
   compressedImageForFinalRecordUri?: string;
   paymentReceiptImageUri?: string;
   paymentStatus: 'paid' | 'unpaid' | 'pending_payment';
-  paymentDueDate?: string | Date;
-  invoiceDate?: string | Date;
+  paymentDueDate?: string; // Keep as ISO string
+  invoiceDate?: string; // Keep as ISO string
   paymentMethod?: string;
 }
 
@@ -52,12 +52,17 @@ export interface AccountantSettings {
   phone?: string;
 }
 
+export interface UserSettings {
+  reminderDaysBefore?: number;
+}
+
 
 export const INVENTORY_STORAGE_KEY_BASE = 'invoTrack_inventory';
 export const INVOICES_STORAGE_KEY_BASE = 'invoTrack_invoices';
 export const POS_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_posSettings';
 export const SUPPLIERS_STORAGE_KEY_BASE = 'invoTrack_suppliers';
 export const ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_accountantSettings';
+export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings'; // New key for user settings
 
 
 export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
@@ -65,11 +70,11 @@ export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImag
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.8 * 1024 * 1024; // Increased to 0.8MB
-export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.4 * 1024 * 1024; // Increased to 0.4MB
-export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.8 * 1024 * 1024;
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.5 * 1024 * 1024; 
+export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.25 * 1024 * 1024; 
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024; // Reduced to 0.5MB
 export const MAX_INVENTORY_ITEMS = 1000;
-export const MAX_INVOICE_HISTORY_ITEMS = 200;
+export const MAX_INVOICE_HISTORY_ITEMS = 100; // Reduced to 100
 
 
 interface StoredPosSettings {
@@ -106,7 +111,6 @@ export const getStoredData = <T extends {id?: string; name?: string}>(keyBase: s
     const stored = localStorage.getItem(storageKey);
     if (stored) {
       const parsedData = JSON.parse(stored) as T[];
-      // Ensure IDs for items that might be missing them, especially relevant for suppliers.
       return parsedData.map((item, index) => ({
           ...item,
           id: item.id || (item.name ? `${keyBase}-item-${item.name.replace(/\s+/g, '_')}-${index}` : `${keyBase}-item-${Date.now()}-${index}-${Math.random().toString(36).substring(2,7)}`)
@@ -138,16 +142,19 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.includes('exceeded the quota'))) {
       console.warn(`[saveStoredData Backend] Quota exceeded for key ${storageKey}. Attempting to clear old temporary scan data and retry...`);
       try {
-        clearOldTemporaryScanData(true, userId);
+        clearOldTemporaryScanData(true, userId); // Emergency clear for this user
         localStorage.setItem(storageKey, JSON.stringify(data));
         console.log(`[saveStoredData Backend] Successfully saved data for key ${storageKey} after cleanup.`);
         return true;
       } catch (retryError) {
         console.error(`[saveStoredData Backend] Error writing ${storageKey} to localStorage even after cleanup:`, retryError);
-        throw error;
+        // Do not re-throw the original error here, as we've already logged the issue.
+        // Let the application decide how to handle the ultimate failure.
+        // Instead, throw the retryError to indicate the final failure state.
+        throw retryError; // Or throw a new custom error: new Error("Failed to save data after cleanup due to storage quota.")
       }
     } else {
-      throw error;
+      throw error; // Re-throw other errors
     }
   }
 };
@@ -211,7 +218,7 @@ export async function checkProductPricesBeforeSaveService(
                 productsToSaveDirectly.push({
                     ...scannedProduct,
                     id: existingProduct.id,
-                    unitPrice: existingUnitPrice,
+                    unitPrice: existingUnitPrice, // Keep existing unit price if no significant change
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
                     minStockLevel: scannedProduct.minStockLevel ?? existingProduct.minStockLevel,
                     maxStockLevel: scannedProduct.maxStockLevel ?? existingProduct.maxStockLevel,
@@ -237,8 +244,8 @@ export async function finalizeSaveProductsService(
     extractedInvoiceNumber?: string,
     finalSupplierName?: string,
     extractedTotalAmount?: number,
-    paymentDueDate?: string | Date,
-    invoiceDate?: string | Date,
+    paymentDueDate?: string, // Changed to string
+    invoiceDate?: string, // Changed to string
     paymentMethod?: string,
     originalImagePreviewUriToSave?: string,
     compressedImageForFinalRecordUriToSave?: string
@@ -310,12 +317,11 @@ export async function finalizeSaveProductsService(
                 const existingProduct = updatedInventory[existingIndex];
                  if (documentType === 'deliveryNote') {
                     existingProduct.quantity += quantityToAdd;
-                 } else if (documentType === 'invoice' && tempInvoiceId?.includes('_sync')) { // Assuming POS sync source might be identified differently
-                    existingProduct.quantity = quantityToAdd; // For POS sync, overwrite quantity
+                 } else if (documentType === 'invoice' && tempInvoiceId?.includes('_sync')) { 
+                    existingProduct.quantity = quantityToAdd; 
                  }
-                // Always update prices and details if provided, regardless of source, unless it's a sync that shouldn't touch prices.
-                // For now, we assume any product data passed here is meant to update these fields.
-                existingProduct.unitPrice = unitPrice;
+                // Keep existing prices unless new scan explicitly overrides them AND they are valid
+                existingProduct.unitPrice = (unitPrice && unitPrice > 0) ? unitPrice : existingProduct.unitPrice;
                 existingProduct.description = productToSave.description || existingProduct.description;
                 existingProduct.shortName = productToSave.shortName || existingProduct.shortName;
                 existingProduct.barcode = productToSave.barcode === null ? undefined : (productToSave.barcode ?? existingProduct.barcode);
@@ -375,7 +381,7 @@ export async function finalizeSaveProductsService(
         throw processingError;
     }
 
-    if (documentType && userId) { // Ensure documentType is always provided
+    if (documentType && userId) {
         const finalStatus = productsProcessedSuccessfully ? 'completed' : 'error';
         const errorMessageOnProductFail = !productsProcessedSuccessfully ? 'Failed to process some products into inventory. Invoice may be incomplete.' : (productsToFinalizeSave.length === 0 && !extractedTotalAmount && documentType === 'deliveryNote' ? 'No products found in scan and no total amount provided.' : undefined);
 
@@ -420,7 +426,7 @@ export async function finalizeSaveProductsService(
                 compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave,
                 errorMessage: errorMessageOnProductFail || existingRecord.errorMessage,
                 paymentStatus: existingRecord.paymentStatus || 'unpaid',
-                paymentDueDate: paymentDueDate instanceof Date ? paymentDueDate.toISOString() : paymentDueDate,
+                paymentDueDate: paymentDueDate,
                 paymentReceiptImageUri: existingRecord.paymentReceiptImageUri,
                 invoiceDate: invoiceDate,
                 paymentMethod: paymentMethod,
@@ -428,6 +434,7 @@ export async function finalizeSaveProductsService(
             finalInvoiceRecord = currentInvoices[existingInvoiceIndex];
             console.log(`[finalizeSaveProductsService] Updated existing invoice record ID: ${tempInvoiceId}`, currentInvoices[existingInvoiceIndex]);
         } else {
+            // This case should ideally not happen if pendingInvoice was created correctly
             const newInvoiceId = `inv-${Date.now()}-${userId.slice(0,3)}-fallback`;
             const newInvoiceRecordData: InvoiceHistoryItem = {
                 id: newInvoiceId,
@@ -442,7 +449,7 @@ export async function finalizeSaveProductsService(
                 compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave,
                 errorMessage: errorMessageOnProductFail || "Pending record was missing, created as new.",
                 paymentStatus: 'unpaid',
-                paymentDueDate: paymentDueDate instanceof Date ? paymentDueDate.toISOString() : paymentDueDate,
+                paymentDueDate: paymentDueDate,
                 paymentReceiptImageUri: undefined,
                 invoiceDate: invoiceDate,
                 paymentMethod: paymentMethod,
@@ -453,7 +460,7 @@ export async function finalizeSaveProductsService(
         }
 
         if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
-            currentInvoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
+            currentInvoices.sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime());
             currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
             console.warn(`[Backend - finalizeSave] Invoice history pruned to ${MAX_INVOICE_HISTORY_ITEMS} items.`);
         }
@@ -606,9 +613,9 @@ export async function getInvoicesService(userId?: string): Promise<InvoiceHistor
   const invoices = invoicesRaw.map(inv => ({
     ...inv,
     id: inv.id || `inv-get-${Date.now()}-${userId.slice(0,3)}-${Math.random().toString(36).substring(2, 9)}`,
-    uploadTime: inv.uploadTime instanceof Date ? inv.uploadTime.toISOString() : new Date(inv.uploadTime).toISOString(),
+    uploadTime: inv.uploadTime, // Assuming it's already an ISO string
     paymentStatus: inv.paymentStatus || 'unpaid',
-    documentType: inv.documentType || 'deliveryNote', // Default to deliveryNote if missing
+    documentType: inv.documentType || 'deliveryNote',
     paymentReceiptImageUri: inv.paymentReceiptImageUri || undefined,
     originalImagePreviewUri: inv.originalImagePreviewUri || undefined,
     compressedImageForFinalRecordUri: inv.compressedImageForFinalRecordUri || undefined,
@@ -638,15 +645,15 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
     ...originalInvoice,
     ...updatedData,
     id: invoiceId,
-    uploadTime: originalInvoice.uploadTime,
+    uploadTime: originalInvoice.uploadTime, // uploadTime should not be changed here
     documentType: updatedData.documentType || originalInvoice.documentType,
     originalImagePreviewUri: updatedData.originalImagePreviewUri === null ? undefined : (updatedData.originalImagePreviewUri ?? originalInvoice.originalImagePreviewUri),
     compressedImageForFinalRecordUri: updatedData.compressedImageForFinalRecordUri === null ? undefined : (updatedData.compressedImageForFinalRecordUri ?? originalInvoice.compressedImageForFinalRecordUri),
-    status: originalInvoice.status,
+    status: originalInvoice.status, // status should be managed by the scanning/saving process itself
     paymentStatus: updatedData.paymentStatus || originalInvoice.paymentStatus || 'unpaid',
     paymentReceiptImageUri: updatedData.paymentReceiptImageUri === null ? undefined : (updatedData.paymentReceiptImageUri ?? originalInvoice.paymentReceiptImageUri),
-    invoiceDate: updatedData.invoiceDate ?? originalInvoice.invoiceDate,
-    paymentMethod: updatedData.paymentMethod ?? originalInvoice.paymentMethod,
+    invoiceDate: updatedData.invoiceDate, // Keep as string
+    paymentMethod: updatedData.paymentMethod,
   };
 
   currentInvoices[invoiceIndex] = finalUpdatedData;
@@ -835,7 +842,6 @@ export async function getSupplierSummariesService(userId?: string): Promise<Supp
         existingSupplierSummary.invoiceCount += 1;
         existingSupplierSummary.totalSpent += (invoice.totalAmount || 0);
       } else {
-        // Only add if it's not already from storedSuppliers, or if we want to ensure all mentioned suppliers are listed
         if (!supplierMap.has(invoice.supplier)) {
              supplierMap.set(invoice.supplier, {
                 name: invoice.supplier,
@@ -887,7 +893,7 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
     }
   } catch (e) {
     console.error(`Error reading suppliers from localStorage key ${storageKey}:`, e);
-    return;
+    // Allow to proceed, will effectively "not find" the supplier if list is empty
   }
 
   const initialLength = suppliers.length;
@@ -898,12 +904,13 @@ export async function deleteSupplierService(supplierName: string, userId?: strin
       console.error(`[deleteSupplierService] CRITICAL: Supplier "${supplierName}" was in the list for user ${userId} but filter did not remove it. Key: ${storageKey}.`);
        throw new Error(`Failed to delete supplier "${supplierName}" due to an internal error.`);
     } else {
+       // This is not an error, just means the supplier didn't exist.
        console.warn(`[deleteSupplierService] Supplier "${supplierName}" not found in the list for user ${userId} (key: ${storageKey}). No deletion occurred.`);
     }
   }
 
   const success = saveStoredData(SUPPLIERS_STORAGE_KEY_BASE, updatedSuppliers, userId);
-  if (!success) {
+  if (!success && updatedSuppliers.length < initialLength) { // Only error if a deletion was expected but save failed
     console.error(`[deleteSupplierService] Failed to save updated supplier list for user ${userId} to key "${storageKey}" after attempting to delete "${supplierName}".`);
   }
 }
@@ -951,6 +958,25 @@ export async function getAccountantSettingsService(userId?: string): Promise<Acc
     return getStoredObject<AccountantSettings>(ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE, userId);
 }
 
+// --- User Settings Management (for reminder preferences) ---
+export async function saveUserSettingsService(settings: UserSettings, userId?: string): Promise<void> {
+    if (!userId) {
+        console.error("[saveUserSettingsService] UserID is required. Aborting.");
+        throw new Error("User authentication is required to save user settings.");
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+    saveStoredData(USER_SETTINGS_STORAGE_KEY_BASE, settings, userId);
+}
+
+export async function getUserSettingsService(userId?: string): Promise<UserSettings | null> {
+    if (typeof window === 'undefined') return null;
+    if (!userId) {
+      return null;
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return getStoredObject<UserSettings>(USER_SETTINGS_STORAGE_KEY_BASE, userId);
+}
+
 
 export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
     if (typeof window === 'undefined') {
@@ -981,7 +1007,7 @@ export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
 export function clearOldTemporaryScanData(emergencyClear: boolean = false, userIdToClear?: string) {
   if (typeof window === 'undefined') return;
   const now = Date.now();
-  const oneDay = 24 * 60 * 60 * 1000;
+  const EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
   let itemsCleared = 0;
   const keysToRemove: string[] = [];
 
@@ -994,31 +1020,42 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
 
         if (isTempDataKey || isTempOriginalImageKey || isTempCompressedImageKey) {
             if (userIdToClear && !key.includes(`_${userIdToClear}_`)) {
-                continue;
+                continue; // Skip keys not belonging to the target user if userIdToClear is provided
             }
 
+            // Extract timestamp from the key (assuming format: PREFIX_USERID_TIMESTAMP_FILENAME)
             const parts = key.split('_');
             let timestamp: number | null = null;
-
+            
             // Find the part that is a 13+ digit number (timestamp)
+            // Example: invoTrackTempScan_user123_1678886400000_invoice.pdf
             const timestampString = parts.find(part => /^\d{13,}$/.test(part));
             if (timestampString) {
               timestamp = parseInt(timestampString, 10);
             }
 
-            if (timestamp && !isNaN(timestamp) && (now - timestamp > oneDay)) {
+
+            if (timestamp && !isNaN(timestamp) && (now - timestamp > EXPIRY_DURATION_MS)) {
               keysToRemove.push(key);
             } else if (!timestamp && emergencyClear) {
-              console.warn(`[clearOldTemporaryScanData Emergency] No clear timestamp in key "${key}", but clearing due to emergency mode.`);
-              keysToRemove.push(key);
+              // If no clear timestamp and it's an emergency clear for a specific user, remove it.
+              // Or if emergencyClear and no userIdToClear, remove all temp keys without clear timestamp.
+              if (userIdToClear || !key.includes('_SHARED_OR_ERROR_')) { // Avoid deleting general shared keys unless explicitly targeting them
+                 console.warn(`[clearOldTemporaryScanData Emergency] No clear timestamp in key "${key}", but clearing due to emergency mode for user: ${userIdToClear || 'all users'}.`);
+                 keysToRemove.push(key);
+              }
             }
         }
     }
   }
 
   keysToRemove.forEach(key => {
-    localStorage.removeItem(key);
-    itemsCleared++;
+    try {
+      localStorage.removeItem(key);
+      itemsCleared++;
+    } catch (e) {
+      console.error(`Error removing key ${key} during cleanup:`, e);
+    }
   });
 
   if (itemsCleared > 0) {

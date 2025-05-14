@@ -8,20 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
-import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid, isSameMonth, isBefore } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isBefore, startOfMonth, endOfMonth, isValid, isSameMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Import Link
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
+import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 export interface OtherExpense {
@@ -72,6 +73,7 @@ export default function AccountsPage() {
   const [isEditingBudget, setIsEditingBudget] = useState(false);
   const [tempBudget, setTempBudget] = useState<string>('');
   const [currentOpenInvoicePage, setCurrentOpenInvoicePage] = useState(1);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
 
 
   useEffect(() => {
@@ -88,8 +90,16 @@ export default function AccountsPage() {
         setMonthlyBudget(parseFloat(storedBudget));
         setTempBudget(storedBudget);
       }
+
+      getUserSettingsService(user.id).then(settings => {
+        setUserSettings(settings);
+      }).catch(err => {
+        console.error("Failed to load user settings for reminders:", err);
+        toast({ title: t('error_title'), description: t('settings_notification_toast_load_error_desc'), variant: "destructive" });
+      });
+
     }
-  }, [user]);
+  }, [user, t, toast]);
 
 
   const fetchAccountData = async () => {
@@ -111,11 +121,11 @@ export default function AccountsPage() {
   };
 
   useEffect(() => {
-    if (authLoading) return; 
+    if (authLoading) return;
     if (!user) {
-      router.push('/login'); 
+      router.push('/login');
     } else {
-      fetchAccountData(); 
+      fetchAccountData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
@@ -149,17 +159,15 @@ export default function AccountsPage() {
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
-            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string) : null;
-            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string) : null;
+            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate) : null;
+            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate) : null;
 
             const isAOverdue = dateA ? isBefore(dateA, today) : false;
-            const isBOverdue = dateB ? isBefore(dateB, today) : false;
+            const isBOverdue = dateB ? isBefore(B, today) : false;
 
-            // Prioritize overdue invoices
             if (isAOverdue && !isBOverdue) return -1;
             if (!isAOverdue && isBOverdue) return 1;
 
-            // If both are overdue or both not overdue, sort by due date
             const timeA = dateA?.getTime() ?? Infinity;
             const timeB = dateB?.getTime() ?? Infinity;
             return timeA - timeB;
@@ -190,31 +198,28 @@ export default function AccountsPage() {
     let totalExpenses = 0;
 
     allInvoices.forEach(invoice => {
-        if (invoice.status !== 'completed') return; // Only consider completed invoices
+        if (invoice.status !== 'completed') return;
 
         let relevantDateForExpense: Date | null = null;
 
-        // Prioritize paymentDueDate
         if (invoice.paymentDueDate) {
             try {
-                const dueDate = parseISO(invoice.paymentDueDate as string);
+                const dueDate = parseISO(invoice.paymentDueDate);
                 if (isValid(dueDate)) {
                     relevantDateForExpense = dueDate;
                 }
             } catch (e) { /* ignore invalid date parsing for due date */ }
         }
         
-        // If no valid paymentDueDate, fall back to uploadTime
         if (!relevantDateForExpense && invoice.uploadTime) {
              try {
-                const upTime = parseISO(invoice.uploadTime as string);
+                const upTime = parseISO(invoice.uploadTime);
                 if (isValid(upTime)) {
                     relevantDateForExpense = upTime;
                 }
             } catch (e) { /* ignore invalid date parsing for upload time */ }
         }
 
-        // Check if the relevantDateForExpense (either paymentDueDate or uploadTime) is within the current month
         if (relevantDateForExpense) {
             if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
                 totalExpenses += (invoice.totalAmount || 0);
@@ -266,37 +271,52 @@ export default function AccountsPage() {
   }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesForCurrentMonth]);
 
 
-  const getDueDateStatus = (dueDate: string | Date | undefined, paymentStatus: InvoiceHistoryItem['paymentStatus']): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
-    if (!dueDate || paymentStatus === 'paid') return null;
+  const getDueDateStatus = (
+    dueDateStr: string | undefined,
+    paymentStatus: InvoiceHistoryItem['paymentStatus'],
+    reminderDays?: number
+  ): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType; isReminderActive?: boolean } | null => {
+    if (!dueDateStr || paymentStatus === 'paid') return null;
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const dueDateObj = parseISO(dueDate as string);
+        const dueDateObj = parseISO(dueDateStr);
         dueDateObj.setHours(0,0,0,0);
 
-        if (isBefore(dueDateObj, today)) { // isPast includes today, isBefore excludes today
-        return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle };
-        }
-
+        let isReminderActive = false;
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (daysUntilDue === 0) { // Due today
-            return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
+        if (reminderDays !== undefined && reminderDays >= 0 && paymentStatus !== 'paid') {
+            if (daysUntilDue >= 0 && daysUntilDue <= reminderDays) {
+                isReminderActive = true;
+            }
         }
-        if (daysUntilDue > 0 && daysUntilDue <= 7) { // Due in the next 7 days
-        return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock };
+
+        if (isBefore(dueDateObj, today)) {
+            return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle, isReminderActive };
         }
-        return null; // Due in more than 7 days
+        if (daysUntilDue === 0) {
+            return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle, isReminderActive };
+        }
+        if (daysUntilDue > 0 && daysUntilDue <= 7) {
+            return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock, isReminderActive };
+        }
+        // If it's not overdue, due today, or due in next 7 days, but a reminder is active
+        if (isReminderActive) {
+             return { textKey: 'accounts_due_date_reminder_active', params: { days: daysUntilDue }, variant: 'outline', icon: Bell, isReminderActive };
+        }
+
+        return null; 
     } catch(e) {
         console.error("Error in getDueDateStatus:", e);
         return null;
     }
   };
 
-  const formatDateDisplay = (dateString: string | Date | undefined, formatStr: string = 'PP') => {
+  const formatDateDisplay = (dateString: string | undefined, formatStr: string = 'PP') => {
     if (!dateString) return t('invoices_na');
     try {
-      const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
+      const dateObj = parseISO(dateString);
       return format(dateObj, formatStr);
     } catch (e) {
       console.error("Error formatting date for display:", e, "Input:", dateString);
@@ -325,7 +345,7 @@ export default function AccountsPage() {
   const budgetProgress = monthlyBudget && monthlyBudget > 0 ? (currentMonthTotalExpenses / monthlyBudget) * 100 : 0;
 
 
-  if (authLoading || isLoadingData) { 
+  if (authLoading || isLoadingData || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -333,10 +353,10 @@ export default function AccountsPage() {
       </div>
     );
   }
-  if (!user && !authLoading) return null; 
 
 
   return (
+    <TooltipProvider>
     <div className="container mx-auto p-4 md:p-8 space-y-6">
       <Card className="shadow-md scale-fade-in">
         <CardHeader>
@@ -395,13 +415,13 @@ export default function AccountsPage() {
         <CardHeader>
             <div className="flex justify-between items-center">
                 <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <Banknote className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_current_month_expenses_title')}
+                    <Banknote className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_current_month_expenses_title_with_budget')}
                 </CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setIsEditingBudget(!isEditingBudget)} className="h-8 w-8">
                     {isEditingBudget ? <Save className="h-4 w-4 text-primary" /> : <Edit2 className="h-4 w-4 text-muted-foreground" />}
                 </Button>
             </div>
-            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
+            <CardDescription>{t('accounts_current_month_expenses_desc_with_budget')}</CardDescription>
         </CardHeader>
         <CardContent>
             {isLoadingData ? (
@@ -419,6 +439,7 @@ export default function AccountsPage() {
                                 onChange={(e) => setTempBudget(e.target.value)}
                                 placeholder={t('accounts_budget_placeholder')}
                                 className="h-9 max-w-xs"
+                                min="0"
                             />
                             <Button size="sm" onClick={handleSaveBudget}><Save className="mr-1 h-4 w-4" /> {t('save_button')}</Button>
                         </div>
@@ -434,10 +455,13 @@ export default function AccountsPage() {
                       <div className="mt-2">
                         <Progress value={budgetProgress} className="h-2" indicatorClassName={budgetProgress > 100 ? "bg-destructive" : (budgetProgress > 75 ? "bg-yellow-500" : "bg-primary")} />
                         <p className="text-xs text-muted-foreground mt-1">
-                           {budgetProgress > 100 ? t('accounts_budget_exceeded_by', {amount: formatCurrency(currentMonthTotalExpenses - monthlyBudget)}) : 
+                           {budgetProgress > 100 ? t('accounts_budget_exceeded_by', {amount: formatCurrency(currentMonthTotalExpenses - monthlyBudget)}) :
                            t('accounts_budget_remaining', {amount: formatCurrency(monthlyBudget - currentMonthTotalExpenses)})}
                         </p>
                       </div>
+                    )}
+                     {monthlyBudget === null && !isEditingBudget && (
+                        <p className="text-xs text-muted-foreground mt-1">{t('accounts_budget_not_set')}</p>
                     )}
                 </div>
             )}
@@ -475,7 +499,7 @@ export default function AccountsPage() {
                 </TableHeader>
                 <TableBody>
                   {displayedOpenInvoices.map((invoice) => {
-                    const dueDateStatus = getDueDateStatus(invoice.paymentDueDate, invoice.paymentStatus);
+                    const dueDateStatus = getDueDateStatus(invoice.paymentDueDate, invoice.paymentStatus, userSettings?.reminderDaysBefore);
                     const IconComponent = dueDateStatus?.icon;
                     return (
                       <TableRow key={invoice.id} className={cn(dueDateStatus?.variant === 'destructive' && 'bg-destructive/10 hover:bg-destructive/20')}>
@@ -485,10 +509,29 @@ export default function AccountsPage() {
                         <TableCell className="text-center">{formatDateDisplay(invoice.paymentDueDate)}</TableCell>
                         <TableCell className="text-center">
                           {dueDateStatus && (
-                            <Badge variant={dueDateStatus.variant} className="text-xs">
-                              {IconComponent && <IconComponent className="mr-1 h-3.5 w-3.5" />}
-                              {t(dueDateStatus.textKey as any, dueDateStatus.params)}
-                            </Badge>
+                            <div className="flex items-center justify-center gap-1">
+                                {dueDateStatus.isReminderActive && !IconComponent && ( // Show bell if reminder active but no other icon
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Bell className="h-3.5 w-3.5 text-blue-500" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{t('accounts_tooltip_reminder_active', {days: differenceInCalendarDays(parseISO(invoice.paymentDueDate!), new Date())})}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                )}
+                                <Badge variant={dueDateStatus.variant} className="text-xs">
+                                  {IconComponent && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <IconComponent className={cn("mr-1 h-3.5 w-3.5", dueDateStatus.isReminderActive && IconComponent !== Bell && "text-blue-500")} />
+                                      </TooltipTrigger>
+                                      {dueDateStatus.isReminderActive && IconComponent !== Bell && <TooltipContent><p>{t('accounts_tooltip_reminder_active_with_status')}</p></TooltipContent>}
+                                    </Tooltip>
+                                  )}
+                                  {t(dueDateStatus.textKey as any, dueDateStatus.params)}
+                                </Badge>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -575,6 +618,6 @@ export default function AccountsPage() {
           </CardContent>
       </Card>
     </div>
+    </TooltipProvider>
   );
 }
-
