@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
-import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid, isSameMonth } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays, isPast, isToday, startOfMonth, endOfMonth, isValid, isSameMonth, isBefore } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; // Import Link
-import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, DollarSign, Info, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -142,13 +142,28 @@ export default function AccountsPage() {
 
 
   const openInvoices = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     return filteredInvoices
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
-            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string).getTime() : Infinity;
-            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string).getTime() : Infinity;
-            return dateA - dateB;
+            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string) : null;
+            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string) : null;
+
+            const isAOverdue = dateA ? isBefore(dateA, today) : false;
+            const isBOverdue = dateB ? isBefore(dateB, today) : false;
+
+            // Prioritize overdue invoices
+            if (isAOverdue && !isBOverdue) return -1;
+            if (!isAOverdue && isBOverdue) return 1;
+
+            // If both are overdue or both not overdue, sort by due date
+            const timeA = dateA?.getTime() ?? Infinity;
+            const timeB = dateB?.getTime() ?? Infinity;
+            return timeA - timeB;
+
         } catch (e) {
             console.error("Error sorting open invoices by due date:", e);
             return 0;
@@ -251,27 +266,27 @@ export default function AccountsPage() {
   }, [currentMonthTotalExpensesFromInvoices, totalOtherExpensesForCurrentMonth]);
 
 
-  const getDueDateStatus = (dueDate: string | Date | undefined): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
-    if (!dueDate) return null;
+  const getDueDateStatus = (dueDate: string | Date | undefined, paymentStatus: InvoiceHistoryItem['paymentStatus']): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType } | null => {
+    if (!dueDate || paymentStatus === 'paid') return null;
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const dueDateObj = parseISO(dueDate as string);
         dueDateObj.setHours(0,0,0,0);
 
-        if (isPast(dueDateObj) && !isToday(dueDateObj)) {
+        if (isBefore(dueDateObj, today)) { // isPast includes today, isBefore excludes today
         return { textKey: 'accounts_due_date_overdue', variant: 'destructive', icon: AlertTriangle };
         }
 
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (daysUntilDue <= 0) { // Includes today
+        if (daysUntilDue === 0) { // Due today
             return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle };
         }
-        if (daysUntilDue <= 7) {
+        if (daysUntilDue > 0 && daysUntilDue <= 7) { // Due in the next 7 days
         return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock };
         }
-        return null;
+        return null; // Due in more than 7 days
     } catch(e) {
         console.error("Error in getDueDateStatus:", e);
         return null;
@@ -380,13 +395,13 @@ export default function AccountsPage() {
         <CardHeader>
             <div className="flex justify-between items-center">
                 <CardTitle className="text-xl font-semibold text-primary flex items-center">
-                    <TrendingDownIcon className="mr-2 h-5 w-5 text-red-500" /> {t('This Month\'s Expenses')}
+                    <Banknote className="mr-2 h-5 w-5 text-green-500" /> {t('accounts_current_month_expenses_title')}
                 </CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setIsEditingBudget(!isEditingBudget)} className="h-8 w-8">
                     {isEditingBudget ? <Save className="h-4 w-4 text-primary" /> : <Edit2 className="h-4 w-4 text-muted-foreground" />}
                 </Button>
             </div>
-            <CardDescription>{t('Summary of all recorded expenses for the current calendar month.')}</CardDescription>
+            <CardDescription>{t('accounts_current_month_expenses_desc')}</CardDescription>
         </CardHeader>
         <CardContent>
             {isLoadingData ? (
@@ -447,7 +462,7 @@ export default function AccountsPage() {
             <p className="text-muted-foreground text-center py-6">{t('accounts_no_open_invoices_period')}</p>
           ) : (
             <>
-            <div className="overflow-x-auto relative border rounded-md">
+            <ScrollArea className="whitespace-nowrap rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -460,10 +475,10 @@ export default function AccountsPage() {
                 </TableHeader>
                 <TableBody>
                   {displayedOpenInvoices.map((invoice) => {
-                    const dueDateStatus = getDueDateStatus(invoice.paymentDueDate);
+                    const dueDateStatus = getDueDateStatus(invoice.paymentDueDate, invoice.paymentStatus);
                     const IconComponent = dueDateStatus?.icon;
                     return (
-                      <TableRow key={invoice.id}>
+                      <TableRow key={invoice.id} className={cn(dueDateStatus?.variant === 'destructive' && 'bg-destructive/10 hover:bg-destructive/20')}>
                         <TableCell className="font-medium">{invoice.supplier || t('invoices_na')}</TableCell>
                         <TableCell>{invoice.invoiceNumber || t('invoices_na')}</TableCell>
                         <TableCell className="text-right">{formatCurrency(invoice.totalAmount)}</TableCell>
@@ -481,7 +496,8 @@ export default function AccountsPage() {
                   })}
                 </TableBody>
               </Table>
-            </div>
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
             {totalOpenInvoicePages > 1 && (
                 <div className="flex items-center justify-end space-x-2 py-4">
                     <Button
@@ -561,3 +577,4 @@ export default function AccountsPage() {
     </div>
   );
 }
+
