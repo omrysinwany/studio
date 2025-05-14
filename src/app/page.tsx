@@ -24,7 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
-import KpiCustomizationSheet from '@/components/KpiCustomizationSheet'; 
+import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 
 
 export interface OtherExpense {
@@ -228,7 +228,7 @@ export default function Home() {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
-  
+
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
     getKpiPreferences(user?.id)
   );
@@ -384,19 +384,21 @@ export default function Home() {
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
     const absNum = Math.abs(num);
 
-    if (absNum < 1000) {
+    // For numbers less than 10,000, display with full precision appropriate to type
+    if (absNum < 10000) {
       return prefix + num.toLocaleString(undefined, {
         minimumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals),
         maximumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals)
       });
     }
 
+
     const si = [
       { value: 1, symbol: "" },
-      { value: 1E3, symbol: "K" },
-      { value: 1E6, symbol: "M" },
-      { value: 1E9, symbol: "B" },
-      { value: 1E12, symbol: "T" }
+      { value: 1E3, symbol: "K" }, // Thousand
+      { value: 1E6, symbol: "M" }, // Million
+      { value: 1E9, symbol: "B" }, // Billion
+      { value: 1E12, symbol: "T" }  // Trillion
     ];
     const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
     let i;
@@ -410,11 +412,12 @@ export default function Home() {
     const valAfterSuffix = num / si[i].value;
 
     if (isCurrency) {
-      numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : 2;
+        numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : (absNum < 1000 ? 2 : decimals);
     } else {
-      numDecimals = (isInteger ? 0 : (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals);
+        numDecimals = (isInteger ? 0 : (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals);
     }
-     if (si[i].value === 1) numDecimals = isCurrency ? 2 : (isInteger ? 0 : decimals) ;
+    if (si[i].value === 1) numDecimals = isCurrency ? 2 : (isInteger ? 0 : decimals) ;
+
 
     const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
@@ -454,7 +457,7 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background")}>
+    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
@@ -601,7 +604,7 @@ export default function Home() {
 //     {...props}
 //   >
 //     <ProgressPrimitive.Indicator
-//       className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
+//       className={cn("h-full w-full flex-1 bg-accent transition-all", indicatorClassName)}
 //       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
 //     />
 //   </ProgressPrimitive.Root>
@@ -609,4 +612,5 @@ export default function Home() {
 // Progress.displayName = ProgressPrimitive.Root.displayName
 //
 // export { Progress }
+
 
