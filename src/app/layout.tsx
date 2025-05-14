@@ -4,7 +4,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import { LanguageProvider } from '@/context/LanguageContext';
+import { LanguageProvider } from '@/context/LanguageContext'; // Import LanguageProvider
 import ClientLayoutWrapper from '@/components/layout/ClientLayoutWrapper'; // Import the new ClientLayoutWrapper
 
 const geistSans = Geist({
@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning> {/* Default lang, ClientLayoutWrapper will update if needed */}
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
         <LanguageProvider> {/* LanguageProvider must wrap ClientLayoutWrapper */}
           <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
