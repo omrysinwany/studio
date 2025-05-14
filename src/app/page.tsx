@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings, GripVertical } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, GripVertical } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -24,7 +24,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
-import KpiCustomizationSheet from '@/components/KpiCustomizationSheet'; // Import the new component
+import KpiCustomizationSheet from '@/components/KpiCustomizationSheet'; 
+
 
 export interface OtherExpense {
   id: string;
@@ -35,7 +36,7 @@ export interface OtherExpense {
   date: string;
 }
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
-const KPI_PREFERENCES_STORAGE_KEY = 'invoTrack_kpiPreferences';
+const KPI_PREFERENCES_STORAGE_KEY = 'invoTrack_kpiPreferences_v2'; // Added _v2 to reset if old format exists
 
 
 interface KpiData {
@@ -66,6 +67,8 @@ export interface KpiConfig {
   defaultVisible?: boolean;
 }
 
+// This array defines ALL available KPIs.
+// The home page will filter and order them based on user preferences.
 const allKpiConfigurations: KpiConfig[] = [
   {
     id: 'totalItems',
@@ -153,7 +156,11 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed.visibleKpiIds) && parsed.visibleKpiIds.every((id: any) => typeof id === 'string') &&
           Array.isArray(parsed.kpiOrder) && parsed.kpiOrder.every((id: any) => typeof id === 'string')) {
-        return parsed;
+        // Validate that all IDs in kpiOrder and visibleKpiIds are actual KPI ids
+        const allIds = new Set(allKpiConfigurations.map(kpi => kpi.id));
+        const validVisible = parsed.visibleKpiIds.filter((id: string) => allIds.has(id));
+        const validOrder = parsed.kpiOrder.filter((id: string) => allIds.has(id));
+        return { visibleKpiIds: validVisible, kpiOrder: validOrder };
       }
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
@@ -221,22 +228,26 @@ export default function Home() {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
-  const [visibleKpiConfigs, setVisibleKpiConfigs] = useState<KpiConfig[]>([]);
+  
+  const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
+    getKpiPreferences(user?.id)
+  );
   const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
+
+  // Update displayed KPIs when preferences change
+  const visibleKpiConfigs = useMemo(() => {
+    return userKpiPreferences.kpiOrder
+      .filter(id => userKpiPreferences.visibleKpiIds.includes(id))
+      .map(id => allKpiConfigurations.find(config => config.id === id))
+      .filter(config => config !== undefined) as KpiConfig[];
+  }, [userKpiPreferences]);
 
   useEffect(() => {
     if (user) {
-      const preferences = getKpiPreferences(user.id);
-      const newVisibleConfigs = preferences.kpiOrder
-        .map(id => allKpiConfigurations.find(config => config.id === id && preferences.visibleKpiIds.includes(id)))
-        .filter(config => config !== undefined) as KpiConfig[];
-      setVisibleKpiConfigs(newVisibleConfigs);
-    } else if (!authLoading) {
-      const defaultGuestKpiIds = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
-       const defaultGuestConfigs = defaultGuestKpiIds
-        .map(id => allKpiConfigurations.find(config => config.id === id))
-        .filter(config => config !== undefined) as KpiConfig[];
-      setVisibleKpiConfigs(defaultGuestConfigs);
+      setUserKpiPreferences(getKpiPreferences(user.id));
+    } else if (!authLoading) { // For guest users or when auth is done loading and no user
+        const defaultGuestPrefs = getKpiPreferences(); // Get default preferences
+        setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
 
@@ -346,8 +357,8 @@ export default function Home() {
     }
     if (user) {
       fetchKpiData();
-    } else if (!authLoading) {
-      setIsLoadingKpis(false);
+    } else if (!authLoading) { // If not loading and no user, it's a guest
+      setIsLoadingKpis(false); // Stop loading for guest view
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, toast, t]);
@@ -411,7 +422,7 @@ export default function Home() {
 
 
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
-    if (isLoadingKpis && user) {
+    if (isLoadingKpis && user) { // Only show loader if user is logged in and KPIs are loading
       return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
     }
     if (kpiError && user) return <span className="text-destructive text-lg">-</span>;
@@ -423,10 +434,7 @@ export default function Home() {
   const handleSavePreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
     if (user) {
         saveKpiPreferences(newPreferences, user.id);
-        const newVisible = newPreferences.kpiOrder
-            .map(id => allKpiConfigurations.find(config => config.id === id && newPreferences.visibleKpiIds.includes(id)))
-            .filter(config => config !== undefined) as KpiConfig[];
-        setVisibleKpiConfigs(newVisible);
+        setUserKpiPreferences(newPreferences); // Update local state to re-render
         toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
     }
   };
@@ -449,7 +457,7 @@ export default function Home() {
     <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
-           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
+          <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
            {t('home_greeting', { username: user?.username || 'User' })}
           </p>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 md:mb-8 text-primary scale-fade-in">
@@ -490,12 +498,12 @@ export default function Home() {
             </Alert>
           )}
 
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl sm:text-2xl font-semibold text-left text-foreground">{t('home_dashboard_title')}</h2>
             <Button variant="outline" size="sm" onClick={() => setIsCustomizeSheetOpen(true)}>
-              <Settings className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
+              <SettingsIcon className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
             </Button>
           </div>
-
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
              {visibleKpiConfigs.map((kpi, index) => {
@@ -563,11 +571,42 @@ export default function Home() {
         isOpen={isCustomizeSheetOpen}
         onOpenChange={setIsCustomizeSheetOpen}
         allKpis={allKpiConfigurations}
-        currentVisibleKpiIds={visibleKpiConfigs.map(kpi => kpi.id)}
-        currentKpiOrder={visibleKpiConfigs.map(kpi => kpi.id)}
+        currentVisibleKpiIds={userKpiPreferences.visibleKpiIds}
+        currentKpiOrder={userKpiPreferences.kpiOrder}
         onSavePreferences={handleSavePreferences}
       />
     </div>
   );
 }
+
+// Ensure the Progress component's definition in progress.tsx is correct
+// It should look something like this:
+//
+// "use client"
+// import * as React from "react"
+// import * as ProgressPrimitive from "@radix-ui/react-progress"
+// import { cn } from "@/lib/utils"
+//
+// interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> {
+//   indicatorClassName?: string;
+// }
+//
+// const Progress = React.forwardRef<
+//   React.ElementRef<typeof ProgressPrimitive.Root>,
+//   ProgressProps
+// >(({ className, value, indicatorClassName, ...props }, ref) => (
+//   <ProgressPrimitive.Root
+//     ref={ref}
+//     className={cn("relative h-2 w-full overflow-hidden rounded-full bg-secondary", className)}
+//     {...props}
+//   >
+//     <ProgressPrimitive.Indicator
+//       className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
+//       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+//     />
+//   </ProgressPrimitive.Root>
+// ))
+// Progress.displayName = ProgressPrimitive.Root.displayName
+//
+// export { Progress }
 

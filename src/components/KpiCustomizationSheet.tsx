@@ -16,16 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { KpiConfig } from '@/app/page'; // Adjust path as necessary
+import type { KpiConfig } from '@/app/page';
 import { useTranslation } from '@/hooks/useTranslation';
-import { GripVertical, Save, X } from 'lucide-react';
+import { GripVertical, Save, X, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface KpiCustomizationSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   allKpis: KpiConfig[];
   currentVisibleKpiIds: string[];
-  currentKpiOrder: string[]; // We'll use this for reordering later
+  currentKpiOrder: string[];
   onSavePreferences: (preferences: { visibleKpiIds: string[], kpiOrder: string[] }) => void;
 }
 
@@ -38,17 +38,21 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
   onSavePreferences,
 }) => {
   const { t } = useTranslation();
-  const [selectedKpiIds, setSelectedKpiIds] = useState<Set<string>>(new Set(currentVisibleKpiIds));
-  // For now, kpiOrder editing is not implemented in this step, so we'll just pass it through
-  const [editableKpiOrder, setEditableKpiOrder] = useState<string[]>(currentKpiOrder);
-
+  const [selectedKpiIds, setSelectedKpiIds] = useState<Set<string>>(new Set());
+  const [editableKpiOrder, setEditableKpiOrder] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
       setSelectedKpiIds(new Set(currentVisibleKpiIds));
-      setEditableKpiOrder(currentKpiOrder);
+      // Ensure editableKpiOrder contains all allKpis IDs initially, respecting currentKpiOrder for those present,
+      // and appending any new ones from allKpis not in currentKpiOrder.
+      const currentOrderSet = new Set(currentKpiOrder);
+      const newKpisToAdd = allKpis.filter(kpi => !currentOrderSet.has(kpi.id)).map(kpi => kpi.id);
+      // Filter currentKpiOrder to only include KPIs that are still in allKpis
+      const validCurrentOrder = currentKpiOrder.filter(id => allKpis.some(kpi => kpi.id === id));
+      setEditableKpiOrder([...validCurrentOrder, ...newKpisToAdd]);
     }
-  }, [isOpen, currentVisibleKpiIds, currentKpiOrder]);
+  }, [isOpen, currentVisibleKpiIds, currentKpiOrder, allKpis]);
 
   const handleToggleKpi = (kpiId: string) => {
     setSelectedKpiIds(prev => {
@@ -62,17 +66,27 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
     });
   };
 
-  const handleSave = () => {
-    // For now, we only save visibility. Order remains as initially loaded.
-    // Reordering logic will update `editableKpiOrder` in a future step.
-    const newVisibleIds = Array.from(selectedKpiIds);
-    // Ensure the order reflects only the currently visible KPIs and maintains their original relative order
-    // or the potentially reordered state if/when drag-and-drop is added.
-    const newOrder = allKpis.filter(kpi => newVisibleIds.includes(kpi.id)).map(kpi => kpi.id);
+  const moveKpi = (index: number, direction: 'up' | 'down') => {
+    setEditableKpiOrder(prevOrder => {
+      const newOrder = [...prevOrder];
+      const kpiToMove = newOrder[index];
+      if (direction === 'up' && index > 0) {
+        newOrder.splice(index, 1);
+        newOrder.splice(index - 1, 0, kpiToMove);
+      } else if (direction === 'down' && index < newOrder.length - 1) {
+        newOrder.splice(index, 1);
+        newOrder.splice(index + 1, 0, kpiToMove);
+      }
+      return newOrder;
+    });
+  };
 
+  const handleSave = () => {
+    const newVisibleIds = Array.from(selectedKpiIds);
+    // The editableKpiOrder now reflects the user's desired order
     onSavePreferences({
       visibleKpiIds: newVisibleIds,
-      kpiOrder: newOrder, // Or editableKpiOrder if reordering is implemented
+      kpiOrder: editableKpiOrder,
     });
     onOpenChange(false);
   };
@@ -82,26 +96,49 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
       <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="p-6 border-b">
           <SheetTitle>{t('home_kpi_customize_sheet_title')}</SheetTitle>
-          <SheetDescription>{t('home_kpi_customize_sheet_desc')}</SheetDescription>
+          <SheetDescription>{t('home_kpi_customize_sheet_desc_reorder')}</SheetDescription>
         </SheetHeader>
-        <ScrollArea className="flex-grow p-6 space-y-4">
+        <ScrollArea className="flex-grow p-6 space-y-1">
           <p className="text-sm font-medium mb-2">{t('home_kpi_customize_select_label')}:</p>
-          {allKpis.map((kpi) => (
-            <div key={kpi.id} className="flex items-center space-x-3 p-2 hover:bg-muted/50 rounded-md">
-              {/* Icon for drag handle - reordering to be implemented later */}
-              {/* <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" /> */}
-              <Checkbox
-                id={`kpi-toggle-${kpi.id}`}
-                checked={selectedKpiIds.has(kpi.id)}
-                onCheckedChange={() => handleToggleKpi(kpi.id)}
-              />
-              <Label htmlFor={`kpi-toggle-${kpi.id}`} className="flex-1 text-sm font-normal cursor-pointer">
-                {t(kpi.titleKey)}
-              </Label>
-            </div>
-          ))}
-           {/* Placeholder for reordering UI - to be added later */}
-           {/* <p className="text-xs text-muted-foreground mt-4">{t('home_kpi_customize_reorder_soon')}</p> */}
+          {editableKpiOrder.map((kpiId, index) => {
+            const kpi = allKpis.find(k => k.id === kpiId);
+            if (!kpi) return null;
+            return (
+              <div key={kpi.id} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md group">
+                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab opacity-50 group-hover:opacity-100" />
+                <Checkbox
+                  id={`kpi-toggle-${kpi.id}`}
+                  checked={selectedKpiIds.has(kpi.id)}
+                  onCheckedChange={() => handleToggleKpi(kpi.id)}
+                />
+                <Label htmlFor={`kpi-toggle-${kpi.id}`} className="flex-1 text-sm font-normal cursor-pointer">
+                  {t(kpi.titleKey)}
+                </Label>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveKpi(index, 'up')}
+                    disabled={index === 0}
+                    className="h-7 w-7 opacity-50 group-hover:opacity-100 disabled:opacity-20"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                    <span className="sr-only">{t('move_up_button')}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveKpi(index, 'down')}
+                    disabled={index === editableKpiOrder.length - 1}
+                    className="h-7 w-7 opacity-50 group-hover:opacity-100 disabled:opacity-20"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                     <span className="sr-only">{t('move_down_button')}</span>
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </ScrollArea>
         <SheetFooter className="p-6 border-t flex-col sm:flex-row gap-2">
           <SheetClose asChild>
