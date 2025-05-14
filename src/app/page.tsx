@@ -17,7 +17,6 @@ import {
   calculateTotalItems,
   getLowStockItems,
   calculateTotalPotentialGrossProfit,
-  calculateAverageOrderValue,
 } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -80,7 +79,7 @@ const formatLargeNumber = (
 
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
     const absNum = Math.abs(num);
-    const localeCode = t('locale_code_for_number_formatting');
+    const localeCode = t('locale_code_for_number_formatting') as string | undefined;
 
     if (absNum < 10000 || (isInteger && absNum < 1000)) {
         return prefix + num.toLocaleString(localeCode || undefined, {
@@ -239,7 +238,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
            validKpiOrder.push(kpi.id);
         }
       });
-      
+
       return { visibleKpiIds: validVisibleKpiIds, kpiOrder: validKpiOrder };
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
@@ -269,7 +268,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
   if (!data || data.length === 0) {
     return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('home_kpi_no_trend_data')}</div>;
   }
-  const localeCode = t('locale_code_for_number_formatting');
+  const localeCode = t('locale_code_for_number_formatting') as string | undefined;
   return (
     <ResponsiveContainer width="100%" height={40}>
       <LineChart data={data}>
@@ -345,7 +344,7 @@ export default function Home() {
         getSupplierSummariesService(user.id),
         getUserSettingsService(user.id)
       ]);
-      
+
       const invoices = invoicesData.map(inv => ({
         ...inv,
         uploadTime: inv.uploadTime
@@ -382,18 +381,23 @@ export default function Home() {
       invoices.forEach(invoice => {
           if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
+
           if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
-              relevantDateForExpense = parseISO(invoice.paymentDueDate as string);
-          } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
-              relevantDateForExpense = parseISO(invoice.uploadTime as string);
+            const paymentDate = parseISO(invoice.paymentDueDate as string);
+            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
+                relevantDateForExpense = paymentDate;
+            }
+          }
+          // Fallback to uploadTime if paymentDueDate is not relevant for the current month's expense calculation
+          if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
+              const uploadDate = parseISO(invoice.uploadTime as string);
+               if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
+                  relevantDateForExpense = uploadDate;
+              }
           }
 
-          if (relevantDateForExpense) {
-              if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
-                  if (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid') {
-                     totalExpensesFromInvoices += (invoice.totalAmount || 0);
-                  }
-              }
+          if (relevantDateForExpense && (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid')) {
+             totalExpensesFromInvoices += (invoice.totalAmount || 0);
           }
       });
 
@@ -412,6 +416,8 @@ export default function Home() {
                                          t('accounts_other_expenses_tab_rent').toLowerCase()];
 
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
+                     // Bi-monthly expenses are typically recorded for the full amount in the month they occur
+                     // No division by 2 for this specific KPI calculation of "This Month's Expenses"
                   }
                   return sum + amountToAdd;
               }
@@ -568,7 +574,28 @@ export default function Home() {
                 </div>
           </div>
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-6">
+          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+            <CardHeader className="pb-3">
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0">
+            <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                <Link href="/accounts/other-expenses">
+                <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
+                </Link>
+            </Button>
+            <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                <Link href="/inventory">
+                <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
+                </Link>
+            </Button>
+            </CardContent>
+          </Card>
+
+
+          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-6 rounded-lg bg-card/70 backdrop-blur-sm border border-border/50 shadow-xl">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
@@ -579,7 +606,7 @@ export default function Home() {
                 </Button>
             </div>
             <p className="text-sm text-muted-foreground mb-6">{t('home_quick_overview_desc')}</p>
-            
+
             {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-4 text-left">
                 <AlertTriangle className="h-4 w-4" />
@@ -587,7 +614,7 @@ export default function Home() {
             </Alert>
             )}
             {(isLoadingKpis && user) ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                <div className="grid grid-cols-2 gap-4">
                 {Array.from({length: Math.min(visibleKpiConfigs.length || 3, 6)}).map((_, idx) => (
                     <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px] kpiCard">
                         <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
@@ -602,7 +629,7 @@ export default function Home() {
                 <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
             </div>
             ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-4">
                 {visibleKpiConfigs.map((kpi, index) => {
                     const Icon = kpi.icon;
                     const valueString = kpi.getValue(kpiData, t);
@@ -735,7 +762,7 @@ export default function Home() {
                     </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        {isLoadingKpis ? 
+                        {isLoadingKpis ?
                             <div className="space-y-2">
                                 <Skeleton className="h-5 w-full" />
                                 <Skeleton className="h-5 w-5/6" />
@@ -767,26 +794,6 @@ export default function Home() {
                     </CardContent>
                 </Card>
             </div>
-
-            <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
-                <CardHeader className="pb-3">
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                    <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
-                </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0">
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/accounts/other-expenses">
-                    <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
-                    </Link>
-                </Button>
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/inventory">
-                    <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
-                    </Link>
-                </Button>
-                </CardContent>
-            </Card>
         </div>
       </TooltipProvider>
       <KpiCustomizationSheet
