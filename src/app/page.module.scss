@@ -9,8 +9,8 @@
 }
 
 .kpiCard:hover {
-  transform: translateY(-4px) scale(1.03); /* Combine scale and translate */
-  box-shadow: 0 8px 20px rgba(var(--foreground-rgb), 0.1), 0 4px 8px rgba(var(--foreground-rgb), 0.08); /* Softer, layered shadow */
+  transform: translateY(-4px) scale(1.02); /* Slightly reduced scale for subtlety */
+  box-shadow: 0 6px 15px hsla(var(--foreground), 0.08), 0 3px 6px hsla(var(--foreground), 0.06); /* Adjusted shadow */
 }
 
 .homeContainerGradient {
@@ -27,7 +27,7 @@
   background-image: 
     radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 30%), /* Slightly less opacity for shimmer */
     radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 30%);
-  opacity: 0.5; /* Reduced opacity of the shimmer effect itself */
+  opacity: 0.4; /* Adjusted opacity of the shimmer effect itself */
   z-index: 0; 
   animation: subtleShimmer 20s infinite alternate ease-in-out;
 }
@@ -39,4 +39,3 @@
   75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.4; }
   100% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
 }
-

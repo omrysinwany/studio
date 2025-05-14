@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
 import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, FileWarning, UserPlus } from "lucide-react";
@@ -23,11 +23,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
-import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBefore, format as formatDateFns } from 'date-fns';
+import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, format as formatDateFns } from 'date-fns';
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
-import styles from "./page.module.scss";
+import styles from "./page.module.scss"; // Assuming this is for the gradient background
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
@@ -54,7 +54,7 @@ interface KpiData {
   suppliersCount?: number;
 }
 
-export interface ItemConfig { // Renamed from KpiConfig to be more generic
+export interface ItemConfig {
   id: string;
   titleKey: string;
   icon: React.ElementType;
@@ -66,7 +66,7 @@ export interface ItemConfig { // Renamed from KpiConfig to be more generic
   progressValue?: (data: KpiData | null) => number;
   iconColor?: string;
   defaultVisible?: boolean;
-  onClick?: () => void; // For quick actions
+  onClick?: () => void;
 }
 
 const formatLargeNumber = (
@@ -250,7 +250,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Default order based on config array
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
   };
 };
 
@@ -356,19 +356,12 @@ export default function Home() {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
+  const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
 
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
     { visibleKpiIds: [], kpiOrder: [] }
   );
-  const [userQuickActionPreferences, setUserQuickActionPreferences] = useState<{ visibleQuickActionIds: string[], quickActionOrder: string[] }>(
-    { visibleQuickActionIds: [], quickActionOrder: [] }
-  );
-
-  const [isCustomizeKpiSheetOpen, setIsCustomizeKpiSheetOpen] = useState(false);
-  const [isCustomizeQuickActionsSheetOpen, setIsCustomizeQuickActionsSheetOpen] = useState(false);
-  const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
-
-  const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
+   const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
     {
       id: 'addExpense',
       titleKey: 'home_quick_action_add_expense',
@@ -380,12 +373,12 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory', // Or a dedicated "add product" page if you create one
+      link: '/inventory',
       defaultVisible: true,
     },
     {
       id: 'openInvoices',
-      titleKey: 'home_quick_action_open_invoices', // Renamed key
+      titleKey: 'home_open_invoices',
       icon: FileWarning,
       link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
       defaultVisible: true,
@@ -402,9 +395,17 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false, // Hidden by default
+      defaultVisible: false,
     },
   ], [t]); // Re-memoize if t changes (language change)
+
+
+  const [userQuickActionPreferences, setUserQuickActionPreferences] = useState<{ visibleQuickActionIds: string[], quickActionOrder: string[] }>(
+    getQuickActionPreferences(user?.id, allQuickActionConfigurations)
+  );
+
+  const [isCustomizeKpiSheetOpen, setIsCustomizeKpiSheetOpen] = useState(false);
+  const [isCustomizeQuickActionsSheetOpen, setIsCustomizeQuickActionsSheetOpen] = useState(false);
 
 
   const visibleKpiConfigs = useMemo(() => {
@@ -546,7 +547,7 @@ export default function Home() {
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: locale === 'he' ? heLocale : enUSLocale }),
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -580,7 +581,7 @@ export default function Home() {
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast, locale]);
+  }, [user, authLoading, t, toast, locale, allQuickActionConfigurations]);
 
   useEffect(() => {
     if (user) {
@@ -626,7 +627,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData();
+      fetchKpiData(); // Re-fetch KPIs which might include supplier count
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -650,7 +651,7 @@ export default function Home() {
   return (
     <div className={cn("flex flex-col items-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
       <TooltipProvider>
-        <div className="w-full max-w-5xl text-left"> {/* Changed to text-left for section titles */}
+        <div className="w-full max-w-5xl text-left">
            <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
              {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
            </p>
@@ -658,29 +659,28 @@ export default function Home() {
              {t('home_welcome_title')}
           </h1>
 
-          <div className="mb-6 md:mb-10 scale-fade-in delay-200 flex flex-col sm:flex-row items-stretch gap-3">
-                <Button
-                  size="lg"
-                  className="w-full sm:flex-1 bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-lg transform hover:-translate-y-1 py-3 sm:py-4"
-                  onClick={handleScanClick}
-                >
-                  <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
-                </Button>
-                <div className="w-full sm:flex-1 grid grid-cols-2 gap-3">
-                    <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
-                        <Link href="/inventory">
-                            <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
-                        </Link>
-                    </Button>
-                     <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
-                        <Link href="/invoices">
-                            <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
-                        </Link>
-                    </Button>
-                </div>
+          <div className="mb-6 md:mb-10 scale-fade-in delay-200 flex flex-col items-center gap-3">
+              <Button
+                size="lg"
+                className="w-full max-w-md bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-lg transform hover:-translate-y-1 py-3 sm:py-4"
+                onClick={handleScanClick}
+              >
+                <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
+              </Button>
+              <div className="w-full max-w-md grid grid-cols-2 gap-3">
+                  <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                      <Link href="/inventory">
+                          <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
+                      </Link>
+                  </Button>
+                   <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                      <Link href="/invoices">
+                          <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
+                      </Link>
+                  </Button>
+              </div>
           </div>
 
-          {/* Quick Actions Section */}
           <div className="mb-6 md:mb-8 scale-fade-in delay-300">
             <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
@@ -720,7 +720,7 @@ export default function Home() {
                             </Tooltip>
                         );
                     })}
-                    {(isLoadingKpis && user && visibleQuickActions.length === 0) && Array.from({length: 3}).map((_, idx) => <Skeleton key={`qa-skeleton-${idx}`} className="h-12 sm:h-14 w-full" />)}
+                    {(isLoadingKpis && user && visibleQuickActions.length === 0) && Array.from({length: 3}).map((_, idx) => <Skeleton key={`qa-skeleton-${idx}`} className="h-12 sm:h-14 w-full rounded-md" />)}
                     {(!isLoadingKpis || !user) && visibleQuickActions.length === 0 && (
                         <div className="col-span-full text-center py-4 text-muted-foreground">
                             <p className="text-sm">{t('home_no_quick_actions_selected')}</p>
@@ -731,8 +731,6 @@ export default function Home() {
             </Card>
           </div>
 
-
-          {/* Quick Overview (KPIs) Section */}
           <div className="mb-6 md:mb-8 scale-fade-in delay-400">
             <div className="flex justify-between items-center mb-4 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
@@ -753,21 +751,21 @@ export default function Home() {
             )}
             {(isLoadingKpis && user) ? (
                 <div className="grid grid-cols-2 gap-4">
-                {Array.from({length: Math.min(visibleKpiConfigs.length || 6, 6)}).map((_, idx) => (
-                    <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px] kpiCard">
-                        <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
-                        <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                {Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
+                    <Card key={`skeleton-${idx}`} className="shadow-md bg-card/80 backdrop-blur-sm border-border/50 h-[150px] sm:h-[160px]">
+                        <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3 rounded-md"/></CardHeader>
+                        <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1 rounded-md"/><Skeleton className="h-3 w-3/4 rounded-md"/></CardContent>
                     </Card>
                 ))}
                 </div>
             ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
                 <div className="text-center py-8 text-muted-foreground">
                 <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                <p className="text-sm">{t('home_empty_state_kpis_title')}</p>
+                <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
                 <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
             </div>
             ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {visibleKpiConfigs.map((kpi, index) => {
                     const Icon = kpi.icon;
                     const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
@@ -776,12 +774,12 @@ export default function Home() {
                     <Tooltip key={kpi.id}>
                         <TooltipTrigger asChild>
                         <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full", !kpi.link && "pointer-events-none")}>
-                            <Card className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border-border/50 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
-                                <CardTitle className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
+                            <div className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border border-border/50 rounded-lg p-3 sm:p-4 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
+                            <div className="flex flex-row items-center justify-between space-y-0 pb-1">
+                                <h3 className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
                                 <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
-                            </CardHeader>
-                            <CardContent className="pt-1 pb-2 px-3 sm:px-4 flex-grow flex flex-col justify-center">
+                            </div>
+                            <div className="pt-1 flex-grow flex flex-col justify-center">
                                 <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-foreground flex items-baseline">
                                     {renderKpiValueDisplay(valueString)}
                                     {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
@@ -808,15 +806,15 @@ export default function Home() {
                                         )}
                                     />
                                 )}
-                            </CardContent>
+                            </div>
                             {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && kpiData.inventoryValue !== undefined && (
-                                <CardFooter className="text-xs sm:text-sm px-3 sm:px-4 pb-2 pt-0 mt-auto">
+                                <div className="text-xs sm:text-sm mt-auto pt-1">
                                     <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                                         {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 0, true)}
                                     </p>
-                                </CardFooter>
+                                </div>
                             )}
-                            </Card>
+                            </div>
                         </Link>
                         </TooltipTrigger>
                         {kpi.descriptionKey && <TooltipContent><p>{t(kpi.titleKey)}: {valueString}</p><p className="text-xs">{t(kpi.descriptionKey)}</p></TooltipContent>}
@@ -834,102 +832,100 @@ export default function Home() {
             )}
         </div>
 
-
-            {/* Actionable Insights & Recent Activity */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
-                <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                    <CardHeader className="pb-3">
-                    <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                        <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
-                    </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm pt-0">
-                        <div>
-                            <h3 className="text-base font-semibold text-foreground flex items-center">
-                                <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
-                                {t('home_critical_low_stock_title')}
-                            </h3>
-                            {isLoadingKpis ? <Skeleton className="h-5 w-2/3 my-2" /> :
-                            kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
-                                <ul className="list-disc pl-5 text-muted-foreground mt-1 space-y-0.5">
-                                {kpiData.criticalLowStockProducts.map(product => (
-                                    <li key={product.id}>
-                                    <Link href={`/inventory/${product.id}`} className="hover:underline text-primary">
-                                        {product.shortName || product.description}
-                                    </Link> ({t('home_stock_level_label')}: {product.quantity})
-                                    </li>
-                                ))}
-                                </ul>
-                            ) : (
-                                <div className="text-muted-foreground mt-1 text-center py-4">
-                                    <Package className="mx-auto h-8 w-8 mb-1 opacity-40" />
-                                    <p>{t('home_empty_state_low_stock')}</p>
-                                </div>
-                            )}
-                        </div>
-                        <hr className="my-2 border-border/50"/>
-                        <div>
-                            <h3 className="text-base font-semibold text-foreground flex items-center">
-                                <BellRing className="mr-2 h-4 w-4 text-primary" />
-                                {t('home_next_payment_due_title')}
-                            </h3>
-                            {isLoadingKpis ? <Skeleton className="h-5 w-3/4 my-2" /> :
-                            kpiData?.nextPaymentDueInvoice ? (
-                                <p className="text-muted-foreground mt-1">
-                                    <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
-                                        {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
-                                    </Link>
-                                    {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: locale === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
-                                </p>
-                            ) : (
-                                 <div className="text-muted-foreground mt-1 text-center py-4">
-                                    <CreditCard className="mx-auto h-8 w-8 mb-1 opacity-40" />
-                                    <p>{t('home_empty_state_upcoming_payments')}</p>
-                                </div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="scale-fade-in delay-600 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                    <CardHeader className="pb-3">
-                    <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                        <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
-                    </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        {isLoadingKpis ?
-                            <div className="space-y-2">
-                                <Skeleton className="h-5 w-full" />
-                                <Skeleton className="h-5 w-5/6" />
-                                <Skeleton className="h-5 w-3/4" />
-                            </div>
-                            :
-                        kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
-                            <ul className="space-y-1.5 text-sm">
-                            {kpiData.recentActivity.map((activity, index) => (
-                                <li key={index} className="text-muted-foreground flex justify-between items-center py-1 border-b border-border/30 last:border-b-0">
-                                    <span className="truncate max-w-[70%]">
-                                        {activity.link ? (
-                                            <Link href={activity.link} className="hover:underline text-primary">{t(activity.descriptionKey, activity.params)}</Link>
-                                        ) : (
-                                            t(activity.descriptionKey, activity.params)
-                                        )}
-                                    </span>
-                                    <span className="text-xs whitespace-nowrap">{activity.time}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
+            <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader className="pb-3">
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm pt-0">
+                    <div>
+                        <h3 className="text-base font-semibold text-foreground flex items-center">
+                            <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
+                            {t('home_critical_low_stock_title')}
+                        </h3>
+                        {isLoadingKpis ? <Skeleton className="h-5 w-2/3 my-2 rounded-md" /> :
+                        kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
+                            <ul className="list-disc pl-5 text-muted-foreground mt-1 space-y-0.5">
+                            {kpiData.criticalLowStockProducts.map(product => (
+                                <li key={product.id}>
+                                <Link href={`/inventory/${product.id}`} className="hover:underline text-primary">
+                                    {product.shortName || product.description}
+                                </Link> ({t('home_stock_level_label')}: {product.quantity})
                                 </li>
                             ))}
                             </ul>
                         ) : (
-                            <div className="text-muted-foreground mt-1 text-center py-10">
-                                <FileTextIcon className="mx-auto h-8 w-8 mb-1 opacity-40" />
-                                <p>{t('home_empty_state_recent_activity_title')}</p>
-                                <p className="text-xs">{t('home_empty_state_recent_activity_desc')}</p>
+                            <div className="text-muted-foreground mt-1 text-center py-4">
+                                <Package className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                                <p>{t('home_empty_state_low_stock')}</p>
                             </div>
                         )}
-                    </CardContent>
-                </Card>
-            </div>
+                    </div>
+                    <hr className="my-2 border-border/50"/>
+                    <div>
+                        <h3 className="text-base font-semibold text-foreground flex items-center">
+                            <BellRing className="mr-2 h-4 w-4 text-primary" />
+                            {t('home_next_payment_due_title')}
+                        </h3>
+                        {isLoadingKpis ? <Skeleton className="h-5 w-3/4 my-2 rounded-md" /> :
+                        kpiData?.nextPaymentDueInvoice ? (
+                            <p className="text-muted-foreground mt-1">
+                                <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
+                                    {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
+                                </Link>
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
+                            </p>
+                        ) : (
+                             <div className="text-muted-foreground mt-1 text-center py-4">
+                                <CreditCard className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                                <p>{t('home_empty_state_upcoming_payments')}</p>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="scale-fade-in delay-600 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardHeader className="pb-3">
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                    {isLoadingKpis ?
+                        <div className="space-y-2">
+                            <Skeleton className="h-5 w-full rounded-md" />
+                            <Skeleton className="h-5 w-5/6 rounded-md" />
+                            <Skeleton className="h-5 w-3/4 rounded-md" />
+                        </div>
+                        :
+                    kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
+                        <ul className="space-y-1.5 text-sm">
+                        {kpiData.recentActivity.map((activity, index) => (
+                            <li key={index} className="text-muted-foreground flex justify-between items-center py-1 border-b border-border/30 last:border-b-0">
+                                <span className="truncate max-w-[70%]">
+                                    {activity.link ? (
+                                        <Link href={activity.link} className="hover:underline text-primary">{t(activity.descriptionKey, activity.params)}</Link>
+                                    ) : (
+                                        t(activity.descriptionKey, activity.params)
+                                    )}
+                                </span>
+                                <span className="text-xs whitespace-nowrap">{activity.time}</span>
+                            </li>
+                        ))}
+                        </ul>
+                    ) : (
+                        <div className="text-muted-foreground mt-1 text-center py-10">
+                            <FileTextIcon className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                            <p>{t('home_empty_state_recent_activity_title')}</p>
+                            <p className="text-xs">{t('home_empty_state_recent_activity_desc')}</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
         </div>
       </TooltipProvider>
       <KpiCustomizationSheet
@@ -960,4 +956,3 @@ export default function Home() {
     </div>
   );
 }
-
