@@ -15,7 +15,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService } from '@/services/backend';
+import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService } from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -93,6 +93,12 @@ export default function AccountsPage() {
 
       getUserSettingsService(user.id).then(settings => {
         setUserSettings(settings);
+        if (settings && settings.reminderDaysBefore === undefined) {
+          // If reminderDaysBefore is not set, prompt user or set a default
+          // For now, let's assume we might want to prompt or set a default if it's the first time
+          // This logic can be expanded
+          console.log("Reminder days not set, consider prompting user or setting a default.");
+        }
       }).catch(err => {
         console.error("Failed to load user settings for reminders:", err);
         toast({ title: t('error_title'), description: t('settings_notification_toast_load_error_desc'), variant: "destructive" });
@@ -163,7 +169,7 @@ export default function AccountsPage() {
             const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate) : null;
 
             const isAOverdue = dateA ? isBefore(dateA, today) : false;
-            const isBOverdue = dateB ? isBefore(B, today) : false;
+            const isBOverdue = dateB ? isBefore(dateB, today) : false;
 
             if (isAOverdue && !isBOverdue) return -1;
             if (!isAOverdue && isBOverdue) return 1;
@@ -202,6 +208,7 @@ export default function AccountsPage() {
 
         let relevantDateForExpense: Date | null = null;
 
+        // Prioritize paymentDueDate for expense recognition if available and valid
         if (invoice.paymentDueDate) {
             try {
                 const dueDate = parseISO(invoice.paymentDueDate);
@@ -211,6 +218,7 @@ export default function AccountsPage() {
             } catch (e) { /* ignore invalid date parsing for due date */ }
         }
         
+        // Fallback to uploadTime if paymentDueDate is not set or invalid
         if (!relevantDateForExpense && invoice.uploadTime) {
              try {
                 const upTime = parseISO(invoice.uploadTime);
@@ -221,6 +229,7 @@ export default function AccountsPage() {
         }
 
         if (relevantDateForExpense) {
+            // Check if the relevant date falls within the current month
             if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
                 totalExpenses += (invoice.totalAmount || 0);
             }
