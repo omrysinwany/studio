@@ -14,8 +14,8 @@
 }
 
 .homeContainerGradient {
-  /* Updated gradient to be more transparent at the top */
-  background: linear-gradient(180deg, hsla(var(--background) / 0.7) 0%, hsla(var(--muted) / 0.4) 100%);
+  /* Updated gradient to be more transparent, especially at the top */
+  background: linear-gradient(180deg, hsla(var(--background) / 0.3) 0%, hsla(var(--muted) / 0.15) 100%); /* Reduced alpha values */
   position: relative;
   overflow: hidden;
 }
@@ -25,18 +25,18 @@
   position: absolute;
   inset: 0;
   background-image: 
-    radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.03) 0%, transparent 30%),
-    radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.03) 0%, transparent 30%);
-  opacity: 0.7;
-  z-index: -1; /* Corrected z-index to be behind content */
+    radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 30%), /* Slightly less opacity for shimmer */
+    radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 30%);
+  opacity: 0.5; /* Reduced opacity of the shimmer effect itself */
+  z-index: 0; 
   animation: subtleShimmer 20s infinite alternate ease-in-out;
 }
 
 @keyframes subtleShimmer {
-  0% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
-  25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.6; }
-  50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.7; }
-  75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.6; }
-  100% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
+  0% { transform: translate(0,0) rotate(0deg); opacity: 0.3; } /* Adjusted opacity within animation */
+  25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.4; }
+  50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.5; }
+  75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.4; }
+  100% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
 }
 
