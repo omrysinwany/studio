@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, Image as ImageIconLucide, Link as LinkIcon } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, Link as LinkIcon } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -69,7 +69,7 @@ import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
 type SortKey = keyof InvoiceHistoryItem | '';
@@ -1316,7 +1316,7 @@ export default function DocumentsPage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
+                <FileTextIconLucide className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
@@ -1374,3 +1374,4 @@ export default function DocumentsPage() {
     </div>
   );
 }
+
