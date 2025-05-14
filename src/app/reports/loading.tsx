@@ -2,7 +2,7 @@
 'use client';
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Package, DollarSign, TrendingUp, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Banknote, AlertTriangle } from "lucide-react";
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -27,7 +27,8 @@ export default function ReportsLoading() {
   const renderChartCardSkeleton = (titleKey: string, chartHeight = "h-[220px]") => (
     <Card className="w-full overflow-hidden">
       <CardHeader className="pb-2 sm:pb-4">
-        <Skeleton className="h-6 w-1/2" /> {/* Title Skeleton for chart card */}
+        <Skeleton className="h-6 w-1/2" /> 
+         <Skeleton className="h-4 w-3/4 mt-1" /> 
       </CardHeader>
       <CardContent className="p-0 sm:p-0">
         <div className={`flex items-center justify-center ${chartHeight} w-full bg-muted/50`}>
@@ -40,8 +41,8 @@ export default function ReportsLoading() {
   const renderTableCardSkeleton = (titleKey: string, rows = 3, cols = 3) => (
     <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden">
       <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-        <Skeleton className="h-6 w-1/2" /> {/* Title Skeleton for table card */}
-        <Skeleton className="h-8 w-24" /> {/* Export Button Skeleton */}
+        <Skeleton className="h-6 w-1/2" /> 
+        <Skeleton className="h-8 w-24" /> 
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -68,11 +69,11 @@ export default function ReportsLoading() {
   return (
     <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-4">
-        <Skeleton className="h-8 w-32" /> {/* Title Skeleton */}
-        <Skeleton className="h-10 w-full md:w-[260px]" /> {/* Date Range Picker Skeleton */}
+        <Skeleton className="h-8 w-32" /> 
+        <Skeleton className="h-10 w-full md:w-[260px]" /> 
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
-        {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-9 w-24"/>)} {/* Date Preset Buttons Skeleton */}
+        {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-9 w-24"/>)} 
       </div>
 
       <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
@@ -89,7 +90,7 @@ export default function ReportsLoading() {
         {renderChartCardSkeleton("reports_chart_docs_processed_title")}
       </div>
       
-      <Card className="w-full overflow-hidden scale-fade-in">
+      <Card className="w-full overflow-hidden scale-fade-in md:col-span-1 lg:col-span-2">
             <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                 <Skeleton className="h-6 w-1/3"/>
                 <Skeleton className="h-8 w-24"/>
@@ -114,8 +115,9 @@ export default function ReportsLoading() {
       {renderTableCardSkeleton("reports_table_top_selling_title", 5, 3)}
 
        <Card className="md:col-span-1 lg:col-span-1 w-full overflow-hidden scale-fade-in">
-            <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
+            <CardHeader className="pb-2 sm:pb-4">
                 <Skeleton className="h-6 w-1/2"/>
+                 <Skeleton className="h-4 w-3/4 mt-1" /> 
             </CardHeader>
             <CardContent className="space-y-2 p-4">
                 <Skeleton className="h-5 w-3/4"/>

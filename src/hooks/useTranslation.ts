@@ -26,7 +26,7 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     "accounts_no_spending_data_period": "No spending data recorded for the selected period.",
     "accounts_supplier_spending_title": "Supplier Spending",
     "accounts_supplier_spending_desc_period": "Spending breakdown by supplier for the selected period.",
-    "currency_symbol": "₪", // Default currency symbol, can be overridden by specific locale files if needed
+    "currency_symbol": "₪", 
     "reports_kpi_total_value": "Total Inventory Value",
     "reports_kpi_vs_last_period": "vs last period",
     "reports_kpi_total_items": "Total Items",
@@ -40,8 +40,10 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     "reports_kpi_avg_order_value": "Avg. Invoice Value",
     "reports_kpi_from_invoices": "From completed invoices",
     "reports_chart_value_over_time_title": "Inventory Value Over Time",
+    "reports_chart_value_over_time_desc": "Tracks the estimated total value of your inventory over the selected period.",
     "reports_chart_no_value_trend_data": "No inventory value trend data for selected period.",
     "reports_chart_docs_processed_title": "Documents Processed",
+    "reports_chart_docs_processed_desc": "Number of invoices and delivery notes processed over time.",
     "reports_chart_no_processing_volume_data": "No document processing data for selected period.",
     "reports_expenses_by_category_title": "Expenses by Category",
     "reports_chart_no_expenses_by_category_data": "No expense data by category for selected period.",
@@ -83,6 +85,7 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     "reports_toast_export_success_title": "Export Successful",
     "reports_toast_export_success_desc": "File {{filename}} has been downloaded.",
     "reports_pnl_summary_title": "Profit & Loss Summary (Est.)",
+    "reports_pnl_summary_desc": "Estimated financial health based on recorded income and expenses for the period.",
     "reports_pnl_income": "Income (from Paid Invoices)",
     "reports_pnl_operating_expenses": "Operating Expenses",
     "reports_pnl_open_liabilities": "Open Invoice Liabilities",
@@ -95,11 +98,9 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     "reports_col_invoice_count": "Invoice Count",
   };
 
-  return translations[key] || key; // Return the key itself if no translation is found
+  return translations[key] || key; 
 };
 
 export const useTranslation = () => {
-  // This basic implementation returns the 't' function and a default locale.
-  // For a full i18n setup, you'd integrate a library like 'next-intl' or 'i18next'.
   return { t, locale: 'en' as Locale };
 };

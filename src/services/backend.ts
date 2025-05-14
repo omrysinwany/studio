@@ -17,14 +17,13 @@ export interface Product {
   minStockLevel?: number;
   maxStockLevel?: number;
   imageUrl?: string;
-  // Internal fields for editing
   _originalId?: string;
 }
 
 export interface InvoiceHistoryItem {
   id: string;
   fileName: string;
-  uploadTime: string; // Keep as ISO string for consistency
+  uploadTime: string; 
   status: 'pending' | 'processing' | 'completed' | 'error';
   documentType: 'deliveryNote' | 'invoice';
   invoiceNumber?: string;
@@ -35,8 +34,8 @@ export interface InvoiceHistoryItem {
   compressedImageForFinalRecordUri?: string;
   paymentReceiptImageUri?: string;
   paymentStatus: 'paid' | 'unpaid' | 'pending_payment';
-  paymentDueDate?: string; // Keep as ISO string
-  invoiceDate?: string; // Keep as ISO string
+  paymentDueDate?: string; 
+  invoiceDate?: string; 
   paymentMethod?: string;
 }
 
@@ -46,8 +45,8 @@ export interface SupplierSummary {
   totalSpent: number;
   phone?: string;
   email?: string;
-  paymentTerms?: string;
-  lastActivityDate?: string; // Added for sorting by last activity
+  paymentTerms?: string; 
+  lastActivityDate?: string; 
 }
 
 export interface AccountantSettings {
@@ -60,7 +59,7 @@ export interface UserSettings {
   reminderDaysBefore?: number;
 }
 
-export interface OtherExpense { // Exporting OtherExpense
+export interface OtherExpense { 
   id: string;
   category: string;
   _internalCategoryKey?: string;
@@ -75,8 +74,8 @@ export const INVOICES_STORAGE_KEY_BASE = 'invoTrack_invoices';
 export const POS_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_posSettings';
 export const SUPPLIERS_STORAGE_KEY_BASE = 'invoTrack_suppliers';
 export const ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_accountantSettings';
-export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings'; // New key for user settings
-export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses'; // Exporting base key
+export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings'; 
+export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses'; 
 
 
 export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
@@ -88,7 +87,7 @@ export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024;
 export const MAX_COMPRESSED_IMAGE_STORAGE_BYTES = 0.15 * 1024 * 1024;
 export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024;
 export const MAX_INVENTORY_ITEMS = 1000;
-export const MAX_INVOICE_HISTORY_ITEMS = 200; // Increased limit slightly
+export const MAX_INVOICE_HISTORY_ITEMS = 200; 
 
 
 interface StoredPosSettings {
@@ -156,7 +155,7 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.includes('exceeded the quota'))) {
       console.warn(`[saveStoredData Backend] Quota exceeded for key ${storageKey}. Attempting to clear old temporary scan data and retry...`);
       try {
-        clearOldTemporaryScanData(true, userId); // Emergency clear for this user
+        clearOldTemporaryScanData(true, userId); 
         localStorage.setItem(storageKey, JSON.stringify(data));
         console.log(`[saveStoredData Backend] Successfully saved data for key ${storageKey} after cleanup.`);
         return true;
@@ -165,7 +164,7 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
         throw retryError;
       }
     } else {
-      throw error; // Re-throw other errors
+      throw error; 
     }
   }
 };
@@ -218,7 +217,7 @@ export async function checkProductPricesBeforeSaveService(
             if (unitPriceFromScan !== 0 && Math.abs(existingUnitPrice - unitPriceFromScan) > 0.001) {
                 priceDiscrepancies.push({
                     ...scannedProduct,
-                    id: existingProduct.id, // Use the ID of the existing product
+                    id: existingProduct.id, 
                     existingUnitPrice: existingUnitPrice,
                     newUnitPrice: unitPriceFromScan,
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
@@ -229,8 +228,8 @@ export async function checkProductPricesBeforeSaveService(
             } else {
                 productsToSaveDirectly.push({
                     ...scannedProduct,
-                    id: existingProduct.id, // Use the ID of the existing product
-                    unitPrice: existingUnitPrice, // Keep existing unit price if no significant change
+                    id: existingProduct.id, 
+                    unitPrice: existingUnitPrice, 
                     salePrice: scannedProduct.salePrice ?? existingProduct.salePrice,
                     minStockLevel: scannedProduct.minStockLevel ?? existingProduct.minStockLevel,
                     maxStockLevel: scannedProduct.maxStockLevel ?? existingProduct.maxStockLevel,
@@ -800,7 +799,7 @@ export interface AuthResponse {
 // Mock services for login and register
 export async function registerService(userData: any): Promise<AuthResponse> {
   console.log("Mock registerService called with:", userData);
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+  await new Promise(resolve => setTimeout(resolve, 500)); 
   if (!userData.username || !userData.email || !userData.password) {
     throw new Error("Username, email, and password are required for registration.");
   }

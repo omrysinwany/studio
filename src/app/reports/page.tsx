@@ -16,7 +16,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData } from '@/services/backend';
+import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey } from '@/services/backend';
 import {
     calculateInventoryValue,
     calculateTotalItems,
@@ -63,7 +63,7 @@ const chartConfig = {
   sales: { labelKey: 'reports_chart_label_sales', color: 'hsl(var(--chart-3))' },
   quantitySold: { labelKey: 'reports_chart_label_qty_sold', color: 'hsl(var(--chart-4))'},
   documents: { labelKey: 'reports_chart_label_documents', color: 'hsl(var(--chart-5))' },
-  expenses: { labelKey: 'reports_chart_label_expenses', color: 'hsl(var(--chart-1))'}, // For expense chart
+  expenses: { labelKey: 'reports_chart_label_expenses', color: 'hsl(var(--chart-1))'},
 } satisfies Omit<React.ComponentProps<typeof ChartContainer>["config"], string>;
 
 
@@ -106,10 +106,7 @@ export default function ReportsPage() {
 
   const [kpis, setKpis] = useState<any | null>(null);
   const [valueOverTime, setValueOverTime] = useState<any[]>([]);
-  // Removed categoryDistribution state as it's not used directly for the new expense report
-  // const [categoryDistribution, setCategoryDistribution] = useState<any[]>([]);
   const [processingVolume, setProcessingVolume] = useState<any[]>([]);
-  const [salesByCategory, setSalesByCategory] = useState<any[]>([]);
   const [topSellingProducts, setTopSellingProducts] = useState<any[]>([]);
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const [otherExpenses, setOtherExpenses] = useState<OtherExpense[]>([]);
@@ -137,26 +134,18 @@ export default function ReportsPage() {
   }, [user, authLoading, router]);
 
 
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-
     const fetchInitialData = useCallback(async () => {
         if(!user) return;
         setIsLoading(true);
         try {
-            const [inventoryData, invoicesData, otherExpensesData] = await Promise.all([
+            const [inventoryData, invoicesData, otherExpensesStored] = await Promise.all([
                 getProductsService(user.id),
                 getInvoicesService(user.id),
-                getStoredData<OtherExpense>(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id, [])
+                getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), user.id, [])
             ]);
             setInventory(inventoryData);
             setInvoices(invoicesData);
-            setOtherExpenses(otherExpensesData);
+            setOtherExpenses(otherExpensesStored);
         } catch (error) {
             console.error("Failed to fetch initial data:", error);
             toast({
@@ -187,8 +176,8 @@ export default function ReportsPage() {
          if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
          const invoiceDate = parseISO(invoice.uploadTime);
          return isWithinInterval(invoiceDate, {
-            start: dateRange?.from || new Date(0), // very past date if from is undefined
-            end: dateRange?.to || new Date()      // current date if to is undefined
+            start: dateRange?.from || new Date(0), 
+            end: dateRange?.to || new Date()      
          });
        });
 
@@ -209,7 +198,7 @@ export default function ReportsPage() {
 
 
        const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.paymentStatus === 'paid' ? (inv.totalAmount || 0) : 0), 0);
-       const mockCogs = mockTotalRevenue * 0.65; // Estimate
+       const mockCogs = mockTotalRevenue * 0.65; 
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
        const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices.filter(inv => inv.status === 'completed'));
@@ -222,7 +211,7 @@ export default function ReportsPage() {
          inventoryTurnoverRate,
          averageOrderValue,
          totalPotentialGrossProfit,
-         valueChangePercent: Math.random() * 10 - 5, // Example: random change
+         valueChangePercent: Math.random() * 10 - 5, 
        });
 
        const votData = [];
@@ -271,18 +260,12 @@ export default function ReportsPage() {
        }
        setProcessingVolume(procVolData);
 
-       const mockSalesByCategoryData = categories.map(catKey => {
-         const categoryLabel = t(`accounts_other_expenses_tab_${catKey}` as any, {defaultValue: catKey.charAt(0).toUpperCase() + catKey.slice(1).replace(/_/g, ' ')});
-         return { category: categoryLabel, sales: Math.floor(Math.random() * 10000) + 2000 };
-       });
-       setSalesByCategory(mockSalesByCategoryData);
-
         const topProducts = inventory
-            .filter(p => p.salePrice !== undefined && p.salePrice > 0) // Consider only products with sale price for "top selling"
+            .filter(p => p.salePrice !== undefined && p.salePrice > 0) 
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, // Mock sales
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, 
                 totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1)
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
@@ -307,7 +290,6 @@ export default function ReportsPage() {
             return statusOrder[a.status] - statusOrder[b.status];
         }));
 
-        // Profit and Loss Data Calculation
         const pnlIncome = filteredInvoices
             .filter(inv => inv.paymentStatus === 'paid')
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
@@ -323,10 +305,9 @@ export default function ReportsPage() {
             income: pnlIncome,
             expenses: pnlOperatingExpenses,
             liabilities: pnlOpenLiabilities,
-            net: pnlIncome - pnlOperatingExpenses - pnlOpenLiabilities // Simple net, can be refined
+            net: pnlIncome - pnlOperatingExpenses 
         });
 
-        // Supplier Liabilities Data Calculation
         const liabilitiesMap = new Map<string, { totalDue: number; invoiceCount: number }>();
         filteredInvoices
             .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment')
@@ -356,7 +337,6 @@ export default function ReportsPage() {
    const pieChartData = useMemo(() => expensesByCategoryData, [expensesByCategoryData]);
    const lineChartData = useMemo(() => valueOverTime, [valueOverTime]);
    const processingBarChartData = useMemo(() => processingVolume, [processingVolume]);
-   const salesByCategoryBarData = useMemo(() => salesByCategory, [salesByCategory]);
    const topSellingProductsBarData = useMemo(() => topSellingProducts, [topSellingProducts]);
 
    const handleDatePreset = (preset: '7d' | '30d' | 'currentMonth' | 'currentQuarter') => {
@@ -544,6 +524,7 @@ export default function ReportsPage() {
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.1s'}}>
                 <CardHeader className="pb-2 sm:pb-4">
                     <CardTitle className="text-base sm:text-lg">{t('reports_chart_value_over_time_title')}</CardTitle>
+                     <CardDescription>{t('reports_chart_value_over_time_desc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 sm:p-0">
                     {lineChartData.length > 0 ? (
@@ -588,6 +569,7 @@ export default function ReportsPage() {
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.2s'}}>
                  <CardHeader className="pb-2 sm:pb-4">
                      <CardTitle className="text-base sm:text-lg">{t('reports_chart_docs_processed_title')}</CardTitle>
+                     <CardDescription>{t('reports_chart_docs_processed_desc')}</CardDescription>
                  </CardHeader>
                  <CardContent className="p-0 sm:p-0">
                       {processingBarChartData.length > 0 ? (
@@ -629,7 +611,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.3s'}}>
+            <Card className="w-full overflow-hidden scale-fade-in md:col-span-1 lg:col-span-2" style={{animationDelay: '0.3s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                      <CardTitle className="text-base sm:text-lg">{t('reports_expenses_by_category_title')}</CardTitle>
                      <Button
@@ -647,8 +629,8 @@ export default function ReportsPage() {
                  </CardHeader>
                  <CardContent className="p-0 sm:p-0">
                      {expensesByCategoryData.length > 0 ? (
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                             <div className="md:col-span-1 max-h-[280px] overflow-y-auto px-2">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-0 md:gap-4 items-center">
+                             <div className="md:col-span-1 max-h-[280px] overflow-y-auto px-2 py-2 md:py-0">
                                  <Table>
                                      <TableHeader>
                                          <TableRow>
@@ -681,7 +663,7 @@ export default function ReportsPage() {
                                                      nameKey="category"
                                                      cx="50%"
                                                      cy="50%"
-                                                     outerRadius="80%"
+                                                     outerRadius={isMobile ? "70%" : "80%"}
                                                      innerRadius={isMobile ? "45%" : "50%"}
                                                      paddingAngle={1}
                                                      labelLine={false}
@@ -714,7 +696,7 @@ export default function ReportsPage() {
                                                      )}
                                                       verticalAlign="bottom"
                                                       align="center"
-                                                      wrapperStyle={{ fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: '5px', paddingRight: '5px' }}
+                                                      wrapperStyle={{ fontSize: isMobile ? '8px' : '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: '5px', paddingRight: '5px' }}
                                                   />
                                               </RechartsPieChart>
                                        </ResponsiveContainer>
@@ -774,15 +756,24 @@ export default function ReportsPage() {
             <Card className="md:col-span-1 lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                      <CardTitle className="text-base sm:text-lg">{t('reports_pnl_summary_title')}</CardTitle>
+                     <CardDescription className="text-xs text-muted-foreground">{t('reports_pnl_summary_desc')}</CardDescription>
                  </CardHeader>
                  <CardContent className="space-y-2">
                      {profitAndLossData ? (
                          <>
-                            <div className="flex justify-between text-sm"><span>{t('reports_pnl_income')}</span><span>{formatNumberWithTranslation(profitAndLossData.income, t, {currency: true})}</span></div>
-                            <div className="flex justify-between text-sm"><span>{t('reports_pnl_operating_expenses')}</span><span>{formatNumberWithTranslation(profitAndLossData.expenses, t, {currency: true})}</span></div>
-                            <div className="flex justify-between text-sm"><span>{t('reports_pnl_open_liabilities')}</span><span>{formatNumberWithTranslation(profitAndLossData.liabilities, t, {currency: true})}</span></div>
-                            <hr className="my-1"/>
-                            <div className={cn("flex justify-between text-sm font-semibold", profitAndLossData.net < 0 && "text-destructive")}>
+                            <div className="flex justify-between text-sm items-center py-1 border-b">
+                                <span className="text-muted-foreground">{t('reports_pnl_income')}</span>
+                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.income, t, {currency: true})}</span>
+                            </div>
+                            <div className="flex justify-between text-sm items-center py-1 border-b">
+                                <span className="text-muted-foreground">{t('reports_pnl_operating_expenses')}</span>
+                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.expenses, t, {currency: true})}</span>
+                            </div>
+                            <div className="flex justify-between text-sm items-center py-1 border-b">
+                                <span className="text-muted-foreground">{t('reports_pnl_open_liabilities')}</span>
+                                <span className="font-semibold">{formatNumberWithTranslation(profitAndLossData.liabilities, t, {currency: true})}</span>
+                            </div>
+                            <div className={cn("flex justify-between text-base font-semibold items-center py-1.5", profitAndLossData.net < 0 && "text-destructive")}>
                                 <span>{t('reports_pnl_net_profit_loss')}</span>
                                 <span>{formatNumberWithTranslation(profitAndLossData.net, t, {currency: true})}</span>
                             </div>
@@ -839,7 +830,7 @@ export default function ReportsPage() {
             <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.7s'}}>
                 <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                     <CardTitle className="text-base sm:text-lg">{t('reports_table_stock_alert_title')}</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm">{t('reports_table_stock_alert_desc')}</CardDescription>
+                    <CardDescription className="text-xs sm:text-sm text-right">{t('reports_table_stock_alert_desc')}</CardDescription>
                      <Button
                         variant="ghost" size="sm"
                         onClick={() => exportToCsv(
@@ -913,3 +904,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+
