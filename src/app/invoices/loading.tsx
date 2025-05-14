@@ -10,8 +10,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 export default function InvoicesLoading() {
   const { t } = useTranslation();
 
-  const renderSkeletonGridCard = () => (
-    <Card className="animate-pulse">
+  const renderSkeletonGridCard = (key: number) => (
+    <Card key={key} className="animate-pulse">
       <CardHeader className="p-0 relative aspect-[4/3] bg-muted rounded-t-lg" />
       <CardContent className="p-3 space-y-1">
         <Skeleton className="h-4 w-3/4" /> {/* File Name Skeleton */}
@@ -54,7 +54,7 @@ export default function InvoicesLoading() {
           
           {/* Assuming default view is grid for loading state */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, index) => renderSkeletonGridCard())}
+            {Array.from({ length: 8 }).map((_, index) => renderSkeletonGridCard(index))}
           </div>
 
           <div className="flex justify-center items-center py-10">
