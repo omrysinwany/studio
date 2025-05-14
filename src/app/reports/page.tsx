@@ -1,9 +1,10 @@
 
+// src/app/reports/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Download, Banknote } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Download, Banknote, Info, Briefcase } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey } from '@/services/backend';
+import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey, SupplierSummary, getSupplierSummariesService } from '@/services/backend';
 import {
     calculateInventoryValue,
     calculateTotalItems,
@@ -30,6 +31,9 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 
 const formatNumberWithTranslation = (
@@ -64,6 +68,7 @@ const chartConfig = {
   quantitySold: { labelKey: 'reports_chart_label_qty_sold', color: 'hsl(var(--chart-4))'},
   documents: { labelKey: 'reports_chart_label_documents', color: 'hsl(var(--chart-5))' },
   expenses: { labelKey: 'reports_chart_label_expenses', color: 'hsl(var(--chart-1))'},
+  profit: { labelKey: 'reports_profitability_profit', color: 'hsl(var(--chart-2))' },
 } satisfies Omit<React.ComponentProps<typeof ChartContainer>["config"], string>;
 
 
@@ -91,13 +96,22 @@ interface StockAlert {
 interface ExpenseByCategory {
     category: string;
     totalAmount: number;
+    expenses: OtherExpense[];
 }
 interface SupplierLiability {
     supplierName: string;
     totalDue: number;
     invoiceCount: number;
 }
-
+interface ProductProfitability {
+    id: string;
+    name: string;
+    catalogNumber: string;
+    unitPrice: number;
+    salePrice?: number;
+    potentialProfitPerUnit?: number;
+    profitMarginPercent?: number;
+}
 
 export default function ReportsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -113,6 +127,10 @@ export default function ReportsPage() {
   const [expensesByCategoryData, setExpensesByCategoryData] = useState<ExpenseByCategory[]>([]);
   const [supplierLiabilitiesData, setSupplierLiabilitiesData] = useState<SupplierLiability[]>([]);
   const [profitAndLossData, setProfitAndLossData] = useState<{income: number; expenses: number; liabilities: number; net: number} | null>(null);
+  const [productProfitabilityData, setProductProfitabilityData] = useState<ProductProfitability[]>([]);
+  const [isDrillDownDialogOpen, setIsDrillDownDialogOpen] = useState(false);
+  const [drillDownDialogTitle, setDrillDownDialogTitle] = useState('');
+  const [drillDownDialogData, setDrillDownDialogData] = useState<OtherExpense[]>([]);
 
 
   const [inventory, setInventory] = useState<Product[]>([]);
@@ -138,14 +156,32 @@ export default function ReportsPage() {
         if(!user) return;
         setIsLoading(true);
         try {
-            const [inventoryData, invoicesData, otherExpensesStored] = await Promise.all([
+            const [inventoryData, invoicesData, otherExpensesStored, suppliersData] = await Promise.all([
                 getProductsService(user.id),
                 getInvoicesService(user.id),
-                getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), user.id, [])
+                getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), user.id, []),
+                getSupplierSummariesService(user.id) // Fetch suppliers for KPI
             ]);
             setInventory(inventoryData);
             setInvoices(invoicesData);
             setOtherExpenses(otherExpensesStored);
+
+            // Calculate KPIs that depend on suppliers immediately after fetching
+             const filteredInvoicesForKpi = invoicesData.filter(invoice => {
+                if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
+                const invoiceDate = parseISO(invoice.uploadTime);
+                return isWithinInterval(invoiceDate, {
+                    start: dateRange?.from || new Date(0),
+                    end: dateRange?.to || new Date()
+                });
+            });
+            const activeSuppliers = new Set(filteredInvoicesForKpi.map(inv => inv.supplier).filter(Boolean));
+
+            setKpis(prev => ({
+                ...prev,
+                totalActiveSuppliers: activeSuppliers.size,
+            }));
+
         } catch (error) {
             console.error("Failed to fetch initial data:", error);
             toast({
@@ -159,7 +195,7 @@ export default function ReportsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [toast, t, user]);
+    }, [toast, t, user, dateRange]); // Added dateRange to dependencies for Kpi calculation
 
     useEffect(() => {
         if(user) {
@@ -176,8 +212,8 @@ export default function ReportsPage() {
          if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
          const invoiceDate = parseISO(invoice.uploadTime);
          return isWithinInterval(invoiceDate, {
-            start: dateRange?.from || new Date(0), 
-            end: dateRange?.to || new Date()      
+            start: dateRange?.from || new Date(0),
+            end: dateRange?.to || new Date()
          });
        });
 
@@ -198,10 +234,13 @@ export default function ReportsPage() {
 
 
        const mockTotalRevenue = filteredInvoices.reduce((sum, inv) => sum + (inv.paymentStatus === 'paid' ? (inv.totalAmount || 0) : 0), 0);
-       const mockCogs = mockTotalRevenue * 0.65; 
+       const mockCogs = mockTotalRevenue * 0.65;
        const grossProfitMargin = calculateGrossProfitMargin(mockTotalRevenue, mockCogs);
        const inventoryTurnoverRate = calculateInventoryTurnoverRate(mockCogs, totalValue > 0 ? totalValue / 2 : 1);
        const averageOrderValue = calculateAverageOrderValue(filteredInvoices.filter(inv => inv.status === 'completed'));
+
+       const activeSuppliers = new Set(filteredInvoices.map(inv => inv.supplier).filter(Boolean));
+
 
        setKpis({
          totalValue,
@@ -211,7 +250,8 @@ export default function ReportsPage() {
          inventoryTurnoverRate,
          averageOrderValue,
          totalPotentialGrossProfit,
-         valueChangePercent: Math.random() * 10 - 5, 
+         totalActiveSuppliers: activeSuppliers.size,
+         valueChangePercent: Math.random() * 10 - 5,
        });
 
        const votData = [];
@@ -240,7 +280,8 @@ export default function ReportsPage() {
             const categoryLabel = t(`accounts_other_expenses_tab_${catKey}` as any, {defaultValue: catKey.charAt(0).toUpperCase() + catKey.slice(1).replace(/_/g, ' ')});
             return {
                 category: categoryLabel,
-                totalAmount: categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0)
+                totalAmount: categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+                expenses: categoryExpenses // Store expenses for drill-down
             };
         }).filter(c => c.totalAmount > 0).sort((a,b) => b.totalAmount - a.totalAmount);
        setExpensesByCategoryData(catDistData);
@@ -261,11 +302,11 @@ export default function ReportsPage() {
        setProcessingVolume(procVolData);
 
         const topProducts = inventory
-            .filter(p => p.salePrice !== undefined && p.salePrice > 0) 
+            .filter(p => p.salePrice !== undefined && p.salePrice > 0)
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, 
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1,
                 totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1)
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
@@ -296,16 +337,16 @@ export default function ReportsPage() {
 
         const pnlOperatingExpenses = filteredOtherExpenses
             .reduce((sum, exp) => sum + exp.amount, 0);
-        
+
         const pnlOpenLiabilities = filteredInvoices
             .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment')
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-            
+
         setProfitAndLossData({
             income: pnlIncome,
             expenses: pnlOperatingExpenses,
             liabilities: pnlOpenLiabilities,
-            net: pnlIncome - pnlOperatingExpenses 
+            net: pnlIncome - pnlOperatingExpenses
         });
 
         const liabilitiesMap = new Map<string, { totalDue: number; invoiceCount: number }>();
@@ -325,6 +366,27 @@ export default function ReportsPage() {
                 ...data,
             })).sort((a,b) => b.totalDue - a.totalDue)
         );
+
+        const profitability = inventory.map(p => {
+            const cost = p.unitPrice || 0;
+            const sale = p.salePrice;
+            let profitPerUnit: number | undefined = undefined;
+            let marginPercent: number | undefined = undefined;
+            if (sale !== undefined && sale > cost) {
+                profitPerUnit = sale - cost;
+                marginPercent = (profitPerUnit / sale) * 100;
+            }
+            return {
+                id: p.id,
+                name: p.shortName || p.description,
+                catalogNumber: p.catalogNumber,
+                unitPrice: cost,
+                salePrice: sale,
+                potentialProfitPerUnit: profitPerUnit,
+                profitMarginPercent: marginPercent
+            };
+        }).filter(p => p.potentialProfitPerUnit !== undefined);
+        setProductProfitabilityData(profitability);
 
 
      };
@@ -370,7 +432,15 @@ export default function ReportsPage() {
         }
         const headerRow = headers.map(h => escapeCsvValue(h.label)).join(',');
         const rows = data.map(item =>
-            headers.map(h => escapeCsvValue(item[h.key])).join(',')
+            headers.map(h => {
+                if (h.key === 'potentialProfitPerUnit' || h.key === 'profitMarginPercent') {
+                    return item[h.key] !== undefined ? formatNumberWithTranslation(item[h.key], t, {decimals: h.key === 'profitMarginPercent' ? 1 : 2 , currency: h.key === 'potentialProfitPerUnit'}) : '-';
+                }
+                 if (h.key === 'unitPrice' || h.key === 'salePrice') {
+                    return item[h.key] !== undefined ? formatNumberWithTranslation(item[h.key], t, { currency: true }) : '-';
+                }
+                return escapeCsvValue(item[h.key]);
+            }).join(',')
         );
         const csvContent = [headerRow, ...rows].join('\n');
         const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
@@ -386,6 +456,17 @@ export default function ReportsPage() {
         toast({ title: t('reports_toast_export_success_title'), description: t('reports_toast_export_success_desc', { filename: `${filename}.csv` }) });
     };
 
+    const handlePieChartClick = (data: any) => {
+        if (data && data.activePayload && data.activePayload.length > 0) {
+            const clickedCategoryName = data.activePayload[0].payload.category;
+            const categoryData = expensesByCategoryData.find(cat => cat.category === clickedCategoryName);
+            if (categoryData) {
+                setDrillDownDialogTitle(t('reports_drilldown_title_expenses_for_category', { category: clickedCategoryName }));
+                setDrillDownDialogData(categoryData.expenses);
+                setIsDrillDownDialogOpen(true);
+            }
+        }
+    };
 
 
    if (authLoading || (isLoading && !inventory.length && !invoices.length) || !user) {
@@ -399,9 +480,13 @@ export default function ReportsPage() {
 
 
   return (
+    <TooltipProvider>
     <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-4">
-        <h1 className="text-xl sm:text-2xl font-bold text-primary shrink-0">{t('reports_title')}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-primary shrink-0 flex items-center">
+            <BarChart3 className="mr-2 h-6 w-6" />
+            {t('reports_title')}
+        </h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -451,74 +536,125 @@ export default function ReportsPage() {
           ))}
       </div>
 
-
+       {/* Main KPIs Grid */}
        {kpis && (
-           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
-             <Card className="xl:col-span-2 scale-fade-in">
+           <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+             <Card className="xl:col-span-1">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_value')}</CardTitle>
                  <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
                  <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalValue, t, { currency: true })}</div>
-                 <p className={cn("text-[10px] sm:text-xs", kpis.valueChangePercent >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive dark:text-red-400")}>
-                   {kpis.valueChangePercent >= 0 ? <TrendingUp className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" /> : <TrendingDown className="inline h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />}
-                   {formatNumberWithTranslation(Math.abs(kpis.valueChangePercent), t, { decimals: 1, useGrouping: false })}% {t('reports_kpi_vs_last_period')}
-                 </p>
                </CardContent>
              </Card>
-             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.05s'}}>
+             <Card className="xl:col-span-1">
                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
                  <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_total_items')}</CardTitle>
                  <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                </CardHeader>
                <CardContent className="pb-2 sm:pb-4">
-                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalItems, t, { decimals: 0, useGrouping: true })}</div>
-                 <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_unique_skus')}</p>
+                 <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalItems, t, { decimals: 0 })}</div>
                </CardContent>
              </Card>
-            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.1s'}}>
+            <Card className="xl:col-span-1">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('kpi_gross_profit')}</CardTitle>
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_low_stock_items')}</CardTitle>
+                    <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent className="pb-2 sm:pb-4">
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.lowStockItems, t, { decimals: 0 })}</div>
+                </CardContent>
+            </Card>
+            <Card className="xl:col-span-1">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_potential_gross_profit_short')}</CardTitle>
                     <HandCoins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
                     <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalPotentialGrossProfit, t, { currency: true })}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_potential_from_stock')}</p>
                 </CardContent>
             </Card>
-            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.15s'}}>
+            <Card className="xl:col-span-1">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_gross_profit_margin')}</CardTitle>
-                    <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_avg_invoice_value_short')}</CardTitle>
+                    <FileTextIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.grossProfitMargin, t, { decimals: 1 })}%</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_estimate')}</p>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.averageOrderValue, t, { currency: true })}</div>
                 </CardContent>
             </Card>
-            <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.2s'}}>
+             <Card className="xl:col-span-1">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_inventory_turnover')}</CardTitle>
-                    <Repeat className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_active_suppliers_short')}</CardTitle>
+                    <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.inventoryTurnoverRate, t, { decimals: 1 })}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_times_per_period')}</p>
-                </CardContent>
-            </Card>
-             <Card className="scale-fade-in xl:col-span-1" style={{animationDelay: '0.25s'}}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-2">
-                    <CardTitle className="text-xs sm:text-sm font-medium">{t('reports_kpi_avg_order_value')}</CardTitle>
-                    <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="pb-2 sm:pb-4">
-                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.averageOrderValue, t, { currency: true, decimals: 2, useGrouping: false})}</div>
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">{t('reports_kpi_from_invoices')}</p>
+                    <div className="text-lg sm:text-2xl font-bold">{formatNumberWithTranslation(kpis.totalActiveSuppliers, t, { decimals: 0 })}</div>
                 </CardContent>
             </Card>
            </div>
        )}
+
+        {/* Product Profitability Report */}
+        <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.05s'}}>
+            <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
+                <div className="flex items-center">
+                    <CardTitle className="text-base sm:text-lg">{t('reports_profitability_title')}</CardTitle>
+                    <Tooltip>
+                        <TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5 ml-1.5"><Info className="h-3.5 w-3.5 text-muted-foreground"/></Button></TooltipTrigger>
+                        <TooltipContent><p>{t('reports_profitability_tooltip')}</p></TooltipContent>
+                    </Tooltip>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => exportToCsv(
+                    productProfitabilityData,
+                    [
+                        {key: 'name', label: t('reports_col_product')},
+                        {key: 'catalogNumber', label: t('reports_col_catalog')},
+                        {key: 'unitPrice', label: t('reports_col_unit_price_cost')},
+                        {key: 'salePrice', label: t('reports_col_sale_price')},
+                        {key: 'potentialProfitPerUnit', label: t('reports_col_profit_per_unit')},
+                        {key: 'profitMarginPercent', label: t('reports_col_profit_margin_percent')},
+                    ],
+                    'product_profitability_report'
+                )} disabled={productProfitabilityData.length === 0} className="text-xs">
+                    <Download className="mr-1 h-3 w-3" /> {t('reports_export_csv_button')}
+                </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+                {productProfitabilityData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-full">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_product')}</TableHead>
+                                    <TableHead className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_catalog')}</TableHead>
+                                    <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_unit_price_cost')}</TableHead>
+                                    <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_sale_price')}</TableHead>
+                                    <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_profit_per_unit')}</TableHead>
+                                    <TableHead className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{t('reports_col_profit_margin_percent')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {productProfitabilityData.slice(0, isMobile ? 5 : 10).map((p) => (
+                                    <TableRow key={p.id}>
+                                        <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{p.name}</TableCell>
+                                        <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{p.catalogNumber}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumberWithTranslation(p.unitPrice, t, {currency: true})}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumberWithTranslation(p.salePrice, t, {currency: true}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumberWithTranslation(p.potentialProfitPerUnit, t, {currency: true}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.profitMarginPercent !== undefined ? `${formatNumberWithTranslation(p.profitMarginPercent, t, {decimals:1})}%` : '-'}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : (
+                    <p className="text-center text-muted-foreground py-8 sm:py-10 text-xs sm:text-sm">{t('reports_profitability_no_data')}</p>
+                )}
+            </CardContent>
+        </Card>
+
 
         <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
             <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.1s'}}>
@@ -613,7 +749,13 @@ export default function ReportsPage() {
 
             <Card className="w-full overflow-hidden scale-fade-in md:col-span-1 lg:col-span-2" style={{animationDelay: '0.3s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-                     <CardTitle className="text-base sm:text-lg">{t('reports_expenses_by_category_title')}</CardTitle>
+                     <div className="flex items-center">
+                        <CardTitle className="text-base sm:text-lg">{t('reports_expenses_by_category_title')}</CardTitle>
+                        <Tooltip>
+                            <TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5 ml-1.5"><Info className="h-3.5 w-3.5 text-muted-foreground"/></Button></TooltipTrigger>
+                            <TooltipContent><p>{t('reports_expenses_by_category_tooltip')}</p></TooltipContent>
+                        </Tooltip>
+                    </div>
                      <Button
                         variant="ghost" size="sm"
                         onClick={() => exportToCsv(
@@ -651,9 +793,9 @@ export default function ReportsPage() {
                              <div className="md:col-span-1 flex items-center justify-center p-0 sm:pb-2 h-[180px] sm:h-[220px]">
                                   <ChartContainer config={chartConfig} className="mx-auto aspect-square h-full w-full">
                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RechartsPieChart>
+                                            <RechartsPieChart onClick={handlePieChartClick}>
                                                  <RechartsTooltip
-                                                     cursor={false}
+                                                     cursor={true}
                                                      content={<ChartTooltipContent hideLabel indicator="dot" />}
                                                      formatter={(value: number, name) => [`${name}: ${formatNumberWithTranslation(value, t, { currency: true })}`]}
                                                  />
@@ -754,9 +896,15 @@ export default function ReportsPage() {
             </Card>
 
             <Card className="md:col-span-1 lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
-                 <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-                     <CardTitle className="text-base sm:text-lg">{t('reports_pnl_summary_title')}</CardTitle>
-                     <CardDescription className="text-xs text-muted-foreground">{t('reports_pnl_summary_desc')}</CardDescription>
+                 <CardHeader className="pb-2 sm:pb-4 flex flex-col">
+                     <div className="flex items-center justify-between">
+                        <CardTitle className="text-base sm:text-lg">{t('reports_pnl_summary_title')}</CardTitle>
+                        <Tooltip>
+                            <TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5"><Info className="h-3.5 w-3.5 text-muted-foreground"/></Button></TooltipTrigger>
+                            <TooltipContent><p>{t('reports_pnl_summary_tooltip')}</p></TooltipContent>
+                        </Tooltip>
+                    </div>
+                    <CardDescription className="text-xs text-muted-foreground">{t('reports_pnl_summary_desc')}</CardDescription>
                  </CardHeader>
                  <CardContent className="space-y-2">
                      {profitAndLossData ? (
@@ -829,8 +977,13 @@ export default function ReportsPage() {
 
             <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.7s'}}>
                 <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
-                    <CardTitle className="text-base sm:text-lg">{t('reports_table_stock_alert_title')}</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm text-right">{t('reports_table_stock_alert_desc')}</CardDescription>
+                    <div className="flex items-center">
+                        <CardTitle className="text-base sm:text-lg">{t('reports_table_stock_alert_title')}</CardTitle>
+                         <Tooltip>
+                            <TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5 ml-1.5"><Info className="h-3.5 w-3.5 text-muted-foreground"/></Button></TooltipTrigger>
+                            <TooltipContent><p>{t('reports_stock_alerts_tooltip')}</p></TooltipContent>
+                        </Tooltip>
+                    </div>
                      <Button
                         variant="ghost" size="sm"
                         onClick={() => exportToCsv(
@@ -899,9 +1052,36 @@ export default function ReportsPage() {
                     )}
                 </CardContent>
             </Card>
-
         </div>
+         <Dialog open={isDrillDownDialogOpen} onOpenChange={setIsDrillDownDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{drillDownDialogTitle}</DialogTitle>
+                    <DialogDescription>{t('reports_drilldown_desc_expenses_list')}</DialogDescription>
+                </DialogHeader>
+                <ScrollArea className="max-h-[60vh]">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>{t('reports_drilldown_col_description')}</TableHead>
+                                <TableHead>{t('reports_drilldown_col_date')}</TableHead>
+                                <TableHead className="text-right">{t('reports_drilldown_col_amount')}</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {drillDownDialogData.map((expense) => (
+                                <TableRow key={expense.id}>
+                                    <TableCell>{expense.description}</TableCell>
+                                    <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
+                                    <TableCell className="text-right">{formatNumberWithTranslation(expense.amount, t, {currency: true})}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </ScrollArea>
+            </DialogContent>
+        </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
-
