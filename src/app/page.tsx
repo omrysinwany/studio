@@ -26,6 +26,7 @@ import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, isBe
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
+import { Skeleton } from "@/components/ui/skeleton"; // Added import for Skeleton
 
 
 export interface OtherExpense {
@@ -405,7 +406,7 @@ export default function Home() {
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
         time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp'),
-        link: `/invoices?viewInvoiceId=${inv.id}`
+        link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}` // Updated to go to scanned docs
       }));
 
 
@@ -795,3 +796,4 @@ export default function Home() {
     </div>
   );
 }
+
