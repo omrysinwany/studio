@@ -1,12 +1,12 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"; // Added CardFooter
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote } from "lucide-react";
+import { Package, FileText, BarChart2, ScanLine, Loader2, AlertTriangle, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
-import styles from "./page.module.scss"; // Assuming you have this for specific styles
+// Removed SCSS import as it was causing build issues and not strictly necessary for this component's current styling
+// import styles from "./page.module.scss";
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -35,6 +36,8 @@ export interface OtherExpense {
   date: string;
 }
 const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
+const KPI_PREFERENCES_STORAGE_KEY = 'invoTrack_kpiPreferences';
+
 
 interface KpiData {
   totalItems: number;
@@ -50,18 +53,124 @@ interface KpiData {
 
 interface KpiConfig {
   id: string;
-  titleKey: string; // Key for translation
+  titleKey: string;
   icon: React.ElementType;
   getValue: (data: KpiData | null) => number | undefined;
-  descriptionKey: string; // Key for translation
+  descriptionKey: string;
   link: string;
   isCurrency?: boolean;
   isInteger?: boolean;
   showTrend?: boolean;
   showProgress?: boolean;
   progressValue?: (data: KpiData | null) => number;
-  iconColor?: string; // Tailwind color class for the icon
+  iconColor?: string;
+  defaultVisible?: boolean; // To manage default visibility
 }
+
+// Master list of all available KPIs
+const allKpiConfigurations: KpiConfig[] = [
+  {
+    id: 'totalItems',
+    titleKey: 'home_kpi_total_items_title',
+    icon: Package,
+    getValue: (data) => data?.totalItems,
+    descriptionKey: 'home_kpi_total_items_desc',
+    link: '/inventory',
+    isInteger: true,
+    iconColor: 'text-accent',
+    defaultVisible: true,
+  },
+  {
+    id: 'inventoryValue',
+    titleKey: 'home_kpi_inventory_value_title',
+    icon: DollarSign,
+    getValue: (data) => data?.inventoryValue,
+    descriptionKey: 'home_kpi_inventory_value_desc',
+    link: '/reports',
+    isCurrency: true,
+    showTrend: true,
+    iconColor: 'text-accent',
+    defaultVisible: true,
+  },
+  {
+    id: 'grossProfit',
+    titleKey: 'home_kpi_gross_profit_title',
+    icon: HandCoins,
+    getValue: (data) => data?.grossProfit,
+    descriptionKey: 'home_kpi_gross_profit_desc',
+    link: '/reports',
+    isCurrency: true,
+    iconColor: 'text-accent',
+    defaultVisible: true,
+  },
+  {
+    id: 'currentMonthExpenses',
+    titleKey: 'home_kpi_current_month_expenses_title',
+    icon: CreditCard,
+    getValue: (data) => data?.currentMonthTotalExpenses,
+    descriptionKey: 'home_kpi_current_month_expenses_desc',
+    link: '/accounts',
+    isCurrency: true,
+    iconColor: 'text-destructive',
+    defaultVisible: true,
+  },
+  {
+    id: 'lowStock',
+    titleKey: 'home_kpi_low_stock_title',
+    icon: AlertTriangle,
+    getValue: (data) => data?.lowStockItemsCount,
+    descriptionKey: 'home_kpi_low_stock_desc',
+    link: '/inventory?filter=low',
+    isInteger: true,
+    showProgress: true,
+    progressValue: (data) => data && data.totalItems > 0 && data.lowStockItemsCount >= 0 ? (data.lowStockItemsCount / data.totalItems) * 100 : 0,
+    iconColor: 'text-yellow-500 dark:text-yellow-400',
+    defaultVisible: true,
+  },
+  {
+    id: 'amountToPay',
+    titleKey: 'home_kpi_amount_to_pay_title',
+    icon: Banknote,
+    getValue: (data) => data?.amountRemainingToPay,
+    descriptionKey: 'home_kpi_amount_to_pay_desc',
+    link: '/accounts?filter=unpaid',
+    isCurrency: true,
+    iconColor: 'text-accent',
+    defaultVisible: true,
+  },
+];
+
+const getKpiPreferences = (userId?: string): string[] => {
+  if (typeof window === 'undefined' || !userId) {
+    return allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
+  }
+  const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
+  const stored = localStorage.getItem(key);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.every(id => typeof id === 'string')) {
+        return parsed;
+      }
+    } catch (e) {
+      console.error("Error parsing KPI preferences from localStorage:", e);
+    }
+  }
+  // Default to all visible KPIs if none stored or error
+  return allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const saveKpiPreferences = (preferences: string[], userId?: string) => {
+  if (typeof window === 'undefined' || !userId) return;
+  const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
+  try {
+    localStorage.setItem(key, JSON.stringify(preferences));
+  } catch (e) {
+    console.error("Error saving KPI preferences to localStorage:", e);
+  }
+};
+
 
 const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
   const { t } = useTranslation();
@@ -107,73 +216,25 @@ export default function Home() {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
+  const [visibleKpiConfigs, setVisibleKpiConfigs] = useState<KpiConfig[]>([]);
 
-  // Define KPI configurations
-  const kpiConfigurations: KpiConfig[] = [
-    {
-      id: 'totalItems',
-      titleKey: 'home_kpi_total_items_title',
-      icon: Package,
-      getValue: (data) => data?.totalItems,
-      descriptionKey: 'home_kpi_total_items_desc',
-      link: '/inventory',
-      isInteger: true,
-      iconColor: 'text-accent',
-    },
-    {
-      id: 'inventoryValue',
-      titleKey: 'home_kpi_inventory_value_title',
-      icon: DollarSign,
-      getValue: (data) => data?.inventoryValue,
-      descriptionKey: 'home_kpi_inventory_value_desc',
-      link: '/reports',
-      isCurrency: true,
-      showTrend: true,
-      iconColor: 'text-accent',
-    },
-    {
-      id: 'grossProfit',
-      titleKey: 'home_kpi_gross_profit_title',
-      icon: HandCoins,
-      getValue: (data) => data?.grossProfit,
-      descriptionKey: 'home_kpi_gross_profit_desc',
-      link: '/reports',
-      isCurrency: true,
-      iconColor: 'text-accent',
-    },
-    {
-      id: 'currentMonthExpenses',
-      titleKey: 'home_kpi_current_month_expenses_title',
-      icon: CreditCard, // Changed from TrendingDown
-      getValue: (data) => data?.currentMonthTotalExpenses,
-      descriptionKey: 'home_kpi_current_month_expenses_desc',
-      link: '/accounts',
-      isCurrency: true,
-      iconColor: 'text-destructive', // Changed to destructive for expenses
-    },
-    {
-      id: 'lowStock',
-      titleKey: 'home_kpi_low_stock_title',
-      icon: AlertTriangle,
-      getValue: (data) => data?.lowStockItemsCount,
-      descriptionKey: 'home_kpi_low_stock_desc',
-      link: '/inventory?filter=low',
-      isInteger: true,
-      showProgress: true,
-      progressValue: (data) => data && data.totalItems > 0 && data.lowStockItemsCount >= 0 ? (data.lowStockItemsCount / data.totalItems) * 100 : 0,
-      iconColor: 'text-yellow-500 dark:text-yellow-400',
-    },
-    {
-      id: 'amountToPay',
-      titleKey: 'home_kpi_amount_to_pay_title',
-      icon: Banknote,
-      getValue: (data) => data?.amountRemainingToPay,
-      descriptionKey: 'home_kpi_amount_to_pay_desc',
-      link: '/accounts?filter=unpaid',
-      isCurrency: true,
-      iconColor: 'text-accent',
-    },
-  ];
+
+  useEffect(() => {
+    if (user) {
+      const preferredKpiIds = getKpiPreferences(user.id);
+      const newVisibleConfigs = preferredKpiIds
+        .map(id => allKpiConfigurations.find(config => config.id === id))
+        .filter(config => config !== undefined) as KpiConfig[];
+      setVisibleKpiConfigs(newVisibleConfigs);
+    } else if (!authLoading) {
+      // For guest users, show default KPIs or an empty list if that's preferred
+      const defaultGuestKpiIds = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false).map(kpi => kpi.id);
+       const defaultGuestConfigs = defaultGuestKpiIds
+        .map(id => allKpiConfigurations.find(config => config.id === id))
+        .filter(config => config !== undefined) as KpiConfig[];
+      setVisibleKpiConfigs(defaultGuestConfigs);
+    }
+  }, [user, authLoading]);
 
 
   useEffect(() => {
@@ -212,17 +273,12 @@ export default function Home() {
         invoices.forEach(invoice => {
             if (invoice.status !== 'completed') return;
             let relevantDateForExpense: Date | null = null;
-            if (invoice.uploadTime) { // Prioritize uploadTime for expense recognition
-                try {
-                    const upTime = parseISO(invoice.uploadTime as string);
-                    if (isValid(upTime)) relevantDateForExpense = upTime;
-                } catch (e) {/* ignore */ }
-            } else if (invoice.paymentDueDate) { // Fallback to paymentDueDate
-                try {
-                    const dueDate = parseISO(invoice.paymentDueDate as string);
-                    if (isValid(dueDate)) relevantDateForExpense = dueDate;
-                } catch (e) {/* ignore */ }
+            if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))) {
+                relevantDateForExpense = parseISO(invoice.paymentDueDate);
+            } else if (invoice.uploadTime && isValid(parseISO(invoice.uploadTime))) {
+                relevantDateForExpense = parseISO(invoice.uploadTime);
             }
+
 
             if (relevantDateForExpense) {
                 if (relevantDateForExpense >= currentMonthStart && relevantDateForExpense <= currentMonthEnd) {
@@ -286,7 +342,7 @@ export default function Home() {
     }
     if (user) {
       fetchKpiData();
-    } else if (!authLoading) { 
+    } else if (!authLoading) {
       setIsLoadingKpis(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -309,17 +365,17 @@ export default function Home() {
     if (num === undefined || num === null || isNaN(num)) {
       return isCurrency ? `${t('currency_symbol')}-` : '-';
     }
-  
+
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
     const absNum = Math.abs(num);
-  
+
     if (absNum < 1000) {
       return prefix + num.toLocaleString(undefined, {
         minimumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals),
         maximumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals)
       });
     }
-  
+
     const si = [
       { value: 1, symbol: "" },
       { value: 1E3, symbol: "K" },
@@ -334,10 +390,10 @@ export default function Home() {
         break;
       }
     }
-  
+
     let numDecimals;
     const valAfterSuffix = num / si[i].value;
-  
+
     if (isCurrency) {
       numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : 2;
     } else {
@@ -348,7 +404,7 @@ export default function Home() {
     const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
   };
-  
+
 
   const renderKpiValue = (value: number | undefined, isCurrency: boolean = false, isInteger: boolean = false) => {
     if (isLoadingKpis && user) {
@@ -359,7 +415,7 @@ export default function Home() {
 
     return formatLargeNumber(value, isInteger ? 0 : (isCurrency ? 2 : 1), isCurrency, isInteger);
   };
-  
+
    if (authLoading) {
      return (
        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 md:p-8">
@@ -369,12 +425,12 @@ export default function Home() {
      );
    }
 
-  if (!user && !authLoading) { 
+  if (!user && !authLoading) {
     return <GuestHomePage />;
   }
 
   return (
-    <div className={cn(styles.homeContainer, "flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8")}>
+    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8 home-background")}>
       <TooltipProvider>
         <div className="w-full max-w-4xl text-center">
            <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
@@ -383,7 +439,7 @@ export default function Home() {
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 md:mb-8 text-primary scale-fade-in">
              {t('home_welcome_title')}
           </h1>
-          
+
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 md:mb-12 scale-fade-in delay-200">
             <Button
               size="lg"
@@ -418,8 +474,16 @@ export default function Home() {
             </Alert>
           )}
 
+          {/* Placeholder for KPI Customization - to be implemented later */}
+          {/* <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" onClick={() => console.log("Open KPI Customization Modal")}>
+              <Settings className="mr-2 h-4 w-4" /> Customize Dashboard
+            </Button>
+          </div> */}
+
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 scale-fade-in delay-300">
-             {kpiConfigurations.map((kpi, index) => {
+             {visibleKpiConfigs.map((kpi, index) => {
                 const Icon = kpi.icon;
                 const value = kpi.getValue(kpiData);
                 const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
@@ -427,7 +491,7 @@ export default function Home() {
                   <Tooltip key={kpi.id}>
                     <TooltipTrigger asChild>
                       <Link href={kpi.link} className="block hover:no-underline">
-                        <Card className={cn(styles.kpiCard, "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1 bg-background/80 backdrop-blur-sm border-border/50")} style={{animationDelay: `${0.1 * index}s`}}>
+                        <Card className={cn("kpi-card", "shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1 bg-background/80 backdrop-blur-sm border-border/50")} style={{animationDelay: `${0.1 * index}s`}}>
                           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-4 px-4">
                             <CardTitle className="text-sm font-medium text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
                             <Icon className={cn("h-5 w-5", kpi.iconColor || "text-accent")} />
@@ -483,3 +547,4 @@ export default function Home() {
     </div>
   );
 }
+
