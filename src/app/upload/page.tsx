@@ -13,7 +13,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
 import { scanTaxInvoice } from '@/ai/flows/scan-tax-invoice';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info } from 'lucide-react';
+import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit } from 'lucide-react'; // Renamed FileText to FileTextIconLucide, Added Edit
 import {
     InvoiceHistoryItem,
     getInvoicesService,
@@ -25,8 +25,8 @@ import {
     INVOICES_STORAGE_KEY_BASE,
     MAX_INVOICE_HISTORY_ITEMS,
     getStorageKey,
-    finalizeSaveProductsService,
-    TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
+    finalizeSaveProductsService, // Added finalizeSaveProductsService
+    TEMP_COMPRESSED_IMAGE_KEY_PREFIX, // Added TEMP_COMPRESSED_IMAGE_KEY_PREFIX
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -91,6 +91,10 @@ export default function UploadPage() {
   const { t } = useTranslation();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null); // For image previews
+  const [isPdfPreview, setIsPdfPreview] = useState<boolean>(false);    // To indicate if selected file is PDF
+  const [isDragging, setIsDragging] = useState(false);                 // For drag and drop UI
+
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -132,13 +136,28 @@ export default function UploadPage() {
   }, [user, authLoading, router, fetchHistory]);
 
 
+  const processFileForPreview = (file: File) => {
+    setSelectedFile(file);
+    setScanError(null);
+    if (file.type.startsWith('image/')) {
+        setIsPdfPreview(false);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setFilePreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+    } else if (file.type === 'application/pdf') {
+        setIsPdfPreview(true);
+        setFilePreview(null); // No visual preview for PDF, just icon and name
+    }
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+      const validTypes = ['image/jpeg', 'image/png', 'application/pdf', 'image/webp', 'image/gif'];
       if (validTypes.includes(file.type)) {
-        setSelectedFile(file);
-        setScanError(null);
+        processFileForPreview(file);
       } else {
         toast({
           title: t('upload_toast_invalid_file_type_title'),
@@ -146,6 +165,8 @@ export default function UploadPage() {
           variant: 'destructive',
         });
         setSelectedFile(null);
+        setFilePreview(null);
+        setIsPdfPreview(false);
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -153,13 +174,45 @@ export default function UploadPage() {
     }
   };
 
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (event.dataTransfer.files && event.dataTransfer.files[0]) {
+      const file = event.dataTransfer.files[0];
+      const validTypes = ['image/jpeg', 'image/png', 'application/pdf', 'image/webp', 'image/gif'];
+      if (validTypes.includes(file.type)) {
+         processFileForPreview(file);
+      } else {
+        toast({
+          title: t('upload_toast_invalid_file_type_title'),
+          description: t('upload_toast_invalid_file_type_desc'),
+          variant: 'destructive',
+        });
+        setSelectedFile(null);
+        setFilePreview(null);
+        setIsPdfPreview(false);
+      }
+    }
+  };
+
+
   const handleUpload = async () => {
     if (!selectedFile || !user) return;
 
     setIsUploading(true);
     setIsProcessing(true);
     setUploadProgress(0);
-    setStreamingContent('');
+    setStreamingContent(t('upload_preparing_file'));
     setScanError(null);
 
     const originalFileName = selectedFile.name;
@@ -194,7 +247,8 @@ export default function UploadPage() {
        reader.onloadend = async () => {
            if(progressInterval) clearInterval(progressInterval);
            setUploadProgress(100);
-           setStreamingContent(t('upload_ai_analysis_inprogress')); // Indicate AI processing start
+            setStreamingContent(t('upload_compressing_image'));
+
 
            if (typeof reader.result !== 'string') {
              console.error("FileReader did not return a string result.");
@@ -209,30 +263,41 @@ export default function UploadPage() {
            let imageToStoreForFinalSave: string | undefined = undefined;
 
             try {
-                imageToStoreForFinalSave = await compressImage(originalBase64Data);
-                if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) {
-                    imageForAIScan = imageToStoreForFinalSave;
+                if(selectedFile.type.startsWith('image/')) { // Only compress images
+                  imageToStoreForFinalSave = await compressImage(originalBase64Data);
+                  if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) { // Basic check if compression was effective
+                      imageForAIScan = imageToStoreForFinalSave;
+                  }
+                } else { // For PDFs, use original
+                    imageToStoreForFinalSave = originalBase64Data; // Or skip storing if too large
                 }
+
                 if (imageForAIScan.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                     imageForPreviewOnEditPage = imageForAIScan;
                 } else if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                      imageForPreviewOnEditPage = originalBase64Data;
                 } else {
                     imageForPreviewOnEditPage = ''; // Too large even after potential compression
+                    console.warn("[UploadPage] Image too large for preview on edit page even after compression attempts.");
                 }
-                
-                if (imageToStoreForFinalSave) {
+
+                if (imageToStoreForFinalSave && imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) { // Check size before saving compressed
                     try {
                        localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
                        compressedImageForFinalSaveUriSaved = true;
+                       console.log(`[UploadPage] Compressed image/PDF for final save URI stored with key: ${compressedImageKey}`);
                     } catch (storageError: any) {
-                       console.warn(`[UploadPage] Failed to save compressed image to localStorage (key: ${compressedImageKey}):`, storageError.message);
+                       console.warn(`[UploadPage] Failed to save compressed image/PDF to localStorage (key: ${compressedImageKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
                     }
+                } else if (imageToStoreForFinalSave) {
+                    console.warn(`[UploadPage] Compressed image/PDF too large to store for final save (key: ${compressedImageKey}), size: ${imageToStoreForFinalSave.length}`);
                 }
+
 
             } catch (compressionError) {
                 console.warn("[UploadPage] Image compression failed, will use original for AI and potentially preview:", compressionError);
+                setStreamingContent(t('upload_compression_failed_using_original'));
                 if (originalBase64Data.length > MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                     imageForPreviewOnEditPage = '';
                 }
@@ -242,13 +307,14 @@ export default function UploadPage() {
                 try {
                     localStorage.setItem(originalImagePreviewKey, imageForPreviewOnEditPage);
                     originalImagePreviewUriSaved = true;
+                     console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
                 } catch (storageError: any) {
                     console.warn(`[UploadPage] Failed to save original image preview to localStorage (key: ${originalImagePreviewKey}):`, storageError.message);
-                    originalImagePreviewUriSaved = false;
+                    originalImagePreviewUriSaved = false; // Ensure this is false if save fails
                     toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(original preview)"}), variant: 'destructive', duration: 8000 });
                 }
             }
-
+            setStreamingContent(t('upload_ai_analysis_inprogress'));
 
            if (documentType === 'invoice') {
                try {
@@ -264,9 +330,9 @@ export default function UploadPage() {
                     scanResult = { error: errorMessage };
                     setScanError(errorMessage);
                }
-           } else { 
+           } else {
                try {
-                   scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => setStreamingContent(prev => `${prev}\n${update.content}`));
+                   scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`));
                    if (scanResult.error) {
                        console.error("[UploadPage] AI product processing returned an error:", scanResult.error);
                        toast({ title: t('upload_toast_scan_error_title'), description: t('upload_toast_scan_error_desc', { error: scanResult.error }), variant: 'destructive', duration: 8000 });
@@ -318,9 +384,9 @@ export default function UploadPage() {
                id: tempInvoiceId,
                fileName: originalFileName,
                uploadTime: new Date().toISOString(),
-               status: 'pending', 
-               paymentStatus: 'unpaid', 
-               documentType: documentType, // Set document type here
+               status: 'pending',
+               paymentStatus: 'unpaid',
+               documentType: documentType,
                originalImagePreviewUri: originalImagePreviewUriSaved ? localStorage.getItem(originalImagePreviewKey) || undefined : undefined,
                compressedImageForFinalRecordUri: compressedImageForFinalSaveUriSaved ? localStorage.getItem(compressedImageKey) || undefined : undefined,
                invoiceNumber: (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber || (scanResult as ScanInvoiceOutput)?.invoiceNumber,
@@ -372,7 +438,7 @@ export default function UploadPage() {
             } else {
                 console.error("[UploadPage] Temporary data (scan result and/or images) was not saved correctly, aborting navigation to edit page.");
                 clearTemporaryScanData(uniqueScanId, user.id);
-                if (!scanError && !scanResult?.error) { 
+                if (!scanError && !scanResult?.error) {
                     setScanError(t('upload_toast_processing_failed_desc_generic'));
                     toast({
                        title: t('upload_toast_processing_failed_title'),
@@ -536,37 +602,71 @@ export default function UploadPage() {
             </TabsContent>
           </Tabs>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors",
+              isDragging ? "border-primary bg-primary/5" : "border-border"
+            )}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground">
+              {t('upload_drag_drop_text_or')}{' '}
+              <span className="font-semibold text-primary">{t('upload_browse_files_link')}</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{t('upload_supported_files_text')}</p>
             <Input
               type="file"
               onChange={handleFileChange}
               ref={fileInputRef}
-              className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-              accept=".jpg,.jpeg,.png,.pdf"
+              className="hidden"
+              accept=".jpg,.jpeg,.png,.pdf,.webp,.gif"
               aria-label={t('upload_file_input_aria')}
               disabled={isUploading || isProcessing}
             />
-            <Button
-              onClick={handleUpload}
-              disabled={!selectedFile || isUploading || isProcessing}
-              className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-base py-2.5 px-6"
-            >
-              {isProcessing ? (
-                 <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('upload_button_processing')}</>
-              ) : isUploading ? (
-                 <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('upload_button_uploading')}</>
-              ) : (
-                <>{t('upload_button_upload_process')}</>
-              )}
-            </Button>
           </div>
+
+          {selectedFile && (
+            <div className="mt-4 p-3 border rounded-md bg-muted/50">
+              <p className="text-sm font-medium text-foreground">{t('upload_selected_file_label')}: {selectedFile.name}</p>
+              {filePreview && !isPdfPreview && (
+                <div className="mt-2 relative w-full max-w-xs h-40 mx-auto">
+                  <NextImage src={filePreview} alt={t('upload_preview_alt')} layout="fill" objectFit="contain" data-ai-hint="document preview" />
+                </div>
+              )}
+              {isPdfPreview && (
+                <div className="mt-2 flex items-center justify-center text-muted-foreground">
+                  <FileTextIconLucide className="h-10 w-10 mr-2" />
+                  <span>{selectedFile.name} (PDF)</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <Button
+            onClick={handleUpload}
+            disabled={!selectedFile || isUploading || isProcessing}
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-base py-2.5 px-6"
+          >
+            {isProcessing ? (
+               <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('upload_button_processing')}</>
+            ) : isUploading ? (
+               <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('upload_button_uploading')}</>
+            ) : (
+              <>{t('upload_button_upload_process')}</>
+            )}
+          </Button>
+
           {(isUploading || isProcessing) && (
             <div className="space-y-2">
               <Progress value={uploadProgress} className="w-full h-2.5" aria-label={t('upload_progress_aria', {progress: uploadProgress})}/>
               <p className="text-sm text-muted-foreground text-center">
-                 {isProcessing ? (streamingContent || t('upload_ai_analysis_inprogress')) : t('upload_progress_text', {fileName: selectedFile?.name || 'file'})}
+                 {streamingContent || (isProcessing ? t('upload_ai_analysis_inprogress') : t('upload_progress_text', {fileName: selectedFile?.name || 'file'}))}
               </p>
-              {isProcessing && streamingContent && !streamingContent.includes(t('upload_ai_analysis_inprogress')) && ( // Only show scroll area if there's actual streaming content beyond the initial message
+              {isProcessing && streamingContent && !streamingContent.includes(t('upload_ai_analysis_inprogress')) && !streamingContent.includes(t('upload_preparing_file')) && !streamingContent.includes(t('upload_compressing_image')) && (
                 <ScrollArea className="h-20 mt-2 p-2 border rounded-md bg-muted/50 text-xs">
                     <pre className="whitespace-pre-wrap">{streamingContent}</pre>
                 </ScrollArea>
@@ -578,6 +678,20 @@ export default function UploadPage() {
               <p><strong>{t('upload_toast_scan_error_title')}:</strong> {scanError}</p>
             </div>
           )}
+           <Card className="mt-6 border-border/50 bg-muted/20">
+            <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t('upload_scanning_tips_title')}</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 text-xs text-muted-foreground">
+                <ul className="list-disc list-inside space-y-1">
+                    <li>{t('upload_tip_lighting')}</li>
+                    <li>{t('upload_tip_angle')}</li>
+                    <li>{t('upload_tip_full_document')}</li>
+                    <li>{t('upload_tip_clear_focus')}</li>
+                </ul>
+            </CardContent>
+           </Card>
+
         </CardContent>
       </Card>
 
@@ -611,14 +725,38 @@ export default function UploadPage() {
                     {uploadHistory.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2" title={item.fileName}>
+                           {item.originalImagePreviewUri && <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
                             {item.fileName}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell px-2 sm:px-4 py-2">{formatDate(item.uploadTime)}</TableCell>
                         <TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.status)}</TableCell>
-                        <TableCell className="text-right px-2 sm:px-4 py-2">
+                        <TableCell className="text-right px-2 sm:px-4 py-2 space-x-1">
                           <Button variant="ghost" size="icon" onClick={() => handleViewDetails(item)} className="h-8 w-8" title={t('upload_history_view_details_title', {fileName: item.fileName})} aria-label={t('upload_history_view_details_aria', {fileName: item.fileName})}>
                             <Info className="h-4 w-4 text-primary" />
                           </Button>
+                          {(item.status === 'pending' || item.status === 'error') && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                    const queryParams = new URLSearchParams({
+                                        key: `${TEMP_DATA_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`,
+                                        fileName: encodeURIComponent(item.fileName),
+                                        tempInvoiceId: item.id,
+                                        docType: item.documentType,
+                                    });
+                                    if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewKey', `${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+                                    if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageKey',`${TEMP_COMPRESSED_IMAGE_KEY_PREFIX}${user?.id}_${item.id.replace(`pending-inv-${user?.id}_`, '')}`);
+
+                                    router.push(`/edit-invoice?${queryParams.toString()}`);
+                                }}
+                                className="h-8 w-8"
+                                title={t('edit_invoice_button_title')}
+                                aria-label={t('edit_invoice_button_aria', {fileName: item.fileName})}
+                            >
+                                <Edit className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
