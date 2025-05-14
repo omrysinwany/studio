@@ -22,12 +22,13 @@ import { Button, buttonVariants } from '@/components/ui/button';
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
  import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, XCircle, CheckCircle as CheckCircleIcon, Clock, Link as LinkIcon } from 'lucide-react';
- import { useRouter, useSearchParams } from 'next/navigation';
+ import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format, parseISO, subDays, startOfMonth, endOfMonth } from 'date-fns';
+ import { format, parseISO, subDays, startOfMonth, endOfMonth, isValid } from 'date-fns';
+ import { enUS, he } from 'date-fns/locale';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
  import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, getStorageKey } from '@/services/backend';
@@ -52,7 +53,7 @@ import {
   AlertDialogHeader as AlertDialogHeaderComponent,
   AlertDialogTitle as AlertDialogTitleComponent,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Correct import for AlertDialog
+} from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -82,7 +83,7 @@ const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
 // Scanned Documents View Component
 const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) => {
   const { user, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -122,7 +123,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid'); // Default to grid
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
@@ -185,12 +186,18 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
          if (dateRange?.from) {
             const startDate = new Date(dateRange.from);
             startDate.setHours(0, 0, 0, 0);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) >= startDate);
+            filteredData = filteredData.filter(inv => {
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime) : null;
+                return invDate ? invDate >= startDate : false;
+            });
          }
          if (dateRange?.to) {
             const endDate = new Date(dateRange.to);
             endDate.setHours(23, 59, 59, 999);
-            filteredData = filteredData.filter(inv => new Date(inv.uploadTime as string) <= endDate);
+            filteredData = filteredData.filter(inv => {
+                const invDate = inv.uploadTime ? parseISO(inv.uploadTime) : null;
+                return invDate ? invDate <= endDate : false;
+            });
          }
          if (filterDocumentType) {
             filteredData = filteredData.filter(inv => inv.documentType === filterDocumentType);
@@ -202,7 +209,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
                  const valA = a[sortKey as keyof InvoiceHistoryItem];
                  const valB = b[sortKey as keyof InvoiceHistoryItem];
                  let comparison = 0;
-                 if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate') {
+                 if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate' || sortKey === 'invoiceDate') {
                      const dateA = valA ? new Date(valA as string).getTime() : 0;
                      const dateB = valB ? new Date(valB as string).getTime() : 0;
                      comparison = dateA - dateB;
@@ -301,16 +308,20 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'originalImagePreviewUri' && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
 
-   const formatDate = (date: Date | string | undefined) => {
-     if (!date) return t('edit_invoice_unknown_document');
+   const formatDate = (dateString: Date | string | undefined) => {
+     if (!dateString) return t('invoices_na');
      try {
-        const dateObj = typeof date === 'string' ? parseISO(date) : date;
-        if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
+        const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
+        if (!isValid(dateObj)) {
+            console.warn(`[InvoicesPage formatDate] Invalid date object for input:`, dateString);
+            return t('invoices_invalid_date');
+        }
+        const dateLocale = locale === 'he' ? he : enUS;
         return window.innerWidth < 640
-             ? format(dateObj, 'dd/MM/yy')
-             : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+             ? format(dateObj, 'dd/MM/yy', { locale: dateLocale })
+             : format(dateObj, 'PPp', { locale: dateLocale });
      } catch (e) {
-       console.error("Error formatting date:", e, "Input:", date);
+       console.error("[InvoicesPage formatDate] Error formatting date:", e, "Input:", dateString);
        return t('invoices_invalid_date');
      }
    };
@@ -357,7 +368,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
       fetchInvoices();
       setShowDetailsSheet(false);
       setSelectedInvoiceDetails(null);
-      setSelectedForBulkDelete([]); // Clear selection
+      setSelectedForBulkDelete([]);
     } catch (error) {
       console.error("Failed to delete invoice(s):", error);
       toast({
@@ -704,7 +715,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => {setFilterPaymentStatus(''); setCurrentScannedDocsPage(1);}}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
-                {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
+                {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => ( // Only show relevant statuses for scanned docs
                   <DropdownMenuCheckboxItem
                     key={pStatus}
                     checked={filterPaymentStatus === pStatus}
@@ -1147,9 +1158,9 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      <h3 className="text-md font-semibold text-primary border-b pb-1">
                         {selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}
                      </h3>
-                      {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri) ? (
+                      {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
                         <NextImage
-                            src={selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri!}
+                            src={selectedInvoiceDetails.originalImagePreviewUri!}
                             alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName })}
                             width={800}
                             height={1100}
@@ -1206,7 +1217,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                     </AlertDialog>
-                     {selectedInvoiceDetails.paymentStatus === 'paid' && ( // Show update receipt button only if paid
+                     {selectedInvoiceDetails.paymentStatus !== 'paid' && ( // Show update receipt button only if paid
                          <Button
                             variant="outline"
                             onClick={() => {
@@ -1216,7 +1227,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                 }
                             }}
                          >
-                           <Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_update_receipt_button')}
+                           <Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_mark_as_paid_button')}
                          </Button>
                      )}
                 </>

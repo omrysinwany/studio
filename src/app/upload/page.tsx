@@ -32,7 +32,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
+import { enUS, he } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -47,7 +48,7 @@ const isValidImageSrc = (src: string | undefined): src is string => {
 
 
 // Image compression function (browser-side)
-async function compressImage(base64Str: string, quality = 0.7, maxWidth = 1024, maxHeight = 1024): Promise<string> {
+async function compressImage(base64Str: string, quality = 0.6, maxWidth = 1024, maxHeight = 1024): Promise<string> {
     return new Promise((resolve, reject) => {
         const img = new window.Image();
         img.src = base64Str;
@@ -88,7 +89,7 @@ async function compressImage(base64Str: string, quality = 0.7, maxWidth = 1024, 
 export default function UploadPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -114,7 +115,11 @@ export default function UploadPage() {
     setIsLoadingHistory(true);
     try {
       const invoices = await getInvoicesService(user.id);
-      setUploadHistory(invoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()).slice(0, 10));
+      setUploadHistory(invoices.sort((a,b) => {
+        const timeA = a.uploadTime ? new Date(a.uploadTime).getTime() : 0;
+        const timeB = b.uploadTime ? new Date(b.uploadTime).getTime() : 0;
+        return timeB - timeA;
+      }).slice(0, 10));
     } catch (error) {
       console.error("Failed to load upload history:", error);
       toast({
@@ -254,7 +259,7 @@ export default function UploadPage() {
              console.error("FileReader did not return a string result.");
              toast({ title: t('upload_toast_upload_failed_title'), description: t('upload_toast_upload_failed_read_desc'), variant: 'destructive' });
              setIsProcessing(false); setIsUploading(false);
-             clearTemporaryScanData(uniqueScanId, user.id); // Cleanup
+             clearTemporaryScanData(uniqueScanId, user.id);
              return;
            }
 
@@ -278,21 +283,19 @@ export default function UploadPage() {
                 } else if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                      imageForPreviewOnEditPage = originalBase64Data;
                 } else {
-                    imageForPreviewOnEditPage = '';
+                    imageForPreviewOnEditPage = ''; // Prevent storing overly large images
                     console.warn("[UploadPage] Image too large for preview on edit page even after compression attempts.");
                 }
 
-                if (imageToStoreForFinalSave && imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
+                if (imageToStoreForFinalSave) {
                     try {
                        localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
                        compressedImageForFinalSaveUriSaved = true;
-                       console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
+                       console.log(`[UploadPage] Compressed image URI for final save stored with key: ${compressedImageKey}`);
                     } catch (storageError: any) {
-                       console.warn(`[UploadPage] Failed to save image for final save to localStorage (key: ${compressedImageKey}):`, storageError.message);
+                       console.warn(`[UploadPage] Failed to save compressed image for final save to localStorage (key: ${compressedImageKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
                     }
-                } else if (imageToStoreForFinalSave) {
-                    console.warn(`[UploadPage] Image for final save too large to store (key: ${compressedImageKey}), size: ${imageToStoreForFinalSave.length}`);
                 }
 
 
@@ -326,12 +329,12 @@ export default function UploadPage() {
                        setScanError(scanResult.error);
                    }
                } catch (aiError: any) {
-                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error') });
+                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error')});
                     toast({ title: t('upload_toast_ai_processing_error_title'), description: errorMessage, variant: 'destructive', duration: 8000 });
-                    scanResult = { error: errorMessage };
+                    scanResult = { error: errorMessage }; // Ensure scanResult is set
                     setScanError(errorMessage);
                }
-           } else {
+           } else { // 'deliveryNote'
                try {
                    scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`));
                    if (scanResult.error) {
@@ -342,7 +345,7 @@ export default function UploadPage() {
                } catch (aiError: any) {
                     const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error') });
                     toast({ title: t('upload_toast_ai_processing_error_title'), description: errorMessage, variant: 'destructive', duration: 8000 });
-                    scanResult = { products: [], error: errorMessage };
+                    scanResult = { products: [], error: errorMessage }; // Ensure scanResult is set
                     setScanError(errorMessage);
                }
            }
@@ -360,9 +363,9 @@ export default function UploadPage() {
                     } else {
                         scanResult = { products: [], error: errorMsg } as ScanInvoiceOutput;
                     }
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Still save error state
                     scanDataSavedForEdit = true;
-                    setScanError(errorMsg);
+                    setScanError(errorMsg); // Display error to user
                     toast({ title: t('upload_toast_critical_error_save_scan_title'), description: errorMsg, variant: 'destructive', duration: 10000 });
                 } else {
                     localStorage.setItem(dataKey, JSON.stringify(scanResult));
@@ -385,16 +388,19 @@ export default function UploadPage() {
                id: tempInvoiceId,
                fileName: originalFileName,
                uploadTime: new Date().toISOString(),
-               status: 'pending',
+               status: 'pending', // Start as pending
                paymentStatus: 'unpaid',
                documentType: documentType,
+               // Only include URIs if they were successfully saved
                originalImagePreviewUri: originalImagePreviewUriSaved ? localStorage.getItem(originalImagePreviewKey) || undefined : undefined,
                compressedImageForFinalRecordUri: compressedImageForFinalSaveUriSaved ? localStorage.getItem(compressedImageKey) || undefined : undefined,
+               // Extract initial details from scan if available
                invoiceNumber: (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber || (scanResult as ScanInvoiceOutput)?.invoiceNumber,
                supplier: (scanResult as ScanTaxInvoiceOutput)?.supplierName || (scanResult as ScanInvoiceOutput)?.supplier,
                totalAmount: (scanResult as ScanTaxInvoiceOutput)?.totalAmount || (scanResult as ScanInvoiceOutput)?.totalAmount,
                invoiceDate: (scanResult as ScanTaxInvoiceOutput)?.invoiceDate || (scanResult as ScanInvoiceOutput)?.invoiceDate,
                paymentMethod: (scanResult as ScanTaxInvoiceOutput)?.paymentMethod || (scanResult as ScanInvoiceOutput)?.paymentMethod,
+               errorMessage: scanResult?.error // Store AI error here if any
            };
 
            try {
@@ -402,7 +408,11 @@ export default function UploadPage() {
                let currentInvoices: InvoiceHistoryItem[] = JSON.parse(localStorage.getItem(invoicesStorageKey) || '[]');
                currentInvoices = [pendingInvoice, ...currentInvoices];
                 if (currentInvoices.length > MAX_INVOICE_HISTORY_ITEMS) {
-                    currentInvoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
+                    currentInvoices.sort((a,b) => {
+                        const timeA = a.uploadTime ? new Date(a.uploadTime).getTime() : 0;
+                        const timeB = b.uploadTime ? new Date(b.uploadTime).getTime() : 0;
+                        return timeB - timeA;
+                    });
                     currentInvoices = currentInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS);
                 }
                localStorage.setItem(invoicesStorageKey, JSON.stringify(currentInvoices));
@@ -424,22 +434,22 @@ export default function UploadPage() {
                });
            }
 
-            if (scanDataSavedForEdit) {
+            if (scanDataSavedForEdit) { // Only navigate if scan data (even if error) was saved for review
                 const queryParams = new URLSearchParams({
                     key: dataKey,
                     fileName: encodeURIComponent(originalFileName),
-                    tempInvoiceId: tempInvoiceId,
+                    tempInvoiceId: tempInvoiceId, // Pass the temp ID for potential update
                     docType: documentType,
                 });
-
-                if (originalImagePreviewUriSaved && imageForPreviewOnEditPage) queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
-                if (compressedImageForFinalSaveUriSaved && imageToStoreForFinalSave) queryParams.append('compressedImageKey', compressedImageKey);
+                // Only add image keys if they were actually saved to avoid passing empty keys
+                if (originalImagePreviewUriSaved && localStorage.getItem(originalImagePreviewKey)) queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
+                if (compressedImageForFinalSaveUriSaved && localStorage.getItem(compressedImageKey)) queryParams.append('compressedImageKey', compressedImageKey);
 
                 router.push(`/edit-invoice?${queryParams.toString()}`);
             } else {
                 console.error("[UploadPage] Temporary data (scan result and/or images) was not saved correctly, aborting navigation to edit page.");
-                clearTemporaryScanData(uniqueScanId, user.id);
-                if (!scanError && !scanResult?.error) {
+                // Do not clear temporary data here if it wasn't saved, as there's nothing to clear yet by uniqueScanId
+                if (!scanError && !scanResult?.error) { // Only show generic error if AI didn't already report one
                     setScanError(t('upload_toast_processing_failed_desc_generic'));
                     toast({
                        title: t('upload_toast_processing_failed_title'),
@@ -480,19 +490,23 @@ export default function UploadPage() {
 };
 
 
- const formatDate = (dateString: string | Date | undefined) => {
-   if (!dateString) return t('invoices_na');
-   try {
+  const formatDate = (dateString: string | Date | undefined) => {
+    if (!dateString) return t('invoices_na');
+    try {
       const dateObj = typeof dateString === 'string' ? parseISO(dateString) : dateString;
-      if (isNaN(dateObj.getTime())) return t('invoices_invalid_date');
+      if (!isValid(dateObj)) { // Check if the parsed date is valid
+          console.warn(`[UploadPage formatDate] Invalid date object for input:`, dateString);
+          return t('invoices_invalid_date');
+      }
+      const dateLocale = locale === 'he' ? he : enUS;
       return window.innerWidth < 640
-           ? format(dateObj, 'dd/MM/yy')
-           : dateObj.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
-   } catch (e) {
-     console.error("Error formatting date:", e, "Input:", dateString);
-     return t('invoices_invalid_date');
-   }
- };
+           ? format(dateObj, 'dd/MM/yy', { locale: dateLocale })
+           : format(dateObj, 'PPp', { locale: dateLocale });
+    } catch (e) {
+      console.error("[UploadPage formatDate] Error formatting date:", e, "Input:", dateString);
+      return t('invoices_invalid_date');
+    }
+  };
 
   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
       setSelectedInvoiceDetails(invoice);
@@ -613,8 +627,8 @@ export default function UploadPage() {
             onDrop={handleDrop}
             className={cn(
               "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors",
-              "bg-muted/20 hover:bg-primary/5", // Lighter background
-              isDragging ? "border-primary bg-primary/10 ring-2 ring-primary ring-offset-2" : "border-border hover:border-primary/70" // More prominent on drag
+              "bg-muted/20 hover:bg-primary/5",
+              isDragging ? "border-primary bg-primary/10 ring-2 ring-primary ring-offset-2" : "border-border hover:border-primary/70"
             )}
             onClick={() => fileInputRef.current?.click()}
           >
