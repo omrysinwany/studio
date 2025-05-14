@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks } from "lucide-react";
+import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, Link as LinkIcon } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -46,7 +46,7 @@ interface KpiData {
   lowStockItemsCount: number;
   criticalLowStockProducts: BackendProduct[];
   nextPaymentDueInvoice: InvoiceHistoryItem | null;
-  recentActivity: { description: string; time: string; link?: string }[];
+  recentActivity: { descriptionKey: string; params?: Record<string, string | number>; time: string; link?: string }[];
   latestDocName?: string;
   inventoryValueTrend?: { name: string; value: number }[];
   inventoryValuePrevious?: number;
@@ -106,7 +106,7 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     isCurrency: true,
-    iconColor: 'text-accent',
+    iconColor: 'text-green-500 dark:text-green-400', // Distinct color for profit
     defaultVisible: true,
   },
   {
@@ -141,7 +141,7 @@ const allKpiConfigurations: KpiConfig[] = [
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/accounts?filter=unpaid',
     isCurrency: true,
-    iconColor: 'text-accent',
+    iconColor: 'text-orange-500 dark:text-orange-400', // Distinct color
     defaultVisible: true,
   },
   {
@@ -184,7 +184,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
     const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
     return {
         visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-        kpiOrder: defaultVisible.map(kpi => kpi.id),
+        kpiOrder: defaultVisible.map(kpi => kpi.id), // Default order matches default visible
     };
   }
   const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
@@ -192,24 +192,36 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed.visibleKpiIds) && parsed.visibleKpiIds.every((id: any) => typeof id === 'string') &&
-          Array.isArray(parsed.kpiOrder) && parsed.kpiOrder.every((id: any) => typeof id === 'string')) {
-        const allIds = new Set(allKpiConfigurations.map(kpi => kpi.id));
-        const validVisible = parsed.visibleKpiIds.filter((id: string) => allIds.has(id));
-        const validOrder = parsed.kpiOrder.filter((id: string) => allIds.has(id));
+      // Validate that stored preferences are still valid against current allKpiConfigurations
+      const allKpiIdsSet = new Set(allKpiConfigurations.map(kpi => kpi.id));
+      const validVisibleKpiIds = parsed.visibleKpiIds.filter((id: string) => allKpiIdsSet.has(id));
+      const validKpiOrder = parsed.kpiOrder.filter((id: string) => allKpiIdsSet.has(id));
 
-        return { visibleKpiIds: validVisible, kpiOrder: validOrder };
-      }
+      // Ensure all currently available defaultVisible KPIs are included if not in stored preferences
+      // (e.g., after an app update adds a new default KPI)
+      allKpiConfigurations.forEach(kpi => {
+        if (kpi.defaultVisible && !validVisibleKpiIds.includes(kpi.id)) {
+          validVisibleKpiIds.push(kpi.id);
+        }
+        if (!validKpiOrder.includes(kpi.id)) {
+            // Add new KPIs to the end of the order if they are not already there
+           validKpiOrder.push(kpi.id);
+        }
+      });
+      
+      return { visibleKpiIds: validVisibleKpiIds, kpiOrder: validKpiOrder };
     } catch (e) {
       console.error("Error parsing KPI preferences from localStorage:", e);
     }
   }
+  // Fallback to default if nothing stored or parsing failed
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Ensure default order reflects allKpiConfigurations
   };
 };
+
 
 const saveKpiPreferences = (preferences: { visibleKpiIds: string[], kpiOrder: string[] }, userId?: string) => {
   if (typeof window === 'undefined' || !userId) return;
@@ -242,7 +254,7 @@ const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: 
              if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
              return [value.toLocaleString(), name];
           }}
-          labelFormatter={() => ''}
+          labelFormatter={() => ''} // Hide label in tooltip
         />
         <XAxis dataKey="name" hide />
         <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
@@ -285,7 +297,7 @@ export default function Home() {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
     } else if (!authLoading) {
-        const defaultGuestPrefs = getKpiPreferences();
+        const defaultGuestPrefs = getKpiPreferences(); // Get defaults if no user (though this case is handled by GuestHomePage)
         setUserKpiPreferences(defaultGuestPrefs);
     }
   }, [user, authLoading]);
@@ -316,7 +328,7 @@ export default function Home() {
 
 
       const unpaidInvoices = invoices.filter(
-        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate
+        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate))
       ).sort((a, b) => new Date(a.paymentDueDate!).getTime() - new Date(b.paymentDueDate!).getTime());
       const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
 
@@ -390,9 +402,10 @@ export default function Home() {
 
       const recentInvoices = invoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()).slice(0,3);
       const mockRecentActivity = recentInvoices.map(inv => ({
-        description: t('home_recent_activity_mock_invoice_added', { supplier: inv.supplier || t('invoices_unknown_supplier') }),
+        descriptionKey: 'home_recent_activity_mock_invoice_added',
+        params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
         time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp'),
-        link: `/invoices?viewInvoiceId=${inv.id}` // Assuming this page and query param exists
+        link: `/invoices?viewInvoiceId=${inv.id}`
       }));
 
 
@@ -425,13 +438,13 @@ export default function Home() {
       setIsLoadingKpis(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, t]); //Removed toast as it's stable
+  }, [user, authLoading, t]);
 
   useEffect(() => {
     if (user) {
       fetchKpiData();
     } else if (!authLoading) {
-      setIsLoadingKpis(false);
+      setIsLoadingKpis(false); // Not loading if no user and auth is done
     }
   }, [user, authLoading, fetchKpiData]);
 
@@ -526,7 +539,7 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainer)}>
+    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
       <TooltipProvider>
         <div className="w-full max-w-5xl text-center">
           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
@@ -562,11 +575,17 @@ export default function Home() {
             </Button>
           </div>
 
-          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
-              </CardTitle>
+          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+            <CardHeader className="pb-4">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                    <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
+                </CardTitle>
+                <Button variant="ghost" size="icon" onClick={() => setIsCustomizeSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                    <SettingsIcon className="h-4 w-4" />
+                    <span className="sr-only">{t('home_customize_dashboard_button')}</span>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {kpiError && !isLoadingKpis && user && (
@@ -575,83 +594,94 @@ export default function Home() {
                   <AlertDescription>{kpiError}</AlertDescription>
                 </Alert>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                {visibleKpiConfigs.map((kpi, index) => {
-                    const Icon = kpi.icon;
-                    const value = kpi.getValue(kpiData);
-                    const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
-                    return (
-                      <Tooltip key={kpi.id}>
-                        <TooltipTrigger asChild>
-                          <Link href={kpi.link} className="block hover:no-underline">
-                            <Card className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 h-full text-left transform hover:-translate-y-1 bg-background/90 backdrop-blur-sm border-border/50", styles.kpiCard)} style={{animationDelay: `${0.05 * index}s`}}>
-                              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
-                                <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
-                                <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-accent")} />
-                              </CardHeader>
-                              <CardContent className="pt-1 pb-2 px-3 sm:px-4">
-                                <div className="text-xl sm:text-2xl md:text-3xl font-bold text-primary flex items-baseline">
-                                    {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}
-                                    {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && value !== undefined && value !== kpiData.inventoryValuePrevious && (
-                                        value > kpiData.inventoryValuePrevious ?
-                                        <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
-                                        <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
-                                    )}
-                                </div>
-                                <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1">{t(kpi.descriptionKey)}</p>
-                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
-                                    <div className="mt-1 h-8">
-                                        <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--accent))" />
-                                    </div>
-                                )}
-                                {kpi.showProgress && kpiData && (
-                                    <Progress
-                                        value={progress}
-                                        className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/50"
-                                        indicatorClassName={cn(
-                                            "transition-all duration-500 ease-out",
-                                            progress > 75 ? "bg-destructive" :
-                                            progress > 50 ? "bg-yellow-500" :
-                                            "bg-accent"
+              {(isLoadingKpis && user) ? (
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                    {Array.from({length: Math.min(visibleKpiConfigs.length || 3, 6)}).map((_, idx) => (
+                        <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px]">
+                            <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                            <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                        </Card>
+                    ))}
+                 </div>
+              ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
+                 <div className="text-center py-8 text-muted-foreground">
+                    <Package className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                    <p className="text-sm">{t('home_empty_state_kpis_title')}</p>
+                    <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_empty_state_kpis_action')}</Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                    {visibleKpiConfigs.map((kpi, index) => {
+                        const Icon = kpi.icon;
+                        const value = kpi.getValue(kpiData);
+                        const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
+                        return (
+                        <Tooltip key={kpi.id}>
+                            <TooltipTrigger asChild>
+                            <Link href={kpi.link} className="block hover:no-underline">
+                                <Card className={cn("shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-[1.03] h-full text-left transform hover:-translate-y-0.5 bg-background/80 backdrop-blur-sm border-border/40", styles.kpiCard)} style={{animationDelay: `${0.05 * index}s`}}>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
+                                    <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
+                                    <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
+                                </CardHeader>
+                                <CardContent className="pt-1 pb-2 px-3 sm:px-4">
+                                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground flex items-baseline">
+                                        {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}
+                                        {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && value !== undefined && value !== kpiData.inventoryValuePrevious && (
+                                            value > kpiData.inventoryValuePrevious ?
+                                            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
+                                            <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
                                         )}
-                                    />
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>
+                                    {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
+                                        <div className="mt-1 h-8">
+                                            <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
+                                        </div>
+                                    )}
+                                    {kpi.showProgress && kpiData && (
+                                        <Progress
+                                            value={progress}
+                                            className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/30"
+                                            indicatorClassName={cn(
+                                                "transition-all duration-500 ease-out",
+                                                progress > 75 ? "bg-destructive" :
+                                                progress > 50 ? "bg-yellow-500" :
+                                                "bg-primary"
+                                            )}
+                                        />
+                                    )}
+                                </CardContent>
+                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && value !== undefined && (
+                                    <CardFooter className="text-[10px] sm:text-xs px-3 sm:px-4 pb-2 pt-0">
+                                        <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                                            {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
+                                        </p>
+                                    </CardFooter>
                                 )}
-                              </CardContent>
-                               {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                                <CardFooter className="text-[10px] sm:text-xs px-3 sm:px-4 pb-2 pt-0">
-                                    <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                        {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, 2, true)}
-                                    </p>
-                                </CardFooter>
-                               )}
-                            </Card>
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{t(kpi.titleKey)}: {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}</p>
-                          <p className="text-xs">{t(kpi.descriptionKey)}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                })}
-              </div>
-              <div className="flex justify-end mt-4">
-                <Button variant="outline" size="sm" onClick={() => setIsCustomizeSheetOpen(true)}>
-                  <SettingsIcon className="mr-2 h-4 w-4" /> {t('home_customize_dashboard_button')}
-                </Button>
-              </div>
+                                </Card>
+                            </Link>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                            <p>{t(kpi.titleKey)}: {renderKpiValue(value, kpi.isCurrency, kpi.isInteger)}</p>
+                            <p className="text-xs">{t(kpi.descriptionKey)}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                        );
+                    })}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
-            <Card className="scale-fade-in delay-400 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                <CardHeader>
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                    <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
-                </CardTitle>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
+            <Card className="scale-fade-in delay-400 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                      <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm">
+                <CardContent className="space-y-3 text-sm pt-0">
                     <div>
                         <h3 className="text-base font-semibold text-foreground flex items-center">
                             <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
@@ -662,17 +692,20 @@ export default function Home() {
                             <ul className="list-disc pl-5 text-muted-foreground mt-1 space-y-0.5">
                             {kpiData.criticalLowStockProducts.map(product => (
                                 <li key={product.id}>
-                                <Link href={`/inventory/${product.id}`} className="hover:underline text-accent">
+                                <Link href={`/inventory/${product.id}`} className="hover:underline text-primary">
                                     {product.shortName || product.description}
                                 </Link> ({t('home_stock_level_label')}: {product.quantity})
                                 </li>
                             ))}
                             </ul>
                         ) : (
-                            <p className="text-muted-foreground mt-1">{t('home_no_critical_low_stock')}</p>
+                             <div className="text-muted-foreground mt-1 text-center py-4">
+                                <Package className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                                <p>{t('home_empty_state_low_stock')}</p>
+                            </div>
                         )}
                     </div>
-
+                    <hr className="my-2 border-border/50"/>
                     <div>
                         <h3 className="text-base font-semibold text-foreground flex items-center">
                             <BellRing className="mr-2 h-4 w-4 text-primary" />
@@ -681,35 +714,38 @@ export default function Home() {
                         {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2"/> :
                          kpiData?.nextPaymentDueInvoice ? (
                             <p className="text-muted-foreground mt-1">
-                                <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-accent">
+                                <Link href={`/edit-invoice?invoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                     {kpiData.nextPaymentDueInvoice.supplier || t('home_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, 2, true)}
                                 </Link>
                                 {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate), 'PP') : t('home_unknown_date')}
                             </p>
                         ) : (
-                            <p className="text-muted-foreground mt-1">{t('home_no_upcoming_payments')}</p>
+                            <div className="text-muted-foreground mt-1 text-center py-4">
+                                <CreditCard className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                                <p>{t('home_empty_state_upcoming_payments')}</p>
+                            </div>
                         )}
                     </div>
                 </CardContent>
             </Card>
 
-            <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-                <CardHeader>
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
-                    <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
-                </CardTitle>
+            <Card className="scale-fade-in delay-500 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+                      <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent>
-                    {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2"/> :
+                <CardContent className="pt-0">
+                    {isLoadingKpis ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground my-2 mx-auto"/> :
                      kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
                         <ul className="space-y-1.5 text-sm">
                         {kpiData.recentActivity.map((activity, index) => (
-                            <li key={index} className="text-muted-foreground flex justify-between items-center">
+                            <li key={index} className="text-muted-foreground flex justify-between items-center py-1 border-b border-border/30 last:border-b-0">
                                 <span className="truncate max-w-[70%]">
                                     {activity.link ? (
-                                        <Link href={activity.link} className="hover:underline text-accent">{activity.description}</Link>
+                                        <Link href={activity.link} className="hover:underline text-primary">{t(activity.descriptionKey, activity.params)}</Link>
                                     ) : (
-                                        activity.description
+                                        t(activity.descriptionKey, activity.params)
                                     )}
                                 </span>
                                 <span className="text-xs whitespace-nowrap">{activity.time}</span>
@@ -717,27 +753,30 @@ export default function Home() {
                         ))}
                         </ul>
                     ) : (
-                        <p className="text-muted-foreground mt-1">{t('home_no_recent_activity')}</p>
+                        <div className="text-muted-foreground mt-1 text-center py-10">
+                           <FileTextIcon className="mx-auto h-8 w-8 mb-1 opacity-40" />
+                           <p>{t('home_empty_state_recent_activity_title')}</p>
+                           <p className="text-xs">{t('home_empty_state_recent_activity_desc')}</p>
+                        </div>
                     )}
                 </CardContent>
             </Card>
-            </div>
+          </div>
 
-
-            <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
-            <CardHeader>
+          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+            <CardHeader className="pb-3">
               <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                 <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Button variant="outline" asChild>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0">
+              <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
                 <Link href="/accounts/other-expenses">
                   <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
                 </Link>
               </Button>
-              <Button variant="outline" asChild>
-                <Link href="/inventory">
+              <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                <Link href="/inventory"> {/* Or a dedicated "add product" page if you create one */}
                   <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
                 </Link>
               </Button>
@@ -756,4 +795,3 @@ export default function Home() {
     </div>
   );
 }
-

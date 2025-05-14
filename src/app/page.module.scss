@@ -1,3 +1,4 @@
+
 .homeContainer {
   /* Basic styling to ensure the file is not empty and is valid SCSS */
   width: 100%;
@@ -8,6 +9,32 @@
 }
 
 .kpiCard:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px) scale(1.03); /* Combine scale and translate */
+  box-shadow: 0 8px 20px rgba(var(--foreground-rgb), 0.1), 0 4px 8px rgba(var(--foreground-rgb), 0.08); /* Softer, layered shadow */
+}
+
+.homeContainerGradient {
+  background: linear-gradient(180deg, hsl(var(--background) / 0.95) 0%, hsl(var(--muted) / 0.5) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.homeContainerGradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 10% 20%, hsl(var(--primary)/0.03) 0%, transparent 30%),
+    radial-gradient(circle at 90% 80%, hsl(var(--accent)/0.03) 0%, transparent 30%);
+  opacity: 0.7;
+  z-index: -1;
+  animation: subtleShimmer 20s infinite alternate ease-in-out;
+}
+
+@keyframes subtleShimmer {
+  0% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
+  25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.6; }
+  50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.7; }
+  75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.6; }
+  100% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
 }
