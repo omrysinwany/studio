@@ -13,7 +13,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/scan-invoice';
 import { scanTaxInvoice } from '@/ai/flows/scan-tax-invoice';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit } from 'lucide-react'; // Renamed FileText to FileTextIconLucide, Added Edit
+import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit } from 'lucide-react';
 import {
     InvoiceHistoryItem,
     getInvoicesService,
@@ -25,8 +25,8 @@ import {
     INVOICES_STORAGE_KEY_BASE,
     MAX_INVOICE_HISTORY_ITEMS,
     getStorageKey,
-    finalizeSaveProductsService, // Added finalizeSaveProductsService
-    TEMP_COMPRESSED_IMAGE_KEY_PREFIX, // Added TEMP_COMPRESSED_IMAGE_KEY_PREFIX
+    finalizeSaveProductsService,
+    TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Helper to check if a string is a valid data URI or URL for NextImage
 const isValidImageSrc = (src: string | undefined): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
 
@@ -91,9 +91,9 @@ export default function UploadPage() {
   const { t } = useTranslation();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null); // For image previews
-  const [isPdfPreview, setIsPdfPreview] = useState<boolean>(false);    // To indicate if selected file is PDF
-  const [isDragging, setIsDragging] = useState(false);                 // For drag and drop UI
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [isPdfPreview, setIsPdfPreview] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -148,7 +148,7 @@ export default function UploadPage() {
         reader.readAsDataURL(file);
     } else if (file.type === 'application/pdf') {
         setIsPdfPreview(true);
-        setFilePreview(null); // No visual preview for PDF, just icon and name
+        setFilePreview(null);
     }
   };
 
@@ -254,6 +254,7 @@ export default function UploadPage() {
              console.error("FileReader did not return a string result.");
              toast({ title: t('upload_toast_upload_failed_title'), description: t('upload_toast_upload_failed_read_desc'), variant: 'destructive' });
              setIsProcessing(false); setIsUploading(false);
+             clearTemporaryScanData(uniqueScanId, user.id); // Cleanup
              return;
            }
 
@@ -263,13 +264,13 @@ export default function UploadPage() {
            let imageToStoreForFinalSave: string | undefined = undefined;
 
             try {
-                if(selectedFile.type.startsWith('image/')) { // Only compress images
+                if(selectedFile.type.startsWith('image/')) {
                   imageToStoreForFinalSave = await compressImage(originalBase64Data);
-                  if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) { // Basic check if compression was effective
+                  if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) {
                       imageForAIScan = imageToStoreForFinalSave;
                   }
-                } else { // For PDFs, use original
-                    imageToStoreForFinalSave = originalBase64Data; // Or skip storing if too large
+                } else {
+                    imageToStoreForFinalSave = originalBase64Data;
                 }
 
                 if (imageForAIScan.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
@@ -277,21 +278,21 @@ export default function UploadPage() {
                 } else if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                      imageForPreviewOnEditPage = originalBase64Data;
                 } else {
-                    imageForPreviewOnEditPage = ''; // Too large even after potential compression
+                    imageForPreviewOnEditPage = '';
                     console.warn("[UploadPage] Image too large for preview on edit page even after compression attempts.");
                 }
 
-                if (imageToStoreForFinalSave && imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) { // Check size before saving compressed
+                if (imageToStoreForFinalSave && imageToStoreForFinalSave.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
                     try {
                        localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
                        compressedImageForFinalSaveUriSaved = true;
-                       console.log(`[UploadPage] Compressed image/PDF for final save URI stored with key: ${compressedImageKey}`);
+                       console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
                     } catch (storageError: any) {
-                       console.warn(`[UploadPage] Failed to save compressed image/PDF to localStorage (key: ${compressedImageKey}):`, storageError.message);
+                       console.warn(`[UploadPage] Failed to save image for final save to localStorage (key: ${compressedImageKey}):`, storageError.message);
                         toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
                     }
                 } else if (imageToStoreForFinalSave) {
-                    console.warn(`[UploadPage] Compressed image/PDF too large to store for final save (key: ${compressedImageKey}), size: ${imageToStoreForFinalSave.length}`);
+                    console.warn(`[UploadPage] Image for final save too large to store (key: ${compressedImageKey}), size: ${imageToStoreForFinalSave.length}`);
                 }
 
 
@@ -310,7 +311,7 @@ export default function UploadPage() {
                      console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
                 } catch (storageError: any) {
                     console.warn(`[UploadPage] Failed to save original image preview to localStorage (key: ${originalImagePreviewKey}):`, storageError.message);
-                    originalImagePreviewUriSaved = false; // Ensure this is false if save fails
+                    originalImagePreviewUriSaved = false;
                     toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(original preview)"}), variant: 'destructive', duration: 8000 });
                 }
             }
@@ -586,9 +587,13 @@ export default function UploadPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <Tabs value={documentType} onValueChange={(value) => setDocumentType(value as 'deliveryNote' | 'invoice')}>
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="deliveryNote">{t('upload_doc_type_delivery_note')}</TabsTrigger>
-              <TabsTrigger value="invoice">{t('upload_doc_type_invoice')}</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/60 p-1.5 rounded-lg">
+              <TabsTrigger value="deliveryNote" className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary py-2 text-sm font-medium">
+                {t('upload_doc_type_delivery_note')}
+              </TabsTrigger>
+              <TabsTrigger value="invoice" className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary py-2 text-sm font-medium">
+                {t('upload_doc_type_invoice')}
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="deliveryNote" className="mt-0">
               <p className="text-sm text-muted-foreground mb-2">
@@ -608,14 +613,15 @@ export default function UploadPage() {
             onDrop={handleDrop}
             className={cn(
               "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors",
-              isDragging ? "border-primary bg-primary/5" : "border-border"
+              "bg-muted/20 hover:bg-primary/5", // Lighter background
+              isDragging ? "border-primary bg-primary/10 ring-2 ring-primary ring-offset-2" : "border-border hover:border-primary/70" // More prominent on drag
             )}
             onClick={() => fileInputRef.current?.click()}
           >
-            <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">
+            <UploadCloud className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mb-2" />
+            <p className="text-sm sm:text-base text-muted-foreground">
               {t('upload_drag_drop_text_or')}{' '}
-              <span className="font-semibold text-primary">{t('upload_browse_files_link')}</span>
+              <span className="font-semibold text-primary hover:underline">{t('upload_browse_files_link')}</span>
             </p>
             <p className="text-xs text-muted-foreground mt-1">{t('upload_supported_files_text')}</p>
             <Input
@@ -649,7 +655,7 @@ export default function UploadPage() {
           <Button
             onClick={handleUpload}
             disabled={!selectedFile || isUploading || isProcessing}
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-base py-2.5 px-6"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-base py-2.5 px-6 text-primary-foreground shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
           >
             {isProcessing ? (
                <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('upload_button_processing')}</>
@@ -776,8 +782,8 @@ export default function UploadPage() {
             </DialogDescription>
           </DialogHeader>
           {selectedInvoiceDetails && (
-             <ScrollArea className="flex-grow p-0"> 
-              <div className="p-4 sm:p-6 space-y-4"> 
+             <ScrollArea className="flex-grow p-0">
+              <div className="p-4 sm:p-6 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                     <div>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
@@ -790,8 +796,6 @@ export default function UploadPage() {
                       <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplier || t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatDisplayNumberWithTranslation(selectedInvoiceDetails.totalAmount, t, { useGrouping: true }) : t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDate(selectedInvoiceDetails.invoiceDate as string) : t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
                     </div>
                   </div>
                   {selectedInvoiceDetails.errorMessage && (
