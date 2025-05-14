@@ -76,6 +76,7 @@ export const SUPPLIERS_STORAGE_KEY_BASE = 'invoTrack_suppliers';
 export const ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_accountantSettings';
 export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings'; 
 export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses'; 
+export const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
 
 
 export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
@@ -1085,3 +1086,24 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
     console.log(`[clearOldTemporaryScanData] Cleared ${itemsCleared} old/emergency temporary scan data items (Targeted user: ${userIdToClear || 'All Users'}).`);
   }
 }
+
+// Mock Firebase Auth
+const mockAuth = {
+  onAuthStateChanged: (callback: (user: User | null) => void) => {
+    // Simulate checking for a logged-in user
+    setTimeout(() => {
+      const storedUser = localStorage.getItem('authUser');
+      if (storedUser) {
+        callback(JSON.parse(storedUser));
+      } else {
+        callback(null);
+      }
+    }, 100);
+    return () => {}; // Unsubscribe function
+  },
+  // Add other mock auth methods if needed (signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut)
+};
+
+// Re-exporting a mock auth object to be used by AuthContext if Firebase is not fully set up client-side
+// This allows AuthContext to function with localStorage for user state management
+export { mockAuth as auth };

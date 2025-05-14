@@ -1,3 +1,4 @@
+
 // src/app/accounts/page.tsx
 'use client';
 
@@ -63,6 +64,9 @@ export default function AccountsPage() {
       if (storedBudget) {
         setMonthlyBudget(parseFloat(storedBudget));
         setTempBudget(storedBudget);
+      } else {
+        setMonthlyBudget(0); // Default to 0 if no budget is set
+        setTempBudget('0');
       }
 
       getUserSettingsService(user.id).then(settings => {
@@ -172,14 +176,12 @@ export default function AccountsPage() {
         if (invoice.status !== 'completed') return;
 
         let relevantDateForExpense: Date | null = null;
-        // Prioritize paymentDueDate if it's valid and within the current month
         if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
             const paymentDate = parseISO(invoice.paymentDueDate as string);
             if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
                 relevantDateForExpense = paymentDate;
             }
         }
-        // Fallback to uploadTime if paymentDueDate isn't relevant or not set for the current month
         if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
             const uploadDate = parseISO(invoice.uploadTime as string);
              if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
@@ -187,7 +189,7 @@ export default function AccountsPage() {
             }
         }
 
-        if (relevantDateForExpense) {
+        if (relevantDateForExpense && (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid')) {
             totalInvoiceExpenses += (invoice.totalAmount || 0);
         }
     });
@@ -201,13 +203,12 @@ export default function AccountsPage() {
                 const internalKey = exp._internalCategoryKey?.toLowerCase();
                 const categoryString = exp.category.toLowerCase();
                 const biMonthlyKeys = [
-                    'electricity', 'water', 'property_tax',
-                    t('accounts_other_expenses_tab_electricity').toLowerCase(),
-                    t('accounts_other_expenses_tab_water').toLowerCase(),
-                    t('accounts_other_expenses_tab_property_tax').toLowerCase()
+                    'property_tax', 'rent',
+                    t('accounts_other_expenses_tab_property_tax').toLowerCase(),
+                    t('accounts_other_expenses_tab_rent').toLowerCase()
                 ];
-                if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                    amountToAdd /= 2;
+                 if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
+                    // No division by 2 for bi-monthly, as they are entered for the month they occur
                 }
                 return sum + amountToAdd;
             }
@@ -229,7 +230,7 @@ export default function AccountsPage() {
     endDate.setHours(23,59,59,999);
 
     const invoiceCosts = allInvoices
-        .filter(inv => inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && inv.status === 'completed')
+        .filter(inv => inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && (inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment' || inv.paymentStatus === 'paid') )
         .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
     const otherExpensesInRange = otherExpenses
@@ -243,13 +244,12 @@ export default function AccountsPage() {
             const internalKey = exp._internalCategoryKey?.toLowerCase();
             const categoryString = exp.category.toLowerCase();
              const biMonthlyKeys = [
-                'electricity', 'water', 'property_tax',
-                t('accounts_other_expenses_tab_electricity').toLowerCase(),
-                t('accounts_other_expenses_tab_water').toLowerCase(),
-                t('accounts_other_expenses_tab_property_tax').toLowerCase()
+                'property_tax', 'rent',
+                t('accounts_other_expenses_tab_property_tax').toLowerCase(),
+                t('accounts_other_expenses_tab_rent').toLowerCase()
             ];
              if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                amountToAdd /= 2;
+                 // No division for bi-monthly as they are whole amounts for the month they occur
             }
             return sum + amountToAdd;
         }, 0);
@@ -688,3 +688,4 @@ export default function AccountsPage() {
     </TooltipProvider>
   );
 }
+
