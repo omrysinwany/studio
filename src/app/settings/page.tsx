@@ -27,12 +27,13 @@ import {
     POS_SETTINGS_STORAGE_KEY_BASE,
     SUPPLIERS_STORAGE_KEY_BASE,
     ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE,
-    USER_SETTINGS_STORAGE_KEY_BASE, // Added for user settings
+    USER_SETTINGS_STORAGE_KEY_BASE,
     TEMP_DATA_KEY_PREFIX,
     TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
     TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
-    getStorageKey, // Import getStorageKey
-} from '@/services/backend'; // Import base keys
+    getStorageKey,
+} from '@/services/backend';
+import { cn } from '@/lib/utils'; // Import cn utility
 
 // Base keys from other-expenses page (assuming they are exported or redefined if not)
 const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories';
