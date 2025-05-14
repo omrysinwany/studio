@@ -106,8 +106,8 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    /* Fixed, subtle placeholder image */
-    background-image: url('https://placehold.co/1920x1080/EEEEEE/CCCCCC.png?text=%20'); /* Light gray, no text */
+    /* Fixed, subtle placeholder image - REMOVED TEXT PARAMETER */
+    background-image: url('https://placehold.co/1920x1080/EEEEEE/CCCCCC.png'); /* Light gray, no text */
     background-size: cover;
     background-position: center;
     opacity: 0.1; /* Keep opacity subtle */
@@ -163,6 +163,9 @@ body {
   .delay-200 { animation-delay: 0.2s !important; }
   .delay-300 { animation-delay: 0.3s !important; }
   .delay-400 { animation-delay: 0.4s !important; }
+  .delay-500 { animation-delay: 0.5s !important; } /* Added for more staggering options */
+  .delay-600 { animation-delay: 0.6s !important; } /* Added for more staggering options */
+
 
   /* Ensure TabsContent only displays when active for fade-in */
   [data-state="inactive"] > .tabs-content-fade-in {
@@ -183,12 +186,11 @@ body {
 
   .kpiCard:hover {
     transform: translateY(-4px) scale(1.03); /* Combine scale and translate */
-    box-shadow: 0 8px 20px hsla(var(--foreground), 0.1), 0 4px 8px hsla(var(--foreground), 0.08); /* Softer, layered shadow */
+    box-shadow: 0 8px 20px hsla(var(--foreground), 0.07), 0 4px 8px hsla(var(--foreground), 0.05); /* Softer, layered shadow */
   }
 
   /* Styles for home container gradient (if different from global) */
   .homeContainerGradient {
-    /* This might be redundant if the body::before is styled globally */
     /* background: linear-gradient(180deg, hsla(var(--background) / 0.95) 0%, hsla(var(--muted) / 0.5) 100%); */
     position: relative;
     overflow: hidden;
@@ -198,19 +200,19 @@ body {
     content: '';
     position: absolute;
     inset: 0;
-    background-image: 
-      radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.03) 0%, transparent 30%),
-      radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.03) 0%, transparent 30%);
-    opacity: 0.7;
+    background-image:
+      radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 35%),
+      radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 35%);
+    opacity: 0.6;
     z-index: 0; /* Ensure it's behind homeContainerGradient content but potentially above body::before if layered explicitly */
-    animation: subtleShimmer 20s infinite alternate ease-in-out;
+    animation: subtleShimmer 25s infinite alternate ease-in-out;
   }
 
   @keyframes subtleShimmer {
-    0% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
-    25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.6; }
-    50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.7; }
-    75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.6; }
-    100% { transform: translate(0,0) rotate(0deg); opacity: 0.5; }
+    0% { transform: translate(0,0) rotate(0deg); opacity: 0.4; }
+    25% { transform: translate(3px, 3px) rotate(1deg); opacity: 0.5; }
+    50% { transform: translate(0, 6px) rotate(0deg); opacity: 0.6; }
+    75% { transform: translate(-3px, 3px) rotate(-1deg); opacity: 0.5; }
+    100% { transform: translate(0,0) rotate(0deg); opacity: 0.4; }
   }
 }
