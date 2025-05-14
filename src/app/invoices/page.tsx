@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, XCircle, Clock, Link as LinkIcon, Image as ImageIconLucide } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, Image as ImageIconLucide, Link as LinkIcon } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -31,7 +31,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { enUS, he } from 'date-fns/locale';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, getStorageKey } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE, getStorageKey, TEMP_DATA_KEY_PREFIX, TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, TEMP_COMPRESSED_IMAGE_KEY_PREFIX } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -69,7 +69,6 @@ import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
-  // Allow data URIs, http, https, and relative paths (if any)
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/');
 };
 
@@ -101,7 +100,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
     supplier: true,
     totalAmount: true,
     errorMessage: false,
-    originalImagePreviewUri: true, // Show image in grid view by default
+    originalImagePreviewUri: true, 
     compressedImageForFinalRecordUri: false,
     paymentReceiptImageUri: false,
     paymentStatus: true,
@@ -306,7 +305,7 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
       { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
    ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod');
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod' && h.key !== 'selection');
 
    const formatDate = (dateString: Date | string | undefined) => {
      if (!dateString) return t('invoices_na');
@@ -716,7 +715,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => {setFilterPaymentStatus(''); setCurrentScannedDocsPage(1);}}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
-                {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => ( // Only show relevant statuses for scanned docs
+                {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => ( 
                   <DropdownMenuCheckboxItem
                     key={pStatus}
                     checked={filterPaymentStatus === pStatus}
@@ -797,7 +796,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                           header.sortable && "cursor-pointer hover:bg-muted/50",
                           header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                           'px-2 sm:px-4 py-2',
-                          header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
+                           header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
@@ -873,6 +872,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                 onClick={() => handleViewDetails(item)}
                                 title={t('invoices_view_details_title', { fileName: item.fileName || ''})}
                               >
+                                {item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }
                                 {item.fileName}
                             </Button>
                           </TableCell>
@@ -935,7 +935,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
             {isLoading ? (
-               Array.from({ length: 8 }).map((_, index) => (
+               Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
                       <CardHeader className="h-32 bg-muted rounded-t-lg" />
                       <CardContent className="p-4 space-y-2">
@@ -970,7 +970,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       />
                     ) : (
                       <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                        {item.documentType === 'invoice' ? <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" />}
+                        {item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}
                       </div>
                     )}
                      <div className="absolute top-2 right-2 flex flex-col gap-1">
@@ -980,7 +980,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                   </CardHeader>
                   <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}>
                     <CardTitle className="text-sm font-semibold truncate" title={item.fileName}>
-                       {item.documentType === 'invoice' ? <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIcon className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }
+                       {item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }
                       {item.fileName}
                     </CardTitle>
                     <p className="text-xs text-muted-foreground">{formatDate(item.uploadTime)}</p>
@@ -1059,19 +1059,33 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
       }}>
         <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
-             <SheetTitle className="flex items-center">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
-             <SheetDescription>
+             <SheetTitle className="flex items-center text-lg sm:text-xl">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
+             <SheetDescription className="text-xs sm:text-sm">
                 {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.fileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.fileName || '' })}
              </SheetDescription>
           </SheetHeader>
           {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow">
+            <ScrollArea className="flex-grow p-0">
               <div className="p-4 sm:p-6 space-y-4">
               {isEditingDetails ? (
                 <div className="space-y-3">
                     <div>
                         <Label htmlFor="editFileName">{t('invoice_details_file_name_label')}</Label>
                         <Input id="editFileName" value={editedInvoiceData.fileName || ''} onChange={(e) => handleEditDetailsInputChange('fileName', e.target.value)} disabled={isSavingDetails}/>
+                    </div>
+                     <div>
+                        <Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label>
+                         <Select
+                            value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType}
+                            onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice')}
+                            disabled={isSavingDetails}
+                         >
+                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
+                                <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
+                            </SelectContent>
+                         </Select>
                     </div>
                     <div>
                         <Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
@@ -1084,6 +1098,14 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <div>
                         <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
                         <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
+                    </div>
+                    <div>
+                        <Label htmlFor="editInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
+                        <Input id="editInvoiceDate" type="date" value={editedInvoiceData.invoiceDate ? format(parseISO(editedInvoiceData.invoiceDate as string), 'yyyy-MM-dd') : ''} onChange={(e) => handleEditDetailsInputChange('invoiceDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} disabled={isSavingDetails}/>
+                    </div>
+                     <div>
+                        <Label htmlFor="editPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
+                        <Input id="editPaymentMethod" value={editedInvoiceData.paymentMethod || ''} onChange={(e) => handleEditDetailsInputChange('paymentMethod', e.target.value)} disabled={isSavingDetails}/>
                     </div>
                     <div>
                         <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
@@ -1123,7 +1145,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 </div>
               ) : (
                 <>
-                  <div className="space-y-2">
+                 <div className="space-y-2">
                      <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_document_section_title')}</h3>
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.fileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDate(selectedInvoiceDetails.uploadTime)}</p>
@@ -1162,9 +1184,9 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      <h3 className="text-md font-semibold text-primary border-b pb-1">
                         {selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}
                      </h3>
-                      {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri) ? (
+                      {isValidImageSrc(selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri) ? (
                         <NextImage
-                            src={selectedInvoiceDetails.originalImagePreviewUri!}
+                            src={selectedInvoiceDetails.paymentReceiptImageUri || selectedInvoiceDetails.originalImagePreviewUri!}
                             alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.fileName || '' })}
                             width={800}
                             height={1100}
@@ -1173,7 +1195,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         />
                         ) : (
                         <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
-                            <FileTextIcon className="h-10 w-10 mb-2"/>
+                            <ImageIconLucide className="h-10 w-10 mb-2"/>
                             <p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p>
                         </div>
                         )}
@@ -1221,7 +1243,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                     </AlertDialog>
-                     {selectedInvoiceDetails.paymentStatus !== 'paid' && ( // Show update receipt button only if paid
+                     {selectedInvoiceDetails.paymentStatus !== 'paid' && ( 
                          <Button
                             variant="outline"
                             onClick={() => {
@@ -1252,11 +1274,11 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 }}
                 invoiceFileName={invoiceForReceiptUpload.fileName || ''}
                 onConfirmUpload={async (receiptUri) => {
-                    if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid'){
-                        await handleConfirmReceiptUpload(receiptUri);
-                        setEditedInvoiceData(prev => ({...prev, paymentReceiptImageUri: receiptUri}));
-                    } else {
-                        await handleConfirmReceiptUpload(receiptUri);
+                    if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid' && isEditingDetails){
+                        await handleConfirmReceiptUpload(receiptUri); // This will save status & receipt
+                        setEditedInvoiceData(prev => ({...prev, paymentReceiptImageUri: receiptUri }));
+                    } else if (selectedInvoiceDetails){
+                        await handleConfirmReceiptUpload(receiptUri); // This will save status & receipt
                     }
                 }}
             />

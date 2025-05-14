@@ -1,3 +1,4 @@
+// src/components/PaymentReceiptUploadDialog.tsx
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
@@ -12,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, UploadCloud, Image as ImageIconLucide, X } from 'lucide-react'; // Renamed to avoid conflict
+import { Loader2, UploadCloud, Image as ImageIconLucide, X } from 'lucide-react'; 
 import NextImage from 'next/image';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -88,7 +89,7 @@ const PaymentReceiptUploadDialog: React.FC<PaymentReceiptUploadDialogProps> = ({
             };
             reader.readAsDataURL(file);
         } else {
-            setPreviewUrl(null); // No preview for non-image files like PDF
+            setPreviewUrl(null); 
         }
       } else {
         toast({
@@ -134,8 +135,6 @@ const PaymentReceiptUploadDialog: React.FC<PaymentReceiptUploadDialogProps> = ({
             imageToUpload = await compressImage(originalBase64);
         }
         await onConfirmUpload(imageToUpload);
-        // resetDialog(); // Reset is handled by onOpenChange(false) now
-        // onOpenChange(false); // Caller will handle closing
       } catch (error) {
         console.error("Error processing receipt image:", error);
         toast({
@@ -156,7 +155,7 @@ const PaymentReceiptUploadDialog: React.FC<PaymentReceiptUploadDialogProps> = ({
 
   const handleDialogStateChange = (open: boolean) => {
     if (!open) {
-        resetDialog(); // Reset when dialog is closed externally or via X button
+        resetDialog(); 
     }
     onOpenChange(open);
   };
@@ -204,7 +203,7 @@ const PaymentReceiptUploadDialog: React.FC<PaymentReceiptUploadDialogProps> = ({
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
+          <Button variant="outline" onClick={() => handleDialogStateChange(false)} disabled={isProcessing}>
              <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
           </Button>
           <Button onClick={handleConfirm} disabled={!selectedFile || isProcessing}>
