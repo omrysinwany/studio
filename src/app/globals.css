@@ -106,10 +106,10 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    background-image: url('https://placehold.co/1920x1080.png?text=Subtle+Background&grayscale&blur=2'); /* Placeholder, subtle */
+    background-image: url('https://picsum.photos/1920/1080?grayscale&blur=2'); /* Using Picsum for a random, real, subtle image */
     background-size: cover;
     background-position: center;
-    opacity: 0.1; /* Increased opacity from 0.05 to 0.1 */
+    opacity: 0.1; /* Kept opacity at 0.1 for better visibility */
     z-index: -1; /* Behind all content */
     pointer-events: none; /* Allow clicks to pass through */
   }
