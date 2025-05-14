@@ -75,6 +75,9 @@
   "home_quick_actions_title": "Quick Actions",
   "home_quick_action_add_expense": "Add Manual Expense",
   "home_quick_action_add_product": "Add New Product",
+  "home_quick_action_view_open_invoices": "View Open Invoices",
+  "home_quick_action_view_latest_document": "Latest Document",
+  "home_quick_action_add_supplier": "Add New Supplier",
   "home_empty_state_kpis_title": "No KPIs to display.",
   "home_no_kpis_selected_title": "No KPIs Selected",
   "home_no_kpis_selected_action": "Customize your dashboard to see key metrics.",
@@ -760,8 +763,6 @@
   "accounts_open_invoices_desc_period": "Invoices awaiting payment in the selected period, sorted by due date.",
   "accounts_no_open_invoices_period": "No open invoices in the selected period.",
   "accounts_due_date_alert_column": "Due Date Alert",
-  "accounts_current_month_expenses_title": "This Month's Expenses",
-  "accounts_current_month_expenses_desc": "Total recorded expenses this month.",
   "accounts_current_month_expenses_title_with_budget": "This Month's Expenses & Budget",
   "accounts_current_month_expenses_desc_with_budget": "Total recorded expenses this month and progress against your budget.",
   "accounts_budget_placeholder": "Set monthly budget (e.g., 5000)",
@@ -774,9 +775,9 @@
   "accounts_budget_not_set": "No monthly budget set.",
   "accounts_financial_summary_title": "Financial Summaries (Period)",
   "accounts_financial_summary_desc_period": "Overview of costs for the selected period.",
-  "accounts_total_invoice_costs_label": "Total Invoice Costs",
-  "accounts_total_other_expenses_label": "Total Other Expenses",
-  "accounts_total_recorded_expenses_label": "Total Recorded Expenses",
+  "accounts_total_invoice_costs_label": "Total Invoice Costs (Period)",
+  "accounts_total_other_expenses_label": "Total Other Expenses (Period)",
+  "accounts_total_recorded_expenses_label": "Total Recorded Expenses (Period)",
   "accounts_other_expenses_title": "Other Business Expenses",
   "accounts_other_expenses_summary_desc": "Track additional expenses like utilities, rent, etc.",
   "accounts_other_expenses_total_for_current_month": "Total other expenses for current month.",
@@ -1005,7 +1006,6 @@
   "reports_drilldown_col_amount": "Amount",
   "reports_profitability_profit": "Profit",
   "reports_stock_alerts_tooltip": "Highlights products that are low in stock, out of stock, or overstocked based on your defined minimum and maximum levels.",
+  "locale_code_for_date_fns": "en-US",
   "locale_code_for_number_formatting": "en-US"
 }
-
-    

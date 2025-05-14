@@ -75,6 +75,9 @@
   "home_quick_actions_title": "פעולות מהירות",
   "home_quick_action_add_expense": "הוסף הוצאה ידנית",
   "home_quick_action_add_product": "הוסף מוצר חדש",
+  "home_quick_action_view_open_invoices": "צפה בחשבוניות פתוחות",
+  "home_quick_action_view_latest_document": "מסמך אחרון",
+  "home_quick_action_add_supplier": "הוסף ספק חדש",
   "home_empty_state_kpis_title": "לא נבחרו מדדים",
   "home_no_kpis_selected_title": "לא נבחרו מדדים",
   "home_no_kpis_selected_action": "התאם אישית את לוח המחוונים שלך כדי לראות מדדים.",
@@ -760,8 +763,6 @@
   "accounts_open_invoices_desc_period": "חשבוניות שטרם שולמו בתקופה הנבחרת, ממוינות לפי תאריך יעד.",
   "accounts_no_open_invoices_period": "אין חשבוניות פתוחות בתקופה שנבחרה.",
   "accounts_due_date_alert_column": "התראת תאריך יעד",
-  "accounts_current_month_expenses_title": "הוצאות החודש",
-  "accounts_current_month_expenses_desc": "סה\"כ הוצאות מתועדות החודש.",
   "accounts_current_month_expenses_title_with_budget": "הוצאות ותקציב חודשי",
   "accounts_current_month_expenses_desc_with_budget": "סה\"כ הוצאות מתועדות החודש והתקדמות מול התקציב שלך.",
   "accounts_budget_placeholder": "הגדר תקציב חודשי (למשל, 5000)",
@@ -944,7 +945,7 @@
   "reports_chart_no_processing_volume_data": "אין נתונים להצגת נפח עיבוד מסמכים.",
   "reports_chart_label_count": "כמות",
   "reports_chart_label_sales": "מכירות",
-  "reports_chart_label_qty_sold": "כמות נמכרת",
+  "reports_chart_label_qty_sold": "כמות שנמכרה",
   "reports_chart_label_documents": "מסמכים",
   "reports_chart_label_expenses": "הוצאות",
   "reports_expenses_by_category_title": "הוצאות לפי קטגוריה",
@@ -1005,7 +1006,6 @@
   "reports_drilldown_col_amount": "סכום",
   "reports_profitability_profit": "רווח",
   "reports_stock_alerts_tooltip": "מדגיש מוצרים שנמצאים במלאי נמוך, אזלו מהמלאי, או בעודף מלאי בהתבסס על רמות המינימום והמקסימום שהגדרת.",
+  "locale_code_for_date_fns": "he",
   "locale_code_for_number_formatting": "he-IL"
 }
-
-    

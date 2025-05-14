@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, Link as LinkIcon, UserCircle } from "lucide-react";
+import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, Link as LinkIcon, UserCircle, FileWarning, UserPlus } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE } from '@/services/backend';
+import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE, createSupplierService } from '@/services/backend';
 import {
   calculateInventoryValue,
   calculateTotalItems,
@@ -29,6 +29,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
 import { Skeleton } from "@/components/ui/skeleton";
+import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
 
 const KPI_PREFERENCES_STORAGE_KEY = 'invoTrack_kpiPreferences_v2';
@@ -315,6 +316,8 @@ export default function Home() {
     { visibleKpiIds: [], kpiOrder: [] }
   );
   const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
+  const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
+
 
   const visibleKpiConfigs = useMemo(() => {
     return userKpiPreferences.kpiOrder
@@ -451,7 +454,7 @@ export default function Home() {
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }),
+        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: locale === 'he' ? heLocale : enUSLocale }),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -517,6 +520,19 @@ export default function Home() {
     }
   };
 
+  const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string; paymentTerms?: string }) => {
+    if (!user) return;
+    try {
+      await createSupplierService(name, contactInfo, user.id);
+      toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
+      setIsCreateSupplierSheetOpen(false);
+      fetchKpiData(); // Refresh KPIs to update supplier count
+    } catch (error: any) {
+      console.error("Failed to create supplier from home page:", error);
+      toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
+    }
+  };
+
 
    if (authLoading) {
      return (
@@ -550,53 +566,54 @@ export default function Home() {
                 >
                   <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
                 </Button>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 max-w-xs mx-auto">
-                    <Button
-                        variant="outline"
-                        size="default"
-                        className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-sm transform hover:-translate-y-0.5 py-2.5 sm:py-3"
-                        asChild
-                        >
-                        <Link href="/inventory">
-                            <Package className="mr-2 h-4 w-4" /> {t('nav_inventory')}
-                        </Link>
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="default"
-                        className="w-full border-primary text-primary hover:bg-primary/5 shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-105 text-sm transform hover:-translate-y-0.5 py-2.5 sm:py-3"
-                        asChild
-                        >
-                        <Link href="/invoices">
-                            <FileTextIcon className="mr-2 h-4 w-4" /> {t('nav_documents')}
-                        </Link>
-                    </Button>
-                </div>
           </div>
 
-          <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+           <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
             <CardHeader className="pb-3">
                 <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
                 </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0">
-            <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                <Link href="/accounts/other-expenses">
-                <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
-                </Link>
-            </Button>
-            <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                <Link href="/inventory">
-                <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
-                </Link>
-            </Button>
+            <CardContent className="grid grid-cols-2 sm:grid-cols-2 gap-3 pt-0"> {/* Always 2 columns */}
+                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/inventory">
+                        <Package className="mr-2 h-4 w-4" /> {t('nav_inventory')}
+                    </Link>
+                </Button>
+                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/invoices">
+                        <FileTextIcon className="mr-2 h-4 w-4" /> {t('nav_documents')}
+                    </Link>
+                </Button>
+                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/accounts/other-expenses">
+                        <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
+                    </Link>
+                </Button>
+                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/inventory"> {/* Assuming adding new product is done via inventory page for now */}
+                        <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
+                    </Link>
+                </Button>
+                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/invoices?tab=scanned-docs&filterPaymentStatus=unpaid">
+                        <FileWarning className="mr-2 h-4 w-4" /> {t('home_quick_action_view_open_invoices')}
+                    </Link>
+                </Button>
+                 <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <Link href="/invoices?tab=scanned-docs&sortBy=uploadTime&sortDir=desc">
+                        <History className="mr-2 h-4 w-4" /> {t('home_quick_action_view_latest_document')}
+                    </Link>
+                </Button>
+                 <Button variant="outline" onClick={() => setIsCreateSupplierSheetOpen(true)} className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
+                    <UserPlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_supplier')}
+                </Button>
             </CardContent>
           </Card>
 
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-6 rounded-lg bg-card/70 backdrop-blur-sm border border-border/50 shadow-xl">
-            <div className="flex justify-between items-center mb-4">
+          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-0 sm:p-6 rounded-lg bg-transparent backdrop-blur-sm border-none shadow-none">
+            <div className="flex justify-between items-center mb-4 px-2 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
                 </h2>
@@ -605,7 +622,7 @@ export default function Home() {
                     <span className="sr-only">{t('home_customize_dashboard_button')}</span>
                 </Button>
             </div>
-            <p className="text-sm text-muted-foreground mb-6">{t('home_quick_overview_desc')}</p>
+            <p className="text-sm text-muted-foreground mb-6 px-2 sm:px-0">{t('home_quick_overview_desc')}</p>
 
             {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-4 text-left">
@@ -615,7 +632,7 @@ export default function Home() {
             )}
             {(isLoadingKpis && user) ? (
                 <div className="grid grid-cols-2 gap-4">
-                {Array.from({length: Math.min(visibleKpiConfigs.length || 3, 6)}).map((_, idx) => (
+                {Array.from({length: Math.min(visibleKpiConfigs.length || 6, 6)}).map((_, idx) => (
                     <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px] kpiCard">
                         <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
                         <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
@@ -629,7 +646,7 @@ export default function Home() {
                 <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
             </div>
             ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4"> {/* Always 2 columns */}
                 {visibleKpiConfigs.map((kpi, index) => {
                     const Icon = kpi.icon;
                     const valueString = kpi.getValue(kpiData, t);
@@ -804,6 +821,12 @@ export default function Home() {
         currentKpiOrder={userKpiPreferences.kpiOrder}
         onSavePreferences={handleSavePreferences}
       />
+       <CreateSupplierSheet
+        isOpen={isCreateSupplierSheetOpen}
+        onOpenChange={setIsCreateSupplierSheetOpen}
+        onCreateSupplier={handleCreateSupplier}
+      />
     </div>
   );
 }
+
