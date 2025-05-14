@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/context/AuthContext";
-import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, Link as LinkIcon, UserCircle, FileWarning, UserPlus } from "lucide-react";
+import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, FileWarning, UserPlus } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
 
-const KPI_PREFERENCES_STORAGE_KEY = 'invoTrack_kpiPreferences_v2';
+const KPI_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_kpiPreferences_v2';
+const QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_quickActionsPreferences_v1';
 
 
 interface KpiData {
@@ -53,18 +54,19 @@ interface KpiData {
   suppliersCount?: number;
 }
 
-export interface KpiConfig {
+export interface ItemConfig { // Renamed from KpiConfig to be more generic
   id: string;
   titleKey: string;
   icon: React.ElementType;
-  getValue: (data: KpiData | null, t: (key: string, params?: Record<string, string | number>) => string) => string;
-  descriptionKey: string;
-  link: string;
+  getValue?: (data: KpiData | null, t: (key: string, params?: Record<string, string | number>) => string) => string;
+  descriptionKey?: string;
+  link?: string;
   showTrend?: boolean;
   showProgress?: boolean;
   progressValue?: (data: KpiData | null) => number;
   iconColor?: string;
   defaultVisible?: boolean;
+  onClick?: () => void; // For quick actions
 }
 
 const formatLargeNumber = (
@@ -118,7 +120,7 @@ const formatLargeNumber = (
     return prefix + formattedNum + si[i].symbol;
   };
 
-const allKpiConfigurations: KpiConfig[] = [
+const allKpiConfigurations: ItemConfig[] = [
   {
     id: 'totalItems',
     titleKey: 'home_kpi_total_items_title',
@@ -222,7 +224,7 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
         kpiOrder: defaultVisible.map(kpi => kpi.id),
     };
   }
-  const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
+  const key = getStorageKey(KPI_PREFERENCES_STORAGE_KEY_BASE, userId);
   const stored = localStorage.getItem(key);
   if (stored) {
     try {
@@ -248,19 +250,62 @@ const getKpiPreferences = (userId?: string): { visibleKpiIds: string[], kpiOrder
   const defaultVisible = allKpiConfigurations.filter(kpi => kpi.defaultVisible !== false);
   return {
     visibleKpiIds: defaultVisible.map(kpi => kpi.id),
-    kpiOrder: allKpiConfigurations.map(kpi => kpi.id),
+    kpiOrder: allKpiConfigurations.map(kpi => kpi.id), // Default order based on config array
   };
 };
 
 
 const saveKpiPreferences = (preferences: { visibleKpiIds: string[], kpiOrder: string[] }, userId?: string) => {
   if (typeof window === 'undefined' || !userId) return;
-  const key = `${KPI_PREFERENCES_STORAGE_KEY}_${userId}`;
+  const key = getStorageKey(KPI_PREFERENCES_STORAGE_KEY_BASE, userId);
   try {
     localStorage.setItem(key, JSON.stringify(preferences));
   } catch (e) {
     console.error("Error saving KPI preferences to localStorage:", e);
   }
+};
+
+const getQuickActionPreferences = (userId?: string, allQuickActions: ItemConfig[] = []): { visibleQuickActionIds: string[], quickActionOrder: string[] } => {
+  if (typeof window === 'undefined' || !userId) {
+    const defaultVisible = allQuickActions.filter(qa => qa.defaultVisible !== false);
+    return {
+        visibleQuickActionIds: defaultVisible.map(qa => qa.id),
+        quickActionOrder: defaultVisible.map(qa => qa.id),
+    };
+  }
+  const key = getStorageKey(QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE, userId);
+  const stored = localStorage.getItem(key);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      const allQaIdsSet = new Set(allQuickActions.map(qa => qa.id));
+      const validVisibleQaIds = Array.isArray(parsed.visibleQuickActionIds) ? parsed.visibleQuickActionIds.filter((id: string) => allQaIdsSet.has(id)) : [];
+      const validQaOrder = Array.isArray(parsed.quickActionOrder) ? parsed.quickActionOrder.filter((id: string) => allQaIdsSet.has(id)) : [];
+
+      allQuickActions.forEach(qa => {
+        if (qa.defaultVisible && !validVisibleQaIds.includes(qa.id)) {
+          validVisibleQaIds.push(qa.id);
+        }
+        if (!validQaOrder.includes(qa.id)) {
+           validQaOrder.push(qa.id);
+        }
+      });
+      return { visibleQuickActionIds: validVisibleQaIds, quickActionOrder: validQaOrder };
+    } catch (e) {
+      console.error("Error parsing Quick Action preferences from localStorage:", e);
+    }
+  }
+  const defaultVisible = allQuickActions.filter(qa => qa.defaultVisible !== false);
+  return {
+    visibleQuickActionIds: defaultVisible.map(qa => qa.id),
+    quickActionOrder: allQuickActions.map(qa => qa.id),
+  };
+};
+
+const saveQuickActionPreferences = (preferences: { visibleQuickActionIds: string[], quickActionOrder: string[] }, userId?: string) => {
+  if (typeof window === 'undefined' || !userId) return;
+  const key = getStorageKey(QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE, userId);
+  localStorage.setItem(key, JSON.stringify(preferences));
 };
 
 
@@ -315,24 +360,74 @@ export default function Home() {
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
     { visibleKpiIds: [], kpiOrder: [] }
   );
-  const [isCustomizeSheetOpen, setIsCustomizeSheetOpen] = useState(false);
+  const [userQuickActionPreferences, setUserQuickActionPreferences] = useState<{ visibleQuickActionIds: string[], quickActionOrder: string[] }>(
+    { visibleQuickActionIds: [], quickActionOrder: [] }
+  );
+
+  const [isCustomizeKpiSheetOpen, setIsCustomizeKpiSheetOpen] = useState(false);
+  const [isCustomizeQuickActionsSheetOpen, setIsCustomizeQuickActionsSheetOpen] = useState(false);
   const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
+
+  const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
+    {
+      id: 'addExpense',
+      titleKey: 'home_quick_action_add_expense',
+      icon: DollarSign,
+      link: '/accounts/other-expenses',
+      defaultVisible: true,
+    },
+    {
+      id: 'addProduct',
+      titleKey: 'home_quick_action_add_product',
+      icon: PackagePlus,
+      link: '/inventory', // Or a dedicated "add product" page if you create one
+      defaultVisible: true,
+    },
+    {
+      id: 'openInvoices',
+      titleKey: 'home_quick_action_open_invoices', // Renamed key
+      icon: FileWarning,
+      link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
+      defaultVisible: true,
+    },
+    {
+      id: 'latestDocument',
+      titleKey: 'home_quick_action_latest_document',
+      icon: History,
+      link: '/invoices?tab=scanned-docs&sortBy=uploadTime&sortDir=desc',
+      defaultVisible: true,
+    },
+    {
+      id: 'addSupplier',
+      titleKey: 'home_quick_action_add_supplier',
+      icon: UserPlus,
+      onClick: () => setIsCreateSupplierSheetOpen(true),
+      defaultVisible: false, // Hidden by default
+    },
+  ], [t]); // Re-memoize if t changes (language change)
 
 
   const visibleKpiConfigs = useMemo(() => {
     return userKpiPreferences.kpiOrder
       .map(id => allKpiConfigurations.find(config => config.id === id))
-      .filter(config => config !== undefined && userKpiPreferences.visibleKpiIds.includes(config.id)) as KpiConfig[];
+      .filter(config => config !== undefined && userKpiPreferences.visibleKpiIds.includes(config.id)) as ItemConfig[];
   }, [userKpiPreferences]);
+
+  const visibleQuickActions = useMemo(() => {
+    return userQuickActionPreferences.quickActionOrder
+      .map(id => allQuickActionConfigurations.find(config => config.id === id))
+      .filter(config => config !== undefined && userQuickActionPreferences.visibleQuickActionIds.includes(config.id)) as ItemConfig[];
+  }, [userQuickActionPreferences, allQuickActionConfigurations]);
 
   useEffect(() => {
     if (user) {
       setUserKpiPreferences(getKpiPreferences(user.id));
+      setUserQuickActionPreferences(getQuickActionPreferences(user.id, allQuickActionConfigurations));
     } else if (!authLoading) {
-        const defaultGuestPrefs = getKpiPreferences();
-        setUserKpiPreferences(defaultGuestPrefs);
+        setUserKpiPreferences(getKpiPreferences());
+        setUserQuickActionPreferences(getQuickActionPreferences(undefined, allQuickActionConfigurations));
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, allQuickActionConfigurations]);
 
 
   const fetchKpiData = useCallback(async () => {
@@ -391,7 +486,6 @@ export default function Home() {
                 relevantDateForExpense = paymentDate;
             }
           }
-          // Fallback to uploadTime if paymentDueDate is not relevant for the current month's expense calculation
           if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
               const uploadDate = parseISO(invoice.uploadTime as string);
                if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
@@ -419,8 +513,6 @@ export default function Home() {
                                          t('accounts_other_expenses_tab_rent').toLowerCase()];
 
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
-                     // Bi-monthly expenses are typically recorded for the full amount in the month they occur
-                     // No division by 2 for this specific KPI calculation of "This Month's Expenses"
                   }
                   return sum + amountToAdd;
               }
@@ -512,11 +604,19 @@ export default function Home() {
   };
 
 
-  const handleSavePreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
+  const handleSaveKpiPreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
     if (user) {
         saveKpiPreferences(newPreferences, user.id);
         setUserKpiPreferences(newPreferences);
         toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
+    }
+  };
+
+  const handleSaveQuickActionPreferences = (newPreferences: { visibleQuickActionIds: string[], quickActionOrder: string[] }) => {
+    if (user) {
+      saveQuickActionPreferences(newPreferences, user.id);
+      setUserQuickActionPreferences(newPreferences);
+      toast({ title: t('home_qa_prefs_saved_title'), description: t('home_qa_prefs_saved_desc')});
     }
   };
 
@@ -526,7 +626,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData(); // Refresh KPIs to update supplier count
+      fetchKpiData();
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -548,9 +648,9 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center justify-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
+    <div className={cn("flex flex-col items-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
       <TooltipProvider>
-        <div className="w-full max-w-5xl text-center">
+        <div className="w-full max-w-5xl text-left"> {/* Changed to text-left for section titles */}
            <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
              {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
            </p>
@@ -558,71 +658,92 @@ export default function Home() {
              {t('home_welcome_title')}
           </h1>
 
-          <div className="mb-8 md:mb-12 scale-fade-in delay-200 text-center">
+          <div className="mb-6 md:mb-10 scale-fade-in delay-200 flex flex-col sm:flex-row items-stretch gap-3">
                 <Button
                   size="lg"
-                  className="w-full max-w-xs mx-auto bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-lg transform hover:-translate-y-1 py-3 sm:py-4"
+                  className="w-full sm:flex-1 bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-lg transform hover:-translate-y-1 py-3 sm:py-4"
                   onClick={handleScanClick}
                 >
                   <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
                 </Button>
+                <div className="w-full sm:flex-1 grid grid-cols-2 gap-3">
+                    <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                        <Link href="/inventory">
+                            <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
+                        </Link>
+                    </Button>
+                     <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                        <Link href="/invoices">
+                            <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
+                        </Link>
+                    </Button>
+                </div>
           </div>
 
-           <Card className="mb-6 md:mb-8 scale-fade-in delay-300 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
-            <CardHeader className="pb-3">
-                <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
+          {/* Quick Actions Section */}
+          <div className="mb-6 md:mb-8 scale-fade-in delay-300">
+            <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
+                <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 sm:grid-cols-2 gap-3 pt-0"> {/* Always 2 columns */}
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/inventory">
-                        <Package className="mr-2 h-4 w-4" /> {t('nav_inventory')}
-                    </Link>
+                </h2>
+                <Button variant="ghost" size="icon" onClick={() => setIsCustomizeQuickActionsSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                    <SettingsIcon className="h-4 w-4" />
+                    <span className="sr-only">{t('home_customize_qa_button')}</span>
                 </Button>
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/invoices">
-                        <FileTextIcon className="mr-2 h-4 w-4" /> {t('nav_documents')}
-                    </Link>
-                </Button>
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/accounts/other-expenses">
-                        <DollarSign className="mr-2 h-4 w-4" /> {t('home_quick_action_add_expense')}
-                    </Link>
-                </Button>
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/inventory"> {/* Assuming adding new product is done via inventory page for now */}
-                        <PackagePlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_product')}
-                    </Link>
-                </Button>
-                <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/invoices?tab=scanned-docs&filterPaymentStatus=unpaid">
-                        <FileWarning className="mr-2 h-4 w-4" /> {t('home_quick_action_view_open_invoices')}
-                    </Link>
-                </Button>
-                 <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <Link href="/invoices?tab=scanned-docs&sortBy=uploadTime&sortDir=desc">
-                        <History className="mr-2 h-4 w-4" /> {t('home_quick_action_view_latest_document')}
-                    </Link>
-                </Button>
-                 <Button variant="outline" onClick={() => setIsCreateSupplierSheetOpen(true)} className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all">
-                    <UserPlus className="mr-2 h-4 w-4" /> {t('home_quick_action_add_supplier')}
-                </Button>
-            </CardContent>
-          </Card>
+            </div>
+             <Card className="bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+                <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4">
+                    {visibleQuickActions.map((action, index) => {
+                        const ActionIcon = action.icon;
+                        const buttonContent = (
+                             <>
+                                <ActionIcon className="mr-1.5 h-4 w-4 sm:h-5 sm:w-5" />
+                                <span className="text-xs sm:text-sm">{t(action.titleKey)}</span>
+                             </>
+                        );
+                        return (
+                            <Tooltip key={action.id}>
+                                <TooltipTrigger asChild>
+                                     {action.link ? (
+                                        <Button variant="outline" asChild className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all" style={{animationDelay: `${0.05 * index}s`}}>
+                                            <Link href={action.link} className="flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 text-center sm:text-left">
+                                                {buttonContent}
+                                            </Link>
+                                        </Button>
+                                     ) : action.onClick ? (
+                                        <Button variant="outline" onClick={action.onClick} className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all" style={{animationDelay: `${0.05 * index}s`}}>
+                                             {buttonContent}
+                                        </Button>
+                                     ) : null}
+                                </TooltipTrigger>
+                                {action.descriptionKey && <TooltipContent><p>{t(action.descriptionKey)}</p></TooltipContent>}
+                            </Tooltip>
+                        );
+                    })}
+                    {(isLoadingKpis && user && visibleQuickActions.length === 0) && Array.from({length: 3}).map((_, idx) => <Skeleton key={`qa-skeleton-${idx}`} className="h-12 sm:h-14 w-full" />)}
+                    {(!isLoadingKpis || !user) && visibleQuickActions.length === 0 && (
+                        <div className="col-span-full text-center py-4 text-muted-foreground">
+                            <p className="text-sm">{t('home_no_quick_actions_selected')}</p>
+                            <Button variant="link" onClick={() => setIsCustomizeQuickActionsSheetOpen(true)} className="text-sm text-primary">{t('home_no_quick_actions_action')}</Button>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+          </div>
 
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-300 p-0 sm:p-6 rounded-lg bg-transparent backdrop-blur-sm border-none shadow-none">
-            <div className="flex justify-between items-center mb-4 px-2 sm:px-0">
+          {/* Quick Overview (KPIs) Section */}
+          <div className="mb-6 md:mb-8 scale-fade-in delay-400">
+            <div className="flex justify-between items-center mb-4 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
                 </h2>
-                <Button variant="ghost" size="icon" onClick={() => setIsCustomizeSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                <Button variant="ghost" size="icon" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
                     <SettingsIcon className="h-4 w-4" />
                     <span className="sr-only">{t('home_customize_dashboard_button')}</span>
                 </Button>
             </div>
-            <p className="text-sm text-muted-foreground mb-6 px-2 sm:px-0">{t('home_quick_overview_desc')}</p>
+            <p className="text-sm text-muted-foreground mb-6 px-1 sm:px-0">{t('home_quick_overview_desc')}</p>
 
             {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-4 text-left">
@@ -643,19 +764,19 @@ export default function Home() {
                 <div className="text-center py-8 text-muted-foreground">
                 <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
                 <p className="text-sm">{t('home_empty_state_kpis_title')}</p>
-                <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
+                <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
             </div>
             ) : (
-            <div className="grid grid-cols-2 gap-4"> {/* Always 2 columns */}
+            <div className="grid grid-cols-2 gap-4">
                 {visibleKpiConfigs.map((kpi, index) => {
                     const Icon = kpi.icon;
-                    const valueString = kpi.getValue(kpiData, t);
-                    const progress = kpi.showProgress && kpi.progressValue ? kpi.progressValue(kpiData) : 0;
+                    const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
+                    const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
                     return (
                     <Tooltip key={kpi.id}>
                         <TooltipTrigger asChild>
-                        <Link href={kpi.link} className="block hover:no-underline h-full">
-                            <Card className={cn("shadow-md hover:shadow-lg transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-background/90 backdrop-blur-sm border-border/50 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
+                        <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full", !kpi.link && "pointer-events-none")}>
+                            <Card className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border-border/50 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3 sm:px-4">
                                 <CardTitle className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
                                 <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
@@ -669,7 +790,7 @@ export default function Home() {
                                         <TrendingDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
                                     )}
                                 </div>
-                                <p className="text-xs sm:text-sm text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>
+                                {kpi.descriptionKey && <p className="text-xs sm:text-sm text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>}
                                 {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
                                     <div className="mt-1.5 h-8">
                                         <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
@@ -698,10 +819,7 @@ export default function Home() {
                             </Card>
                         </Link>
                         </TooltipTrigger>
-                        <TooltipContent>
-                        <p>{t(kpi.titleKey)}: {valueString}</p>
-                        <p className="text-xs">{t(kpi.descriptionKey)}</p>
-                        </TooltipContent>
+                        {kpi.descriptionKey && <TooltipContent><p>{t(kpi.titleKey)}: {valueString}</p><p className="text-xs">{t(kpi.descriptionKey)}</p></TooltipContent>}
                     </Tooltip>
                     );
                 })}
@@ -711,14 +829,15 @@ export default function Home() {
                 <div className="text-center py-8 text-muted-foreground">
                     <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
                     <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
-                    <Button variant="link" onClick={() => setIsCustomizeSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
+                    <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
                 </div>
             )}
         </div>
 
 
+            {/* Actionable Insights & Recent Activity */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
-                <Card className="scale-fade-in delay-400 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+                <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
                     <CardHeader className="pb-3">
                     <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                         <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
@@ -772,7 +891,7 @@ export default function Home() {
                     </CardContent>
                 </Card>
 
-                <Card className="scale-fade-in delay-500 bg-card/90 backdrop-blur-sm border-border/50 shadow-xl">
+                <Card className="scale-fade-in delay-600 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
                     <CardHeader className="pb-3">
                     <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                         <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
@@ -814,12 +933,24 @@ export default function Home() {
         </div>
       </TooltipProvider>
       <KpiCustomizationSheet
-        isOpen={isCustomizeSheetOpen}
-        onOpenChange={setIsCustomizeSheetOpen}
-        allKpis={allKpiConfigurations}
-        currentVisibleKpiIds={userKpiPreferences.visibleKpiIds}
-        currentKpiOrder={userKpiPreferences.kpiOrder}
-        onSavePreferences={handleSavePreferences}
+        isOpen={isCustomizeKpiSheetOpen}
+        onOpenChange={setIsCustomizeKpiSheetOpen}
+        items={allKpiConfigurations}
+        currentVisibleItemIds={userKpiPreferences.visibleKpiIds}
+        currentItemOrder={userKpiPreferences.kpiOrder}
+        onSavePreferences={handleSaveKpiPreferences}
+        sheetTitleKey="home_kpi_customize_sheet_title"
+        sheetDescriptionKey="home_kpi_customize_sheet_desc_reorder"
+      />
+      <KpiCustomizationSheet
+        isOpen={isCustomizeQuickActionsSheetOpen}
+        onOpenChange={setIsCustomizeQuickActionsSheetOpen}
+        items={allQuickActionConfigurations}
+        currentVisibleItemIds={userQuickActionPreferences.visibleQuickActionIds}
+        currentItemOrder={userQuickActionPreferences.quickActionOrder}
+        onSavePreferences={handleSaveQuickActionPreferences}
+        sheetTitleKey="home_qa_customize_sheet_title"
+        sheetDescriptionKey="home_qa_customize_sheet_desc"
       />
        <CreateSupplierSheet
         isOpen={isCreateSupplierSheetOpen}

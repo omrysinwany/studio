@@ -16,73 +16,78 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { KpiConfig } from '@/app/page';
+import type { ItemConfig } from '@/app/page'; // Use the generic ItemConfig
 import { useTranslation } from '@/hooks/useTranslation';
 import { Save, X, ArrowUp, ArrowDown } from 'lucide-react';
 
-interface KpiCustomizationSheetProps {
+interface CustomizationSheetProps { // Renamed for clarity
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  allKpis: KpiConfig[];
-  currentVisibleKpiIds: string[];
-  currentKpiOrder: string[];
-  onSavePreferences: (preferences: { visibleKpiIds: string[], kpiOrder: string[] }) => void;
+  items: ItemConfig[]; // Use generic ItemConfig
+  currentVisibleItemIds: string[];
+  currentItemOrder: string[];
+  onSavePreferences: (preferences: { visibleItemIds: string[], itemOrder: string[] }) => void;
+  sheetTitleKey: string; // For dynamic title
+  sheetDescriptionKey: string; // For dynamic description
 }
 
-const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
+const KpiCustomizationSheet: React.FC<CustomizationSheetProps> = ({
   isOpen,
   onOpenChange,
-  allKpis,
-  currentVisibleKpiIds,
-  currentKpiOrder,
+  items, // Use generic items
+  currentVisibleItemIds,
+  currentItemOrder,
   onSavePreferences,
+  sheetTitleKey,
+  sheetDescriptionKey,
 }) => {
   const { t } = useTranslation();
-  const [selectedKpiIds, setSelectedKpiIds] = useState<Set<string>>(new Set());
-  const [editableKpiOrder, setEditableKpiOrder] = useState<string[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [editableItemOrder, setEditableItemOrder] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedKpiIds(new Set(currentVisibleKpiIds));
-      const currentOrderSet = new Set(currentKpiOrder);
-      const newKpisToAdd = allKpis.filter(kpi => !currentOrderSet.has(kpi.id)).map(kpi => kpi.id);
-      const validCurrentOrder = currentKpiOrder.filter(id => allKpis.some(kpi => kpi.id === id));
-      setEditableKpiOrder([...validCurrentOrder, ...newKpisToAdd]);
+      setSelectedItemIds(new Set(currentVisibleItemIds));
+      const currentOrderSet = new Set(currentItemOrder);
+      const newItemsToAdd = items.filter(item => !currentOrderSet.has(item.id)).map(item => item.id);
+      // Ensure the order only contains valid items from the current 'items' prop
+      const validCurrentOrder = currentItemOrder.filter(id => items.some(item => item.id === id));
+      setEditableItemOrder([...validCurrentOrder, ...newItemsToAdd]);
     }
-  }, [isOpen, currentVisibleKpiIds, currentKpiOrder, allKpis]);
+  }, [isOpen, currentVisibleItemIds, currentItemOrder, items]);
 
-  const handleToggleKpi = (kpiId: string) => {
-    setSelectedKpiIds(prev => {
+  const handleToggleItem = (itemId: string) => {
+    setSelectedItemIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(kpiId)) {
-        newSet.delete(kpiId);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
       } else {
-        newSet.add(kpiId);
+        newSet.add(itemId);
       }
       return newSet;
     });
   };
 
-  const moveKpi = (index: number, direction: 'up' | 'down') => {
-    setEditableKpiOrder(prevOrder => {
+  const moveItem = (index: number, direction: 'up' | 'down') => {
+    setEditableItemOrder(prevOrder => {
       const newOrder = [...prevOrder];
-      const kpiToMove = newOrder[index];
+      const itemToMove = newOrder[index];
       if (direction === 'up' && index > 0) {
         newOrder.splice(index, 1);
-        newOrder.splice(index - 1, 0, kpiToMove);
+        newOrder.splice(index - 1, 0, itemToMove);
       } else if (direction === 'down' && index < newOrder.length - 1) {
         newOrder.splice(index, 1);
-        newOrder.splice(index + 1, 0, kpiToMove);
+        newOrder.splice(index + 1, 0, itemToMove);
       }
       return newOrder;
     });
   };
 
   const handleSave = () => {
-    const newVisibleIds = Array.from(selectedKpiIds);
+    const newVisibleIds = Array.from(selectedItemIds);
     onSavePreferences({
-      visibleKpiIds: newVisibleIds,
-      kpiOrder: editableKpiOrder,
+      visibleItemIds: newVisibleIds, // Corrected prop name
+      itemOrder: editableItemOrder,    // Corrected prop name
     });
     onOpenChange(false);
   };
@@ -91,45 +96,45 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
         <SheetHeader className="p-6 border-b">
-          <SheetTitle>{t('home_kpi_customize_sheet_title')}</SheetTitle>
-          <SheetDescription>{t('home_kpi_customize_sheet_desc_reorder')}</SheetDescription>
+          <SheetTitle>{t(sheetTitleKey)}</SheetTitle>
+          <SheetDescription>{t(sheetDescriptionKey)}</SheetDescription>
         </SheetHeader>
         <ScrollArea className="flex-grow p-6 space-y-1">
           <p className="text-sm font-medium mb-2">{t('home_kpi_customize_select_label')}:</p>
-          {editableKpiOrder.map((kpiId, index) => {
-            const kpi = allKpis.find(k => k.id === kpiId);
-            if (!kpi) return null;
+          {editableItemOrder.map((itemId, index) => {
+            const item = items.find(k => k.id === itemId);
+            if (!item) return null;
             return (
-              <div key={kpi.id} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md group">
-                <div className="flex flex-col gap-1 mr-2"> {/* Container for arrow buttons on the left */}
+              <div key={item.id} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md group">
+                <div className="flex flex-col gap-1 mr-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => moveKpi(index, 'up')}
+                    onClick={() => moveItem(index, 'up')}
                     disabled={index === 0}
-                    className="h-7 w-7 p-1 opacity-70 group-hover:opacity-100 disabled:opacity-30"
+                    className="h-7 w-7 p-1.5 opacity-70 group-hover:opacity-100 disabled:opacity-30"
                     aria-label={t('move_up_button')}
                   >
-                    <ArrowUp className="h-4 w-4" />
+                    <ArrowUp className="h-5 w-5" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => moveKpi(index, 'down')}
-                    disabled={index === editableKpiOrder.length - 1}
-                    className="h-7 w-7 p-1 opacity-70 group-hover:opacity-100 disabled:opacity-30"
+                    onClick={() => moveItem(index, 'down')}
+                    disabled={index === editableItemOrder.length - 1}
+                    className="h-7 w-7 p-1.5 opacity-70 group-hover:opacity-100 disabled:opacity-30"
                     aria-label={t('move_down_button')}
                   >
-                    <ArrowDown className="h-4 w-4" />
+                    <ArrowDown className="h-5 w-5" />
                   </Button>
                 </div>
                 <Checkbox
-                  id={`kpi-toggle-${kpi.id}`}
-                  checked={selectedKpiIds.has(kpi.id)}
-                  onCheckedChange={() => handleToggleKpi(kpi.id)}
+                  id={`item-toggle-${item.id}`}
+                  checked={selectedItemIds.has(item.id)}
+                  onCheckedChange={() => handleToggleItem(item.id)}
                 />
-                <Label htmlFor={`kpi-toggle-${kpi.id}`} className="flex-1 text-sm font-normal cursor-pointer">
-                  {t(kpi.titleKey)}
+                <Label htmlFor={`item-toggle-${item.id}`} className="flex-1 text-sm font-normal cursor-pointer">
+                  {t(item.titleKey)}
                 </Label>
               </div>
             );
@@ -151,3 +156,4 @@ const KpiCustomizationSheet: React.FC<KpiCustomizationSheetProps> = ({
 };
 
 export default KpiCustomizationSheet;
+
