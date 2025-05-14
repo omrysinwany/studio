@@ -1,6 +1,6 @@
+// src/app/layout.tsx
 
-'use client';
-
+// Ensure this is a Server Component by NOT having 'use client' at the top
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -8,10 +8,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/AuthContext';
 import Navigation from '@/components/layout/Navigation';
 import { ThemeProvider } from "@/components/theme-provider";
-import React, { useEffect } from 'react';
+import React from 'react';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { useTranslation } from '@/hooks/useTranslation';
-
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -23,62 +22,58 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-// Metadata is now handled within the component using useTranslation
-// export const metadata: Metadata = {
-// title: 'InvoTrack', // Will be translated
-// description: 'Inventory management based on delivery notes and invoices', // Will be translated
-// };
+export const metadata: Metadata = {
+  title: 'InvoTrack', // Default/fallback title, can be updated by ClientLayoutWrapper
+  description: 'Inventory management based on delivery notes and invoices',
+};
 
-function LayoutContent({ children }: { children: React.ReactNode }) {
-  const { locale, t } = useTranslation();
+// This is a new Client Component that will wrap all client-side logic and providers
+function ClientLayoutWrapper({ children }: { children: React.ReactNode }) {
+  'use client'; // Mark this component as a Client Component
 
-  useEffect(() => {
+  const { locale, t } = useTranslation(); // useTranslation can be used here
+
+  React.useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'he' ? 'rtl' : 'ltr';
   }, [locale]);
 
-  // Dynamically set document title - this might be better in individual page components
-  // or through a more sophisticated metadata management solution if needed for SEO.
-  useEffect(() => {
+  React.useEffect(() => {
+    // This will update the title client-side with the translated version
     document.title = t('app_title');
-  }, [t]);
-
+  }, [t, locale]);
 
   return (
-    <html lang={locale} dir={locale === 'he' ? 'rtl' : 'ltr'} suppressHydrationWarning>
-      <head>
-        {/* <title>{t('app_title')}</title> */}
-        <meta name="description" content={t('app_description')} />
-      </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
-         <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <AuthProvider>
-              <Navigation />
-              <main className="flex-grow fade-in-content">
-                 {children}
-              </main>
-              <Toaster />
-            </AuthProvider>
-        </ThemeProvider>
-      </body>
-    </html>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <AuthProvider>
+        <Navigation />
+        <main className="flex-grow fade-in-content">
+          {children}
+        </main>
+        <Toaster />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
-
+// This is the RootLayout (Server Component)
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <LanguageProvider>
-      <LayoutContent>{children}</LayoutContent>
-    </LanguageProvider>
+    <html lang="en" suppressHydrationWarning> {/* Default lang, ClientLayoutWrapper will update */}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
+        <LanguageProvider> {/* LanguageProvider must wrap ClientLayoutWrapper */}
+          <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
+        </LanguageProvider>
+      </body>
+    </html>
   );
 }
