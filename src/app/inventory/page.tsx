@@ -26,7 +26,7 @@ import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Down
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { Product, getProductsService, clearInventoryService, updateProductService } from '@/services/backend';
+import { Product, getProductsService, clearInventoryService, updateProductService, deleteProductService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -60,21 +60,21 @@ const formatDisplayNumberWithTranslation = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {};
+    const { decimals = 0, useGrouping = true, currency = false } = options || {};
     const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
+        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+            minimumFractionDigits: currency && decimals !==0 ? 2 : decimals,
+            maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
             useGrouping: useGrouping,
         });
         return currency ? `${shekelSymbol}${zeroFormatted}` : zeroFormatted;
     }
 
-    const formatted = value.toLocaleString(undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
+    const formatted = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+        minimumFractionDigits: currency && decimals !==0 ? 2 : decimals,
+        maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
         useGrouping: useGrouping,
     });
     return currency ? `${shekelSymbol}${formatted}` : formatted;
@@ -82,12 +82,12 @@ const formatDisplayNumberWithTranslation = (
 
 const formatIntegerQuantityWithTranslation = (
     value: number | undefined | null,
-    t: (key: string) => string
+    t: (key: string) => string // Removed unused params argument
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return (0).toLocaleString(undefined, { useGrouping: false, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        return (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, { useGrouping: false, minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
-    return Math.round(value).toLocaleString(undefined, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return Math.round(value).toLocaleString(t('locale_code_for_number_formatting') || undefined, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
 
@@ -103,20 +103,23 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'id' | 'imageUrl' , boolean>>({
+  const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'imageUrl' , boolean>>({
     actions: true,
     imageUrl: true,
-    id: false,
+    id: false, // Usually hidden in UI, but good for keying
     shortName: true,
-    description: false,
-    catalogNumber: false,
-    barcode: false,
+    description: false, // Keep default false
+    catalogNumber: true, // Show catalog by default
+    barcode: false, // Keep default false
     quantity: true,
     unitPrice: false, // Default hidden
     salePrice: true,
     lineTotal: false, // Default hidden
-    minStockLevel: false,
-    maxStockLevel: false,
+    minStockLevel: false, // Keep default false
+    maxStockLevel: false, // Keep default false
+    lastUpdated: false,
+    userId: false,
+    _originalId: false,
   });
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
@@ -139,14 +142,14 @@ export default function InventoryPage() {
   const initialFilter = searchParams.get('filter');
 
   const fetchInventory = useCallback(async () => {
-      if (!user) {
+      if (!user || !user.id) { // Check for user.id
           setIsLoading(false);
           setInventory([]);
           return;
       }
       setIsLoading(true);
       try {
-        const data = await getProductsService(user.id);
+        const data = await getProductsService(user.id); // Pass userId
         const inventoryWithCorrectTotals = data.map(item => {
             const quantity = Number(item.quantity) || 0;
             const unitPrice = Number(item.unitPrice) || 0;
@@ -184,7 +187,10 @@ export default function InventoryPage() {
         return;
     }
 
-    fetchInventory();
+    if (user && user.id) { // Ensure user.id is present before fetching
+      fetchInventory();
+    }
+
 
     if (initialFilter === 'low' && filterStockLevel === 'all') {
         setFilterStockLevel('low');
@@ -249,7 +255,7 @@ export default function InventoryPage() {
           let valA = a[sortKey as keyof Product];
           let valB = b[sortKey as keyof Product];
 
-          if (sortKey === 'calculatedGrossProfit') {
+          if (sortKey === 'calculatedGrossProfit') { // This KPI seems to be removed or not yet implemented
             valA = (a.salePrice || 0) - (a.unitPrice || 0);
             valB = (b.salePrice || 0) - (b.unitPrice || 0);
           }
@@ -297,16 +303,16 @@ export default function InventoryPage() {
         }
     };
 
-    const toggleColumnVisibility = (key: keyof Product | 'actions' | 'id' | 'imageUrl') => {
+    const toggleColumnVisibility = (key: keyof Product | 'actions' | 'imageUrl') => {
         setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const columnDefinitions: { key: keyof Product | 'actions' | 'id' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string, isNumeric?: boolean }[] = [
-        { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2' },
+    const columnDefinitions: { key: keyof Product | 'actions' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string, isNumeric?: boolean }[] = [
+        { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'imageUrl', labelKey: 'inventory_col_image', sortable: false, className: 'w-12 text-center px-1 sm:px-2 py-1', headerClassName: 'text-center px-1 sm:px-2 py-1'},
         { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'description', labelKey: 'inventory_col_description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] hidden md:table-cell px-2 sm:px-4 py-2', headerClassName: 'text-center hidden md:table-cell px-2 sm:px-4 py-2' },
-        { key: 'id', labelKey: 'inventory_col_id', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'id', labelKey: 'inventory_col_id', sortable: true, mobileHidden: true, className: 'px-2 sm:px-4 py-2 hidden', headerClassName: 'text-center px-2 sm:px-4 py-2 hidden' },
         { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
@@ -317,7 +323,7 @@ export default function InventoryPage() {
         { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
+    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
 
 
     const escapeCsvValue = (value: any): string => {
@@ -341,8 +347,8 @@ export default function InventoryPage() {
             return;
         }
 
-        const exportColumns: (keyof Product | 'id')[] = [
-            'id', 'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel', 'imageUrl'
+        const exportColumns: (keyof Product)[] = [ // Removed 'id' as it's typically internal
+            'catalogNumber', 'barcode', 'shortName', 'description', 'quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel', 'imageUrl'
         ];
 
         const headers = exportColumns
@@ -373,10 +379,10 @@ export default function InventoryPage() {
     };
 
     const handleDeleteAllInventory = async () => {
-        if (!user) return;
+        if (!user || !user.id) return;
         setIsDeleting(true);
         try {
-            await clearInventoryService(user.id);
+            await clearInventoryService(user.id); // Pass userId
             await fetchInventory();
             setCurrentPage(1);
             toast({
@@ -396,7 +402,7 @@ export default function InventoryPage() {
     };
 
      const handleQuantityChange = async (productId: string, change: number) => {
-        if (!user) return;
+        if (!user || !user.id) return; // Ensure user and user.id are present
         setUpdatingQuantityProductId(productId);
         const productToUpdate = inventory.find(p => p.id === productId);
         if (!productToUpdate) return;
@@ -409,13 +415,12 @@ export default function InventoryPage() {
         }
 
         try {
-            await updateProductService(productId, { quantity: newQuantity }, user.id);
+            await updateProductService(productId, { quantity: newQuantity }, user.id); // Pass userId
             setInventory(prev =>
                 prev.map(p =>
                     p.id === productId ? { ...p, quantity: newQuantity, lineTotal: newQuantity * (p.unitPrice || 0) } : p
                 )
             );
-            // toast({ title: t('inventory_toast_quantity_updated_title'), description: t('inventory_toast_quantity_updated_desc', {productName: productToUpdate.shortName || productToUpdate.description, quantity: newQuantity }) });
         } catch (error) {
             console.error("Failed to update quantity:", error);
             toast({ title: t('inventory_toast_quantity_update_fail_title'), description: t('inventory_toast_quantity_update_fail_desc'), variant: "destructive" });
@@ -436,7 +441,7 @@ export default function InventoryPage() {
     };
 
 
-    if (authLoading || (isLoading && !user)) {
+   if (authLoading || (isLoading && !user)) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -446,7 +451,7 @@ export default function InventoryPage() {
    }
 
    if (!user && !authLoading) {
-    return null;
+    return null; // Or a login prompt
    }
 
   return (
@@ -533,8 +538,8 @@ export default function InventoryPage() {
                      <DropdownMenuCheckboxItem
                        key={header.key}
                        className="capitalize"
-                       checked={visibleColumns[header.key]}
-                       onCheckedChange={() => toggleColumnVisibility(header.key)}
+                       checked={visibleColumns[header.key as keyof typeof visibleColumns]}
+                       onCheckedChange={() => toggleColumnVisibility(header.key as keyof typeof visibleColumns)}
                      >
                        {t(header.labelKey, { currency_symbol: t('currency_symbol') })}
                      </DropdownMenuCheckboxItem>
@@ -580,7 +585,7 @@ export default function InventoryPage() {
                      ) : (
                          <div className="space-y-2">
                              {stockAlerts
-                               .sort((a,b) => (a.quantity || 0) - (b.quantity || 0))
+                               .sort((a,b) => (a.quantity || 0) - (b.quantity || 0) || (a.shortName || a.description || '').localeCompare(b.shortName || b.description || '') )
                                .map(item => (
                                  <div key={item.id} className={cn("p-2 border rounded-md flex justify-between items-center text-sm",
                                      (item.quantity || 0) === 0 ? "bg-destructive/10 border-destructive/30" :
@@ -663,7 +668,6 @@ export default function InventoryPage() {
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 flex-grow">
                          {visibleColumns.catalogNumber && <p><strong>{t('inventory_col_catalog')}:</strong> {item.catalogNumber || t('invoices_na')}</p>}
-                         {/* Quantity display with +/- buttons */}
                          <div className="flex items-center gap-2">
                             <p className="flex items-center">
                                 <strong>{t('inventory_col_qty')}:</strong>
@@ -697,7 +701,7 @@ export default function InventoryPage() {
                        <TableHead
                          key={header.key}
                          className={cn(
-                           "text-center px-2 sm:px-4 py-2", // Default centered
+                           "text-center px-2 sm:px-4 py-2",
                            header.headerClassName,
                            header.sortable && "cursor-pointer hover:bg-muted/50",
                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
@@ -793,7 +797,6 @@ export default function InventoryPage() {
                            </TableCell>
                          )}
                          {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || t('invoices_na')}</TableCell>}
-                         {visibleColumns.id && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'id')?.mobileHidden && 'hidden sm:table-cell')}>{item.id || t('invoices_na')}</TableCell>}
                          {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || t('invoices_na')}</TableCell>}
                          {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || t('invoices_na')}</TableCell>}
                          {visibleColumns.quantity && (

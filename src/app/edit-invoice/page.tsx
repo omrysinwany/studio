@@ -58,7 +58,7 @@ interface EditableTaxInvoiceDetails {
     paymentMethod?: string;
 }
 
-const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel', t: (key: string) => string): string => {
+const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel', t: (key: string, params?: Record<string, string | number>) => string): string => {
      if ((fieldType === 'currency' || fieldType === 'stockLevel') && (value === undefined || value === null)) {
         return '';
     }
@@ -100,7 +100,6 @@ function EditInvoiceContent() {
 
   const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice' | null>(null);
 
-  const [isViewMode, setIsViewMode] = useState(true);
   const [isEditingTaxDetails, setIsEditingTaxDetails] = useState(false);
   const [isEditingDeliveryNoteProducts, setIsEditingDeliveryNoteProducts] = useState(false);
 
@@ -158,7 +157,7 @@ function EditInvoiceContent() {
 
 
   const loadData = useCallback(async () => {
-    if (!user || !searchParams) return;
+    if (!user || !searchParams || !user.id) return; // Ensure user.id is available
     
     setIsLoading(true);
     setErrorLoading(null);
@@ -197,19 +196,20 @@ function EditInvoiceContent() {
 
     if (invoiceIdParam) {
         try {
-            const inv = await getInvoicesService(user.id).then(all => all.find(i => i.id === invoiceIdParam));
+            const allInvoices = await getInvoicesService(user.id); // Pass userId
+            const inv = allInvoices.find(i => i.id === invoiceIdParam);
             if (inv) {
                 let finalFileName = inv.fileName;
-                if(inv.supplier && inv.invoiceNumber) {
-                    finalFileName = `${inv.supplier}_${inv.invoiceNumber}`;
-                } else if (inv.supplier) {
-                    finalFileName = inv.supplier;
+                if(inv.supplierName && inv.invoiceNumber) {
+                    finalFileName = `${inv.supplierName}_${inv.invoiceNumber}`;
+                } else if (inv.supplierName) {
+                    finalFileName = inv.supplierName;
                 } else if (inv.invoiceNumber) {
                     finalFileName = `Invoice_${inv.invoiceNumber}`;
                 }
                 setOriginalFileName(finalFileName);
                 setDocumentType(inv.documentType);
-                setExtractedSupplierName(inv.supplier);
+                setExtractedSupplierName(inv.supplierName);
                 setExtractedInvoiceNumber(inv.invoiceNumber);
                 setExtractedTotalAmount(inv.totalAmount);
                 setExtractedInvoiceDate(inv.invoiceDate ? (inv.invoiceDate as string) : undefined);
@@ -217,7 +217,7 @@ function EditInvoiceContent() {
                 setSelectedPaymentDueDate(inv.paymentDueDate);
 
                 const taxDetails = {
-                    supplierName: inv.supplier,
+                    supplierName: inv.supplierName,
                     invoiceNumber: inv.invoiceNumber,
                     totalAmount: inv.totalAmount,
                     invoiceDate: inv.invoiceDate ? (inv.invoiceDate as string) : undefined,
@@ -229,16 +229,19 @@ function EditInvoiceContent() {
                 setDisplayedOriginalImageUrl(inv.originalImagePreviewUri || null);
                 setDisplayedCompressedImageUrl(inv.compressedImageForFinalRecordUri || null);
 
-                if (inv.documentType === 'deliveryNote' && Array.isArray((inv as any).products)) {
-                   const loadedProducts = ((inv as any).products as Product[]).map((p: Product) => ({ ...p, _originalId: p.id }));
-                   setProducts(loadedProducts);
-                   setInitialScannedProducts(loadedProducts);
-                } else {
+                // Fetch products for this invoice if it's a delivery note from Firestore
+                // This logic will need to be adjusted to fetch from DocumentLineItems collection
+                // For now, if products are directly on invoice item for older data structure:
+                // if (inv.documentType === 'deliveryNote' && Array.isArray((inv as any).products)) {
+                //    const loadedProducts = ((inv as any).products as Product[]).map((p: Product) => ({ ...p, _originalId: p.id }));
+                //    setProducts(loadedProducts);
+                //    setInitialScannedProducts(loadedProducts);
+                // } else {
                     setProducts([]);
                     setInitialScannedProducts([]);
-                }
+                // }
                 setIsSupplierConfirmed(true); 
-                setIsViewMode(true);
+                // setIsViewMode(true);
             } else {
                 setErrorLoading(t('edit_invoice_error_invoice_not_found_id', { invoiceId: invoiceIdParam }));
             }
@@ -337,7 +340,7 @@ function EditInvoiceContent() {
                 _originalId: p.id,
                 quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
                 lineTotal: typeof p.lineTotal === 'number' ? p.lineTotal : parseFloat(String(p.lineTotal)) || 0,
-                 unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number' && p.lineTotal !== 0)
+                 unitPrice: (typeof p.quantity === 'number' && p.quantity !== 0 && typeof p.lineTotal === 'number' && p.lineTotal !== 0 && (p.lineTotal / p.quantity > 0))
                             ? parseFloat((p.lineTotal / p.quantity).toFixed(2))
                             : (typeof p.unitPrice === 'number' ? p.unitPrice : parseFloat(String(p.unitPrice)) || 0),
                 minStockLevel: p.minStockLevel ?? undefined,
@@ -404,7 +407,7 @@ function EditInvoiceContent() {
 
 
   useEffect(() => {
-    if(user) {
+    if(user && user.id) { // Ensure user.id exists
       loadData();
     }
   }, [user, loadData]); 
@@ -475,6 +478,10 @@ function EditInvoiceContent() {
   const handlePaymentDueDateConfirm = (dueDate: string | Date | undefined) => {
     setSelectedPaymentDueDate(dueDate);
     setShowPaymentDueDateDialog(false);
+    // After confirming due date (or skipping), proceed to check for new products if it's a delivery note and a new scan.
+    if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+        checkForNewProductsAndDetails(products);
+    }
 };
 
 
@@ -506,14 +513,14 @@ function EditInvoiceContent() {
 
 
           if (field === 'quantity' || field === 'unitPrice') {
-             if (currentQuantity > 0 && currentUnitPrice !== 0) {
+             if (currentQuantity > 0 && currentUnitPrice !== 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
                 currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
              } else if (currentQuantity === 0 || currentUnitPrice === 0) {
                 currentLineTotal = 0;
              }
             updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
-            if (currentQuantity > 0) {
+            if (currentQuantity > 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
               currentUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
               updatedProduct.unitPrice = currentUnitPrice;
             } else {
@@ -522,7 +529,7 @@ function EditInvoiceContent() {
           }
 
 
-          if (currentQuantity > 0 && currentLineTotal !== 0) {
+          if (currentQuantity > 0 && currentLineTotal !== 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
             const derivedUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
             if (Math.abs(derivedUnitPrice - currentUnitPrice) > 0.001 && field !== 'unitPrice') {
                  updatedProduct.unitPrice = derivedUnitPrice;
@@ -607,7 +614,7 @@ function EditInvoiceContent() {
             productsForService,
             finalFileNameForSave,
             documentType,
-            user.id,
+            user.id, // Pass userId here
             initialTempInvoiceId || undefined,
             finalInvoiceNumberForSave,
             finalSupplierNameForSave,
@@ -625,7 +632,7 @@ function EditInvoiceContent() {
             setOriginalFileName(result.finalInvoiceRecord.fileName);
             setInitialTempInvoiceId(result.finalInvoiceRecord.id);
             setDocumentType(result.finalInvoiceRecord.documentType);
-            setExtractedSupplierName(result.finalInvoiceRecord.supplier);
+            setExtractedSupplierName(result.finalInvoiceRecord.supplierName);
             setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
             setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
             setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
@@ -640,7 +647,7 @@ function EditInvoiceContent() {
                 setInitialScannedProducts(finalProducts);
             }
             const finalTaxDetails = {
-                supplierName: result.finalInvoiceRecord.supplier,
+                supplierName: result.finalInvoiceRecord.supplierName,
                 invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
                 totalAmount: result.finalInvoiceRecord.totalAmount,
                 invoiceDate: result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined,
@@ -650,7 +657,9 @@ function EditInvoiceContent() {
             setInitialScannedTaxDetails(finalTaxDetails);
 
             setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
-            setIsViewMode(true);
+            // setIsViewMode(true);
+            setIsEditingDeliveryNoteProducts(false);
+            setIsEditingTaxDetails(false);
              toast({
                 title: t('edit_invoice_toast_products_saved_title'),
                 description: t('edit_invoice_toast_products_saved_desc'),
@@ -714,10 +723,10 @@ function EditInvoiceContent() {
       }
 
       const result = await finalizeSaveProductsService(
-        [],
+        [], // No products for a tax-only invoice
         finalFileNameForSave,
         documentType,
-        user.id,
+        user.id, // Pass userId
         initialTempInvoiceId || undefined,
         finalInvoiceNumberForSave,
         finalSupplierNameForSave,
@@ -735,7 +744,7 @@ function EditInvoiceContent() {
         setOriginalFileName(result.finalInvoiceRecord.fileName);
         setInitialTempInvoiceId(result.finalInvoiceRecord.id);
         setDocumentType(result.finalInvoiceRecord.documentType);
-        setExtractedSupplierName(result.finalInvoiceRecord.supplier);
+        setExtractedSupplierName(result.finalInvoiceRecord.supplierName);
         setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
         setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
         setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
@@ -747,7 +756,7 @@ function EditInvoiceContent() {
         setProducts([]);
         setInitialScannedProducts([]);
         const finalTaxDetails = {
-             supplierName: result.finalInvoiceRecord.supplier,
+             supplierName: result.finalInvoiceRecord.supplierName,
              invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
              totalAmount: result.finalInvoiceRecord.totalAmount,
              invoiceDate: result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined,
@@ -756,7 +765,9 @@ function EditInvoiceContent() {
         setEditableTaxInvoiceDetails(finalTaxDetails);
         setInitialScannedTaxDetails(finalTaxDetails);
         setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
-        setIsViewMode(true);
+        // setIsViewMode(true);
+        setIsEditingDeliveryNoteProducts(false);
+        setIsEditingTaxDetails(false);
         toast({
             title: t('edit_invoice_toast_invoice_details_saved_title'),
             description: t('edit_invoice_toast_invoice_details_saved_desc'),
@@ -798,6 +809,11 @@ function EditInvoiceContent() {
             setIsSupplierConfirmed(true); 
             if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) { 
                 setShowPaymentDueDateDialog(true); 
+            } else if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+                // If supplier confirmed and it's a new delivery note, check for new products
+                checkForNewProductsAndDetails(products);
+            } else {
+                proceedWithActualSave();
             }
         }
         return; 
@@ -807,8 +823,13 @@ function EditInvoiceContent() {
         setShowPaymentDueDateDialog(true);
         return; 
     }
-
-    proceedWithActualSave();
+    
+    // If all checks passed (supplier, due date), then proceed
+    if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+        checkForNewProductsAndDetails(products);
+    } else {
+        proceedWithActualSave();
+    }
 };
 
 const proceedWithActualSave = async () => {
@@ -817,11 +838,12 @@ const proceedWithActualSave = async () => {
         return;
     }
 
-    if (documentType === 'invoice') {
+    if (documentType === 'invoice') { // Tax Invoice or Delivery Note being saved as "Invoice" type
         await proceedWithFinalSaveForTaxInvoice();
         return;
     }
 
+    // This part is for 'deliveryNote'
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
@@ -833,7 +855,13 @@ const proceedWithActualSave = async () => {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
             setIsSaving(false); 
         } else {
-            await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
+             // If no price discrepancies, and it's a NEW scan, check for new products
+            if (isNewScan) {
+                await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
+            } else {
+                // If it's an EDIT of an existing document, save directly
+                await proceedWithFinalSave(priceCheckResult.productsToSaveDirectly);
+            }
         }
     } catch (error) {
         console.error("Error during initial save checks for delivery note:", error);
@@ -855,7 +883,7 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         return;
     }
     try {
-        const currentInventory = await getProductsService(user.id);
+        const currentInventory = await getProductsService(user.id); // Pass userId
         const inventoryMap = new Map<string, Product>();
         currentInventory.forEach(p => {
             if (p.id) inventoryMap.set(`id:${p.id}`, p);
@@ -902,7 +930,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
         });
         setProductsForNextStep(updatedProductsForDetailCheck); 
-        checkForNewProductsAndDetails(updatedProductsForDetailCheck); 
+        if (isNewScan) { // Only check for new products if it was a new scan initially
+            checkForNewProductsAndDetails(updatedProductsForDetailCheck);
+        } else {
+            proceedWithFinalSave(updatedProductsForDetailCheck); // If not a new scan, save directly
+        }
     } else {
         toast({
             title: t('edit_invoice_toast_save_cancelled_title'),
@@ -960,7 +992,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           setExtractedPaymentMethod(initialScannedTaxDetails.paymentMethod);
         }
         setIsEditingTaxDetails(false);
-        //setIsViewMode(true); // Removed to keep main view/edit state separate
     };
 
     const handleSaveEditTaxDetails = () => {
@@ -973,20 +1004,17 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         }
         setInitialScannedTaxDetails({...editableTaxInvoiceDetails});
         setIsEditingTaxDetails(false);
-        //setIsViewMode(true); // Removed to keep main view/edit state separate
         toast({ title: t('edit_invoice_toast_section_updated_title'), description: t('edit_invoice_toast_section_updated_desc') });
     };
 
     const handleCancelEditProducts = () => {
         setProducts(initialScannedProducts.map(p => ({...p})));
         setIsEditingDeliveryNoteProducts(false);
-        //setIsViewMode(true); // Removed
     };
 
     const handleSaveEditProducts = () => {
         setInitialScannedProducts(products.map(p => ({...p})));
         setIsEditingDeliveryNoteProducts(false);
-        //setIsViewMode(true); // Removed
         toast({ title: t('edit_invoice_toast_products_updated_title_section'), description: t('edit_invoice_toast_section_updated_desc') });
     };
 
@@ -1000,8 +1028,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
      );
    }
 
-   if (!user && !authLoading) {
-    return null;
+   if (!user && !authLoading) { // Ensure user is checked after authLoading is false
+    return null; // Or redirect to login
    }
 
     if (errorLoading) {
@@ -1018,7 +1046,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         );
     }
 
-    // Combined condition for no products or critical scan error for new scans
     const showManualEntryPrompt = isNewScan &&
         ((documentType === 'deliveryNote' && products.length === 0 && !errorLoading && !scanProcessErrorState) ||
          (scanProcessErrorState && ((documentType === 'deliveryNote' && products.length === 0) || (documentType === 'invoice' && Object.values(editableTaxInvoiceDetails).every(val => val === undefined || val === '' || val === 0)))));
@@ -1047,7 +1074,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                      <CardHeader>
                          <CardTitle className="text-xl sm:text-2xl font-semibold text-primary">{t('edit_invoice_add_manually_title')}</CardTitle>
                          <CardDescription>
-                            {t('edit_invoice_file')}: <span className="font-medium">{originalFileName || t('edit_invoice_unknown_document')}</span>
+                            {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
                          </CardDescription>
                      </CardHeader>
                       <CardContent>
@@ -1092,12 +1119,17 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
     const renderScanSummaryItem = (label: string, value?: string | number | null, field?: keyof EditableTaxInvoiceDetails) => {
         if (value === undefined || value === null || String(value).trim() === '') return null;
+        let displayValue = value;
+        if (typeof value === 'number') {
+             displayValue = t('currency_symbol') + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2});
+        } else if (field === 'invoiceDate' && value && isValid(parseISO(value as string))) {
+            displayValue = format(parseISO(value as string), 'PP');
+        }
+
         return (
             <div className="break-words">
                 <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="font-medium">
-                    {typeof value === 'number' ? t('currency_symbol') + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2}) : (field === 'invoiceDate' && value && isValid(parseISO(value as string)) ? format(parseISO(value as string), 'PP') : value) }
-                </p>
+                <p className="font-medium">{displayValue}</p>
             </div>
         );
     };
@@ -1163,6 +1195,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
+         {/* Header Section */}
         <Card className="shadow-md scale-fade-in overflow-hidden">
             <CardHeader>
                 <div className="flex flex-row items-center justify-between">
@@ -1170,7 +1203,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         <FileTextIconLucide className="mr-2 h-5 w-5" />
                         {documentType === 'invoice' ? t('edit_invoice_invoice_details_title') : t('edit_invoice_delivery_note_details_title')}
                     </CardTitle>
-                    {!isEditingTaxDetails && (
+                     {!isEditingTaxDetails && (
                         <Button variant="ghost" size="icon" onClick={() => setIsEditingTaxDetails(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
                             <Edit className="h-4 w-4" />
                             <span className="sr-only">{t('edit_button')}</span>
@@ -1208,6 +1241,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             </CardContent>
         </Card>
 
+
+        {/* Products Section - Only for Delivery Note */}
         {documentType === 'deliveryNote' && (
             <div className="mt-6">
                  <div className="flex flex-row items-center justify-between mb-2">
@@ -1299,6 +1334,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             </div>
         )}
 
+        {/* Action Buttons Section */}
         <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
             <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push('/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first">
                 <ArrowLeft className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_discard_scan_button') : t('edit_invoice_go_back_to_invoices_button')}
@@ -1307,7 +1343,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                  <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
                     <Button
                         onClick={handleSaveChecks}
-                        disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && isNewScan) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate)}
+                        disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && isNewScan) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate && isNewScan)}
                         className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
                     >
                         {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_confirm_and_save_button') : t('edit_invoice_save_changes_button')}</>}
@@ -1327,6 +1363,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
             if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
                  setShowPaymentDueDateDialog(true);
+            } else if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+                checkForNewProductsAndDetails(products);
             }
           }}
           isOpen={showSupplierDialog}
@@ -1343,8 +1381,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             setShowPaymentDueDateDialog(false);
             toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
             setSelectedPaymentDueDate(undefined); 
-            // After skipping, proceed to actual save
-            proceedWithActualSave();
+            if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+                checkForNewProductsAndDetails(products);
+            } else {
+                 proceedWithActualSave();
+            }
           }}
         />
       )}
@@ -1405,4 +1446,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

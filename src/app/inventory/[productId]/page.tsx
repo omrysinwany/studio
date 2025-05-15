@@ -1,4 +1,5 @@
 
+// src/app/inventory/[productId]/page.tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -32,14 +33,14 @@ import NextImage from 'next/image'; // For displaying product images
 // Helper to format numbers for display
 const formatDisplayNumber = (
     value: number | undefined | null,
-    t: (key: string) => string,
+    t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true } = options || {};
+    const { decimals = 0, useGrouping = true } = options || {}; // Default decimals to 0
     const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(undefined, {
+        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -47,7 +48,7 @@ const formatDisplayNumber = (
         return `${shekelSymbol}${zeroFormatted}`;
     }
 
-    return `${shekelSymbol}${value.toLocaleString(undefined, {
+    return `${shekelSymbol}${value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
@@ -65,7 +66,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return String(value);
+    return String(Math.round(value)); // Ensure integer for quantity and stock levels
 };
 
 
@@ -74,9 +75,9 @@ const formatIntegerQuantity = (
     t: (key: string) => string
 ): string => {
     if (value === null || value === undefined || isNaN(value)) {
-        return "0"; // Removed currency symbol for quantity
+        return "0";
     }
-    return Math.round(value).toLocaleString(undefined, { useGrouping: true });
+    return Math.round(value).toLocaleString(t('locale_code_for_number_formatting') || undefined, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
 export default function ProductDetailPage() {
@@ -103,12 +104,12 @@ export default function ProductDetailPage() {
   }, [user, authLoading, router]);
 
    const loadProduct = useCallback(async () => {
-    if (!productId || !user) return;
+    if (!productId || !user || !user.id) return; // Ensure user.id exists
 
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getProductByIdService(productId, user.id);
+      const data = await getProductByIdService(productId, user.id); // Pass userId
       if (data) {
         setProduct(data);
         setEditedProduct({ ...data });
@@ -135,7 +136,7 @@ export default function ProductDetailPage() {
 
 
   useEffect(() => {
-    if(user) {
+    if(user && user.id){ // Ensure user.id exists
         loadProduct();
     }
   }, [loadProduct, user]);
@@ -169,7 +170,7 @@ export default function ProductDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!product || !product.id || !user) return;
+    if (!product || !product.id || !user || !user.id) return; // Ensure user.id exists
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
@@ -209,7 +210,7 @@ export default function ProductDetailPage() {
         imageUrl: editedProduct.imageUrl || product.imageUrl,
       };
 
-      await updateProductService(product.id, productToSave, user.id);
+      await updateProductService(product.id, productToSave, user.id); // Pass userId
       toast({
         title: t('product_detail_toast_updated_title'),
         description: t('product_detail_toast_updated_desc'),
@@ -229,10 +230,10 @@ export default function ProductDetailPage() {
   };
 
    const handleDelete = async () => {
-    if (!product || !product.id || !user) return;
+    if (!product || !product.id || !user || !user.id) return; // Ensure user.id exists
     setIsDeleting(true);
     try {
-      await deleteProductService(product.id, user.id);
+      await deleteProductService(product.id, user.id); // Pass userId
       toast({
         title: t('product_detail_toast_deleted_title'),
         description: t('product_detail_toast_deleted_desc', { productName: product.shortName || product.description }),
@@ -293,9 +294,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); // No decimals for currency
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
+            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); // Default to no decimals
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -370,7 +371,7 @@ export default function ProductDetailPage() {
       };
 
 
-  if (authLoading || isLoading || !user) {
+  if (authLoading || isLoading || !user) { // Check for user as well
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
