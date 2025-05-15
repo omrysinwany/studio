@@ -26,13 +26,13 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
     let response: Response;
     let responseText = '';
     try {
-        response = await fetch(url, { 
+        response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Accept': 'application/json, text/plain' 
+                'Accept': 'application/json, text/plain'
             }
-        }); 
-        responseText = await response.text(); 
+        });
+        responseText = await response.text();
         console.log(`[Caspit Action - getToken] Raw response status: ${response.status}`);
         console.log(`[Caspit Action - getToken] Raw response headers:`, response.headers);
         console.log(`[Caspit Action - getToken] Raw response text START:\n---\n${responseText}\n---\nRaw response text END`);
@@ -41,11 +41,9 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
             const genericApiError = `Caspit API request failed with status ${response.status}.`;
             console.error(`[Caspit Action - getToken] ${genericApiError} Full Response: ${responseText}`);
             let displayErrorMessage = genericApiError;
-            // Ensure responseText is not directly embedded if it's HTML/XML
             if (responseText && (responseText.trim().startsWith('<') || responseText.includes("<?xml"))) {
                 displayErrorMessage += " (Received non-JSON/text response from Caspit). Check server logs for Caspit's full response.";
             } else if (responseText) {
-                 // Avoid embedding long or potentially complex plain text directly
                  displayErrorMessage += ` (Caspit response snippet: ${responseText.substring(0, 70)}${responseText.length > 70 ? '...' : ''}). Check server logs for full response.`;
             }
             throw new Error(displayErrorMessage);
@@ -53,7 +51,7 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
 
         let data;
         let accessToken: string | null = null;
-        
+
         if (responseText.trim().startsWith('{')) {
              try {
                 data = JSON.parse(responseText);
@@ -72,10 +70,10 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
                  console.warn('[Caspit Action - getToken] Failed to parse as JSON. Will attempt to treat as plain text token. JSON Error:', (jsonError as Error).message);
              }
         }
-        
+
         if (!accessToken) {
             if (typeof responseText === 'string' && responseText.length >= 20 && /^[a-zA-Z0-9.-_]+$/.test(responseText.replace(/^"+|"+$/g, ''))) {
-                accessToken = responseText.trim().replace(/^"+|"+$/g, ''); 
+                accessToken = responseText.trim().replace(/^"+|"+$/g, '');
                 console.log('[Caspit Action - getToken] Interpreted response as plain text token.');
             } else {
                 console.warn('[Caspit Action - getToken] Response is not valid JSON and does not look like a plain text token. Raw response logged above.');
@@ -86,17 +84,17 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         if (!accessToken || typeof accessToken !== 'string' || accessToken.trim() === '') {
             console.error('[Caspit Action - getToken] Failed to extract token from response. Raw Response Text:', responseText);
             let detail = "AccessToken missing or empty in the response.";
-            if (responseText.trim().startsWith("<")) { 
+            if (responseText.trim().startsWith("<")) {
                 detail = "Received unexpected XML/HTML from Caspit instead of token.";
-            } else if (responseText.length > 200) { 
+            } else if (responseText.length > 200) {
                 detail = "Unexpected and lengthy response format from Caspit.";
-            } else if (responseText.trim() !== "" && !accessToken) { 
+            } else if (responseText.trim() !== "" && !accessToken) {
                 console.warn("[Caspit Action - getToken] Potentially problematic responseText (not included in client error):", responseText);
                 detail = "Unrecognized response format from Caspit.";
             }
             throw new Error(`Caspit API: Invalid token response. ${detail} Check server logs.`);
         }
-        
+
         accessToken = accessToken.replace(/^"+|"+$/g, '');
 
         console.log('[Caspit Action - getToken] Successfully obtained token:', accessToken);
@@ -108,7 +106,6 @@ async function getCaspitToken(config: PosConnectionConfig): Promise<string> {
         if (specificMessage.toLowerCase().includes('fetch failed') || specificMessage.toLowerCase().includes('networkerror')) {
             throw new Error(`Network error while trying to reach Caspit API. Please check your internet connection and Caspit API status. Server logs may have more details.`);
         }
-        // For other errors, make them very generic for the client
         throw new Error(`Caspit token request failed. Please check server logs for detailed error information.`);
     }
 }
@@ -121,9 +118,6 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
         return { success: true, message: 'Connection successful!' };
     } catch (error: any) {
         console.error("[Caspit Action - testConnection] Test failed:", error);
-        // Return a very generic and simple error message to the client
-        // to minimize any chance of it breaking Next.js error page rendering.
-        // Specific details are logged on the server.
         return { success: false, message: "Connection test failed. Please check server console logs for details." };
     }
 }
@@ -133,8 +127,8 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
       const productId = caspitProduct.ProductId;
       const catalogNumber = caspitProduct.CatalogNumber || '';
       const description = caspitProduct.Name || caspitProduct.Description || '';
-      const unitPrice = caspitProduct.PurchasePrice ?? 0; 
-      const salePrice = caspitProduct.SalePrice1 ?? undefined; 
+      const unitPrice = caspitProduct.PurchasePrice ?? 0;
+      const salePrice = caspitProduct.SalePrice1 ?? undefined;
       const quantityInStock = caspitProduct.QtyInStock ?? 0;
 
       if (!catalogNumber && !description) {
@@ -148,8 +142,8 @@ export async function testCaspitConnectionAction(config: PosConnectionConfig): P
         description: description || 'No Description',
         quantity: quantityInStock,
         unitPrice: unitPrice,
-        salePrice: salePrice, 
-        lineTotal: quantityInStock * unitPrice, 
+        salePrice: salePrice,
+        lineTotal: quantityInStock * unitPrice,
       };
       return invoTrackProduct;
 }
@@ -163,7 +157,6 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
         token = await getCaspitToken(config);
         console.log('[Caspit Action - syncProducts] Fresh token obtained for product sync.');
     } catch (error: any) {
-        // Return a simple message for the client
         return { success: false, message: `Product sync failed: Could not get token. Check server logs.` };
     }
 
@@ -178,7 +171,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             console.log(`[Caspit Action - syncProducts] Fetching page ${currentPage}: ${url}`);
             const response = await fetch(url, {
                 headers: {
-                    'Accept': 'application/json' 
+                    'Accept': 'application/json'
                 }
             });
             const responseText = await response.text();
@@ -186,10 +179,8 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             if (!response.ok) {
                  console.error(`[Caspit Action - syncProducts] Failed fetch for page ${currentPage}. Status: ${response.status}. Response: ${responseText}`);
                  if (response.status === 401) {
-                    // Simple message for client
                     throw new Error(`Failed to fetch products: Invalid token. Check server logs for token used and full response.`);
                  }
-                // Simple message for client
                 throw new Error(`Failed to fetch products. Status: ${response.status}. Check server logs for full response.`);
             }
 
@@ -198,13 +189,11 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
                 data = JSON.parse(responseText);
             } catch (e) {
                 console.error(`[Caspit Action - syncProducts] Failed to parse JSON for page ${currentPage}. Response: ${responseText}`);
-                // Simple message for client
                 throw new Error('Caspit API: Invalid JSON response from product API. Check server logs.');
             }
 
             if (!data || typeof data !== 'object' || !Array.isArray(data.Results)) {
                 console.error(`[Caspit Action - syncProducts] Invalid product data structure received from Caspit API. Expected object with 'Results' array. Raw response: ${responseText}`);
-                // Simple message for client
                 throw new Error(`Caspit API: Invalid product data structure. Check server logs.`);
             }
 
@@ -220,7 +209,7 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             } else {
                 hasMore = false;
             }
-            if (currentPage > (data.TotalPages || 50)) { 
+            if (currentPage > (data.TotalPages || 50)) {
                  console.warn(`[Caspit Action - syncProducts] Reached page limit (${currentPage}). Stopping sync.`);
                  hasMore = false;
             }
@@ -231,12 +220,11 @@ export async function syncCaspitProductsAction(config: PosConnectionConfig): Pro
             success: true,
             message: `Successfully fetched ${totalSynced} products from Caspit.`,
             itemsSynced: totalSynced,
-            products: allProducts 
+            products: allProducts
         };
 
     } catch (error: any) {
         console.error("[Caspit Action - syncProducts] Product sync failed:", error);
-        // Return simplified error message
         return { success: false, message: `Product sync failed: ${error.message || 'Unknown error. Check server logs.'}` };
     }
 }
@@ -250,22 +238,24 @@ export async function syncCaspitSalesAction(config: PosConnectionConfig): Promis
         token = await getCaspitToken(config);
         console.log('[Caspit Action - syncSales] Fresh token obtained for sales sync.');
     } catch (error: any) {
-        // Simple message for client
         return { success: false, message: `Sales sync failed: Could not get token. Check server logs.` };
     }
 
     console.log("[Caspit Action - syncSales] Placeholder for sales sync...");
      try {
-        // TODO: Implement actual sales sync logic with Caspit API, using the token.
+        // TODO: Implement actual sales sync logic with Caspit API (e.g., GET api/v1/Documents), using the token.
         // Remember to request 'Accept: application/json' header.
-        return { success: true, message: "Sales sync placeholder completed." };
+        // Map sales data to a meaningful structure for InvoTrack (e.g., affect inventory or create sales records).
+        // Example: Fetch documents of type 'Invoice' (trxTypeId for Invoices)
+        // const salesUrl = `${CASPIT_API_BASE_URL}/Documents?token=${token}&trxTypeId=YOUR_INVOICE_TRX_TYPE_ID&page=1`;
+        // const salesResponse = await fetch(salesUrl, { headers: { 'Accept': 'application/json' } });
+        // ... process salesResponse ...
+        return { success: true, message: "Sales sync placeholder completed. Actual implementation pending." };
     } catch (error: any) {
         console.error("[Caspit Action - syncSales] Error during sales sync:", error);
          if (error instanceof Error && error.message.includes('401')) {
-             // Simple message for client
              return { success: false, message: `Sales sync failed: Invalid token. Check server logs.` };
          }
-        // Simple message for client
         return { success: false, message: `Sales sync failed: ${error.message || 'Unknown error. Check server logs.'}` };
     }
 }

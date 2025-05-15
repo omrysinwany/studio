@@ -1,9 +1,9 @@
 /**
- * @fileOverview Placeholder implementation for the Hashavshevet POS/ERP system adapter.
- * Handles fetching products and mapping them to the InvoTrack format.
+ * @fileOverview Implementation for the Hashavshevet POS/ERP system adapter.
+ * Leverages server actions for API communication.
  */
 
-import type { IPosSystemAdapter, PosConnectionConfig, SyncResult, Product } from './pos-adapter.interface';
+import type { IPosSystemAdapter, PosConnectionConfig, SyncResult } from './pos-adapter.interface';
 import { testHashavshevetConnectionAction, syncHashavshevetProductsAction, syncHashavshevetSalesAction } from '@/actions/hashavshevet-actions';
 
 class HashavshevetAdapter implements IPosSystemAdapter {
@@ -29,7 +29,6 @@ class HashavshevetAdapter implements IPosSystemAdapter {
     try {
       const result = await syncHashavshevetProductsAction(config);
       console.log(`[HashavshevetAdapter] Product sync result from server action:`, result);
-      // Products (including salePrice if available) are in result.products
       return result;
     } catch (error: any) {
       console.error("[HashavshevetAdapter] Error calling product sync server action:", error);

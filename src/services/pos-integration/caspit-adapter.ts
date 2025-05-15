@@ -1,9 +1,9 @@
 /**
- * @fileOverview Implementation for the Caspit POS system adapter using demo credentials.
- * Handles fetching products and mapping them to the InvoTrack format.
+ * @fileOverview Implementation for the Caspit POS system adapter.
+ * Leverages server actions for API communication.
  */
 
-import type { IPosSystemAdapter, PosConnectionConfig, SyncResult, Product } from './pos-adapter.interface';
+import type { IPosSystemAdapter, PosConnectionConfig, SyncResult } from './pos-adapter.interface';
 import { testCaspitConnectionAction, syncCaspitProductsAction, syncCaspitSalesAction } from '@/actions/caspit-actions';
 
 class CaspitAdapter implements IPosSystemAdapter {
@@ -29,8 +29,6 @@ class CaspitAdapter implements IPosSystemAdapter {
     try {
         const result = await syncCaspitProductsAction(config);
         console.log(`[CaspitAdapter] Product sync result from server action:`, result);
-        // Products (including salePrice if available from Caspit) are in result.products
-        // Saving is handled on the client-side after the action returns.
         return result;
     } catch (error: any) {
         console.error("[CaspitAdapter] Error calling product sync server action:", error);

@@ -1,3 +1,4 @@
+// src/app/settings/pos-integration/page.tsx
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,20 +9,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager';
-// Corrected imports to use the actual exported names with 'Service' suffix
 import {
     savePosSettingsService,
     getPosSettingsService,
     finalizeSaveProductsService
 } from '@/services/backend';
-import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
-import { syncInventoryAction } from '@/actions/sync-inventory-action'; // Import the inventory sync action
-import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw } from 'lucide-react'; // Added RefreshCw
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
+import { syncInventoryAction, syncSalesAction } from '@/actions/sync-actions'; // Updated import
+import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator'; // Import Separator
+import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useTranslation } from '@/hooks/useTranslation';
 
 
@@ -54,7 +55,8 @@ export default function PosIntegrationSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingInventory, setIsSyncingInventory] = useState(false);
+  const [isSyncingSales, setIsSyncingSales] = useState(false);
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const { toast } = useToast();
 
@@ -72,7 +74,7 @@ export default function PosIntegrationSettingsPage() {
       const systems = getAvailablePosSystems();
       setAvailableSystems(systems);
 
-      const savedSettings = await getPosSettingsService();
+      const savedSettings = await getPosSettingsService(user.id);
       if (savedSettings) {
         setSelectedSystemId(savedSettings.systemId);
         setConfigValues(savedSettings.config || {});
@@ -97,17 +99,19 @@ export default function PosIntegrationSettingsPage() {
 
   const handleSystemChange = (systemId: string) => {
     setSelectedSystemId(systemId);
-    getPosSettingsService().then(savedSettings => {
-        if (savedSettings && savedSettings.systemId === systemId) {
-            setConfigValues(savedSettings.config || {});
-        } else {
+    if (user) {
+        getPosSettingsService(user.id).then(savedSettings => {
+            if (savedSettings && savedSettings.systemId === systemId) {
+                setConfigValues(savedSettings.config || {});
+            } else {
+                setConfigValues({});
+            }
+        }).catch(error => {
+            console.error("Error fetching settings on system change:", error);
             setConfigValues({});
-        }
-    }).catch(error => {
-        console.error("Error fetching settings on system change:", error);
-        setConfigValues({});
-        toast({ title: t('error_title'), description: t('pos_toast_error_system_change'), variant: "destructive" });
-    });
+            toast({ title: t('error_title'), description: t('pos_toast_error_system_change'), variant: "destructive" });
+        });
+    }
     setTestResult(null);
     setSyncResults([]);
   };
@@ -120,13 +124,13 @@ export default function PosIntegrationSettingsPage() {
   };
 
   const handleTestConnection = async () => {
-     if (!selectedSystemId) return;
+     if (!selectedSystemId || !user) return;
      setIsTesting(true);
      setTestResult(null);
      let result: { success: boolean; message: string } | null = null;
      console.log(`[POS Page] Testing connection for ${selectedSystemId} with config:`, configValues);
      try {
-       result = await testPosConnection(selectedSystemId, configValues);
+       result = await testPosConnection(selectedSystemId, configValues); // This function now correctly uses actions
        setTestResult(result);
        toast({
          title: result.success ? t('pos_toast_test_success_title') : t('pos_toast_test_fail_title'),
@@ -150,10 +154,10 @@ export default function PosIntegrationSettingsPage() {
 
 
   const handleSaveChanges = async () => {
-    if (!selectedSystemId) return;
+    if (!selectedSystemId || !user) return;
     setIsSaving(true);
     try {
-      await savePosSettingsService(selectedSystemId, configValues);
+      await savePosSettingsService(selectedSystemId, configValues, user.id);
       toast({
         title: t('pos_toast_save_success_title'),
         description: t('pos_toast_save_success_desc', { systemName: availableSystems.find(s => s.systemId === selectedSystemId)?.systemName || 'system' }),
@@ -172,31 +176,25 @@ export default function PosIntegrationSettingsPage() {
     }
   };
 
-   const handleSyncNow = async () => {
-     if (!selectedSystemId) return;
+   const handleSyncInventoryNow = async () => {
+     if (!selectedSystemId || !user) return;
 
-     setIsSyncing(true);
+     setIsSyncingInventory(true);
      setSyncResults([]);
-     toast({ title: t('pos_toast_sync_start_title'), description: t('pos_toast_sync_start_desc', { systemId: selectedSystemId }) });
+     toast({ title: t('pos_toast_sync_start_title'), description: t('pos_toast_sync_start_desc_inventory', { systemId: selectedSystemId }) });
 
      try {
-         console.log(`[POS Page] Calling syncInventoryAction for ${selectedSystemId} with config...`);
-         const currentUserId = user ? user.id : undefined;
-         if (!currentUserId) {
-            throw new Error("User not authenticated for sync operation.");
-         }
-         const inventoryResult = await syncInventoryAction(configValues, selectedSystemId, currentUserId);
+         const inventoryResult = await syncInventoryAction(configValues, selectedSystemId, user.id);
+         setSyncResults(prev => [...prev, inventoryResult]);
 
-         setSyncResults([inventoryResult]);
-
-         if (inventoryResult.success && inventoryResult.products) {
+         if (inventoryResult.success && inventoryResult.products && inventoryResult.products.length > 0) {
              try {
                  console.log(`[POS Page] Saving ${inventoryResult.products.length} synced products...`);
-                 await finalizeSaveProductsService(inventoryResult.products, `POS Sync (${selectedSystemId}) ${new Date().toISOString()}`, `${selectedSystemId}_sync`);
+                 await finalizeSaveProductsService(inventoryResult.products, `POS_Inventory_Sync_${selectedSystemId}_${new Date().toISOString().split('T')[0]}`, `${selectedSystemId}_sync`, user.id);
                  console.log(`[POS Page] Successfully saved synced products.`);
                  setSyncResults(prev => [...prev, { success: true, message: t('pos_toast_sync_save_products_desc', { count: inventoryResult.products?.length ?? 0 }) }]);
                  toast({
-                    title: t('pos_toast_sync_complete_title'),
+                    title: t('pos_toast_sync_complete_title_inventory'),
                     description: t('pos_toast_sync_complete_desc', { count: inventoryResult.products.length, systemId: selectedSystemId }),
                  });
              } catch (saveError: any) {
@@ -208,6 +206,11 @@ export default function PosIntegrationSettingsPage() {
                      variant: "destructive",
                  });
              }
+         } else if (inventoryResult.success && (!inventoryResult.products || inventoryResult.products.length === 0)) {
+             toast({
+                title: t('pos_toast_sync_no_products_title'),
+                description: t('pos_toast_sync_no_products_desc', { systemId: selectedSystemId }),
+             });
          } else {
             toast({
                 title: t('pos_toast_sync_fail_title_inventory'),
@@ -224,9 +227,49 @@ export default function PosIntegrationSettingsPage() {
              variant: "destructive",
          });
      } finally {
-         setIsSyncing(false);
+         setIsSyncingInventory(false);
      }
    };
+
+   const handleSyncSalesNow = async () => {
+    if (!selectedSystemId || !user) return;
+
+    setIsSyncingSales(true);
+    setSyncResults([]); // Clear previous results or manage them differently if needed
+    toast({ title: t('pos_toast_sync_start_title'), description: t('pos_toast_sync_start_desc_sales', { systemId: selectedSystemId }) });
+
+    try {
+        const salesResult = await syncSalesAction(configValues, selectedSystemId, user.id);
+        setSyncResults(prev => [...prev, salesResult]); // Add sales result
+
+        if (salesResult.success) {
+            toast({
+                title: t('pos_toast_sync_complete_title_sales'),
+                // Assuming salesResult.message contains useful info, otherwise use a generic one
+                description: salesResult.message || t('pos_toast_sync_complete_desc_sales_generic', { systemId: selectedSystemId }),
+            });
+            // Further processing for sales data might be needed here (e.g., updating reports, etc.)
+            // For now, just showing the success message.
+        } else {
+           toast({
+               title: t('pos_toast_sync_fail_title_sales'),
+               description: salesResult.message || t('pos_toast_sync_fail_desc_sales_generic', { systemId: selectedSystemId }),
+               variant: "destructive",
+           });
+        }
+    } catch (error: any) {
+        console.error(`[POS Page] Error during ${selectedSystemId} sales sync process:`, error);
+        setSyncResults([{ success: false, message: t('pos_toast_sync_error_desc_process', { message: error.message || t('pos_unknown_error') }) }]);
+        toast({
+            title: t('pos_toast_sync_error_title_process'),
+            description: t('pos_toast_sync_error_desc_process_generic', { message: error.message || t('pos_unknown_error') }),
+            variant: "destructive",
+        });
+    } finally {
+        setIsSyncingSales(false);
+    }
+  };
+
 
   const renderConfigFields = () => {
     if (!selectedSystemId) return null;
@@ -275,6 +318,12 @@ export default function PosIntegrationSettingsPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+       <Button variant="outline" size="sm" asChild className="mb-4">
+        <Link href="/settings">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          {t('back_to_settings_button')}
+        </Link>
+      </Button>
       <Card className="shadow-md scale-fade-in">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
@@ -349,32 +398,57 @@ export default function PosIntegrationSettingsPage() {
            {selectedSystemId && (
                <Card className="p-4 md:p-6 space-y-4 border scale-fade-in" style={{animationDelay: '0.2s'}}>
                    <h3 className="text-lg font-medium">{t('pos_manual_sync_title')}</h3>
+                   <CardDescription>{t('pos_manual_sync_note')}</CardDescription>
                    <Separator />
-                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                       <Button
-                           onClick={handleSyncNow}
-                           disabled={isSyncing || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving}
-                           className="w-full sm:w-auto"
-                       >
-                           {isSyncing ? (
-                               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('pos_syncing_button')}...</>
-                           ) : (
-                               <><RefreshCw className="mr-2 h-4 w-4" /> {t('pos_sync_now_button')}</>
-                           )}
-                       </Button>
-                       {syncResults.length > 0 && (
-                           <div className="space-y-2 text-sm mt-2 sm:mt-0 sm:ml-4">
-                               {syncResults.map((result, index) => (
-                                   <div key={index} className={`flex items-center ${result.success ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
-                                       {result.success ? <CheckCircle className="mr-1 h-4 w-4 flex-shrink-0" /> : <XCircle className="mr-1 h-4 w-4 flex-shrink-0" />}
-                                       <span>{result.message} {result.itemsSynced !== undefined ? `(${result.itemsSynced} ${t('pos_items_synced_label')})` : ''}</span>
-                                   </div>
-                               ))}
-                           </div>
-                       )}
+                   <div className="space-y-4">
+                        <div>
+                            <h4 className="text-md font-medium mb-2">{t('pos_sync_inventory_title')}</h4>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                <Button
+                                    onClick={handleSyncInventoryNow}
+                                    disabled={isSyncingInventory || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving}
+                                    className="w-full sm:w-auto"
+                                >
+                                    {isSyncingInventory ? (
+                                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('pos_syncing_button')}...</>
+                                    ) : (
+                                        <><RefreshCw className="mr-2 h-4 w-4" /> {t('pos_sync_inventory_now_button')}</>
+                                    )}
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">{t('pos_manual_sync_desc_inventory')}</p>
+                        </div>
+                        <Separator />
+                        <div>
+                             <h4 className="text-md font-medium mb-2">{t('pos_sync_sales_title')}</h4>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                                <Button
+                                    onClick={handleSyncSalesNow}
+                                    disabled={isSyncingSales || !selectedSystemId || Object.keys(configValues).length === 0 || isSaving}
+                                    className="w-full sm:w-auto"
+                                >
+                                    {isSyncingSales ? (
+                                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('pos_syncing_button')}...</>
+                                    ) : (
+                                        <><RefreshCw className="mr-2 h-4 w-4" /> {t('pos_sync_sales_now_button')}</>
+                                    )}
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">{t('pos_manual_sync_desc_sales')}</p>
+                        </div>
                    </div>
-                    <p className="text-xs text-muted-foreground">{t('pos_manual_sync_desc')}</p>
-                    <p className="text-xs text-muted-foreground mt-2">{t('pos_auto_sync_note')}</p>
+
+                   {syncResults.length > 0 && (
+                       <div className="mt-4 space-y-2 text-sm">
+                           <h4 className="font-medium">{t('pos_sync_results_title')}</h4>
+                           {syncResults.map((result, index) => (
+                               <div key={index} className={`flex items-center ${result.success ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+                                   {result.success ? <CheckCircle className="mr-1 h-4 w-4 flex-shrink-0" /> : <XCircle className="mr-1 h-4 w-4 flex-shrink-0" />}
+                                   <span>{result.message} {result.itemsSynced !== undefined ? `(${result.itemsSynced} ${t('pos_items_synced_label')})` : ''}</span>
+                               </div>
+                           ))}
+                       </div>
+                   )}
                </Card>
            )}
 

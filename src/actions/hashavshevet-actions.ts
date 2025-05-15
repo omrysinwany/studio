@@ -26,6 +26,7 @@ export async function testHashavshevetConnectionAction(config: PosConnectionConf
         const testUrl = `${HASHAVSHEVET_API_BASE_URL}/test-endpoint`;
         console.log('[Hashavshevet Action - testConnection] Testing connection to:', testUrl);
 
+        // This is a placeholder - replace with an actual API call that Hashavshevet supports for testing
         const response = await fetch(testUrl, { method: 'GET', headers });
 
         if (!response.ok) {
@@ -62,8 +63,8 @@ export async function testHashavshevetConnectionAction(config: PosConnectionConf
         description: description || 'No Description',
         quantity: quantityInStock,
         unitPrice: unitPrice,
-        salePrice: salePrice, // Add salePrice
-        lineTotal: quantityInStock * unitPrice, // Based on cost price
+        salePrice: salePrice,
+        lineTotal: quantityInStock * unitPrice,
       };
       return invoTrackProduct;
 }
@@ -79,13 +80,15 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
     }
 
     let allProducts: Product[] = [];
-    let currentPage = 1;
+    let currentPage = 1; // Assuming Hashavshevet API uses 1-based indexing for pages
     let hasMore = true;
     let totalSynced = 0;
+    const pageSize = 50; // Example page size, adjust if Hashavshevet API specifies differently
 
     try {
         while (hasMore) {
-            const url = `${HASHAVSHEVET_API_BASE_URL}/items?page=${currentPage}`;
+            // Adjust URL structure based on actual Hashavshevet API
+            const url = `${HASHAVSHEVET_API_BASE_URL}/items?page=${currentPage}&pageSize=${pageSize}`;
             console.log(`[Hashavshevet Action - syncProducts] Fetching page ${currentPage}: ${url}`);
             const response = await fetch(url, { headers });
             const responseText = await response.text();
@@ -103,7 +106,9 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
                 throw new Error('Invalid JSON response received from Hashavshevet product API.');
             }
 
-            const productsFromApi = Array.isArray(data) ? data : data?.results || data?.Items;
+            // Adapt to how Hashavshevet returns products and pagination info
+            // Example: data might be { items: [...], totalPages: X, currentPage: Y }
+            const productsFromApi = Array.isArray(data) ? data : data?.results || data?.Items || data?.products || []; // Adjust based on actual API
 
             if (!Array.isArray(productsFromApi)) {
                 console.error(`[Hashavshevet Action - syncProducts] Invalid product data structure received. Expected array. Raw response: ${responseText}`);
@@ -117,13 +122,16 @@ export async function syncHashavshevetProductsAction(config: PosConnectionConfig
             allProducts = allProducts.concat(mappedProducts);
             totalSynced += mappedProducts.length;
 
-            if (productsFromApi.length < 50) { 
+            // Update hasMore based on Hashavshevet's pagination response
+            // Example: if (data.currentPage >= data.totalPages || productsFromApi.length < pageSize)
+            if (productsFromApi.length < pageSize) { // Simple check, adjust if API provides totalPages
                  hasMore = false;
             } else {
                  currentPage++;
             }
 
-            if (currentPage > 50) { 
+            // Safety break
+            if (currentPage > 50) { // Adjust limit if necessary
                  console.warn(`[Hashavshevet Action - syncProducts] Reached page limit (${currentPage}). Stopping sync.`);
                  hasMore = false;
             }
@@ -155,7 +163,9 @@ export async function syncHashavshevetSalesAction(config: PosConnectionConfig): 
 
     console.log("[Hashavshevet Action - syncSales] Placeholder for sales sync...");
      try {
-        return { success: true, message: "Sales sync placeholder completed (Hashavshevet)." };
+        // TODO: Implement actual sales sync logic with Hashavshevet API, using the headers.
+        // Map sales data to a meaningful structure for InvoTrack.
+        return { success: true, message: "Sales sync placeholder completed (Hashavshevet). Actual implementation pending." };
     } catch (error: any) {
         console.error("[Hashavshevet Action - syncSales] Error during sales sync:", error);
         return { success: false, message: `Sales sync failed: ${error.message}` };
