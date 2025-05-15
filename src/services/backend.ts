@@ -194,7 +194,7 @@ export const getStorageKey = (baseKey: string, userId?: string): string => {
 export const getStoredData = <T extends {id?: string; name?: string}>(keyBase: string, userId?: string, defaultDataIfNoUserOrError: T[] = []): T[] => {
   if (typeof window === 'undefined') return defaultDataIfNoUserOrError;
   // console.warn(`[getStoredData] Attempting to read from localStorage for key base "${keyBase}". Consider migrating fully to Firestore.`);
-  const storageKey = getStorageKey(baseKey, userId);
+  const storageKey = getStorageKey(keyBase, userId); // Corrected from baseKey to keyBase
   try {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
@@ -219,7 +219,7 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
     console.warn(`[saveStoredData] Attempted to save data for base "${keyBase}" without a userId. Operation aborted.`);
     return false;
   }
-  const storageKey = getStorageKey(baseKey, userId);
+  const storageKey = getStorageKey(keyBase, userId);
   try {
     localStorage.setItem(storageKey, JSON.stringify(data));
     return true;
@@ -314,7 +314,7 @@ export async function getProductsService(userId: string): Promise<Product[]> {
     // console.log(`[getProductsService] Fetching products for userId: ${userId}`);
     const productsQuery = query(collection(db, INVENTORY_COLLECTION), where("userId", "==", userId));
     const snapshot = await getDocs(productsQuery);
-    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+    const products = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Product));
     // console.log(`[getProductsService] Found ${products.length} products for userId: ${userId}`);
     return products;
   } catch (error) {
@@ -398,7 +398,7 @@ export async function clearInventoryService(userId: string): Promise<void> {
     const productsQuery = query(collection(db, INVENTORY_COLLECTION), where("userId", "==", userId));
     const snapshot = await getDocs(productsQuery);
     const batchOp = writeBatch(db);
-    snapshot.docs.forEach(doc => batchOp.delete(doc.ref));
+    snapshot.docs.forEach(docSnap => batchOp.delete(docSnap.ref));
     await batchOp.commit();
   } catch (error) {
     console.error("Error clearing inventory from Firestore:", error);
@@ -685,7 +685,7 @@ export async function finalizeSaveProductsService(
                 }
             }
 
-            const productDataForFirestore: Partial<Product> = {
+            const productDataForFirestore: Omit<Product, 'id' | 'quantity' | 'unitPrice' | 'lineTotal' > = {
                 userId,
                 catalogNumber: productToSave.catalogNumber || 'N/A',
                 description: productToSave.description || 'No Description',
@@ -727,12 +727,12 @@ export async function finalizeSaveProductsService(
                 }
                 const newProductRef = doc(collection(db, INVENTORY_COLLECTION));
                 const newProductData: Product = {
-                    ...productDataForFirestore,
+                    ...(productDataForFirestore as Product), // Cast to Product after ensuring all required fields are present
                     id: newProductRef.id,
                     quantity: quantityFromDoc,
                     unitPrice: unitPriceFromDoc,
                     lineTotal: parseFloat((quantityFromDoc * unitPriceFromDoc).toFixed(2)),
-                } as Product;
+                };
                 batchOp.set(newProductRef, newProductData);
                 savedProductsWithFinalIds.push({ ...newProductData }); // ID will be from newProductRef.id
             }
@@ -1182,7 +1182,7 @@ export async function getExpenseCategoriesService(userId: string): Promise<strin
   if (!db || !userId) return [];
   const categoriesQuery = query(collection(db, EXPENSE_CATEGORIES_COLLECTION), where("userId", "==", userId));
   const snapshot = await getDocs(categoriesQuery);
-  return snapshot.docs.map(doc => doc.data().name as string);
+  return snapshot.docs.map(docSnap => docSnap.data().name as string);
 }
 
 export async function saveExpenseCategoriesService(categories: string[], userId: string): Promise<void> {
@@ -1203,7 +1203,7 @@ export async function getExpenseTemplatesService(userId: string): Promise<Expens
   if (!db || !userId) return [];
   const templatesQuery = query(collection(db, EXPENSE_TEMPLATES_COLLECTION), where("userId", "==", userId));
   const snapshot = await getDocs(templatesQuery);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExpenseTemplate));
+  return snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as ExpenseTemplate));
 }
 
 export async function saveExpenseTemplatesService(templates: Omit<ExpenseTemplate, 'id' | 'userId'>[], userId: string): Promise<void> {
@@ -1215,3 +1215,4 @@ export async function saveExpenseTemplatesService(templates: Omit<ExpenseTemplat
   });
   await batch.commit();
 }
+
