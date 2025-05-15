@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import {
     Product,
     getProductsService,
-    checkProductPricesBeforeSaveService,
+    checkProductPricesBeforeSaveService, // Added import
     finalizeSaveProductsService,
-    ProductPriceDiscrepancy,
+    ProductPriceDiscrepancy, // Added import
     getSupplierSummariesService,
     updateSupplierContactInfoService,
     SupplierSummary,
@@ -40,7 +40,7 @@ import PaymentDueDateDialog from '@/components/payment-due-date-dialog';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Label } from '@/components/ui/label';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, Timestamp } from 'date-fns';
 import { cn } from '@/lib/utils';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
@@ -54,7 +54,7 @@ interface EditableTaxInvoiceDetails {
     supplierName?: string;
     invoiceNumber?: string;
     totalAmount?: number;
-    invoiceDate?: string;
+    invoiceDate?: string | Timestamp;
     paymentMethod?: string;
 }
 
@@ -109,7 +109,7 @@ function EditInvoiceContent() {
   const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
   const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
   const [extractedTotalAmount, setExtractedTotalAmount] = useState<number | undefined>(undefined);
-  const [extractedInvoiceDate, setExtractedInvoiceDate] = useState<string | undefined>(undefined);
+  const [extractedInvoiceDate, setExtractedInvoiceDate] = useState<string | Timestamp | undefined>(undefined);
   const [extractedPaymentMethod, setExtractedPaymentMethod] = useState<string | undefined>(undefined);
 
   const [editableTaxInvoiceDetails, setEditableTaxInvoiceDetails] = useState<EditableTaxInvoiceDetails>({});
@@ -150,14 +150,12 @@ function EditInvoiceContent() {
 
     if (uniqueScanIdToClear) {
         clearTemporaryScanData(uniqueScanIdToClear, user.id);
-    } else {
-        // console.log("[EditInvoice] cleanupTemporaryData: No initialDataKey or tempInvoiceId found in state to derive uniqueIdToClear.");
     }
   }, [user?.id, initialDataKey, initialTempInvoiceId]);
 
 
   const loadData = useCallback(async () => {
-    if (!user || !searchParams || !user.id) return; // Ensure user.id is available
+    if (!user || !searchParams || !user.id) return;
     
     setIsLoading(true);
     setErrorLoading(null);
@@ -196,7 +194,7 @@ function EditInvoiceContent() {
 
     if (invoiceIdParam) {
         try {
-            const allInvoices = await getInvoicesService(user.id); // Pass userId
+            const allInvoices = await getInvoicesService(user.id);
             const inv = allInvoices.find(i => i.id === invoiceIdParam);
             if (inv) {
                 let finalFileName = inv.fileName;
@@ -208,19 +206,19 @@ function EditInvoiceContent() {
                     finalFileName = `Invoice_${inv.invoiceNumber}`;
                 }
                 setOriginalFileName(finalFileName);
-                setDocumentType(inv.documentType);
+                setDocumentType(inv.documentType as 'deliveryNote' | 'invoice' | null);
                 setExtractedSupplierName(inv.supplierName);
                 setExtractedInvoiceNumber(inv.invoiceNumber);
                 setExtractedTotalAmount(inv.totalAmount);
-                setExtractedInvoiceDate(inv.invoiceDate ? (inv.invoiceDate as string) : undefined);
+                setExtractedInvoiceDate(inv.invoiceDate);
                 setExtractedPaymentMethod(inv.paymentMethod);
-                setSelectedPaymentDueDate(inv.paymentDueDate);
+                setSelectedPaymentDueDate(inv.paymentDueDate ? (inv.paymentDueDate as Timestamp).toDate() : undefined);
 
                 const taxDetails = {
                     supplierName: inv.supplierName,
                     invoiceNumber: inv.invoiceNumber,
                     totalAmount: inv.totalAmount,
-                    invoiceDate: inv.invoiceDate ? (inv.invoiceDate as string) : undefined,
+                    invoiceDate: inv.invoiceDate,
                     paymentMethod: inv.paymentMethod,
                 };
                 setEditableTaxInvoiceDetails(taxDetails);
@@ -228,20 +226,9 @@ function EditInvoiceContent() {
 
                 setDisplayedOriginalImageUrl(inv.originalImagePreviewUri || null);
                 setDisplayedCompressedImageUrl(inv.compressedImageForFinalRecordUri || null);
-
-                // Fetch products for this invoice if it's a delivery note from Firestore
-                // This logic will need to be adjusted to fetch from DocumentLineItems collection
-                // For now, if products are directly on invoice item for older data structure:
-                // if (inv.documentType === 'deliveryNote' && Array.isArray((inv as any).products)) {
-                //    const loadedProducts = ((inv as any).products as Product[]).map((p: Product) => ({ ...p, _originalId: p.id }));
-                //    setProducts(loadedProducts);
-                //    setInitialScannedProducts(loadedProducts);
-                // } else {
-                    setProducts([]);
-                    setInitialScannedProducts([]);
-                // }
-                setIsSupplierConfirmed(true); 
-                // setIsViewMode(true);
+                setProducts([]); // Products will be fetched from subcollection or related docs if needed
+                setInitialScannedProducts([]);
+                setIsSupplierConfirmed(true);
             } else {
                 setErrorLoading(t('edit_invoice_error_invoice_not_found_id', { invoiceId: invoiceIdParam }));
             }
@@ -324,9 +311,9 @@ function EditInvoiceContent() {
             setExtractedInvoiceDate(taxData.invoiceDate);
             setExtractedPaymentMethod(taxData.paymentMethod);
             setAiScannedSupplierName(taxData.supplierName);
-            if (user?.id) checkSupplier(taxData.supplierName, user.id); 
-            else { 
-                setIsSupplierConfirmed(true); 
+            if (user?.id) checkSupplier(taxData.supplierName, user.id);
+            else {
+                setIsSupplierConfirmed(true);
                 if (isNewScan && !selectedPaymentDueDate) setShowPaymentDueDateDialog(true);
             }
 
@@ -365,9 +352,9 @@ function EditInvoiceContent() {
               setExtractedTotalAmount(productData.totalAmount);
               setExtractedInvoiceDate(productData.invoiceDate);
               setExtractedPaymentMethod(productData.paymentMethod);
-              if (user?.id) checkSupplier(productData.supplier, user.id); 
+              if (user?.id) checkSupplier(productData.supplier, user.id);
               else {
-                setIsSupplierConfirmed(true); 
+                setIsSupplierConfirmed(true);
                 if (isNewScan && !selectedPaymentDueDate) setShowPaymentDueDateDialog(true);
               }
             } else if (!productData.error){
@@ -403,18 +390,18 @@ function EditInvoiceContent() {
     }
     setIsLoading(false);
     setInitialDataLoaded(true);
-  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded, isNewScan, selectedPaymentDueDate, documentType]);
+  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded, isNewScan, selectedPaymentDueDate]);
 
 
   useEffect(() => {
-    if(user && user.id) { // Ensure user.id exists
+    if(user && user.id) {
       loadData();
     }
-  }, [user, loadData]); 
+  }, [user, loadData]);
 
 
   const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
-    if (!currentUserId || !scannedSupplierName) { 
+    if (!currentUserId || !scannedSupplierName) {
         setIsSupplierConfirmed(true);
         if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
             setShowPaymentDueDateDialog(true);
@@ -439,7 +426,7 @@ function EditInvoiceContent() {
     } catch (error) {
       console.error("Error fetching existing suppliers:", error);
       toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName); 
+      setExtractedSupplierName(scannedSupplierName);
       setIsSupplierConfirmed(true);
       if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
         setShowPaymentDueDateDialog(true);
@@ -458,7 +445,7 @@ function EditInvoiceContent() {
       setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: confirmedSupplierName }));
       if (isNew) {
         try {
-          await updateSupplierContactInfoService(confirmedSupplierName, {}, user.id); 
+          await updateSupplierContactInfoService(confirmedSupplierName, {}, user.id);
           toast({ title: t('edit_invoice_toast_new_supplier_added_title'), description: t('edit_invoice_toast_new_supplier_added_desc', { supplierName: confirmedSupplierName }) });
         } catch (error) {
           console.error("Failed to add new supplier:", error);
@@ -466,7 +453,7 @@ function EditInvoiceContent() {
         }
       }
     } else {
-      setExtractedSupplierName(aiScannedSupplierName); 
+      setExtractedSupplierName(aiScannedSupplierName);
       setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
     }
     setIsSupplierConfirmed(true);
@@ -478,7 +465,6 @@ function EditInvoiceContent() {
   const handlePaymentDueDateConfirm = (dueDate: string | Date | undefined) => {
     setSelectedPaymentDueDate(dueDate);
     setShowPaymentDueDateDialog(false);
-    // After confirming due date (or skipping), proceed to check for new products if it's a delivery note and a new scan.
     if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
         checkForNewProductsAndDetails(products);
     }
@@ -492,14 +478,14 @@ function EditInvoiceContent() {
           const updatedProduct = { ...p };
           let numericValue: number | string | undefined = value;
 
-          if (['quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) { 
+          if (['quantity', 'unitPrice', 'lineTotal', 'minStockLevel', 'maxStockLevel', 'salePrice'].includes(field)) {
             const stringValue = String(value);
-            if ((field === 'minStockLevel' || field === 'maxStockLevel') && stringValue.trim() === '') {
+            if ((field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') && stringValue.trim() === '') {
               numericValue = undefined;
             } else {
               numericValue = parseFloat(stringValue.replace(/,/g, ''));
               if (isNaN(numericValue as number)) {
-                numericValue = (field === 'minStockLevel' || field === 'maxStockLevel') ? undefined : 0;
+                numericValue = (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice') ? undefined : 0;
               }
             }
             (updatedProduct as any)[field] = numericValue;
@@ -513,14 +499,14 @@ function EditInvoiceContent() {
 
 
           if (field === 'quantity' || field === 'unitPrice') {
-             if (currentQuantity > 0 && currentUnitPrice !== 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
+             if (currentQuantity > 0 && currentUnitPrice !== 0 && (currentLineTotal / currentQuantity > 0)) {
                 currentLineTotal = parseFloat((currentQuantity * currentUnitPrice).toFixed(2));
              } else if (currentQuantity === 0 || currentUnitPrice === 0) {
                 currentLineTotal = 0;
              }
             updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
-            if (currentQuantity > 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
+            if (currentQuantity > 0 && (currentLineTotal / currentQuantity > 0)) {
               currentUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
               updatedProduct.unitPrice = currentUnitPrice;
             } else {
@@ -529,7 +515,7 @@ function EditInvoiceContent() {
           }
 
 
-          if (currentQuantity > 0 && currentLineTotal !== 0 && (currentLineTotal / currentQuantity > 0)) { // Check if division is positive
+          if (currentQuantity > 0 && currentLineTotal !== 0 && (currentLineTotal / currentQuantity > 0)) {
             const derivedUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
             if (Math.abs(derivedUnitPrice - currentUnitPrice) > 0.001 && field !== 'unitPrice') {
                  updatedProduct.unitPrice = derivedUnitPrice;
@@ -546,13 +532,13 @@ function EditInvoiceContent() {
     );
   };
 
-  const handleTaxInvoiceDetailsChange = (field: keyof EditableTaxInvoiceDetails, value: string | number | undefined) => {
+  const handleTaxInvoiceDetailsChange = (field: keyof EditableTaxInvoiceDetails, value: string | number | undefined | Date | Timestamp) => {
      setEditableTaxInvoiceDetails(prev => ({ ...prev, [field]: value }));
         switch(field) {
             case 'supplierName': setExtractedSupplierName(String(value || '')); break;
             case 'invoiceNumber': setExtractedInvoiceNumber(String(value || '')); break;
             case 'totalAmount': setExtractedTotalAmount(Number(value || 0)); break;
-            case 'invoiceDate': setExtractedInvoiceDate(String(value || '')); break;
+            case 'invoiceDate': setExtractedInvoiceDate(value instanceof Date ? value.toISOString() : value as string | Timestamp | undefined); break;
             case 'paymentMethod': setExtractedPaymentMethod(String(value || '')); break;
         }
   };
@@ -614,7 +600,7 @@ function EditInvoiceContent() {
             productsForService,
             finalFileNameForSave,
             documentType,
-            user.id, // Pass userId here
+            user.id,
             initialTempInvoiceId || undefined,
             finalInvoiceNumberForSave,
             finalSupplierNameForSave,
@@ -629,15 +615,15 @@ function EditInvoiceContent() {
           cleanupTemporaryData();
 
           if (result.finalInvoiceRecord) {
-            setOriginalFileName(result.finalInvoiceRecord.fileName);
+            setOriginalFileName(result.finalInvoiceRecord.generatedFileName); // Use generated name
             setInitialTempInvoiceId(result.finalInvoiceRecord.id);
-            setDocumentType(result.finalInvoiceRecord.documentType);
+            setDocumentType(result.finalInvoiceRecord.documentType as 'deliveryNote' | 'invoice' | null);
             setExtractedSupplierName(result.finalInvoiceRecord.supplierName);
             setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
             setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
-            setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
+            setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate);
             setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
-            setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate);
+            setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate as Timestamp).toDate() : undefined);
             setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
             setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
 
@@ -650,14 +636,13 @@ function EditInvoiceContent() {
                 supplierName: result.finalInvoiceRecord.supplierName,
                 invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
                 totalAmount: result.finalInvoiceRecord.totalAmount,
-                invoiceDate: result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined,
+                invoiceDate: result.finalInvoiceRecord.invoiceDate,
                 paymentMethod: result.finalInvoiceRecord.paymentMethod,
             };
             setEditableTaxInvoiceDetails(finalTaxDetails);
             setInitialScannedTaxDetails(finalTaxDetails);
 
             setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
-            // setIsViewMode(true);
             setIsEditingDeliveryNoteProducts(false);
             setIsEditingTaxDetails(false);
              toast({
@@ -665,14 +650,15 @@ function EditInvoiceContent() {
                 description: t('edit_invoice_toast_products_saved_desc'),
             });
             if (documentType === 'deliveryNote') {
-                 router.push('/inventory?refresh=true'); 
+                 router.push('/inventory?refresh=true');
             } else if (documentType === 'invoice') {
                  router.push('/invoices?tab=scanned-docs');
             }
 
 
           } else {
-            throw new Error(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
+             console.error("[finalizeSaveProductsService] Final invoice record not returned or error occurred.", result);
+             throw new Error(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
           }
 
       } catch (error: any) {
@@ -721,12 +707,14 @@ function EditInvoiceContent() {
       } else if (finalInvoiceNumberForSave) {
         finalFileNameForSave = `Invoice_${finalInvoiceNumberForSave}`;
       }
+      finalFileNameForSave = finalFileNameForSave.replace(/[/\\?%*:|"<>]/g, '-');
+
 
       const result = await finalizeSaveProductsService(
-        [], // No products for a tax-only invoice
+        [],
         finalFileNameForSave,
         documentType,
-        user.id, // Pass userId
+        user.id,
         initialTempInvoiceId || undefined,
         finalInvoiceNumberForSave,
         finalSupplierNameForSave,
@@ -741,15 +729,15 @@ function EditInvoiceContent() {
       cleanupTemporaryData();
 
       if (result.finalInvoiceRecord) {
-        setOriginalFileName(result.finalInvoiceRecord.fileName);
+        setOriginalFileName(result.finalInvoiceRecord.generatedFileName);
         setInitialTempInvoiceId(result.finalInvoiceRecord.id);
-        setDocumentType(result.finalInvoiceRecord.documentType);
+        setDocumentType(result.finalInvoiceRecord.documentType as 'deliveryNote' | 'invoice' | null);
         setExtractedSupplierName(result.finalInvoiceRecord.supplierName);
         setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
         setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
-        setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined);
+        setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate);
         setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
-        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate);
+        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate as Timestamp).toDate() : undefined);
         setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
         setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
 
@@ -759,13 +747,12 @@ function EditInvoiceContent() {
              supplierName: result.finalInvoiceRecord.supplierName,
              invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
              totalAmount: result.finalInvoiceRecord.totalAmount,
-             invoiceDate: result.finalInvoiceRecord.invoiceDate ? (result.finalInvoiceRecord.invoiceDate as string) : undefined,
+             invoiceDate: result.finalInvoiceRecord.invoiceDate,
              paymentMethod: result.finalInvoiceRecord.paymentMethod,
         };
         setEditableTaxInvoiceDetails(finalTaxDetails);
         setInitialScannedTaxDetails(finalTaxDetails);
         setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
-        // setIsViewMode(true);
         setIsEditingDeliveryNoteProducts(false);
         setIsEditingTaxDetails(false);
         toast({
@@ -806,25 +793,23 @@ function EditInvoiceContent() {
         if (user?.id && (extractedSupplierName || aiScannedSupplierName)) {
             checkSupplier(extractedSupplierName || aiScannedSupplierName, user.id);
         } else {
-            setIsSupplierConfirmed(true); 
-            if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) { 
-                setShowPaymentDueDateDialog(true); 
+            setIsSupplierConfirmed(true);
+            if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
+                setShowPaymentDueDateDialog(true);
             } else if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
-                // If supplier confirmed and it's a new delivery note, check for new products
                 checkForNewProductsAndDetails(products);
             } else {
                 proceedWithActualSave();
             }
         }
-        return; 
+        return;
     }
 
     if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
         setShowPaymentDueDateDialog(true);
-        return; 
+        return;
     }
     
-    // If all checks passed (supplier, due date), then proceed
     if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
         checkForNewProductsAndDetails(products);
     } else {
@@ -838,12 +823,11 @@ const proceedWithActualSave = async () => {
         return;
     }
 
-    if (documentType === 'invoice') { // Tax Invoice or Delivery Note being saved as "Invoice" type
+    if (documentType === 'invoice') {
         await proceedWithFinalSaveForTaxInvoice();
         return;
     }
 
-    // This part is for 'deliveryNote'
     setIsSaving(true);
     try {
         const productsFromEdit = products.map(({ _originalId, ...rest }) => rest);
@@ -853,13 +837,11 @@ const proceedWithActualSave = async () => {
 
         if (priceCheckResult.priceDiscrepancies.length > 0) {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
-            setIsSaving(false); 
+            setIsSaving(false);
         } else {
-             // If no price discrepancies, and it's a NEW scan, check for new products
             if (isNewScan) {
                 await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
             } else {
-                // If it's an EDIT of an existing document, save directly
                 await proceedWithFinalSave(priceCheckResult.productsToSaveDirectly);
             }
         }
@@ -876,14 +858,14 @@ const proceedWithActualSave = async () => {
 
 
 const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Product[]) => {
-    setIsSaving(true); 
+    setIsSaving(true);
     if (!user?.id) {
         toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
         setIsSaving(false);
         return;
     }
     try {
-        const currentInventory = await getProductsService(user.id); // Pass userId
+        const currentInventory = await getProductsService(user.id);
         const inventoryMap = new Map<string, Product>();
         currentInventory.forEach(p => {
             if (p.id) inventoryMap.set(`id:${p.id}`, p);
@@ -903,10 +885,10 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
         });
 
         if (newProductsNeedingDetails.length > 0) {
-            setProductsForNextStep(productsReadyForDetailCheck); 
-            setPromptingForNewProductDetails(newProductsNeedingDetails); 
+            setProductsForNextStep(productsReadyForDetailCheck);
+            setPromptingForNewProductDetails(newProductsNeedingDetails);
             setIsBarcodePromptOpen(true);
-            setIsSaving(false); 
+            setIsSaving(false);
         } else {
             await proceedWithFinalSave(productsReadyForDetailCheck);
         }
@@ -923,17 +905,17 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
 
 
 const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => {
-    setPriceDiscrepancies(null); 
+    setPriceDiscrepancies(null);
     if (resolvedProducts) {
         const updatedProductsForDetailCheck = productsForNextStep.map(originalProduct => {
             const resolvedVersion = resolvedProducts.find(rp => rp.id === originalProduct.id);
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
         });
-        setProductsForNextStep(updatedProductsForDetailCheck); 
-        if (isNewScan) { // Only check for new products if it was a new scan initially
+        setProductsForNextStep(updatedProductsForDetailCheck);
+        if (isNewScan) {
             checkForNewProductsAndDetails(updatedProductsForDetailCheck);
         } else {
-            proceedWithFinalSave(updatedProductsForDetailCheck); // If not a new scan, save directly
+            proceedWithFinalSave(updatedProductsForDetailCheck);
         }
     } else {
         toast({
@@ -941,7 +923,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             description: t('edit_invoice_toast_save_cancelled_desc_price'),
             variant: "default",
         });
-        setIsSaving(false); 
+        setIsSaving(false);
     }
 };
 
@@ -959,8 +941,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              if (updatedVersion) {
                  return {
                      ...originalProduct,
-                     barcode: updatedVersion.barcode || originalProduct.barcode, 
-                     salePrice: updatedVersion.salePrice, 
+                     barcode: updatedVersion.barcode || originalProduct.barcode,
+                     salePrice: updatedVersion.salePrice,
                  };
              }
              return originalProduct;
@@ -972,7 +954,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              description: t('edit_invoice_toast_save_incomplete_desc_details'),
              variant: "default",
          });
-          setIsSaving(false); 
+          setIsSaving(false);
      }
  };
 
@@ -984,7 +966,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
     const handleCancelEditTaxDetails = () => {
         setEditableTaxInvoiceDetails(initialScannedTaxDetails);
-        if (documentType === 'deliveryNote' || documentType === 'invoice') { 
+        if (documentType === 'deliveryNote' || documentType === 'invoice') {
           setExtractedSupplierName(initialScannedTaxDetails.supplierName);
           setExtractedInvoiceNumber(initialScannedTaxDetails.invoiceNumber);
           setExtractedTotalAmount(initialScannedTaxDetails.totalAmount);
@@ -995,7 +977,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     };
 
     const handleSaveEditTaxDetails = () => {
-        if (documentType === 'invoice' || documentType === 'deliveryNote') { 
+        if (documentType === 'invoice' || documentType === 'deliveryNote') {
             setExtractedSupplierName(editableTaxInvoiceDetails.supplierName);
             setExtractedInvoiceNumber(editableTaxInvoiceDetails.invoiceNumber);
             setExtractedTotalAmount(editableTaxInvoiceDetails.totalAmount);
@@ -1028,8 +1010,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
      );
    }
 
-   if (!user && !authLoading) { // Ensure user is checked after authLoading is false
-    return null; // Or redirect to login
+   if (!user && !authLoading) {
+    return null;
    }
 
     if (errorLoading) {
@@ -1117,19 +1099,25 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
          );
     }
 
-    const renderScanSummaryItem = (label: string, value?: string | number | null, field?: keyof EditableTaxInvoiceDetails) => {
+    const renderScanSummaryItem = (label: string, value?: string | number | null | Timestamp, field?: keyof EditableTaxInvoiceDetails) => {
         if (value === undefined || value === null || String(value).trim() === '') return null;
         let displayValue = value;
         if (typeof value === 'number') {
              displayValue = t('currency_symbol') + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2});
-        } else if (field === 'invoiceDate' && value && isValid(parseISO(value as string))) {
-            displayValue = format(parseISO(value as string), 'PP');
+        } else if ((field === 'invoiceDate' || field === 'paymentDueDate') && value) {
+             const dateToFormat = value instanceof Timestamp ? value.toDate() : (typeof value === 'string' && isValid(parseISO(value)) ? parseISO(value) : null);
+             if (dateToFormat && isValid(dateToFormat)) {
+                 displayValue = format(dateToFormat, 'PP');
+             } else {
+                displayValue = String(value); // Fallback if date parsing fails or it's not a string/Timestamp
+             }
         }
+
 
         return (
             <div className="break-words">
                 <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="font-medium">{displayValue}</p>
+                <p className="font-medium">{String(displayValue)}</p>
             </div>
         );
     };
@@ -1142,10 +1130,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              val => val === undefined || val === null || String(val).trim() === ''
         );
 
-        if (noDetailsAvailable && !isNewScan) { 
+        if (noDetailsAvailable && !isNewScan) {
             return <p className="text-sm text-muted-foreground">{t('edit_invoice_no_details_extracted')}</p>;
         }
-        if(noDetailsAvailable && isNewScan && !scanProcessErrorState){ 
+        if(noDetailsAvailable && isNewScan && !scanProcessErrorState){
              return <p className="text-sm text-muted-foreground">{t('edit_invoice_awaiting_scan_details')}</p>;
         }
 
@@ -1179,10 +1167,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             <div>
                 <Label htmlFor="taxInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
                 <Input
-                    id="taxInvoiceDate" 
-                    type="date" 
-                    value={editableTaxInvoiceDetails.invoiceDate && isValid(parseISO(editableTaxInvoiceDetails.invoiceDate)) ? format(parseISO(editableTaxInvoiceDetails.invoiceDate), 'yyyy-MM-dd') : ''} 
-                    onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} 
+                    id="taxInvoiceDate"
+                    type="date"
+                    value={editableTaxInvoiceDetails.invoiceDate ? format(editableTaxInvoiceDetails.invoiceDate instanceof Timestamp ? editableTaxInvoiceDetails.invoiceDate.toDate() : parseISO(editableTaxInvoiceDetails.invoiceDate as string), 'yyyy-MM-dd') : ''}
+                    onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value ? parseISO(e.target.value) : undefined)}
                     disabled={isSaving} />
             </div>
             <div>
@@ -1195,7 +1183,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
-         {/* Header Section */}
         <Card className="shadow-md scale-fade-in overflow-hidden">
             <CardHeader>
                 <div className="flex flex-row items-center justify-between">
@@ -1242,7 +1229,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </Card>
 
 
-        {/* Products Section - Only for Delivery Note */}
         {documentType === 'deliveryNote' && (
             <div className="mt-6">
                  <div className="flex flex-row items-center justify-between mb-2">
@@ -1256,7 +1242,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 </div>
                 {products.length > 0 ? (
                      <div className="overflow-x-auto relative border rounded-md">
-                         <Table className="min-w-full sm:min-w-[600px]"> 
+                         <Table className="min-w-full sm:min-w-[600px]">
                          <TableHeader>
                              <TableRow>
                              <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -1334,7 +1320,6 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             </div>
         )}
 
-        {/* Action Buttons Section */}
         <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
             <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push('/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first">
                 <ArrowLeft className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_discard_scan_button') : t('edit_invoice_go_back_to_invoices_button')}
@@ -1358,7 +1343,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onConfirm={handleSupplierConfirmation}
           onCancel={() => {
             setShowSupplierDialog(false);
-            setIsSupplierConfirmed(true); 
+            setIsSupplierConfirmed(true);
             setExtractedSupplierName(aiScannedSupplierName);
             setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName }));
             if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
@@ -1380,7 +1365,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           onCancel={() => {
             setShowPaymentDueDateDialog(false);
             toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
-            setSelectedPaymentDueDate(undefined); 
+            setSelectedPaymentDueDate(undefined);
             if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
                 checkForNewProductsAndDetails(products);
             } else {
@@ -1395,29 +1380,29 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         <BarcodePromptDialog
           products={promptingForNewProductDetails}
           onComplete={(updatedProducts) => {
-            setIsBarcodePromptOpen(false); 
-            setPromptingForNewProductDetails(null); 
+            setIsBarcodePromptOpen(false);
+            setPromptingForNewProductDetails(null);
 
             if (updatedProducts) {
                 const fullyDetailedProducts = productsForNextStep.map(originalProd => {
-                    const updatedDetails = updatedProducts.find(upd => upd.id === originalProd.id); 
+                    const updatedDetails = updatedProducts.find(upd => upd.id === originalProd.id);
                     return updatedDetails ? { ...originalProd, ...updatedDetails } : originalProd;
                 });
-                proceedWithFinalSave(fullyDetailedProducts); 
+                proceedWithFinalSave(fullyDetailedProducts);
             } else {
                 toast({
                     title: t('edit_invoice_toast_save_incomplete_title'),
                     description: t('edit_invoice_toast_save_incomplete_desc_details'),
                     variant: "default",
                 });
-                setIsSaving(false); 
+                setIsSaving(false);
             }
           }}
           isOpen={isBarcodePromptOpen}
           onOpenChange={(open) => {
               setIsBarcodePromptOpen(open);
-              if (!open && promptingForNewProductDetails) { 
-                  handleNewProductDetailsComplete(null); 
+              if (!open && promptingForNewProductDetails) {
+                  handleNewProductDetailsComplete(null);
               }
           }}
         />
@@ -1434,7 +1419,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 }
 
 export default function EditInvoicePage() {
-  const { t } = useTranslation(); 
+  const { t } = useTranslation();
   return (
     <Suspense fallback={
         <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">

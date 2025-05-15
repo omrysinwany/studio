@@ -2,7 +2,7 @@
 // src/services/backend.ts
 'use client';
 
-import { db, auth } from '@/lib/firebase'; // Ensure auth is also exported if needed for userId
+import { db, auth as firebaseAuth } from '@/lib/firebase';
 import {
   collection,
   doc,
@@ -18,7 +18,7 @@ import {
   where,
   limit,
   orderBy,
-  addDoc, // For creating new documents with auto-generated IDs
+  addDoc,
   FieldValue
 } from "firebase/firestore";
 import type { PosConnectionConfig } from './pos-integration/pos-adapter.interface';
@@ -29,8 +29,8 @@ const INVENTORY_COLLECTION = "inventoryProducts";
 const DOCUMENTS_COLLECTION = "documents";
 const SUPPLIERS_COLLECTION = "suppliers";
 const OTHER_EXPENSES_COLLECTION = "otherExpenses";
-const EXPENSE_CATEGORIES_COLLECTION = "expenseCategories"; // Assuming you might want this
-const EXPENSE_TEMPLATES_COLLECTION = "expenseTemplates"; // Assuming you might want this
+const EXPENSE_CATEGORIES_COLLECTION = "expenseCategories";
+const EXPENSE_TEMPLATES_COLLECTION = "expenseTemplates";
 const USER_SETTINGS_COLLECTION = "userSettings";
 
 
@@ -43,8 +43,8 @@ export interface User {
 }
 
 export interface Product {
-  id: string; // Firestore document ID
-  userId?: string; // Added for Firestore security rules
+  id: string;
+  userId?: string;
   catalogNumber: string;
   description: string;
   shortName?: string;
@@ -56,18 +56,18 @@ export interface Product {
   minStockLevel?: number;
   maxStockLevel?: number;
   imageUrl?: string;
-  _originalId?: string; // Used during import/scan if needed
+  _originalId?: string;
   lastUpdated?: Timestamp | FieldValue;
 }
 
-export interface InvoiceHistoryItem { // Consider renaming to Document
-  id: string; // Firestore document ID
+export interface InvoiceHistoryItem {
+  id: string;
   userId: string;
   originalFileName: string;
   generatedFileName: string;
-  uploadTime: string | Timestamp; // ISO string or Firestore Timestamp for consistency
+  uploadTime: string | Timestamp;
   status: 'pending' | 'processing' | 'completed' | 'error';
-  documentType: 'deliveryNote' | 'invoice' | 'paymentReceipt'; // Added 'paymentReceipt'
+  documentType: 'deliveryNote' | 'invoice' | 'paymentReceipt';
   supplierName?: string;
   invoiceNumber?: string;
   invoiceDate?: string | Timestamp;
@@ -80,12 +80,10 @@ export interface InvoiceHistoryItem { // Consider renaming to Document
   compressedImageForFinalRecordUri?: string;
   errorMessage?: string;
   linkedDeliveryNoteId?: string;
-  // products field removed, use DocumentLineItems subcollection or separate collection
 }
 
 export interface DocumentLineItem {
-  // id: string; // Firestore can auto-generate this if it's a subcollection
-  documentId?: string; // Link to the parent document
+  documentId?: string;
   userId?: string;
   productId?: string;
   productName: string;
@@ -98,7 +96,7 @@ export interface DocumentLineItem {
 }
 
 export interface SupplierSummary {
-  id: string; // Firestore document ID
+  id: string;
   userId: string;
   name: string;
   invoiceCount: number;
@@ -128,49 +126,41 @@ export interface UserSettings {
 }
 
 export interface OtherExpense {
-  id: string; // Firestore document ID
+  id: string;
   userId: string;
   description: string;
   amount: number;
   date: string | Timestamp;
-  category: string; // Could be categoryId if using a separate collection
+  category: string;
   _internalCategoryKey?: string;
 }
 
 export interface ExpenseTemplate {
-  id: string; // Firestore document ID
+  id: string;
   userId: string;
   name: string;
-  category: string; // Could be categoryId
+  category: string;
   description: string;
   amount: number;
 }
 
-
-// --- Storage Keys for localStorage (primarily for temporary data now) ---
+// Storage Keys for localStorage (temporary data, settings not yet in Firestore)
 export const POS_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_posSettings';
 export const ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_accountantSettings';
 export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings';
-export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses'; // Will migrate if needed
-export const EXPENSE_TEMPLATES_STORAGE_KEY_BASE = 'invoTrack_expenseTemplates'; // Will migrate if needed
-export const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget'; // Will migrate if needed
-export const INVENTORY_STORAGE_KEY_BASE = 'invoTrack_inventory'; // Keep for possible quick-access cache or if migration is partial
-export const INVOICES_STORAGE_KEY_BASE = 'invoTrack_invoices'; // Keep for similar reasons as inventory
+export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses';
+export const EXPENSE_TEMPLATES_STORAGE_KEY_BASE = 'invoTrack_expenseTemplates';
+export const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget';
 
-
+// --- Storage Keys for temporary data ---
 export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
 export const TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX = 'invoTrackTempOriginalImagePreviewUri_';
 export const TEMP_COMPRESSED_IMAGE_KEY_PREFIX = 'invoTrackTempCompressedImageUri_';
 
-export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024;
-export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024;
-export const MAX_INVOICE_HISTORY_ITEMS = 100; // Firestore can handle more, this is for localStorage limits
+export const MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES = 0.4 * 1024 * 1024; // 0.4MB
+export const MAX_SCAN_RESULTS_SIZE_BYTES = 0.5 * 1024 * 1024; // 0.5MB
+export const MAX_INVOICE_HISTORY_ITEMS = 50; // Reduced for localStorage
 
-
-export interface StoredPosSettings {
-    systemId: string;
-    config: PosConnectionConfig;
-}
 
 export interface ProductPriceDiscrepancy extends Product {
   existingUnitPrice: number;
@@ -190,8 +180,6 @@ export const getStorageKey = (baseKey: string, userId?: string): string => {
   return `${baseKey}_${userId}`;
 };
 
-// This function should now ideally only be used for settings or non-critical UI state
-// that doesn't warrant Firestore yet, or for temporary data.
 export const getStoredData = <T extends {id?: string; name?: string}>(keyBase: string, userId?: string, defaultDataIfNoUserOrError: T[] = []): T[] => {
   if (typeof window === 'undefined') return defaultDataIfNoUserOrError;
   const storageKey = getStorageKey(keyBase, userId);
@@ -211,7 +199,6 @@ export const getStoredData = <T extends {id?: string; name?: string}>(keyBase: s
   }
 };
 
-// This function also needs to be used judiciously.
 const saveStoredData = (keyBase: string, data: any, userId?: string): boolean => {
   if (typeof window === 'undefined') return false;
   if (!userId) {
@@ -227,22 +214,21 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
     if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.message.includes('exceeded the quota'))) {
       console.warn(`Quota exceeded for key ${storageKey}. Attempting to clear old temporary scan data and retry...`);
       try {
-        clearOldTemporaryScanData(true, userId); // Pass userId to clear only for this user
+        clearOldTemporaryScanData(true, userId);
         localStorage.setItem(storageKey, JSON.stringify(data));
         console.log(`Successfully saved to localStorage after cleanup for key ${storageKey}`);
         return true;
       } catch (retryError) {
         console.error(`Error writing ${storageKey} to localStorage even after cleanup:`, retryError);
-        throw retryError; // Re-throw critical error
+        throw retryError;
       }
     } else {
-      throw error; // Re-throw other critical errors
+      throw error;
     }
   }
-  return false; // Should not be reached if errors are thrown
+  return false;
 };
 
-// --- User Management with Firestore ---
 export async function saveUserToFirestore(userData: User): Promise<void> {
   if (!db) {
     console.error("Firestore (db) is not initialized. Cannot save user.");
@@ -292,9 +278,11 @@ export async function getUserFromFirestore(userId: string): Promise<User | null>
   }
 }
 
-// --- Product & Inventory Management with Firestore ---
 export async function getProductsService(userId: string): Promise<Product[]> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot get products.");
+    return [];
+  }
   if (!userId) {
     console.warn("getProductsService called without userId. Returning empty array.");
     return [];
@@ -310,7 +298,10 @@ export async function getProductsService(userId: string): Promise<Product[]> {
 }
 
 export async function getProductByIdService(productId: string, userId: string): Promise<Product | null> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot get product by ID.");
+    return null;
+  }
   if (!userId) return null;
   try {
     const productRef = doc(db, INVENTORY_COLLECTION, productId);
@@ -326,15 +317,13 @@ export async function getProductByIdService(productId: string, userId: string): 
 }
 
 export async function updateProductService(productId: string, updatedData: Partial<Product>, userId: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot update product.");
+    throw new Error("Database not initialized.");
+  }
   if (!userId) throw new Error("User authentication is required.");
   try {
     const productRef = doc(db, INVENTORY_COLLECTION, productId);
-    // Optional: verify ownership before update if not handled by security rules
-    // const currentProduct = await getDoc(productRef);
-    // if (!currentProduct.exists() || currentProduct.data().userId !== userId) {
-    //   throw new Error("Unauthorized: Cannot update product not owned by user.");
-    // }
     await updateDoc(productRef, { ...updatedData, userId, lastUpdated: serverTimestamp() });
   } catch (error) {
     console.error(`Error updating product ${productId} in Firestore:`, error);
@@ -343,11 +332,13 @@ export async function updateProductService(productId: string, updatedData: Parti
 }
 
 export async function deleteProductService(productId: string, userId: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot delete product.");
+    throw new Error("Database not initialized.");
+  }
   if (!userId) throw new Error("User authentication is required.");
   try {
     const productRef = doc(db, INVENTORY_COLLECTION, productId);
-    // Optional: verify ownership
     await deleteDoc(productRef);
   } catch (error) {
     console.error(`Error deleting product ${productId} from Firestore:`, error);
@@ -356,23 +347,28 @@ export async function deleteProductService(productId: string, userId: string): P
 }
 
 export async function clearInventoryService(userId: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot clear inventory.");
+    throw new Error("Database not initialized.");
+  }
   if (!userId) throw new Error("User authentication is required.");
   try {
     const productsQuery = query(collection(db, INVENTORY_COLLECTION), where("userId", "==", userId));
     const snapshot = await getDocs(productsQuery);
-    const batch = writeBatch(db);
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
+    const batchOp = writeBatch(db);
+    snapshot.docs.forEach(doc => batchOp.delete(doc.ref));
+    await batchOp.commit();
   } catch (error) {
     console.error("Error clearing inventory from Firestore:", error);
     throw error;
   }
 }
 
-// --- Document (InvoiceHistoryItem) Management with Firestore ---
 export async function getInvoicesService(userId: string): Promise<InvoiceHistoryItem[]> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot get documents.");
+    return [];
+  }
   if (!userId) {
     console.warn("getInvoicesService called without userId. Returning empty array.");
     return [];
@@ -388,11 +384,14 @@ export async function getInvoicesService(userId: string): Promise<InvoiceHistory
 }
 
 export async function updateInvoiceService(invoiceId: string, updatedData: Partial<InvoiceHistoryItem>, userId: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot update document.");
+    throw new Error("Database not initialized.");
+  }
   if (!userId) throw new Error("User authentication is required.");
   try {
     const docRef = doc(db, DOCUMENTS_COLLECTION, invoiceId);
-    await updateDoc(docRef, { ...updatedData, userId }); // Ensure userId is part of update for rules
+    await updateDoc(docRef, { ...updatedData, userId });
   } catch (error) {
     console.error(`Error updating document ${invoiceId} in Firestore:`, error);
     throw error;
@@ -418,7 +417,10 @@ export async function updateInvoicePaymentStatusService(invoiceId: string, payme
 }
 
 export async function deleteInvoiceService(invoiceId: string, userId: string): Promise<void> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot delete document.");
+    throw new Error("Database not initialized.");
+  }
   if (!userId) throw new Error("User authentication is required.");
   try {
     const docRef = doc(db, DOCUMENTS_COLLECTION, invoiceId);
@@ -429,13 +431,54 @@ export async function deleteInvoiceService(invoiceId: string, userId: string): P
   }
 }
 
-// --- Main Service Logic for Saving Products & Invoice History to Firestore ---
+export async function checkProductPricesBeforeSaveService(
+  productsToCheck: Product[],
+  userId: string
+): Promise<PriceCheckResult> {
+  if (!db) throw new Error("Database not initialized.");
+  if (!userId) throw new Error("User authentication required for price check.");
+
+  const productsToSaveDirectly: Product[] = [];
+  const priceDiscrepancies: ProductPriceDiscrepancy[] = [];
+
+  for (const product of productsToCheck) {
+    if (!product.id || product.id.startsWith('prod-temp-') || product.id.includes('-new')) {
+      // This product is considered new or temporary, no existing price to check against in this specific check
+      // It might be checked against catalog/barcode later in finalizeSaveProductsService for merging
+      productsToSaveDirectly.push(product);
+      continue;
+    }
+
+    const existingProductRef = doc(db, INVENTORY_COLLECTION, product.id);
+    const existingProductSnap = await getDoc(existingProductRef);
+
+    if (existingProductSnap.exists() && existingProductSnap.data().userId === userId) {
+      const existingProductData = existingProductSnap.data() as Product;
+      if (existingProductData.unitPrice !== undefined && product.unitPrice !== undefined &&
+          Math.abs(existingProductData.unitPrice - product.unitPrice) > 0.001) { // Allow small floating point differences
+        priceDiscrepancies.push({
+          ...product,
+          existingUnitPrice: existingProductData.unitPrice,
+          newUnitPrice: product.unitPrice,
+        });
+      } else {
+        productsToSaveDirectly.push(product);
+      }
+    } else {
+      // Product not found or doesn't belong to user, treat as new for this check
+      productsToSaveDirectly.push(product);
+    }
+  }
+  return { productsToSaveDirectly, priceDiscrepancies };
+}
+
+
 export async function finalizeSaveProductsService(
     productsToFinalizeSave: Product[],
     originalFileNameFromUpload: string,
     documentType: 'deliveryNote' | 'invoice',
     userId: string,
-    tempInvoiceId?: string, // This is the ID from the 'pending' record if it exists
+    tempInvoiceId?: string,
     extractedInvoiceNumber?: string,
     finalSupplierName?: string,
     extractedTotalAmount?: number,
@@ -448,57 +491,64 @@ export async function finalizeSaveProductsService(
   finalInvoiceRecord?: InvoiceHistoryItem;
   savedProductsWithFinalIds?: Product[];
 }> {
-    if (!db) throw new Error("Database not initialized.");
+    if (!db) {
+      console.error("Firestore (db) is not initialized. Cannot finalize save.");
+      throw new Error("Database not initialized.");
+    }
     if (!userId) {
+      console.error("User ID is missing. Cannot finalize save.");
       throw new Error("User authentication is required to save products and invoice history.");
     }
+    console.log("[finalizeSaveProductsService] Starting. UserID:", userId, "DocumentType:", documentType, "TempInvoiceID:", tempInvoiceId);
 
     const savedProductsWithFinalIds: Product[] = [];
     let calculatedInvoiceTotalAmountFromProducts = 0;
+    const batchOp = writeBatch(db);
 
-    const batch = writeBatch(db);
-
-    // Process products for inventory
     if (documentType === 'deliveryNote' || (documentType === 'invoice' && tempInvoiceId?.includes('_sync'))) {
+        console.log(`[finalizeSaveProductsService] Processing ${productsToFinalizeSave.length} products for inventory.`);
         for (const productToSave of productsToFinalizeSave) {
             const quantityToAdd = parseFloat(String(productToSave.quantity)) || 0;
             let unitPrice = parseFloat(String(productToSave.unitPrice)) || 0;
             const salePrice = productToSave.salePrice !== undefined && !isNaN(parseFloat(String(productToSave.salePrice))) ? parseFloat(String(productToSave.salePrice)) : undefined;
             let lineTotal = parseFloat(String(productToSave.lineTotal)) || 0;
 
-            if (quantityToAdd !== 0 && lineTotal !== 0 && unitPrice === 0 && lineTotal/quantityToAdd > 0) {
+            if (unitPrice === 0 && quantityToAdd !== 0 && lineTotal !== 0 && lineTotal / quantityToAdd > 0) {
                 unitPrice = parseFloat((lineTotal / quantityToAdd).toFixed(2));
             }
             calculatedInvoiceTotalAmountFromProducts += lineTotal;
 
-            // Try to find existing product
             let existingProductSnap;
             let existingProductRef;
+            let foundBy = "";
 
-            // Prioritize ID if it's a Firestore ID
             if (productToSave.id && !productToSave.id.startsWith('prod-temp-') && !productToSave.id.includes('-new')) {
                 existingProductRef = doc(db, INVENTORY_COLLECTION, productToSave.id);
                 existingProductSnap = await getDoc(existingProductRef);
-                if (existingProductSnap.exists() && existingProductSnap.data().userId !== userId) {
-                  existingProductSnap = undefined; // Not the user's product
+                if (existingProductSnap.exists() && existingProductSnap.data().userId === userId) {
+                    foundBy = `ID (${productToSave.id})`;
+                } else {
+                    existingProductSnap = undefined; // Not user's or doesn't exist by this ID
                 }
             }
-            // Then by catalogNumber
+
             if ((!existingProductSnap || !existingProductSnap.exists()) && productToSave.catalogNumber && productToSave.catalogNumber !== 'N/A') {
                 const qCat = query(collection(db, INVENTORY_COLLECTION), where("userId", "==", userId), where("catalogNumber", "==", productToSave.catalogNumber), limit(1));
                 const catSnap = await getDocs(qCat);
                 if (!catSnap.empty) {
                     existingProductSnap = catSnap.docs[0];
                     existingProductRef = existingProductSnap.ref;
+                    foundBy = `Catalog (${productToSave.catalogNumber})`;
                 }
             }
-            // Then by barcode
+
             if ((!existingProductSnap || !existingProductSnap.exists()) && productToSave.barcode && productToSave.barcode.trim() !== '') {
                 const qBar = query(collection(db, INVENTORY_COLLECTION), where("userId", "==", userId), where("barcode", "==", productToSave.barcode), limit(1));
                 const barSnap = await getDocs(qBar);
                 if (!barSnap.empty) {
                     existingProductSnap = barSnap.docs[0];
                     existingProductRef = existingProductSnap.ref;
+                    foundBy = `Barcode (${productToSave.barcode})`;
                 }
             }
 
@@ -507,48 +557,62 @@ export async function finalizeSaveProductsService(
                 catalogNumber: productToSave.catalogNumber || 'N/A',
                 description: productToSave.description || 'No Description',
                 shortName: productToSave.shortName || (productToSave.description || 'No Description').split(' ').slice(0, 3).join(' '),
-                barcode: productToSave.barcode === null ? undefined : (productToSave.barcode ?? undefined),
-                quantity: quantityToAdd,
-                unitPrice: (unitPrice && unitPrice > 0) ? unitPrice : (existingProductSnap?.data().unitPrice || 0),
-                salePrice: salePrice ?? existingProductSnap?.data().salePrice,
-                minStockLevel: productToSave.minStockLevel ?? existingProductSnap?.data().minStockLevel,
-                maxStockLevel: productToSave.maxStockLevel ?? existingProductSnap?.data().maxStockLevel,
-                imageUrl: productToSave.imageUrl === null ? undefined : (productToSave.imageUrl ?? existingProductSnap?.data().imageUrl),
-                lineTotal: 0, // Will be recalculated
+                barcode: productToSave.barcode === null ? undefined : (productToSave.barcode?.trim() === '' ? undefined : productToSave.barcode),
+                quantity: 0, // Will be set based on existing or new
+                unitPrice: (unitPrice && unitPrice > 0) ? unitPrice : 0,
+                salePrice: salePrice,
+                minStockLevel: productToSave.minStockLevel,
+                maxStockLevel: productToSave.maxStockLevel,
+                imageUrl: productToSave.imageUrl,
+                lineTotal: 0,
                 lastUpdated: serverTimestamp()
             };
-            productData.lineTotal = parseFloat(((productData.quantity || 0) * (productData.unitPrice || 0)).toFixed(2));
-
 
             if (existingProductSnap && existingProductSnap.exists() && existingProductRef) {
+                console.log(`[finalizeSaveProductsService] Found existing product by ${foundBy}. ID: ${existingProductRef.id}`);
                 const existingData = existingProductSnap.data() as Product;
-                const updatedQuantity = (documentType === 'deliveryNote')
+                const updatedQuantity = (documentType === 'deliveryNote' && !tempInvoiceId?.includes('_sync'))
                     ? (existingData.quantity || 0) + quantityToAdd
-                    : quantityToAdd; // For sync/invoice, overwrite/set quantity
+                    : quantityToAdd; // For POS sync or if document is 'invoice', overwrite/set quantity
 
-                batch.update(existingProductRef, {
-                    ...productData,
+                const updatedProductData = {
+                    ...existingData, // Start with existing data
+                    ...productData,   // Overlay with new/updated fields from productData
                     quantity: updatedQuantity,
-                    lineTotal: parseFloat(((updatedQuantity || 0) * (productData.unitPrice || 0)).toFixed(2)),
-                });
-                savedProductsWithFinalIds.push({ ...productData, id: existingProductRef.id, quantity: updatedQuantity });
+                    unitPrice: (productData.unitPrice && productData.unitPrice > 0) ? productData.unitPrice : (existingData.unitPrice || 0), // Prioritize new price if valid
+                    salePrice: productData.salePrice !== undefined ? productData.salePrice : existingData.salePrice,
+                    minStockLevel: productData.minStockLevel !== undefined ? productData.minStockLevel : existingData.minStockLevel,
+                    maxStockLevel: productData.maxStockLevel !== undefined ? productData.maxStockLevel : existingData.maxStockLevel,
+                    imageUrl: productData.imageUrl !== undefined ? productData.imageUrl : existingData.imageUrl,
+                    lastUpdated: serverTimestamp(),
+                };
+                updatedProductData.lineTotal = parseFloat(((updatedProductData.quantity || 0) * (updatedProductData.unitPrice || 0)).toFixed(2));
+
+                batchOp.update(existingProductRef, updatedProductData);
+                savedProductsWithFinalIds.push({ ...updatedProductData, id: existingProductRef.id });
             } else {
-                if (!productData.catalogNumber && !productData.description && !productData.barcode) continue;
-                const newProductRef = doc(collection(db, INVENTORY_COLLECTION)); // Auto-generate ID
-                batch.set(newProductRef, productData);
+                console.log(`[finalizeSaveProductsService] Product not found, creating new. Catalog: ${productData.catalogNumber}, Barcode: ${productData.barcode}`);
+                if (!productData.catalogNumber && !productData.description && !productData.barcode) {
+                    console.warn("[finalizeSaveProductsService] Skipping product with no identifier:", productToSave);
+                    continue;
+                }
+                const newProductRef = doc(collection(db, INVENTORY_COLLECTION));
+                productData.quantity = quantityToAdd; // Set initial quantity for new product
+                productData.lineTotal = parseFloat(((productData.quantity || 0) * (productData.unitPrice || 0)).toFixed(2));
+                batchOp.set(newProductRef, productData);
                 savedProductsWithFinalIds.push({ ...productData, id: newProductRef.id });
             }
         }
     } else {
+        console.log(`[finalizeSaveProductsService] Document type is '${documentType}'. Skipping inventory update, calculating total from input.`);
         productsToFinalizeSave.forEach(productToSave => {
             calculatedInvoiceTotalAmountFromProducts += (parseFloat(String(productToSave.lineTotal)) || 0);
         });
     }
 
-    // Process document (InvoiceHistoryItem)
     let finalInvoiceRecord: InvoiceHistoryItem | undefined = undefined;
     const finalStatus: InvoiceHistoryItem['status'] = 'completed';
-    const finalInvoiceTotalAmount = (extractedTotalAmount !== undefined && !isNaN(extractedTotalAmount))
+    const finalInvoiceTotalAmount = (extractedTotalAmount !== undefined && !isNaN(extractedTotalAmount) && extractedTotalAmount > 0)
                                     ? extractedTotalAmount
                                     : parseFloat(calculatedInvoiceTotalAmountFromProducts.toFixed(2));
 
@@ -561,14 +625,15 @@ export async function finalizeSaveProductsService(
     } else if (extractedInvoiceNumber && extractedInvoiceNumber.trim() !== '') {
         finalGeneratedFileName = `Invoice_${extractedInvoiceNumber.trim()}`;
     }
+    finalGeneratedFileName = finalGeneratedFileName.replace(/[/\\?%*:|"<>]/g, '-'); // Sanitize file name
 
-    const currentUploadTime = new Date().toISOString();
+    const currentUploadTime = Timestamp.now();
 
     const documentData: Omit<InvoiceHistoryItem, 'id'> = {
         userId,
         generatedFileName: finalGeneratedFileName,
         originalFileName: originalFileNameFromUpload,
-        uploadTime: currentUploadTime, // Use consistent ISO string
+        uploadTime: currentUploadTime,
         status: finalStatus,
         documentType: documentType,
         invoiceNumber: extractedInvoiceNumber || undefined,
@@ -576,38 +641,43 @@ export async function finalizeSaveProductsService(
         totalAmount: finalInvoiceTotalAmount,
         originalImagePreviewUri: originalImagePreviewUriToSave,
         compressedImageForFinalRecordUri: compressedImageForFinalRecordUriToSave,
-        paymentStatus: 'unpaid', // Default
-        paymentDueDate: paymentDueDate instanceof Date ? paymentDueDate.toISOString() : paymentDueDate,
-        invoiceDate: invoiceDate instanceof Date ? invoiceDate.toISOString() : invoiceDate,
+        paymentStatus: 'unpaid',
+        paymentDueDate: paymentDueDate instanceof Date ? Timestamp.fromDate(paymentDueDate) : (typeof paymentDueDate === 'string' ? Timestamp.fromDate(new Date(paymentDueDate)) : undefined),
+        invoiceDate: invoiceDate instanceof Date ? Timestamp.fromDate(invoiceDate) : (typeof invoiceDate === 'string' ? Timestamp.fromDate(new Date(invoiceDate)) : undefined),
         paymentMethod: paymentMethod || undefined,
-        errorMessage: undefined, // Assuming success at this stage if no error was caught before
+        errorMessage: undefined,
     };
 
     let docRef;
-    if (tempInvoiceId && tempInvoiceId.startsWith('pending-inv-')) {
-        // This ID was likely created client-side, if we want to use it, fine.
-        // Otherwise, it's better to let Firestore generate IDs for new docs.
-        // For simplicity if tempId exists and it's a "pending" one, we can assume
-        // it's a placeholder and we'll create a new Firestore document.
-        // OR, if `tempInvoiceId` is meant to be the *actual* Firestore ID of a pending doc,
-        // we should use `doc(db, DOCUMENTS_COLLECTION, tempInvoiceId.replace(`pending-inv-${userId}_`, ''))`
-        // For now, let's assume `tempInvoiceId` is not a Firestore ID and create new.
-        docRef = doc(collection(db, DOCUMENTS_COLLECTION)); // New Firestore ID
-    } else if (tempInvoiceId) { // If tempInvoiceId IS a Firestore ID (e.g. from POS sync)
+    let isNewDocument = true;
+
+    if (tempInvoiceId && tempInvoiceId.startsWith(`pending-inv-${userId}_`)) {
+        // This is a placeholder ID created client-side, we want to create a new document in Firestore
+        docRef = doc(collection(db, DOCUMENTS_COLLECTION));
+        console.log(`[finalizeSaveProductsService] Creating new document in Firestore, ignoring client-side tempId: ${tempInvoiceId}. New ID: ${docRef.id}`);
+    } else if (tempInvoiceId) {
+        // This tempInvoiceId is an actual Firestore ID (e.g., from POS sync or previous save attempt)
         docRef = doc(db, DOCUMENTS_COLLECTION, tempInvoiceId);
-    }
-    else {
-        docRef = doc(collection(db, DOCUMENTS_COLLECTION)); // New Firestore ID
+        isNewDocument = !(await getDoc(docRef)).exists();
+        console.log(`[finalizeSaveProductsService] Using provided tempInvoiceId as Firestore doc ID: ${tempInvoiceId}. Is new document: ${isNewDocument}`);
+    } else {
+        docRef = doc(collection(db, DOCUMENTS_COLLECTION));
+        console.log(`[finalizeSaveProductsService] No tempInvoiceId provided, creating new document in Firestore. New ID: ${docRef.id}`);
     }
 
-    batch.set(docRef, documentData); // Use set to create or overwrite
+    if (isNewDocument) {
+        batchOp.set(docRef, documentData);
+    } else {
+        batchOp.update(docRef, documentData); // Use update if the document might already exist by this ID
+    }
     finalInvoiceRecord = { ...documentData, id: docRef.id };
 
-
     try {
-      await batch.commit();
+      console.log("[finalizeSaveProductsService] Committing batch operation to Firestore...");
+      await batchOp.commit();
+      console.log("[finalizeSaveProductsService] Batch commit successful.");
     } catch (error) {
-      console.error("Error committing batch to Firestore:", error);
+      console.error("[finalizeSaveProductsService] Error committing batch to Firestore:", error);
       throw error;
     }
 
@@ -615,9 +685,11 @@ export async function finalizeSaveProductsService(
 }
 
 
-// --- Supplier Management with Firestore ---
 export async function getSupplierSummariesService(userId: string): Promise<SupplierSummary[]> {
-  if (!db) throw new Error("Database not initialized.");
+  if (!db) {
+    console.error("Firestore (db) is not initialized. Cannot get supplier summaries.");
+    return [];
+  }
   if (!userId) return [];
 
   const suppliersQuery = query(collection(db, SUPPLIERS_COLLECTION), where("userId", "==", userId));
@@ -633,16 +705,16 @@ export async function getSupplierSummariesService(userId: string): Promise<Suppl
 
     suppliersSnapshot.docs.forEach(docSnap => {
       const data = docSnap.data();
-      supplierMap.set(docSnap.id, {
+      supplierMap.set(data.name, { // Use name as key for easy lookup from invoices
         id: docSnap.id,
         userId,
         name: data.name,
-        phone: data.phone,
-        email: data.email,
-        paymentTerms: data.paymentTerms,
+        phone: data.phone || undefined,
+        email: data.email || undefined,
+        paymentTerms: data.paymentTerms || undefined,
         invoiceCount: 0,
         totalSpent: 0,
-        lastActivityDate: data.lastActivityDate, // Keep as Firestore Timestamp or convert
+        lastActivityDate: data.lastActivityDate instanceof Timestamp ? data.lastActivityDate.toDate().toISOString() : data.lastActivityDate,
         createdAt: data.createdAt,
       });
     });
@@ -650,18 +722,31 @@ export async function getSupplierSummariesService(userId: string): Promise<Suppl
     invoicesSnapshot.docs.forEach(docSnap => {
       const invoice = docSnap.data() as InvoiceHistoryItem;
       if (invoice.supplierName) {
-        // Find supplier by name - might need to adjust if IDs are used
-        let supplierEntry = Array.from(supplierMap.values()).find(s => s.name === invoice.supplierName);
+        let supplierEntry = supplierMap.get(invoice.supplierName);
         if (supplierEntry) {
           supplierEntry.invoiceCount += 1;
           supplierEntry.totalSpent += (invoice.totalAmount || 0);
-          const invoiceUploadTime = invoice.uploadTime ? (typeof invoice.uploadTime === 'string' ? parseISO(invoice.uploadTime) : (invoice.uploadTime as Timestamp).toDate()) : null;
+          const invoiceUploadTime = invoice.uploadTime ? (invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : new Date(invoice.uploadTime as string)) : null;
+
           if (invoiceUploadTime) {
-            const currentLastActivity = supplierEntry.lastActivityDate ? (typeof supplierEntry.lastActivityDate === 'string' ? parseISO(supplierEntry.lastActivityDate) : (supplierEntry.lastActivityDate as Timestamp).toDate()) : null;
-            if (!currentLastActivity || invoiceUploadTime > currentLastActivity) {
-              supplierEntry.lastActivityDate = Timestamp.fromDate(invoiceUploadTime); // Store as Timestamp
+            const currentLastActivityDate = supplierEntry.lastActivityDate ? new Date(supplierEntry.lastActivityDate as string) : null;
+            if (!currentLastActivityDate || invoiceUploadTime > currentLastActivityDate) {
+              supplierEntry.lastActivityDate = invoiceUploadTime.toISOString();
             }
           }
+        } else {
+          // Optionally create a new supplier entry if not found, or log it
+           console.warn(`[getSupplierSummaries] Invoice found for supplier "${invoice.supplierName}" but supplier not in DB. Creating temporary entry.`);
+           const newTempSupplier: SupplierSummary = {
+                id: `temp-${invoice.supplierName.replace(/\s+/g, '_')}`, // Temporary ID
+                userId,
+                name: invoice.supplierName,
+                invoiceCount: 1,
+                totalSpent: invoice.totalAmount || 0,
+                lastActivityDate: invoice.uploadTime ? (invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate().toISOString() : invoice.uploadTime as string) : undefined,
+                createdAt: serverTimestamp(), // Or set to invoice upload time
+            };
+            supplierMap.set(invoice.supplierName, newTempSupplier);
         }
       }
     });
@@ -676,59 +761,80 @@ export async function createSupplierService(name: string, contactInfo: { phone?:
   if (!db) throw new Error("Database not initialized.");
   if (!userId) throw new Error("User authentication is required.");
 
-  const q = query(collection(db, SUPPLIERS_COLLECTION), where("userId", "==", userId), where("name", "==", name));
+  const normalizedName = name.trim();
+  if (!normalizedName) throw new Error("Supplier name cannot be empty.");
+
+  const q = query(collection(db, SUPPLIERS_COLLECTION), where("userId", "==", userId), where("name", "==", normalizedName));
   const existing = await getDocs(q);
   if (!existing.empty) {
-    throw new Error(`Supplier with name "${name}" already exists for this user.`);
+    throw new Error(`Supplier with name "${normalizedName}" already exists for this user.`);
   }
 
   const newSupplierData = {
     userId,
-    name,
-    phone: contactInfo.phone || null,
-    email: contactInfo.email || null,
-    paymentTerms: contactInfo.paymentTerms || null,
+    name: normalizedName,
+    phone: contactInfo.phone?.trim() || null,
+    email: contactInfo.email?.trim() || null,
+    paymentTerms: contactInfo.paymentTerms?.trim() || null,
     invoiceCount: 0,
     totalSpent: 0,
     lastActivityDate: null,
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, SUPPLIERS_COLLECTION), newSupplierData);
-  return { ...newSupplierData, id: docRef.id, createdAt: Timestamp.now() } as SupplierSummary; // Approximate createdAt
+  return { ...newSupplierData, id: docRef.id, createdAt: Timestamp.now() } as SupplierSummary;
 }
 
 export async function deleteSupplierService(supplierId: string, userId: string): Promise<void> {
   if (!db) throw new Error("Database not initialized.");
   if (!userId) throw new Error("User authentication is required.");
-  // Add check to ensure user owns this supplier before deleting based on security rules
   const docRef = doc(db, SUPPLIERS_COLLECTION, supplierId);
+  // Verify ownership before deleting
+  const supplierDoc = await getDoc(docRef);
+  if (!supplierDoc.exists() || supplierDoc.data().userId !== userId) {
+    throw new Error("Supplier not found or permission denied.");
+  }
   await deleteDoc(docRef);
 }
 
-export async function updateSupplierContactInfoService(supplierId: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }, userId: string): Promise<void> {
+export async function updateSupplierContactInfoService(supplierIdOrName: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }, userId: string): Promise<void> {
   if (!db) throw new Error("Database not initialized.");
   if (!userId) throw new Error("User authentication is required.");
-  const docRef = doc(db, SUPPLIERS_COLLECTION, supplierId);
-  const updateData: any = {};
-  if (contactInfo.phone !== undefined) updateData.phone = contactInfo.phone;
-  if (contactInfo.email !== undefined) updateData.email = contactInfo.email;
-  if (contactInfo.paymentTerms !== undefined) updateData.paymentTerms = contactInfo.paymentTerms;
 
-  if (Object.keys(updateData).length > 0) {
-    updateData.userId = userId; // Ensure userId is part of update for rules
-    await updateDoc(docRef, updateData);
+  let supplierRef;
+  // Try to get by ID first
+  let supplierDoc = await getDoc(doc(db, SUPPLIERS_COLLECTION, supplierIdOrName));
+  if (supplierDoc.exists() && supplierDoc.data()?.userId === userId) {
+    supplierRef = supplierDoc.ref;
+  } else {
+    // If not found by ID (or ID was actually a name), try to find by name
+    const q = query(collection(db, SUPPLIERS_COLLECTION), where("userId", "==", userId), where("name", "==", supplierIdOrName), limit(1));
+    const nameQuerySnap = await getDocs(q);
+    if (!nameQuerySnap.empty) {
+      supplierRef = nameQuerySnap.docs[0].ref;
+    } else {
+      throw new Error(`Supplier "${supplierIdOrName}" not found for this user.`);
+    }
+  }
+
+  const updateData: any = { userId }; // Always ensure userId for rules
+  let hasChanges = false;
+  if (contactInfo.phone !== undefined) { updateData.phone = contactInfo.phone.trim() || null; hasChanges = true; }
+  if (contactInfo.email !== undefined) { updateData.email = contactInfo.email.trim() || null; hasChanges = true; }
+  if (contactInfo.paymentTerms !== undefined) { updateData.paymentTerms = contactInfo.paymentTerms.trim() || null; hasChanges = true; }
+
+  if (hasChanges) {
+    await updateDoc(supplierRef, updateData);
   }
 }
 
-
-// --- Settings Management (Still good for localStorage if they are client-side prefs) ---
-export async function savePosSettingsService(systemId: string, config: PosConnectionConfig, userId?: string): Promise<void> {
-    if (!userId) throw new Error("User authentication is required.");
+export async function savePosSettingsService(systemId: string, config: PosConnectionConfig, userId: string): Promise<void> {
+    if (!db || !userId) throw new Error("User authentication is required.");
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     await setDoc(userSettingsRef, { posSystemId: systemId, posConfig: config, userId }, { merge: true });
 }
 
-export async function getPosSettingsService(userId?: string): Promise<StoredPosSettings | null> {
+export async function getPosSettingsService(userId: string): Promise<StoredPosSettings | null> {
   if (!db || !userId) return null;
   const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
   const docSnap = await getDoc(userSettingsRef);
@@ -739,22 +845,22 @@ export async function getPosSettingsService(userId?: string): Promise<StoredPosS
   return null;
 }
 
-export async function clearPosSettingsService(userId?: string): Promise<void> {
+export async function clearPosSettingsService(userId: string): Promise<void> {
     if (!db || !userId) throw new Error("User authentication is required.");
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     await updateDoc(userSettingsRef, {
-        posSystemId: null, // Or deleteField()
-        posConfig: null    // Or deleteField()
+        posSystemId: null,
+        posConfig: null
     });
 }
 
-export async function saveAccountantSettingsService(settings: AccountantSettings, userId?: string): Promise<void> {
+export async function saveAccountantSettingsService(settings: AccountantSettings, userId: string): Promise<void> {
     if (!db || !userId) throw new Error("User authentication is required.");
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     await setDoc(userSettingsRef, { accountantSettings: settings, userId }, { merge: true });
 }
 
-export async function getAccountantSettingsService(userId?: string): Promise<AccountantSettings | null> {
+export async function getAccountantSettingsService(userId: string): Promise<AccountantSettings | null> {
     if (!db || !userId) return null;
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     const docSnap = await getDoc(userSettingsRef);
@@ -777,10 +883,19 @@ export async function getUserSettingsService(userId: string): Promise<UserSettin
     if (docSnap.exists()) {
         return { userId, ...docSnap.data() } as UserSettings;
     }
-    return { userId }; // Return default if no settings doc exists yet
+    // Return a default structure if no settings doc exists, ensuring userId is present
+    return {
+        userId,
+        reminderDaysBefore: undefined, // Or your default
+        posSystemId: undefined,
+        posConfig: {},
+        accountantSettings: {},
+        monthlyBudget: undefined,
+        kpiPreferences: undefined,
+        quickActionPreferences: undefined,
+    };
 }
 
-// --- Temporary Data (still using localStorage for this specific flow) ---
 export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
     if (typeof window === 'undefined' || !uniqueScanId || !userId) return;
     const dataKey = `${TEMP_DATA_KEY_PREFIX}${userId}_${uniqueScanId}`;
@@ -799,21 +914,21 @@ export function clearTemporaryScanData(uniqueScanId?: string, userId?: string) {
 export function clearOldTemporaryScanData(emergencyClear: boolean = false, userIdToClear?: string) {
   if (typeof window === 'undefined') return;
   const now = Date.now();
-  const EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
+  const EXPIRY_DURATION_MS = 24 * 60 * 60 * 1000;
   let itemsCleared = 0;
   const keysToRemove: string[] = [];
 
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && (key.startsWith(TEMP_DATA_KEY_PREFIX) || key.startsWith(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX) || key.startsWith(TEMP_COMPRESSED_IMAGE_KEY_PREFIX))) {
-        if (userIdToClear && !key.includes(`_${userIdToClear}_`)) continue; // Skip if clearing for specific user and key doesn't match
+        if (userIdToClear && !key.includes(`_${userIdToClear}_`)) continue;
         const parts = key.split('_');
-        const timestampString = parts.find(part => /^\d{13,}$/.test(part)); // Find a part that is a 13+ digit number (timestamp)
+        const timestampString = parts.find(part => /^\d{13,}$/.test(part));
         const timestamp = timestampString ? parseInt(timestampString, 10) : null;
 
         if (timestamp && !isNaN(timestamp) && (now - timestamp > EXPIRY_DURATION_MS)) {
           keysToRemove.push(key);
-        } else if (!timestamp && emergencyClear && (userIdToClear || !key.includes('_SHARED_OR_NO_USER_'))) { // If no timestamp found and it's an emergency clear for a specific user or not a shared key
+        } else if (!timestamp && emergencyClear && (userIdToClear || !key.includes('_SHARED_OR_NO_USER_'))) {
           keysToRemove.push(key);
         }
     }
@@ -822,21 +937,4 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
     try { localStorage.removeItem(key); itemsCleared++; } catch (e) { console.error(`Error removing key ${key}:`, e); }
   });
   if (itemsCleared > 0) console.log(`Cleared ${itemsCleared} old/emergency temp scan items (User: ${userIdToClear || 'All'}).`);
-}
-
-// Generic function to get a single object, useful for settings that are one doc per user
-async function getStoredObject<T>(collectionName: string, userId: string): Promise<T | null> {
-  if (!db) throw new Error("Database not initialized.");
-  if (!userId) return null;
-  try {
-    const docRef = doc(db, collectionName, userId); // Assumes document ID is the userId
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as T;
-    }
-    return null;
-  } catch (error) {
-    console.error(`Error fetching object from ${collectionName} for user ${userId}:`, error);
-    throw error;
-  }
 }
