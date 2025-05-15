@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -20,9 +21,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
-import { LogIn } from 'lucide-react';
+import { LogIn, ChromeIcon } from 'lucide-react'; // Using ChromeIcon as a generic 'Google' icon
 import { useTranslation } from '@/hooks/useTranslation';
-
+import { Separator } from '@/components/ui/separator';
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -34,7 +35,7 @@ const formSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { login, loading } = useAuth();
+  const { login, signInWithGoogle, loading, user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -47,23 +48,30 @@ export default function LoginPage() {
     },
   });
 
+  useEffect(() => {
+    if (user) {
+      router.push('/');
+    }
+  }, [user, router]);
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       await login(values);
-      toast({
-        title: t('login_toast_success_title'),
-        description: t('login_toast_success_desc'),
-      });
-      router.push('/'); // Redirect to home page after successful login
+      // Toast is handled by AuthContext now for successful login
+      router.push('/'); 
     } catch (error) {
-       console.error("Login failed:", error);
-       toast({
-         title: t('login_toast_fail_title'),
-         description: t('login_toast_fail_desc'),
-         variant: "destructive",
-       });
-       // Reset password field for security
+       // Error toast is handled by AuthContext
        form.resetField("password");
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    try {
+      await signInWithGoogle();
+      // Toast is handled by AuthContext
+      router.push('/');
+    } catch (error) {
+      // Error toast is handled by AuthContext
     }
   }
 
@@ -108,6 +116,18 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+
+          <div className="my-4 flex items-center">
+            <Separator className="flex-grow" />
+            <span className="mx-2 text-xs text-muted-foreground">{t('login_or_divider')}</span>
+            <Separator className="flex-grow" />
+          </div>
+
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+            <ChromeIcon className="mr-2 h-4 w-4" /> {/* Using ChromeIcon as a placeholder */}
+            {t('login_google_button')}
+          </Button>
+          
           <div className="mt-6 text-center text-sm">
             {t('login_no_account')}{' '}
             <Link href="/register" className="font-medium text-accent hover:underline">

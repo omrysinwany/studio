@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -6,6 +7,8 @@ import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,8 +23,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus } from 'lucide-react';
+import { UserPlus, ChromeIcon } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Separator } from '@/components/ui/separator';
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -36,7 +40,7 @@ const formSchema = z.object({
 });
 
 export default function RegisterPage() {
-  const { register, loading } = useAuth();
+  const { register, signInWithGoogle, loading, user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -50,21 +54,29 @@ export default function RegisterPage() {
     },
   });
 
+  useEffect(() => {
+    if (user) {
+      router.push('/');
+    }
+  }, [user, router]);
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       await register(values);
-      toast({
-        title: t('register_toast_success_title'),
-        description: t('register_toast_success_desc'),
-      });
-      router.push('/'); // Redirect to home page after successful registration
+      // Toast is handled by AuthContext
+      router.push('/'); 
     } catch (error) {
-      console.error("Registration failed:", error);
-       toast({
-         title: t('register_toast_fail_title'),
-         description: t('register_toast_fail_desc'),
-         variant: "destructive",
-       });
+      // Error toast is handled by AuthContext
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    try {
+      await signInWithGoogle();
+       // Toast is handled by AuthContext
+      router.push('/');
+    } catch (error) {
+      // Error toast is handled by AuthContext
     }
   }
 
@@ -122,6 +134,17 @@ export default function RegisterPage() {
               </Button>
             </form>
           </Form>
+          <div className="my-4 flex items-center">
+            <Separator className="flex-grow" />
+            <span className="mx-2 text-xs text-muted-foreground">{t('register_or_divider')}</span>
+            <Separator className="flex-grow" />
+          </div>
+
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+            <ChromeIcon className="mr-2 h-4 w-4" /> {/* Using ChromeIcon as a placeholder */}
+            {t('register_google_button')}
+          </Button>
+
            <div className="mt-6 text-center text-sm">
             {t('register_has_account')}{' '}
             <Link href="/login" className="font-medium text-accent hover:underline">
