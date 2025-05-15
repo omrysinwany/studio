@@ -1,4 +1,3 @@
-
 // src/app/page.tsx
 'use client';
 
@@ -10,7 +9,7 @@ import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, Trendi
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, InvoiceHistoryItem, getInvoicesService, getStorageKey, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE, createSupplierService } from '@/services/backend';
+import { getProductsService, InvoiceHistoryItem, getInvoicesService, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE, createSupplierService, getStoredData } from '@/services/backend';
 import {
   calculateInventoryValue,
   calculateTotalItems,
@@ -23,6 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, format as formatDateFns } from 'date-fns';
+import { Timestamp } from 'firebase/firestore'; // Import Timestamp
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
@@ -71,7 +71,7 @@ export interface ItemConfig {
 const formatLargeNumber = (
     num: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
-    decimals = 0, // Default to 0 decimals
+    decimals = 0,
     isCurrency = false,
     isInteger = false
   ): string => {
@@ -85,8 +85,8 @@ const formatLargeNumber = (
 
     if (isCurrency || absNum < 10000 || (isInteger && absNum < 1000 && decimals === 0)) {
         return prefix + num.toLocaleString(localeCode || undefined, {
-            minimumFractionDigits: isCurrency ? 0 : decimals,
-            maximumFractionDigits: isCurrency ? 0 : decimals
+            minimumFractionDigits: 0, // Always 0 for currency and whole numbers
+            maximumFractionDigits: 0
         });
     }
 
@@ -104,19 +104,8 @@ const formatLargeNumber = (
         break;
       }
     }
-
-    let numDecimals;
-    const valAfterSuffix = num / si[i].value;
-
-    if (isCurrency) {
-        numDecimals = 0; // Always 0 decimals for currency in this function after abbreviation
-    } else {
-        numDecimals = (isInteger ? 0 : (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals);
-    }
-    if (si[i].value === 1 && decimals === 0 && !isCurrency) numDecimals = 0;
-
-
-    const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
+    
+    const formattedNum = (num / si[i].value).toFixed(decimals === 0 ? 0 : 1).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
   };
 
@@ -135,10 +124,10 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'inventoryValue',
     titleKey: 'home_kpi_inventory_value_title',
     icon: DollarSign,
-    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true), // decimals: 0
+    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: false,
+    showTrend: false, // Sparkline was removed
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -146,7 +135,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'grossProfit',
     titleKey: 'home_kpi_gross_profit_title',
     icon: HandCoins,
-    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true), // decimals: 0
+    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true),
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     iconColor: 'text-emerald-500 dark:text-emerald-400',
@@ -156,7 +145,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'currentMonthExpenses',
     titleKey: 'home_kpi_current_month_expenses_title',
     icon: CreditCard,
-    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true), // decimals: 0
+    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true),
     descriptionKey: 'home_kpi_current_month_expenses_desc',
     link: '/accounts',
     iconColor: 'text-red-500 dark:text-red-400',
@@ -178,7 +167,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'amountToPay',
     titleKey: 'home_kpi_amount_to_pay_title',
     icon: Banknote,
-    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true), // decimals: 0
+    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true),
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
     iconColor: 'text-orange-500 dark:text-orange-400',
@@ -198,7 +187,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'averageInvoiceValue',
     titleKey: 'home_kpi_average_invoice_value_title',
     icon: BarChart2,
-    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true), // decimals: 0
+    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true),
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
@@ -340,7 +329,7 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false,
+      defaultVisible: false, // Hidden by default
     },
      {
       id: 'addExpense',
@@ -353,7 +342,7 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory', // Assuming a link to the inventory page to add new products
+      link: '/inventory',
       defaultVisible: true,
     },
   ], [t, setIsCreateSupplierSheetOpen]);
@@ -384,37 +373,40 @@ export default function Home() {
   }, [userQuickActionPreferences, allQuickActionConfigurations]);
 
   useEffect(() => {
-    if (user) {
+    if (user && user.id) { // Ensure user.id is available
       setUserKpiPreferences(getKpiPreferences(user.id));
       setUserQuickActionPreferences(getQuickActionPreferences(user.id, allQuickActionConfigurations));
     } else if (!authLoading) {
-        setUserKpiPreferences(getKpiPreferences());
+        setUserKpiPreferences(getKpiPreferences()); // For guest or loading state, use defaults
         setUserQuickActionPreferences(getQuickActionPreferences(undefined, allQuickActionConfigurations));
     }
   }, [user, authLoading, allQuickActionConfigurations]);
 
 
   const fetchKpiData = useCallback(async () => {
-    if (!user || !user.id || authLoading) return;
+    if (!user || !user.id || authLoading) {
+      setIsLoadingKpis(false); // Stop loading if no user or still in auth loading
+      return;
+    }
 
     setIsLoadingKpis(true);
     setKpiError(null);
+    console.log("[HomePage] fetchKpiData called for user:", user.id);
     try {
-      const [products, invoicesData, suppliers, userSettings] = await Promise.all([
+      const [products, invoicesData, suppliers, userSettings, otherExpensesData] = await Promise.all([
         getProductsService(user.id),
         getInvoicesService(user.id),
         getSupplierSummariesService(user.id),
-        getUserSettingsService(user.id)
+        getUserSettingsService(user.id),
+        getStoredData<OtherExpense>(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id, []) // Fetch other expenses
       ]);
+      console.log("[HomePage] Data fetched: Products:", products.length, "Invoices:", invoicesData.length, "Suppliers:", suppliers.length);
+
 
       const invoices = invoicesData.map(inv => ({
         ...inv,
         uploadTime: inv.uploadTime
       }));
-
-      const otherExpensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
-      const storedOtherExpenses = typeof window !== 'undefined' ? localStorage.getItem(otherExpensesStorageKey) : null;
-      const otherExpensesData: OtherExpense[] = storedOtherExpenses ? JSON.parse(storedOtherExpenses) : [];
 
       const totalItems = calculateTotalItems(products);
       const inventoryValue = calculateInventoryValue(products);
@@ -426,8 +418,12 @@ export default function Home() {
         .slice(0,2);
 
       const unpaidInvoices = invoices.filter(
-        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))
-      ).sort((a, b) => new Date(a.paymentDueDate as string).getTime() - new Date(b.paymentDueDate as string).getTime());
+        invoice => (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') && invoice.paymentDueDate && isValid(invoice.paymentDueDate instanceof Timestamp ? invoice.paymentDueDate.toDate() : parseISO(invoice.paymentDueDate as string))
+      ).sort((a, b) => {
+          const dateA = a.paymentDueDate instanceof Timestamp ? a.paymentDueDate.toDate() : parseISO(a.paymentDueDate as string);
+          const dateB = b.paymentDueDate instanceof Timestamp ? b.paymentDueDate.toDate() : parseISO(b.paymentDueDate as string);
+          return dateA.getTime() - dateB.getTime();
+      });
       const nextPaymentDueInvoice = unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
 
       const amountRemainingToPay = unpaidInvoices.reduce(
@@ -443,18 +439,23 @@ export default function Home() {
       invoices.forEach(invoice => {
           if (invoice.status !== 'completed') return;
           let relevantDateForExpense: Date | null = null;
+          let paymentDateTs: Date | null = null;
+          let uploadDateTs: Date | null = null;
 
-          if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
-            const paymentDate = parseISO(invoice.paymentDueDate as string);
-            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
-                relevantDateForExpense = paymentDate;
-            }
+          if (invoice.paymentDueDate) {
+              if (invoice.paymentDueDate instanceof Timestamp) paymentDateTs = invoice.paymentDueDate.toDate();
+              else if (typeof invoice.paymentDueDate === 'string' && isValid(parseISO(invoice.paymentDueDate))) paymentDateTs = parseISO(invoice.paymentDueDate);
           }
-          if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
-              const uploadDate = parseISO(invoice.uploadTime as string);
-               if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
-                  relevantDateForExpense = uploadDate;
-              }
+          if (invoice.uploadTime) {
+              if (invoice.uploadTime instanceof Timestamp) uploadDateTs = invoice.uploadTime.toDate();
+              else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadDateTs = parseISO(invoice.uploadTime);
+          }
+
+          if (paymentDateTs && paymentDateTs >= currentMonthStart && paymentDateTs <= currentMonthEnd) {
+                relevantDateForExpense = paymentDateTs;
+          }
+          if (!relevantDateForExpense && uploadDateTs && uploadDateTs >= currentMonthStart && uploadDateTs <= currentMonthEnd) {
+                  relevantDateForExpense = uploadDateTs;
           }
 
           if (relevantDateForExpense && (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid')) {
@@ -463,10 +464,12 @@ export default function Home() {
       });
 
       const totalOtherExpensesForMonth = otherExpensesData.reduce((sum, exp) => {
-          if (!exp.date || !isValid(parseISO(exp.date as string))) return sum;
-          try {
-              const expenseDate = parseISO(exp.date as string);
-              if (isSameMonth(expenseDate, new Date())) {
+          if (!exp.date) return sum;
+          let expenseDate: Date | null = null;
+          if (exp.date instanceof Timestamp) expenseDate = exp.date.toDate();
+          else if (typeof exp.date === 'string' && isValid(parseISO(exp.date))) expenseDate = parseISO(exp.date);
+          
+          if (expenseDate && isSameMonth(expenseDate, new Date())) {
                   let amountToAdd = exp.amount;
                   const internalKey = exp._internalCategoryKey?.toLowerCase();
                   const categoryString = exp.category?.toLowerCase();
@@ -477,23 +480,24 @@ export default function Home() {
                                          t('accounts_other_expenses_tab_rent').toLowerCase()];
 
                   if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
+                      // Bi-monthly expenses are typically recorded for the month they are paid/due.
+                      // If they represent two months' worth, the user should enter the full amount,
+                      // and any proration for monthly views would happen in the display/calculation logic for that specific view.
+                      // For "This Month's Expenses" KPI, we sum the recorded amounts for the current month.
                   }
                   return sum + amountToAdd;
               }
               return sum;
-          } catch (e) {
-              console.error("Invalid date for other expense in current month calculation (Home Page):", exp.date, e);
-              return sum;
-          }
       }, 0);
       const calculatedCurrentMonthTotalExpenses = totalExpensesFromInvoices + totalOtherExpensesForMonth;
       const thirtyDaysAgo = subDays(new Date(), 30);
-      const documentsProcessed30d = invoices.filter(inv =>
-          inv.status === 'completed' &&
-          inv.uploadTime &&
-          isValid(parseISO(inv.uploadTime as string)) &&
-          parseISO(inv.uploadTime as string) >= thirtyDaysAgo
-      ).length;
+      const documentsProcessed30d = invoices.filter(inv => {
+          if (inv.status !== 'completed' || !inv.uploadTime) return false;
+          let uploadDate: Date | null = null;
+          if (inv.uploadTime instanceof Timestamp) uploadDate = inv.uploadTime.toDate();
+          else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) uploadDate = parseISO(inv.uploadTime);
+          return uploadDate && uploadDate >= thirtyDaysAgo;
+      }).length;
 
       const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
       const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
@@ -501,18 +505,36 @@ export default function Home() {
       const suppliersCountData = suppliers.length;
 
       const recentInvoices = invoices.sort((a,b) => {
-          const timeA = a.uploadTime && isValid(parseISO(a.uploadTime as string)) ? parseISO(a.uploadTime as string).getTime() : 0;
-          const timeB = b.uploadTime && isValid(parseISO(b.uploadTime as string)) ? parseISO(b.uploadTime as string).getTime() : 0;
+          const timeA = a.uploadTime ? (a.uploadTime instanceof Timestamp ? a.uploadTime.toDate() : parseISO(a.uploadTime as string)).getTime() : 0;
+          const timeB = b.uploadTime ? (b.uploadTime instanceof Timestamp ? b.uploadTime.toDate() : parseISO(b.uploadTime as string)).getTime() : 0;
           return timeB - timeA;
       }).slice(0,3);
 
       const localeToUse = t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale;
-      const mockRecentActivity = recentInvoices.map(inv => ({
-        descriptionKey: 'home_recent_activity_mock_invoice_added',
-        params: { supplier: inv.supplierName || t('invoices_unknown_supplier') },
-        time: inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) ? formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: localeToUse }) : t('home_unknown_date'),
-        link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
-      }));
+      const mockRecentActivity = recentInvoices.map(inv => {
+        let dateToFormat: Date | null = null;
+        if (inv.uploadTime) {
+          if (typeof inv.uploadTime === 'string') {
+            const parsed = parseISO(inv.uploadTime);
+            if (isValid(parsed)) {
+              dateToFormat = parsed;
+            }
+          } else if (inv.uploadTime instanceof Timestamp) { // Check for Firestore Timestamp
+            dateToFormat = inv.uploadTime.toDate();
+          } else if (inv.uploadTime instanceof Date) { // Check if it's already a Date object
+            // This case might not be strictly necessary if all Timestamps are converted to Dates upon fetch
+            // but it's good for robustness if Date objects can appear.
+            dateToFormat = inv.uploadTime;
+          }
+        }
+      
+        return {
+          descriptionKey: 'home_recent_activity_mock_invoice_added',
+          params: { supplier: inv.supplierName || t('invoices_unknown_supplier') },
+          time: dateToFormat ? formatDateFns(dateToFormat, 'PPp', { locale: localeToUse }) : t('home_unknown_date'),
+          link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
+        };
+      });
 
 
       setKpiData({
@@ -530,25 +552,28 @@ export default function Home() {
         averageInvoiceValue: averageInvoiceValueData,
         suppliersCount: suppliersCountData,
       });
+      console.log("[HomePage] KPIs processed. CurrentMonthExpenses:", calculatedCurrentMonthTotalExpenses);
 
-    } catch (error) {
-      console.error("Failed to fetch KPI data:", error);
-      setKpiError(t('home_kpi_toast_error_load_failed_desc')); // Use translated error
+    } catch (error: any) {
+      console.error("[HomePage] Failed to fetch KPI data:", error);
+      const translatedError = t('home_kpi_toast_error_load_failed_desc');
+      const finalErrorMessage = (translatedError === 'home_kpi_toast_error_load_failed_desc' ? "Failed to load dashboard data." : translatedError) + (error.message ? ` (${error.message})` : '');
+      setKpiError(finalErrorMessage);
       toast({
         title: t('error_title'),
-        description: t('home_kpi_toast_error_load_failed_desc'), // Use translated error
+        description: finalErrorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast]);
+  }, [user, authLoading, t, toast, locale]); // Added locale to dependencies
 
   useEffect(() => {
     if (user && user.id) {
       fetchKpiData();
     } else if (!authLoading && !user) {
-      setIsLoadingKpis(false);
+      setIsLoadingKpis(false); // Ensure loading stops for guests
     }
   }, [user, authLoading, fetchKpiData]);
 
@@ -567,7 +592,7 @@ export default function Home() {
 
 
   const handleSaveKpiPreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
-    if (user) {
+    if (user && user.id) { // Ensure user.id is available
         saveKpiPreferences(newPreferences, user.id);
         setUserKpiPreferences(newPreferences);
         toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
@@ -575,7 +600,7 @@ export default function Home() {
   };
 
   const handleSaveQuickActionPreferences = (newPreferences: { visibleQuickActionIds: string[], quickActionOrder: string[] }) => {
-    if (user) {
+    if (user && user.id) { // Ensure user.id is available
       saveQuickActionPreferences(newPreferences, user.id);
       setUserQuickActionPreferences(newPreferences);
       toast({ title: t('home_qa_prefs_saved_title'), description: t('home_qa_prefs_saved_desc')});
@@ -588,7 +613,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData();
+      fetchKpiData(); // Refetch KPIs to update supplier count
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -620,9 +645,9 @@ export default function Home() {
              <p className="text-lg sm:text-xl text-muted-foreground mt-2 scale-fade-in delay-100">
                {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
              </p>
-             <p className="text-sm text-muted-foreground mt-1 scale-fade-in delay-200">
-               {t('home_sub_greeting')}
-             </p>
+              <p className="text-sm text-muted-foreground mt-1 scale-fade-in delay-200">
+                {t('home_sub_greeting')}
+              </p>
            </div>
 
            <div className="mb-6 md:mb-8 flex flex-col items-center gap-3 scale-fade-in delay-200">
@@ -658,8 +683,7 @@ export default function Home() {
                     <span className="sr-only">{t('home_customize_qa_button')}</span>
                 </Button>
             </div>
-            <Card className={cn("bg-card/80 backdrop-blur-sm border-border/50 shadow-lg", styles.kpiCard)}>
-                <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4">
+            <div className={cn("grid grid-cols-2 sm:grid-cols-3 gap-3 pt-0 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4", styles.kpiCard)}>
                     {visibleQuickActions.map((action, index) => {
                         const ActionIcon = action.icon;
                         const buttonContent = (
@@ -694,8 +718,7 @@ export default function Home() {
                             <Button variant="link" onClick={() => setIsCustomizeQuickActionsSheetOpen(true)} className="text-sm text-primary">{t('home_no_quick_actions_action')}</Button>
                         </div>
                     )}
-                </CardContent>
-            </Card>
+            </div>
           </div>
 
          {/* Quick Overview (KPIs) Section */}
@@ -720,10 +743,10 @@ export default function Home() {
              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {(isLoadingKpis && user) ? (
                     Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                         <Card key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px]">
-                             <CardHeader className="pb-1 pt-0 px-0"><Skeleton className="h-4 w-2/3"/></CardHeader>
-                             <CardContent className="pt-1 pb-0 px-0"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
-                         </Card>
+                         <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px]">
+                             <div className="pb-1 pt-0 px-0"><Skeleton className="h-4 w-2/3"/></div>
+                             <div className="pt-1 pb-0 px-0"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></div>
+                         </div>
                     ))
                 ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
                     <div className="col-span-full text-center py-8 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
@@ -820,7 +843,7 @@ export default function Home() {
                                 <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                     {kpiData.nextPaymentDueInvoice.supplierName || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                 </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(kpiData.nextPaymentDueInvoice.paymentDueDate instanceof Timestamp ? kpiData.nextPaymentDueInvoice.paymentDueDate.toDate() : parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                             </p>
                         ) : (
                              <div className="text-muted-foreground mt-1 text-center py-4">
@@ -902,4 +925,3 @@ export default function Home() {
   );
 }
 
-    
