@@ -106,11 +106,10 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    /* Using a direct, more visible image for testing */
-    background-image: url('https://picsum.photos/1920/1080');
+    background-image: url('https://picsum.photos/1920/1080?grayscale&blur=5'); /* Increased blur */
     background-size: cover;
     background-position: center;
-    opacity: 0.3; /* Increased opacity for testing */
+    opacity: 0.1; /* Kept opacity low */
     z-index: -1; /* Behind all content */
     pointer-events: none; /* Allow clicks to pass through */
   }
@@ -121,20 +120,6 @@ body {
     z-index: 1;
   }
 
-  /* Subtle background pattern for specific pages if needed */
-  .home-background {
-    position: relative;
-    overflow: hidden;
-  }
-
-  /* No need for home-background::before if the body::before is sufficient */
-
-  @keyframes fadeInBackground {
-    from { opacity: 0; }
-    to { opacity: 0.3; } /* Match body::before opacity */
-  }
-
-  /* Simple fade-in animation for content */
   @keyframes fadeInContent {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -146,7 +131,6 @@ body {
     animation-fill-mode: forwards; /* Keep the 'to' state */
   }
 
-  /* New: Subtle scale and fade for cards/elements */
   @keyframes scaleFadeIn {
     from { opacity: 0; transform: scale(0.95) translateY(5px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
@@ -163,8 +147,8 @@ body {
   .delay-200 { animation-delay: 0.2s !important; }
   .delay-300 { animation-delay: 0.3s !important; }
   .delay-400 { animation-delay: 0.4s !important; }
-  .delay-500 { animation-delay: 0.5s !important; } /* Added for more staggering options */
-  .delay-600 { animation-delay: 0.6s !important; } /* Added for more staggering options */
+  .delay-500 { animation-delay: 0.5s !important; }
+  .delay-600 { animation-delay: 0.6s !important; }
 
 
   /* Ensure TabsContent only displays when active for fade-in */
@@ -179,19 +163,17 @@ body {
     opacity: 0;
   }
 
-  /* Added specific styles for kpi-card hover effect */
   .kpiCard {
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
   }
 
   .kpiCard:hover {
-    transform: translateY(-4px) scale(1.03); /* Combine scale and translate */
-    box-shadow: 0 8px 20px hsla(var(--foreground), 0.07), 0 4px 8px hsla(var(--foreground), 0.05); /* Softer, layered shadow */
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 6px 15px hsla(var(--foreground), 0.08), 0 3px 6px hsla(var(--foreground), 0.06);
   }
 
-  /* Styles for home container gradient (if different from global) */
   .homeContainerGradient {
-    /* background: linear-gradient(180deg, hsla(var(--background) / 0.95) 0%, hsla(var(--muted) / 0.5) 100%); */
+    background: linear-gradient(180deg, hsla(var(--background) / 0.3) 0%, hsla(var(--muted) / 0.15) 100%);
     position: relative;
     overflow: hidden;
   }
@@ -201,18 +183,18 @@ body {
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 35%),
-      radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 35%);
-    opacity: 0.6;
-    z-index: 0; /* Ensure it's behind homeContainerGradient content but potentially above body::before if layered explicitly */
-    animation: subtleShimmer 25s infinite alternate ease-in-out;
+      radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 30%),
+      radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 30%);
+    opacity: 0.2; /* Reduced opacity of shimmer */
+    z-index: 0;
+    animation: subtleShimmer 20s infinite alternate ease-in-out;
   }
 
   @keyframes subtleShimmer {
-    0% { transform: translate(0,0) rotate(0deg); opacity: 0.4; }
-    25% { transform: translate(3px, 3px) rotate(1deg); opacity: 0.5; }
-    50% { transform: translate(0, 6px) rotate(0deg); opacity: 0.6; }
-    75% { transform: translate(-3px, 3px) rotate(-1deg); opacity: 0.5; }
-    100% { transform: translate(0,0) rotate(0deg); opacity: 0.4; }
+    0% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
+    25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.4; }
+    50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.5; }
+    75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.4; }
+    100% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
   }
 }

@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Progress } from "@/components/ui/progress"; // Keep if used by a KPI that shows progress
 import { useAuth } from "@/context/AuthContext";
 import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, FileWarning, UserPlus } from "lucide-react";
 import Link from 'next/link';
@@ -17,17 +17,17 @@ import {
   calculateTotalItems,
   getLowStockItems,
   calculateTotalPotentialGrossProfit,
+  calculateAverageOrderValue
 } from '@/lib/kpi-calculations';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LineChart, Line, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, format as formatDateFns } from 'date-fns';
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
-import styles from "./page.module.scss"; // Assuming you are using this for homeContainerGradient
+import styles from "./page.module.scss";
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
@@ -136,7 +136,7 @@ const allKpiConfigurations: ItemConfig[] = [
     getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: false, // Removed sparkline
+    showTrend: false,
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -319,7 +319,6 @@ export default function Home() {
   const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
 
   const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
-    // "Scan Document" is now a primary button, not a quick action here.
     {
       id: 'openInvoices',
       titleKey: 'home_open_invoices',
@@ -339,7 +338,7 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false, // Hidden by default
+      defaultVisible: false,
     },
      {
       id: 'addExpense',
@@ -352,10 +351,10 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory',
+      link: '/inventory', // Assuming this leads to a page where a product can be added
       defaultVisible: true,
     },
-  ], [t, router]);
+  ], [t]);
 
 
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
@@ -496,8 +495,8 @@ export default function Home() {
 
       const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
       const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
-      const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
-      const suppliersCount = suppliers.length;
+      const averageInvoiceValueData = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
+      const suppliersCountData = suppliers.length;
 
       const recentInvoices = invoices.sort((a,b) => {
           const timeA = a.uploadTime && isValid(parseISO(a.uploadTime as string)) ? parseISO(a.uploadTime as string).getTime() : 0;
@@ -526,8 +525,8 @@ export default function Home() {
         amountRemainingToPay,
         currentMonthTotalExpenses: calculatedCurrentMonthTotalExpenses,
         documentsProcessed30d,
-        averageInvoiceValue,
-        suppliersCount,
+        averageInvoiceValue: averageInvoiceValueData,
+        suppliersCount: suppliersCountData,
       });
 
     } catch (error) {
@@ -587,7 +586,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData(); // Refresh KPI data which includes suppliersCount
+      fetchKpiData();
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -615,7 +614,7 @@ export default function Home() {
            <div className="text-center mb-6 md:mb-10">
              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary scale-fade-in">
                {t('home_welcome_title')}
-            </h1>
+             </h1>
              <p className="text-lg sm:text-xl text-muted-foreground mt-2 scale-fade-in delay-100">
                {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
              </p>
@@ -719,10 +718,10 @@ export default function Home() {
             {(isLoadingKpis && user) ? (
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                     <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px]">
-                         <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
-                         <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
-                     </Card>
+                     <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col h-[150px] sm:h-[160px]">
+                         <div className="flex flex-row items-center justify-between space-y-0 pb-1"><Skeleton className="h-4 w-2/3"/> <Skeleton className="h-5 w-5 rounded-full"/></div>
+                         <div className="pt-1 flex-grow flex flex-col justify-center"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></div>
+                     </div>
                 ))}
                 </div>
             ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
