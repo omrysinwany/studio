@@ -69,9 +69,9 @@ export interface ItemConfig {
 }
 
 const formatLargeNumber = (
-    num: number | undefined,
+    num: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
-    decimals = 1,
+    decimals = 0, // Default to 0 decimals
     isCurrency = false,
     isInteger = false
   ): string => {
@@ -83,13 +83,14 @@ const formatLargeNumber = (
     const absNum = Math.abs(num);
     const localeCode = t('locale_code_for_number_formatting') as string | undefined;
 
-    if (absNum < 10000 || (isInteger && absNum < 1000)) {
+    // If the number is small or it's an integer that shouldn't be abbreviated, format it directly
+    if (absNum < 10000 || (isInteger && absNum < 1000 && decimals === 0)) {
         return prefix + num.toLocaleString(localeCode || undefined, {
-            minimumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals),
-            maximumFractionDigits: isCurrency ? 2 : (isInteger ? 0 : decimals)
+            minimumFractionDigits: isCurrency && decimals !== 0 ? 2 : decimals, // Keep 2 decimals for currency unless explicitly 0
+            maximumFractionDigits: isCurrency && decimals !== 0 ? 2 : decimals
         });
     }
-
+    // For larger numbers or when abbreviation is desired (decimals might be > 0 for non-integers like percentages)
     const si = [
       { value: 1, symbol: "" },
       { value: 1E3, symbol: t('number_suffix_thousand') },
@@ -109,11 +110,12 @@ const formatLargeNumber = (
     const valAfterSuffix = num / si[i].value;
 
     if (isCurrency) {
-        numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : (absNum < 1000 ? 2 : decimals);
+        numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1 && decimals === 0) ? 0 : (absNum < 1000 && decimals === 0 ? 0 : 2);
+         if (decimals === 0) numDecimals = 0; // Explicitly 0 for currency
     } else {
         numDecimals = (isInteger ? 0 : (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals);
     }
-    if (si[i].value === 1) numDecimals = isCurrency ? 2 : (isInteger ? 0 : decimals) ;
+    if (si[i].value === 1 && decimals === 0) numDecimals = 0;
 
     const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
@@ -134,10 +136,10 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'inventoryValue',
     titleKey: 'home_kpi_inventory_value_title',
     icon: DollarSign,
-    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true), // decimals: 0
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: false, // Sparkline removed
+    showTrend: false,
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -145,7 +147,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'grossProfit',
     titleKey: 'home_kpi_gross_profit_title',
     icon: HandCoins,
-    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true), // decimals: 0
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     iconColor: 'text-emerald-500 dark:text-emerald-400',
@@ -155,7 +157,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'currentMonthExpenses',
     titleKey: 'home_kpi_current_month_expenses_title',
     icon: CreditCard,
-    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true), // decimals: 0
     descriptionKey: 'home_kpi_current_month_expenses_desc',
     link: '/accounts',
     iconColor: 'text-red-500 dark:text-red-400',
@@ -177,7 +179,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'amountToPay',
     titleKey: 'home_kpi_amount_to_pay_title',
     icon: Banknote,
-    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true), // decimals: 0
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
     iconColor: 'text-orange-500 dark:text-orange-400',
@@ -197,7 +199,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'averageInvoiceValue',
     titleKey: 'home_kpi_average_invoice_value_title',
     icon: BarChart2,
-    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true), // decimals: 0
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
@@ -339,7 +341,7 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false, // Hidden by default
+      defaultVisible: false, 
     },
      {
       id: 'addExpense',
@@ -355,7 +357,6 @@ export default function Home() {
       link: '/inventory',
       defaultVisible: true,
     },
-    // scanDocument removed from here as it's the primary button
   ], [t, setIsCreateSupplierSheetOpen]);
 
 
@@ -588,7 +589,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData(); // Refetch KPI data to update supplier count
+      fetchKpiData(); 
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -625,7 +626,7 @@ export default function Home() {
              </p>
            </div>
 
-          <div className="mb-6 md:mb-8 flex flex-col items-center gap-3 scale-fade-in delay-200">
+           <div className="mb-6 md:mb-8 flex flex-col items-center gap-3 scale-fade-in delay-200">
               <Button
                 size="lg"
                 className="w-full max-w-xs sm:max-w-sm bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base sm:text-lg transform hover:-translate-y-1 py-3 sm:py-4"
@@ -633,18 +634,18 @@ export default function Home() {
               >
                 <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
               </Button>
-              <div className="w-full max-w-xs sm:max-w-sm grid grid-cols-2 gap-3">
-                  <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
-                      <Link href="/inventory">
-                          <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
-                      </Link>
-                  </Button>
-                   <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
-                      <Link href="/invoices">
-                          <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
-                      </Link>
-                  </Button>
-              </div>
+               <div className="flex gap-3">
+                 <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
+                    <Link href="/inventory">
+                        <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
+                    </Link>
+                 </Button>
+                 <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
+                    <Link href="/invoices">
+                        <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
+                    </Link>
+                 </Button>
+               </div>
           </div>
 
           {/* Quick Actions Section */}
@@ -720,7 +721,7 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {(isLoadingKpis && user) ? (
                     Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                         <Card key={`skeleton-${idx}`} className={cn("shadow-md bg-background/80 h-[150px] sm:h-[160px]", styles.kpiCard)}>
+                         <Card key={`skeleton-${idx}`} className={cn("shadow-md bg-card/80 backdrop-blur-sm border-border/50 h-[150px] sm:h-[160px]", styles.kpiCard)}>
                              <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
                              <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
                          </Card>

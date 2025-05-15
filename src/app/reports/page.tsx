@@ -39,20 +39,20 @@ const formatNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {};
+    const { decimals = 0, useGrouping = true, currency = false } = options || {}; // Default decimals to 0
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, { // Use translated locale for formatting
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
+        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+            minimumFractionDigits: currency && decimals !==0 ? 2 : decimals, // Keep 2 for currency unless explicitly 0
+            maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
             useGrouping: useGrouping,
         });
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
-    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, { // Use translated locale for formatting
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
+    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+        minimumFractionDigits: currency && decimals !==0 ? 2 : decimals,
+        maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
         useGrouping: useGrouping,
     });
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
@@ -254,8 +254,6 @@ export default function ReportsPage() {
        for(let i=0; i < numPointsVOT; i++) {
            const pointDate = new Date(currentDateForVOT.getTime() + i * stepDurationVOT);
            const monthStr = format(pointDate, "MMM dd");
-           // This is a simplified simulation for inventory value trend.
-           // A real implementation would require historical snapshots of inventory value.
            const invoicesUpToPointDate = invoices.filter(inv => isValid(parseISO(inv.uploadTime)) && parseISO(inv.uploadTime) <= pointDate && inv.documentType === 'deliveryNote');
            const simulatedValue = invoicesUpToPointDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
@@ -295,14 +293,13 @@ export default function ReportsPage() {
        }
        setProcessingVolume(procVolData);
 
-        // Top Selling Products (Mock, needs sales data)
         const topProducts = inventory
             .filter(p => p.salePrice !== undefined && p.salePrice > 0)
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, // Mock
-                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1) // Mock
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, 
+                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1) 
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
             .slice(0, 5);
@@ -366,15 +363,14 @@ export default function ReportsPage() {
             })).sort((a,b) => b.totalDue - a.totalDue)
         );
 
-        // Product Profitability
         const profitability = inventory.map(p => {
             const cost = p.unitPrice || 0;
             const sale = p.salePrice;
             let profitPerUnit: number | undefined = undefined;
             let marginPercent: number | undefined = undefined;
-            if (sale !== undefined && sale > 0 && cost >= 0) { // Ensure sale price is positive
+            if (sale !== undefined && sale > 0 && cost >= 0) { 
                 profitPerUnit = sale - cost;
-                if (sale > 0) { // Avoid division by zero for margin
+                if (sale > 0) { 
                   marginPercent = (profitPerUnit / sale) * 100;
                 }
             }
@@ -387,13 +383,13 @@ export default function ReportsPage() {
                 potentialProfitPerUnit: profitPerUnit,
                 profitMarginPercent: marginPercent
             };
-        }).filter(p => p.potentialProfitPerUnit !== undefined && p.potentialProfitPerUnit >= 0); // Filter for positive profit
+        }).filter(p => p.potentialProfitPerUnit !== undefined && p.potentialProfitPerUnit >= 0); 
         setProductProfitabilityData(profitability);
 
 
      };
 
-     if (user && !isLoading) { // Check if not loading to prevent running on initial empty data
+     if (user && !isLoading) { 
         generateReports();
      }
    // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -433,10 +429,10 @@ export default function ReportsPage() {
         const rows = data.map(item =>
             headers.map(h => {
                 if (h.key === 'potentialProfitPerUnit' || h.key === 'profitMarginPercent' || h.key === 'unitPrice' || h.key === 'salePrice') {
-                    return item[h.key] !== undefined ? formatNumber(item[h.key], t, {decimals: h.key === 'profitMarginPercent' ? 1 : 2 , currency: h.key !== 'profitMarginPercent'}) : '-';
+                    return item[h.key] !== undefined ? formatNumber(item[h.key], t, {decimals: h.key === 'profitMarginPercent' ? 1 : 0 , currency: h.key !== 'profitMarginPercent'}) : '-';
                 }
                 if (h.key === 'totalDue' || h.key === 'totalAmount') {
-                    return formatNumber(item[h.key], t, {currency: true});
+                    return formatNumber(item[h.key], t, {currency: true, decimals: 0});
                 }
                 return escapeCsvValue(item[h.key]);
             }).join(',')
@@ -541,14 +537,14 @@ export default function ReportsPage() {
                 { titleKey: 'reports_kpi_total_value', value: kpis?.totalValue, Icon: DollarSign, currency: true, decimals: 0 },
                 { titleKey: 'reports_kpi_total_items', value: kpis?.totalItems, Icon: Package, decimals: 0 },
                 { titleKey: 'reports_kpi_low_stock_items', value: kpis?.lowStockItems, Icon: AlertTriangle, decimals: 0 },
-                { titleKey: 'reports_kpi_potential_gross_profit_short', value: kpis?.totalPotentialGrossProfit, Icon: HandCoins, currency: true },
-                { titleKey: 'reports_kpi_avg_invoice_value_short', value: kpis?.averageInvoiceValue, Icon: FileTextIcon, currency: true },
+                { titleKey: 'reports_kpi_potential_gross_profit_short', value: kpis?.totalPotentialGrossProfit, Icon: HandCoins, currency: true, decimals: 0 },
+                { titleKey: 'reports_kpi_avg_invoice_value_short', value: kpis?.averageInvoiceValue, Icon: FileTextIcon, currency: true, decimals: 0 },
                 { titleKey: 'reports_kpi_active_suppliers_short', value: kpis?.totalActiveSuppliers, Icon: Briefcase, decimals: 0 },
-                { titleKey: 'reports_kpi_total_invoice_costs_period', value: kpis?.totalInvoiceCostsPeriod, Icon: Banknote, currency: true },
-                { titleKey: 'reports_kpi_total_other_expenses_period', value: kpis?.totalOtherExpensesPeriod, Icon: ListChecks, currency: true },
-                { titleKey: 'reports_kpi_total_recorded_expenses_period', value: kpis?.totalRecordedExpensesPeriod, Icon: DollarSign, currency: true, iconColor: "text-destructive" },
+                { titleKey: 'reports_kpi_total_invoice_costs_period', value: kpis?.totalInvoiceCostsPeriod, Icon: Banknote, currency: true, decimals: 0 },
+                { titleKey: 'reports_kpi_total_other_expenses_period', value: kpis?.totalOtherExpensesPeriod, Icon: ListChecks, currency: true, decimals: 0 },
+                { titleKey: 'reports_kpi_total_recorded_expenses_period', value: kpis?.totalRecordedExpensesPeriod, Icon: DollarSign, currency: true, decimals: 0, iconColor: "text-destructive" },
                 { titleKey: 'reports_kpi_open_invoices_count_period', value: kpis?.numberOfOpenInvoices, Icon: FileWarning, decimals: 0 },
-                { titleKey: 'reports_kpi_open_invoices_amount_period', value: kpis?.totalAmountDueFromOpenInvoices, Icon: Banknote, currency: true, iconColor: "text-orange-500" },
+                { titleKey: 'reports_kpi_open_invoices_amount_period', value: kpis?.totalAmountDueFromOpenInvoices, Icon: Banknote, currency: true, decimals: 0, iconColor: "text-orange-500" },
             ].map((kpi, index) => (
                 <Card key={index} className={cn("xl:col-span-1", index >= 9 && "lg:col-span-2 xl:col-span-3")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-1.5 pt-2.5 px-3">
@@ -607,9 +603,9 @@ export default function ReportsPage() {
                                     <TableRow key={p.id}>
                                         <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{p.name}</TableCell>
                                         <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{p.catalogNumber}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(p.unitPrice, t, {currency: true})}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumber(p.salePrice, t, {currency: true}) : '-'}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumber(p.potentialProfitPerUnit, t, {currency: true}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(p.unitPrice, t, {currency: true, decimals: 0})}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumber(p.salePrice, t, {currency: true, decimals: 0}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumber(p.potentialProfitPerUnit, t, {currency: true, decimals: 0}) : '-'}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.profitMarginPercent !== undefined ? `${formatNumber(p.profitMarginPercent, t, {decimals:1})}%` : '-'}</TableCell>
                                     </TableRow>
                                 ))}
@@ -657,7 +653,7 @@ export default function ReportsPage() {
                                      <RechartsTooltip
                                         cursor={false}
                                         content={<ChartTooltipContent indicator="line" />}
-                                        formatter={(value: number) => formatNumber(value, t, { currency: true })}
+                                        formatter={(value: number) => formatNumber(value, t, { currency: true, decimals: 0 })}
                                     />
                                     <Line type="monotone" dataKey="value" stroke="var(--color-value)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} name={t(chartConfig.value.labelKey)}/>
                                 </LineChart>
@@ -751,20 +747,20 @@ export default function ReportsPage() {
                                          {expensesByCategoryData.map(item => (
                                              <TableRow key={item.category}>
                                                  <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.category}</TableCell>
-                                                 <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalAmount, t, {currency: true})}</TableCell>
+                                                 <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalAmount, t, {currency: true, decimals: 0})}</TableCell>
                                              </TableRow>
                                          ))}
                                      </TableBody>
                                  </Table>
                              </div>
-                             <div className={cn("md:col-span-1 flex items-center justify-center p-0 sm:pb-2 h-[180px] sm:h-[220px]", isMobile && "w-full mt-2")}>
+                             <div className={cn("md:col-span-1 flex items-center justify-center p-0 sm:pb-2 h-[180px] sm:h-[220px]", isMobile && expensesByCategoryData.length > 0 && "mt-2", expensesByCategoryData.length === 0 && "md:col-span-2 flex items-center justify-center")}>
                                   <ChartContainer config={chartConfig} className="mx-auto aspect-square h-full w-full">
                                        <ResponsiveContainer width="100%" height="100%">
                                             <RechartsPieChart onClick={handlePieChartClick}>
                                                  <RechartsTooltip
                                                      cursor={true}
                                                      content={<ChartTooltipContent hideLabel indicator="dot" />}
-                                                     formatter={(value: number, name) => [`${name}: ${formatNumber(value, t, { currency: true })}`]}
+                                                     formatter={(value: number, name) => [`${name}: ${formatNumber(value, t, { currency: true, decimals: 0 })}`]}
                                                  />
                                                  <Pie
                                                      data={expensesByCategoryData}
@@ -850,7 +846,7 @@ export default function ReportsPage() {
                                          <TableRow key={product.id || index}>
                                              <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{product.name}</TableCell>
                                              <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.quantitySold, t, { decimals: 0 })}</TableCell>
-                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, t, { currency: true })}</TableCell>
+                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(product.totalValue, t, { currency: true, decimals: 0 })}</TableCell>
                                          </TableRow>
                                      ))}
                                  </TableBody>
@@ -878,19 +874,19 @@ export default function ReportsPage() {
                          <>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_income')}</span>
-                                <span className="font-semibold">{formatNumber(profitAndLossData.income, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.income, t, {currency: true, decimals: 0})}</span>
                             </div>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_operating_expenses')}</span>
-                                <span className="font-semibold">{formatNumber(profitAndLossData.expenses, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.expenses, t, {currency: true, decimals: 0})}</span>
                             </div>
                             <div className="flex justify-between text-sm items-center py-1 border-b">
                                 <span className="text-muted-foreground">{t('reports_pnl_open_liabilities')}</span>
-                                <span className="font-semibold">{formatNumber(profitAndLossData.liabilities, t, {currency: true})}</span>
+                                <span className="font-semibold">{formatNumber(profitAndLossData.liabilities, t, {currency: true, decimals: 0})}</span>
                             </div>
                             <div className={cn("flex justify-between text-base font-semibold items-center py-1.5", profitAndLossData.net < 0 && "text-destructive")}>
                                 <span>{t('reports_pnl_net_profit_loss')}</span>
-                                <span>{formatNumber(profitAndLossData.net, t, {currency: true})}</span>
+                                <span>{formatNumber(profitAndLossData.net, t, {currency: true, decimals: 0})}</span>
                             </div>
                          </>
                      ) : (
@@ -930,7 +926,7 @@ export default function ReportsPage() {
                                 {supplierLiabilitiesData.map(item => (
                                     <TableRow key={item.supplierName}>
                                         <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.supplierName}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalDue, t, {currency: true})}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(item.totalDue, t, {currency: true, decimals: 0})}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{item.invoiceCount}</TableCell>
                                     </TableRow>
                                 ))}
@@ -1040,7 +1036,7 @@ export default function ReportsPage() {
                                 <TableRow key={expense.id}>
                                     <TableCell>{expense.description}</TableCell>
                                     <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
-                                    <TableCell className="text-right">{formatNumber(expense.amount, t, {currency: true})}</TableCell>
+                                    <TableCell className="text-right">{formatNumber(expense.amount, t, {currency: true, decimals: 0})}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
