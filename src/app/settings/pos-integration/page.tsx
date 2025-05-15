@@ -9,17 +9,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getAvailablePosSystems, testPosConnection } from '@/services/pos-integration/integration-manager';
+// Corrected imports to use the actual exported names with 'Service' suffix
 import {
     savePosSettingsService,
     getPosSettingsService,
     finalizeSaveProductsService
 } from '@/services/backend';
-import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface';
-import { syncInventoryAction, syncSalesAction } from '@/actions/sync-actions'; // Updated import
-import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw, ArrowLeft } from 'lucide-react';
+import type { PosConnectionConfig, SyncResult } from '@/services/pos-integration/pos-adapter.interface'; // Product type is not directly used here but by SyncResult
+import { syncInventoryAction, syncSalesAction } from '@/actions/sync-actions';
+import { Loader2, Settings, Plug, CheckCircle, XCircle, Save, HelpCircle, RefreshCw, ArrowLeft } from 'lucide-react'; // Added RefreshCw
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from '@/components/ui/separator'; // Import Separator
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -36,9 +37,9 @@ const systemConfigFields: Record<string, { key: keyof PosConnectionConfig; label
   ],
   hashavshevet: [
      { key: 'apiKey', labelKey: 'pos_config_hash_apikey', type: 'password', tooltipKey: 'pos_config_hash_apikey_tooltip' },
-     { key: 'apiSecret', labelKey: 'pos_config_hash_apisecret', type: 'password', tooltipKey: 'pos_config_hash_apisecret_tooltip' },
-     { key: 'companyId', labelKey: 'pos_config_hash_companyid', type: 'text', tooltipKey: 'pos_config_hash_companyid_tooltip' },
-     { key: 'endpointUrl', labelKey: 'pos_config_hash_endpoint', type: 'text', tooltipKey: 'pos_config_hash_endpoint_tooltip' },
+    //  { key: 'apiSecret', labelKey: 'pos_config_hash_apisecret', type: 'password', tooltipKey: 'pos_config_hash_apisecret_tooltip' },
+    //  { key: 'companyId', labelKey: 'pos_config_hash_companyid', type: 'text', tooltipKey: 'pos_config_hash_companyid_tooltip' },
+    //  { key: 'endpointUrl', labelKey: 'pos_config_hash_endpoint', type: 'text', tooltipKey: 'pos_config_hash_endpoint_tooltip' },
   ],
 };
 
@@ -130,7 +131,7 @@ export default function PosIntegrationSettingsPage() {
      let result: { success: boolean; message: string } | null = null;
      console.log(`[POS Page] Testing connection for ${selectedSystemId} with config:`, configValues);
      try {
-       result = await testPosConnection(selectedSystemId, configValues); // This function now correctly uses actions
+       result = await testPosConnection(selectedSystemId, configValues);
        setTestResult(result);
        toast({
          title: result.success ? t('pos_toast_test_success_title') : t('pos_toast_test_fail_title'),
@@ -177,7 +178,7 @@ export default function PosIntegrationSettingsPage() {
   };
 
    const handleSyncInventoryNow = async () => {
-     if (!selectedSystemId || !user) return;
+     if (!selectedSystemId || !user || !user.id) return;
 
      setIsSyncingInventory(true);
      setSyncResults([]);
@@ -187,10 +188,16 @@ export default function PosIntegrationSettingsPage() {
          const inventoryResult = await syncInventoryAction(configValues, selectedSystemId, user.id);
          setSyncResults(prev => [...prev, inventoryResult]);
 
-         if (inventoryResult.success && inventoryResult.products && inventoryResult.products.length > 0) {
+         if (inventoryResult.success && inventoryResult.products && inventoryResult.products.length > 0 && user.id) {
              try {
                  console.log(`[POS Page] Saving ${inventoryResult.products.length} synced products...`);
-                 await finalizeSaveProductsService(inventoryResult.products, `POS_Inventory_Sync_${selectedSystemId}_${new Date().toISOString().split('T')[0]}`, `${selectedSystemId}_sync`, user.id);
+                 // Pass products directly, finalizeSaveProductsService will handle assigning userId
+                 await finalizeSaveProductsService(
+                    inventoryResult.products,
+                    `POS_Inventory_Sync_${selectedSystemId}_${new Date().toISOString().split('T')[0]}`,
+                    `${selectedSystemId}_sync` as 'deliveryNote' | 'invoice', // Assuming sync is like a delivery note
+                    user.id // Pass userId explicitly
+                 );
                  console.log(`[POS Page] Successfully saved synced products.`);
                  setSyncResults(prev => [...prev, { success: true, message: t('pos_toast_sync_save_products_desc', { count: inventoryResult.products?.length ?? 0 }) }]);
                  toast({
@@ -235,21 +242,18 @@ export default function PosIntegrationSettingsPage() {
     if (!selectedSystemId || !user) return;
 
     setIsSyncingSales(true);
-    setSyncResults([]); // Clear previous results or manage them differently if needed
+    setSyncResults([]);
     toast({ title: t('pos_toast_sync_start_title'), description: t('pos_toast_sync_start_desc_sales', { systemId: selectedSystemId }) });
 
     try {
         const salesResult = await syncSalesAction(configValues, selectedSystemId, user.id);
-        setSyncResults(prev => [...prev, salesResult]); // Add sales result
+        setSyncResults(prev => [...prev, salesResult]);
 
         if (salesResult.success) {
             toast({
                 title: t('pos_toast_sync_complete_title_sales'),
-                // Assuming salesResult.message contains useful info, otherwise use a generic one
                 description: salesResult.message || t('pos_toast_sync_complete_desc_sales_generic', { systemId: selectedSystemId }),
             });
-            // Further processing for sales data might be needed here (e.g., updating reports, etc.)
-            // For now, just showing the success message.
         } else {
            toast({
                title: t('pos_toast_sync_fail_title_sales'),
@@ -475,3 +479,4 @@ export default function PosIntegrationSettingsPage() {
     </div>
   );
 }
+

@@ -1,4 +1,3 @@
-
 // src/app/edit-invoice/page.tsx
 'use client';
 
@@ -7,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, Edit, Eye, FileText as FileTextIconLucide, CheckCircle, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -40,7 +39,7 @@ import PaymentDueDateDialog from '@/components/payment-due-date-dialog';
 import { useAuth } from '@/context/AuthContext';
 import { Label } from '@/components/ui/label';
 import { format, parseISO, isValid } from 'date-fns';
-import { Timestamp } from "firebase/firestore"; // Import Timestamp from Firestore
+import { Timestamp } from "firebase/firestore";
 import { cn } from '@/lib/utils';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
@@ -52,11 +51,11 @@ interface EditableProduct extends Product {
 }
 
 interface EditableTaxInvoiceDetails {
-    supplierName?: string;
-    invoiceNumber?: string;
-    totalAmount?: number;
-    invoiceDate?: string | Timestamp;
-    paymentMethod?: string;
+    supplierName?: string | null;
+    invoiceNumber?: string | null;
+    totalAmount?: number | null;
+    invoiceDate?: string | Timestamp | null;
+    paymentMethod?: string | null;
 }
 
 const formatInputValue = (value: number | undefined | null, fieldType: 'currency' | 'quantity' | 'stockLevel', t: (key: string, params?: Record<string, string | number>) => string): string => {
@@ -101,18 +100,18 @@ function EditInvoiceContent() {
 
   const [documentType, setDocumentType] = useState<'deliveryNote' | 'invoice' | null>(null);
 
-  const [isViewMode, setIsViewMode] = useState(true); // Start in view mode
+  const [isViewMode, setIsViewMode] = useState(true);
   const [isEditingTaxDetails, setIsEditingTaxDetails] = useState(false);
   const [isEditingDeliveryNoteProducts, setIsEditingDeliveryNoteProducts] = useState(false);
 
 
   const [isNewScan, setIsNewScan] = useState(false);
 
-  const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined>(undefined);
-  const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined>(undefined);
-  const [extractedTotalAmount, setExtractedTotalAmount] = useState<number | undefined>(undefined);
-  const [extractedInvoiceDate, setExtractedInvoiceDate] = useState<string | Timestamp | undefined>(undefined);
-  const [extractedPaymentMethod, setExtractedPaymentMethod] = useState<string | undefined>(undefined);
+  const [extractedInvoiceNumber, setExtractedInvoiceNumber] = useState<string | undefined | null>(undefined);
+  const [extractedSupplierName, setExtractedSupplierName] = useState<string | undefined | null>(undefined);
+  const [extractedTotalAmount, setExtractedTotalAmount] = useState<number | undefined | null>(undefined);
+  const [extractedInvoiceDate, setExtractedInvoiceDate] = useState<string | Timestamp | undefined | null>(undefined);
+  const [extractedPaymentMethod, setExtractedPaymentMethod] = useState<string | undefined | null>(undefined);
 
   const [editableTaxInvoiceDetails, setEditableTaxInvoiceDetails] = useState<EditableTaxInvoiceDetails>({});
   const [initialScannedTaxDetails, setInitialScannedTaxDetails] = useState<EditableTaxInvoiceDetails>({});
@@ -134,7 +133,7 @@ function EditInvoiceContent() {
   const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
 
   const [showPaymentDueDateDialog, setShowPaymentDueDateDialog] = useState(false);
-  const [selectedPaymentDueDate, setSelectedPaymentDueDate] = useState<string | Date | undefined>(undefined);
+  const [selectedPaymentDueDate, setSelectedPaymentDueDate] = useState<string | Date | Timestamp | undefined>(undefined);
 
 
   useEffect(() => {
@@ -148,7 +147,7 @@ function EditInvoiceContent() {
         console.warn("[EditInvoice] cleanupTemporaryData called, but user ID is missing.");
         return;
     }
-    const uniqueScanIdToClear = initialTempInvoiceId ? initialTempInvoiceId.replace(`pending-inv-${user.id}_`, '') : (initialDataKey ? initialDataKey.replace(`${TEMP_DATA_KEY_PREFIX}${user.id}_`, '') : null);
+    const uniqueScanIdToClear = initialTempInvoiceId ? initialTempInvoiceId.replace(`pending-inv-${user.id}_`, '') : (initialDataKey ? initialDataKey.replace(getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_`), '') : null);
 
     if (uniqueScanIdToClear) {
         clearTemporaryScanData(uniqueScanIdToClear, user.id);
@@ -162,7 +161,7 @@ function EditInvoiceContent() {
     setIsLoading(true);
     setErrorLoading(null);
     setScanProcessErrorState(null);
-    setIsViewMode(true); // Default to view mode on load
+    setIsViewMode(true);
     
     const keyParam = searchParams.get('key');
     const nameParam = searchParams.get('fileName');
@@ -174,18 +173,18 @@ function EditInvoiceContent() {
     setInitialDataKey(keyParam);
     setInitialTempInvoiceId(tempInvIdParam);
     setInitialCompressedImageKey(compressedKeyParam);
-    setIsNewScan(!invoiceIdParam && !!keyParam);
+    setIsNewScan(!invoiceIdParam && !!(keyParam || tempInvIdParam)); // A new scan if we have a temp key/ID and no final invoiceId
     setDocumentType(docTypeParam);
 
     let uniquePartFromKeyOrTempId: string | null = null;
-    if (keyParam?.startsWith(`${TEMP_DATA_KEY_PREFIX}${user.id}_`)) {
-        uniquePartFromKeyOrTempId = keyParam.substring(`${TEMP_DATA_KEY_PREFIX}${user.id}_`.length);
+    if (keyParam?.startsWith(getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_`))) {
+        uniquePartFromKeyOrTempId = keyParam.substring(getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_`).length);
     } else if (tempInvIdParam?.startsWith(`pending-inv-${user.id}_`)) {
         uniquePartFromKeyOrTempId = tempInvIdParam.substring(`pending-inv-${user.id}_`.length);
     }
 
     if (uniquePartFromKeyOrTempId) {
-        setInitialOriginalImagePreviewKey(`${TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX}${user.id}_${uniquePartFromKeyOrTempId}`);
+        setInitialOriginalImagePreviewKey(getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`));
     }
 
     if (nameParam) {
@@ -196,7 +195,7 @@ function EditInvoiceContent() {
     
 
     if (invoiceIdParam) {
-        setIsViewMode(true); // Existing invoice, start in view mode
+        setIsViewMode(true);
         try {
             const allInvoices = await getInvoicesService(user.id);
             const inv = allInvoices.find(i => i.id === invoiceIdParam);
@@ -216,7 +215,7 @@ function EditInvoiceContent() {
                 setExtractedTotalAmount(inv.totalAmount);
                 setExtractedInvoiceDate(inv.invoiceDate);
                 setExtractedPaymentMethod(inv.paymentMethod);
-                setSelectedPaymentDueDate(inv.paymentDueDate ? (inv.paymentDueDate as Timestamp).toDate() : undefined);
+                setSelectedPaymentDueDate(inv.paymentDueDate ? (inv.paymentDueDate instanceof Timestamp ? inv.paymentDueDate.toDate() : parseISO(inv.paymentDueDate as string)) : undefined);
 
                 const taxDetails = {
                     supplierName: inv.supplierName,
@@ -240,16 +239,24 @@ function EditInvoiceContent() {
             console.error("Error loading existing invoice:", e);
             setErrorLoading(t('edit_invoice_error_loading_existing'));
         }
-    } else if (keyParam) {
-        setIsViewMode(true); // New scan, start in view mode to review AI results
+    } else if (keyParam || tempInvIdParam) { // If it's a new scan (has temp data)
+        setIsViewMode(true);
         let storedData: string | null = null;
+        let actualDataKey = keyParam; // Use keyParam if available
+
+        // If keyParam is not available but tempInvIdParam is, construct the dataKey
+        if (!actualDataKey && tempInvIdParam && uniquePartFromKeyOrTempId) {
+            actualDataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`);
+        }
+
+
         try {
-            storedData = localStorage.getItem(keyParam);
+             if (actualDataKey) storedData = localStorage.getItem(actualDataKey);
             if(initialOriginalImagePreviewKey) setDisplayedOriginalImageUrl(localStorage.getItem(initialOriginalImagePreviewKey));
             if(initialCompressedImageKey) setDisplayedCompressedImageUrl(localStorage.getItem(initialCompressedImageKey));
 
         } catch(e) {
-            console.error("Error reading from localStorage for key:", keyParam, e);
+            console.error("Error reading from localStorage for key:", actualDataKey, e);
             setErrorLoading(t('edit_invoice_error_localstorage_read'));
             cleanupTemporaryData();
             setIsLoading(false);
@@ -258,10 +265,10 @@ function EditInvoiceContent() {
         }
 
         if (!storedData) {
-            setErrorLoading(t('edit_invoice_error_scan_results_not_found_key', {key: keyParam}));
+            setErrorLoading(t('edit_invoice_error_scan_results_not_found_key', {key: actualDataKey || 'unknown'}));
             toast({
               title: t('edit_invoice_toast_error_loading_title'),
-              description: t('edit_invoice_toast_error_loading_desc_not_found_with_key', {key: keyParam}),
+              description: t('edit_invoice_toast_error_loading_desc_not_found_with_key', {key: actualDataKey || 'unknown'}),
               variant: "destructive",
             });
             cleanupTemporaryData();
@@ -381,7 +388,7 @@ function EditInvoiceContent() {
              setEditableTaxInvoiceDetails({});
              setInitialScannedTaxDetails({});
         }
-    } else if (!initialDataLoaded) {
+    } else if (!initialDataLoaded) { // This case means no key, no tempInvId, no invoiceId
        setErrorLoading(t('edit_invoice_error_no_key_or_id'));
        setProducts([]);
        setInitialScannedProducts([]);
@@ -402,7 +409,8 @@ function EditInvoiceContent() {
     if(user && user.id) {
       loadData();
     }
-  }, [user, loadData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
 
   const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
@@ -465,11 +473,11 @@ function EditInvoiceContent() {
     if (isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate) {
         setShowPaymentDueDateDialog(true);
     } else if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
-        checkForNewProductsAndDetails(products); // Proceed to barcode/price if supplier confirmed & date set
+        checkForNewProductsAndDetails(products);
     }
   };
 
-  const handlePaymentDueDateConfirm = (dueDate: string | Date | undefined) => {
+  const handlePaymentDueDateConfirm = (dueDate: string | Date | Timestamp | undefined) => {
     setSelectedPaymentDueDate(dueDate);
     setShowPaymentDueDateDialog(false);
     if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
@@ -513,11 +521,11 @@ function EditInvoiceContent() {
              }
             updatedProduct.lineTotal = currentLineTotal;
           } else if (field === 'lineTotal') {
-            if (currentQuantity > 0) {
+            if (currentQuantity > 0 && currentLineTotal !== 0) {
               currentUnitPrice = parseFloat((currentLineTotal / currentQuantity).toFixed(2));
               updatedProduct.unitPrice = currentUnitPrice;
             } else {
-                updatedProduct.unitPrice = (currentLineTotal === 0) ? 0 : currentUnitPrice;
+                updatedProduct.unitPrice = (currentLineTotal === 0) ? 0 : (currentUnitPrice > 0 ? currentUnitPrice : 0);
             }
           }
 
@@ -540,12 +548,12 @@ function EditInvoiceContent() {
   };
 
   const handleTaxInvoiceDetailsChange = (field: keyof EditableTaxInvoiceDetails, value: string | number | undefined | Date | Timestamp) => {
-     setEditableTaxInvoiceDetails(prev => ({ ...prev, [field]: value }));
+     setEditableTaxInvoiceDetails(prev => ({ ...prev, [field]: value === '' ? null : value })); // Set to null if empty string
         switch(field) {
             case 'supplierName': setExtractedSupplierName(String(value || '')); break;
             case 'invoiceNumber': setExtractedInvoiceNumber(String(value || '')); break;
-            case 'totalAmount': setExtractedTotalAmount(Number(value || 0)); break;
-            case 'invoiceDate': setExtractedInvoiceDate(value instanceof Date ? value.toISOString() : (value instanceof Timestamp ? value : (typeof value === 'string' ? value : undefined))); break;
+            case 'totalAmount': setExtractedTotalAmount(value === '' || value === undefined ? null : Number(value)); break;
+            case 'invoiceDate': setExtractedInvoiceDate(value instanceof Date ? value : (value instanceof Timestamp ? value : (typeof value === 'string' ? value : null))); break;
             case 'paymentMethod': setExtractedPaymentMethod(String(value || '')); break;
         }
   };
@@ -611,12 +619,12 @@ function EditInvoiceContent() {
             documentType,
             user.id,
             initialTempInvoiceId || undefined,
-            finalInvoiceNumberForSave,
-            finalSupplierNameForSave,
-            finalTotalAmountForSave,
-            selectedPaymentDueDate ? (typeof selectedPaymentDueDate === 'string' ? selectedPaymentDueDate : selectedPaymentDueDate.toISOString()) : undefined,
-            finalInvoiceDateForSave,
-            finalPaymentMethodForSave,
+            finalInvoiceNumberForSave || undefined,
+            finalSupplierNameForSave || undefined,
+            finalTotalAmountForSave ?? undefined,
+            selectedPaymentDueDate ? (selectedPaymentDueDate instanceof Timestamp ? selectedPaymentDueDate : (selectedPaymentDueDate instanceof Date ? selectedPaymentDueDate.toISOString() : selectedPaymentDueDate)) : undefined,
+            finalInvoiceDateForSave || undefined,
+            finalPaymentMethodForSave || undefined,
             displayedOriginalImageUrl || undefined,
             displayedCompressedImageUrl || undefined
           );
@@ -632,7 +640,7 @@ function EditInvoiceContent() {
             setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
             setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate);
             setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
-            setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate as Timestamp).toDate() : undefined);
+            setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate instanceof Timestamp ? result.finalInvoiceRecord.paymentDueDate.toDate() : parseISO(result.finalInvoiceRecord.paymentDueDate as string)) : undefined);
             setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
             setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
 
@@ -654,7 +662,7 @@ function EditInvoiceContent() {
             setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
             setIsEditingDeliveryNoteProducts(false);
             setIsEditingTaxDetails(false);
-            setIsViewMode(true); // Switch back to view mode after successful save
+            setIsViewMode(true);
              toast({
                 title: t('edit_invoice_toast_products_saved_title'),
                 description: t('edit_invoice_toast_products_saved_desc'),
@@ -668,7 +676,10 @@ function EditInvoiceContent() {
 
           } else {
              console.error("[finalizeSaveProductsService] Final invoice record not returned or error occurred.", result);
-             setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
+             setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: result.uniqueScanIdToClear ? "Clear temp data & try again." : "Final invoice record not returned."}));
+             if (result.uniqueScanIdToClear && user?.id) {
+                clearTemporaryScanData(result.uniqueScanIdToClear, user.id);
+             }
           }
 
       } catch (error: any) {
@@ -726,12 +737,12 @@ function EditInvoiceContent() {
         documentType,
         user.id,
         initialTempInvoiceId || undefined,
-        finalInvoiceNumberForSave,
-        finalSupplierNameForSave,
-        finalTotalAmountForSave,
-        selectedPaymentDueDate ? (typeof selectedPaymentDueDate === 'string' ? selectedPaymentDueDate : selectedPaymentDueDate.toISOString()) : undefined,
-        finalInvoiceDateForSave,
-        finalPaymentMethodForSave,
+        finalInvoiceNumberForSave || undefined,
+        finalSupplierNameForSave || undefined,
+        finalTotalAmountForSave ?? undefined,
+        selectedPaymentDueDate ? (selectedPaymentDueDate instanceof Timestamp ? selectedPaymentDueDate : (selectedPaymentDueDate instanceof Date ? selectedPaymentDueDate.toISOString() : selectedPaymentDueDate)) : undefined,
+        finalInvoiceDateForSave || undefined,
+        finalPaymentMethodForSave || undefined,
         displayedOriginalImageUrl || undefined,
         displayedCompressedImageUrl || undefined
       );
@@ -747,7 +758,7 @@ function EditInvoiceContent() {
         setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
         setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate);
         setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
-        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate as Timestamp).toDate() : undefined);
+        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate instanceof Timestamp ? result.finalInvoiceRecord.paymentDueDate.toDate() : parseISO(result.finalInvoiceRecord.paymentDueDate as string)) : undefined);
         setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
         setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
 
@@ -765,14 +776,17 @@ function EditInvoiceContent() {
         setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
         setIsEditingDeliveryNoteProducts(false);
         setIsEditingTaxDetails(false);
-        setIsViewMode(true); // Switch back to view mode
+        setIsViewMode(true);
         toast({
             title: t('edit_invoice_toast_invoice_details_saved_title'),
             description: t('edit_invoice_toast_invoice_details_saved_desc'),
         });
         router.push('/invoices?tab=scanned-docs');
       } else {
-        setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned for tax invoice."}));
+        setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: result.uniqueScanIdToClear ? "Clear temp data & try again." : "Final invoice record not returned for tax invoice."}));
+        if (result.uniqueScanIdToClear && user?.id) {
+            clearTemporaryScanData(result.uniqueScanIdToClear, user.id);
+        }
       }
     } catch (error: any) {
       console.error("Failed to finalize save for tax invoice:", error);
@@ -850,9 +864,9 @@ const proceedWithActualSave = async () => {
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
             setIsSaving(false);
         } else {
-            if (isNewScan) {
+            if (isNewScan && products.length > 0) { // Only check for new products if there are products and it's a new scan
                 await checkForNewProductsAndDetails(priceCheckResult.productsToSaveDirectly);
-            } else {
+            } else { // Existing invoice or no products (e.g., empty delivery note)
                 await proceedWithFinalSave(priceCheckResult.productsToSaveDirectly);
             }
         }
@@ -873,6 +887,10 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
     if (!user?.id) {
         toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
         setIsSaving(false);
+        return;
+    }
+    if (productsReadyForDetailCheck.length === 0) { // If no products, save directly
+        await proceedWithFinalSave([]);
         return;
     }
     try {
@@ -923,7 +941,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             return resolvedVersion ? { ...originalProduct, unitPrice: resolvedVersion.unitPrice } : originalProduct;
         });
         setProductsForNextStep(updatedProductsForDetailCheck);
-        if (isNewScan) {
+        if (isNewScan && products.length > 0) {
             checkForNewProductsAndDetails(updatedProductsForDetailCheck);
         } else {
             proceedWithFinalSave(updatedProductsForDetailCheck);
@@ -985,7 +1003,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           setExtractedPaymentMethod(initialScannedTaxDetails.paymentMethod);
         }
         setIsEditingTaxDetails(false);
-        setIsViewMode(true); // Revert to view mode
+        setIsViewMode(true);
     };
 
     const handleSaveEditTaxDetails = () => {
@@ -998,27 +1016,27 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         }
         setInitialScannedTaxDetails({...editableTaxInvoiceDetails});
         setIsEditingTaxDetails(false);
-        setIsViewMode(true); // Revert to view mode
+        setIsViewMode(true);
         toast({ title: t('edit_invoice_toast_section_updated_title'), description: t('edit_invoice_toast_section_updated_desc') });
     };
 
     const handleCancelEditProducts = () => {
         setProducts(initialScannedProducts.map(p => ({...p})));
         setIsEditingDeliveryNoteProducts(false);
-        setIsViewMode(true); // Revert to view mode
+        setIsViewMode(true);
     };
 
     const handleSaveEditProducts = () => {
         setInitialScannedProducts(products.map(p => ({...p})));
         setIsEditingDeliveryNoteProducts(false);
-        setIsViewMode(true); // Revert to view mode
+        setIsViewMode(true);
         toast({ title: t('edit_invoice_toast_products_updated_title_section'), description: t('edit_invoice_toast_section_updated_desc') });
     };
 
     const toggleEditTaxDetails = () => {
-        if (isEditingTaxDetails) { // Was editing, now cancelling
-            handleCancelEditTaxDetails();
-        } else { // Was viewing, now editing
+        if (isEditingTaxDetails) {
+            handleSaveEditTaxDetails();
+        } else {
             setEditableTaxInvoiceDetails({...initialScannedTaxDetails});
             setIsEditingTaxDetails(true);
             setIsViewMode(false);
@@ -1026,9 +1044,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
     };
     
     const toggleEditDeliveryNoteProducts = () => {
-        if (isEditingDeliveryNoteProducts) { // Was editing, now cancelling
-            handleCancelEditProducts();
-        } else { // Was viewing, now editing
+        if (isEditingDeliveryNoteProducts) {
+            handleSaveEditProducts();
+        } else {
             setProducts([...initialScannedProducts]);
             setIsEditingDeliveryNoteProducts(true);
             setIsViewMode(false);
@@ -1065,7 +1083,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
     const showManualEntryPrompt = isNewScan &&
         ((documentType === 'deliveryNote' && products.length === 0 && !errorLoading && !scanProcessErrorState) ||
-         (scanProcessErrorState && ((documentType === 'deliveryNote' && products.length === 0) || (documentType === 'invoice' && Object.values(editableTaxInvoiceDetails).every(val => val === undefined || val === '' || val === 0)))));
+         (scanProcessErrorState && ((documentType === 'deliveryNote' && products.length === 0) || (documentType === 'invoice' && Object.values(editableTaxInvoiceDetails).every(val => val === undefined || val === '' || val === 0 || val === null)))));
 
 
     if (showManualEntryPrompt) {
@@ -1134,25 +1152,30 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
          );
     }
 
-    const renderScanSummaryItem = (label: string, value?: string | number | null | Timestamp, field?: keyof EditableTaxInvoiceDetails) => {
+    const renderScanSummaryItem = (labelKey: string, value?: string | number | null | Timestamp, field?: keyof EditableTaxInvoiceDetails) => {
         if (value === undefined || value === null || String(value).trim() === '') return null;
-        let displayValue = value;
+        let displayValue = String(value); // Default to string
         if (typeof value === 'number') {
              displayValue = t('currency_symbol') + value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2});
         } else if ((field === 'invoiceDate' || field === 'paymentDueDate') && value) {
-             const dateToFormat = value instanceof Timestamp ? value.toDate() : (typeof value === 'string' && isValid(parseISO(value)) ? parseISO(value) : null);
+             let dateToFormat: Date | null = null;
+             if (value instanceof Timestamp) dateToFormat = value.toDate();
+             else if (typeof value === 'string') {
+                 const parsed = parseISO(value);
+                 if (isValid(parsed)) dateToFormat = parsed;
+             } else if (value instanceof Date && isValid(value)) {
+                 dateToFormat = value;
+             }
+
              if (dateToFormat && isValid(dateToFormat)) {
                  displayValue = format(dateToFormat, 'PP');
-             } else {
-                displayValue = String(value); 
              }
         }
 
-
         return (
             <div className="break-words">
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="font-medium">{String(displayValue)}</p>
+                <p className="text-sm text-muted-foreground">{t(labelKey)}</p>
+                <p className="font-medium">{displayValue}</p>
             </div>
         );
     };
@@ -1172,14 +1195,13 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
              return <p className="text-sm text-muted-foreground">{t('edit_invoice_awaiting_scan_details')}</p>;
         }
 
-
         return (
              <div className="space-y-3">
-                {renderScanSummaryItem(t('invoice_details_supplier_label'), detailsToDisplay.supplierName)}
-                {renderScanSummaryItem(t('invoice_details_invoice_number_label'), detailsToDisplay.invoiceNumber)}
-                {renderScanSummaryItem(t('invoice_details_total_amount_label'), detailsToDisplay.totalAmount)}
-                {renderScanSummaryItem(t('invoice_details_invoice_date_label'), detailsToDisplay.invoiceDate, 'invoiceDate')}
-                {renderScanSummaryItem(t('invoice_details_payment_method_label'), detailsToDisplay.paymentMethod)}
+                {renderScanSummaryItem('invoice_details_supplier_label', detailsToDisplay.supplierName)}
+                {renderScanSummaryItem('invoice_details_invoice_number_label', detailsToDisplay.invoiceNumber)}
+                {renderScanSummaryItem('invoice_details_total_amount_label', detailsToDisplay.totalAmount)}
+                {renderScanSummaryItem('invoice_details_invoice_date_label', detailsToDisplay.invoiceDate, 'invoiceDate')}
+                {renderScanSummaryItem('invoice_details_payment_method_label', detailsToDisplay.paymentMethod)}
              </div>
         );
     };
@@ -1204,7 +1226,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 <Input
                     id="taxInvoiceDate"
                     type="date"
-                    value={editableTaxInvoiceDetails.invoiceDate ? format(editableTaxInvoiceDetails.invoiceDate instanceof Timestamp ? editableTaxInvoiceDetails.invoiceDate.toDate() : parseISO(editableTaxInvoiceDetails.invoiceDate as string), 'yyyy-MM-dd') : ''}
+                    value={editableTaxInvoiceDetails.invoiceDate ? (editableTaxInvoiceDetails.invoiceDate instanceof Timestamp ? format(editableTaxInvoiceDetails.invoiceDate.toDate(), 'yyyy-MM-dd') : format(parseISO(editableTaxInvoiceDetails.invoiceDate as string), 'yyyy-MM-dd')) : ''}
                     onChange={(e) => handleTaxInvoiceDetailsChange('invoiceDate', e.target.value ? parseISO(e.target.value) : undefined)}
                     disabled={isSaving} />
             </div>
@@ -1218,6 +1240,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
 
   return (
     <div className="container mx-auto p-4 md:p-8 space-y-6">
+        {/* Document Details Card */}
         <Card className="shadow-md scale-fade-in overflow-hidden">
             <CardHeader>
                 <div className="flex flex-row items-center justify-between">
@@ -1225,12 +1248,18 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         <FileTextIconLucide className="mr-2 h-5 w-5" />
                         {documentType === 'invoice' ? t('edit_invoice_invoice_details_title') : t('edit_invoice_delivery_note_details_title')}
                     </CardTitle>
-                     {isViewMode && (
+                    <div className="flex items-center gap-1">
+                         {isEditingTaxDetails ? (
+                            <Button variant="ghost" size="icon" onClick={handleCancelEditTaxDetails} disabled={isSaving} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">{t('cancel_button')}</span>
+                            </Button>
+                         ) : null}
                         <Button variant="ghost" size="icon" onClick={toggleEditTaxDetails} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">{t('edit_button')}</span>
+                            {isEditingTaxDetails ? <Save className="h-4 w-4 text-green-600" /> : <Edit className="h-4 w-4" />}
+                            <span className="sr-only">{isEditingTaxDetails ? t('save_button') : t('edit_button')}</span>
                         </Button>
-                    )}
+                    </div>
                 </div>
                 <CardDescription className="break-words">
                     {t('edit_invoice_description_file', { fileName: originalFileName || t('edit_invoice_unknown_document') })}
@@ -1244,15 +1273,9 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                     </Alert>
                 )}
             </CardHeader>
-            <CardContent className="space-y-6">
-                 <div className={cn("border rounded-lg p-4", !isViewMode && isEditingTaxDetails && "bg-muted/20")}>
-                    {!isViewMode && isEditingTaxDetails ? renderEditableTaxInvoiceDetails() : renderReadOnlyTaxInvoiceDetails()}
-                     {!isViewMode && isEditingTaxDetails && (
-                        <div className="flex justify-end gap-2 pt-4">
-                            <Button variant="outline" onClick={toggleEditTaxDetails} disabled={isSaving}>{t('cancel_button')}</Button>
-                            <Button onClick={handleSaveEditTaxDetails} disabled={isSaving}>{t('save_button')}</Button>
-                        </div>
-                    )}
+            <CardContent className={cn("space-y-6", isEditingTaxDetails && "bg-muted/20")}>
+                 <div className="border rounded-lg p-4">
+                    {isEditingTaxDetails ? renderEditableTaxInvoiceDetails() : renderReadOnlyTaxInvoiceDetails()}
                 </div>
                  {displayedOriginalImageUrl && (
                     <div className="border rounded-lg p-4 mt-6">
@@ -1264,20 +1287,27 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
         </Card>
 
 
+        {/* Products Table / Section */}
         {documentType === 'deliveryNote' && (
             <div className="mt-6">
                  <div className="flex flex-row items-center justify-between mb-2">
                     <h2 className="text-lg font-semibold text-primary">{t('edit_invoice_extracted_products_title')} ({products.length})</h2>
-                    {isViewMode && products.length > 0 && (
-                         <Button variant="ghost" size="icon" onClick={toggleEditDeliveryNoteProducts} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                             <Edit className="h-4 w-4" />
-                             <span className="sr-only">{t('edit_button')}</span>
-                         </Button>
-                     )}
+                    <div className="flex items-center gap-1">
+                        {isEditingDeliveryNoteProducts ? (
+                             <Button variant="ghost" size="icon" onClick={handleCancelEditProducts} disabled={isSaving} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                <X className="h-4 w-4" />
+                                <span className="sr-only">{t('cancel_button')}</span>
+                            </Button>
+                        ) : null}
+                        <Button variant="ghost" size="icon" onClick={toggleEditDeliveryNoteProducts} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                            {isEditingDeliveryNoteProducts ? <Save className="h-4 w-4 text-green-600" /> : <Edit className="h-4 w-4" />}
+                            <span className="sr-only">{isEditingDeliveryNoteProducts ? t('save_button') : t('edit_button')}</span>
+                        </Button>
+                    </div>
                 </div>
-                {products.length > 0 ? (
+                {products.length > 0 || isEditingDeliveryNoteProducts ? (
                      <div className="overflow-x-auto relative border rounded-md">
-                         <Table className="min-w-full sm:min-w-[600px]"> {/* Ensure table can be wider than screen */}
+                         <Table className="min-w-full sm:min-w-[600px]">
                          <TableHeader>
                              <TableRow>
                              <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -1285,48 +1315,48 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                              <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_qty')}</TableHead>
                              <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_unit_price', { currency_symbol: t('currency_symbol') })}</TableHead>
                              <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_line_total', { currency_symbol: t('currency_symbol') })}</TableHead>
-                             {(!isViewMode && isEditingDeliveryNoteProducts) && <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>}
+                             {isEditingDeliveryNoteProducts && <TableHead className="text-right px-2 sm:px-4 py-2">{t('edit_invoice_th_actions')}</TableHead>}
                              </TableRow>
                          </TableHeader>
                          <TableBody>
                              {products.map(product => (
                                  <TableRow key={product.id}>
                                      <TableCell className="px-2 sm:px-4 py-2 max-w-[100px] sm:max-w-xs truncate">
-                                         {(!isViewMode && isEditingDeliveryNoteProducts) ? (
+                                         {isEditingDeliveryNoteProducts ? (
                                              <Input value={product.catalogNumber || ''} onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)} className="h-9" />
                                          ) : (
-                                             product.catalogNumber || 'N/A'
+                                             product.catalogNumber || t('invoices_na')
                                          )}
                                      </TableCell>
                                      <TableCell className="px-2 sm:px-4 py-2 max-w-[150px] sm:max-w-md truncate">
-                                          {(!isViewMode && isEditingDeliveryNoteProducts) ? (
+                                          {isEditingDeliveryNoteProducts ? (
                                              <Input value={product.description || ''} onChange={(e) => handleInputChange(product.id, 'description', e.target.value)} className="h-9" />
                                           ) : (
-                                             product.description || 'N/A'
+                                             product.description || t('invoices_na')
                                           )}
                                      </TableCell>
                                       <TableCell className="text-right px-2 sm:px-4 py-2">
-                                          {(!isViewMode && isEditingDeliveryNoteProducts) ? (
+                                          {isEditingDeliveryNoteProducts ? (
                                              <Input type="number" value={formatInputValue(product.quantity, 'quantity', t)} onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} className="w-20 sm:w-24 text-right h-9" />
                                           ) : (
                                              formatInputValue(product.quantity, 'quantity', t)
                                           )}
                                      </TableCell>
                                      <TableCell className="text-right px-2 sm:px-4 py-2">
-                                          {(!isViewMode && isEditingDeliveryNoteProducts) ? (
+                                          {isEditingDeliveryNoteProducts ? (
                                              <Input type="number" value={formatInputValue(product.unitPrice, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} className="w-24 sm:w-28 text-right h-9" />
                                           ) : (
                                              t('currency_symbol') + formatInputValue(product.unitPrice, 'currency', t)
                                           )}
                                      </TableCell>
                                      <TableCell className="text-right px-2 sm:px-4 py-2">
-                                          {(!isViewMode && isEditingDeliveryNoteProducts) ? (
+                                          {isEditingDeliveryNoteProducts ? (
                                              <Input type="number" value={formatInputValue(product.lineTotal, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} className="w-24 sm:w-28 text-right h-9" />
                                           ) : (
                                              t('currency_symbol') + formatInputValue(product.lineTotal, 'currency', t)
                                           )}
                                      </TableCell>
-                                     {(!isViewMode && isEditingDeliveryNoteProducts) && (
+                                     {isEditingDeliveryNoteProducts && (
                                          <TableCell className="text-right px-2 sm:px-4 py-2">
                                              <Button variant="ghost" size="icon" onClick={() => handleRemoveRow(product.id)} className="text-destructive hover:text-destructive/80 h-8 w-8">
                                                  <Trash2 className="h-4 w-4" />
@@ -1339,37 +1369,32 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                          </Table>
                      </div>
                 ) : (
-                    !isEditingDeliveryNoteProducts && <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
+                    <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
                 )}
-                 {(!isViewMode && isEditingDeliveryNoteProducts) && (
+                 {isEditingDeliveryNoteProducts && (
                      <div className="flex justify-between items-center pt-4 mt-2">
                          <Button variant="outline" onClick={handleAddRow}>
                              <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                          </Button>
-                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={toggleEditDeliveryNoteProducts} disabled={isSaving}>{t('cancel_button')}</Button>
-                            <Button onClick={handleSaveEditProducts} disabled={isSaving || products.length === 0}>{t('save_button')}</Button>
-                         </div>
                      </div>
                  )}
             </div>
         )}
 
+        {/* Final Save / Back Buttons */}
         <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
-            <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push('/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first">
+            <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push(documentType === 'invoice' ? '/invoices?tab=scanned-docs' : '/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first">
                 <ArrowLeft className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_discard_scan_button') : t('edit_invoice_go_back_to_invoices_button')}
             </Button>
-            {(isViewMode || (!isEditingTaxDetails && !isEditingDeliveryNoteProducts)) && (
-                 <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
-                    <Button
-                        onClick={handleSaveChecks}
-                        disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && isNewScan) || !isSupplierConfirmed || (documentType !== 'invoice' && !selectedPaymentDueDate && isNewScan)}
-                        className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
-                    >
-                        {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_confirm_and_save_button') : t('edit_invoice_save_changes_button')}</>}
-                    </Button>
-                </div>
-            )}
+            <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
+                <Button
+                    onClick={handleSaveChecks}
+                    disabled={isSaving || (documentType === 'deliveryNote' && products.length === 0 && isNewScan && !scanProcessErrorState) || !isSupplierConfirmed || ((documentType === 'deliveryNote' || documentType === 'invoice') && !selectedPaymentDueDate && isNewScan) }
+                    className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
+                >
+                    {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_confirm_and_save_button') : t('edit_invoice_save_changes_button')}</>}
+                </Button>
+            </div>
         </div>
       {showSupplierDialog && potentialSupplierName && user && (
         <SupplierConfirmationDialog
@@ -1466,3 +1491,4 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
+
