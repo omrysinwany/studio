@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -47,26 +48,19 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
   onOpenChange,
 }) => {
   const { t } = useTranslation();
-  const [initialProducts, setInitialProducts] = useState<Product[]>([...initialProductsFromProps]);
-  const [productsToDisplay, setProductsToDisplay] = useState<Product[]>([...initialProductsFromProps]);
-  const [productInputStates, setProductInputStates] = useState<Record<string, ProductInputState>>(
-    initialProductsFromProps.reduce((acc, p) => {
-      acc[p.id] = {
-        barcode: p.barcode || '',
-        salePrice: p.salePrice,
-        salePriceMethod: p.salePrice !== undefined ? 'manual' : 'percentage',
-        profitPercentage: '',
-      };
-      return acc;
-    }, {} as Record<string, ProductInputState>)
-  );
+  const [initialProducts, setInitialProducts] = useState<Product[]>([]);
+  const [productsToDisplay, setProductsToDisplay] = useState<Product[]>([]);
+  const [productInputStates, setProductInputStates] = useState<Record<string, ProductInputState>>({});
   const [currentScanningProductId, setCurrentScanningProductId] = useState<string | null>(null);
 
   useEffect(() => {
-    setInitialProducts([...initialProductsFromProps]);
-    setProductsToDisplay([...initialProductsFromProps]);
+    // Deep copy and ensure unique IDs for initialProducts to avoid direct state mutation issues
+    const newInitialProducts = initialProductsFromProps.map(p => ({ ...p, id: p.id || `temp-id-${Math.random().toString(36).substring(2, 9)}` }));
+    setInitialProducts(newInitialProducts);
+    setProductsToDisplay(newInitialProducts); // Start with all products needing review
+
     setProductInputStates(
-      initialProductsFromProps.reduce((acc, p) => {
+      newInitialProducts.reduce((acc, p) => {
         acc[p.id] = {
           barcode: p.barcode || '',
           salePrice: p.salePrice,
@@ -76,15 +70,21 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
         return acc;
       }, {} as Record<string, ProductInputState>)
     );
-  }, [initialProductsFromProps]);
+  }, [initialProductsFromProps, isOpen]); // Re-initialize when props change or dialog opens
 
 
   const handleInputChange = useCallback((productId: string, field: keyof ProductInputState, value: string | number | SalePriceMethod) => {
     setProductInputStates(prevStates => {
-      const product = productsToDisplay.find(p => p.id === productId) || initialProducts.find(p => p.id === productId);
+      const product = initialProducts.find(p => p.id === productId);
       if (!product) return prevStates;
 
-      const currentState = { ...prevStates[productId] };
+      const currentState = { ...(prevStates[productId] || { // Initialize if not present
+        barcode: product.barcode || '',
+        salePrice: product.salePrice,
+        salePriceMethod: product.salePrice !== undefined ? 'manual' : 'percentage',
+        profitPercentage: '',
+      }) };
+
 
       if (field === 'salePrice') {
         const numericValue = parseFloat(String(value));
@@ -110,7 +110,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
       }
       return { ...prevStates, [productId]: currentState };
     });
-  }, [productsToDisplay, initialProducts]);
+  }, [initialProducts]);
 
 
   const handleSalePriceMethodChange = useCallback((productId: string, method: SalePriceMethod) => {
@@ -134,7 +134,7 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
     const state = productInputStates[productId];
     const product = initialProducts.find(p => p.id === productId);
 
-    if (!state || !product) return false;
+    if (!state || !product) return false; // Should not happen if state is initialized properly
 
     if (state.salePrice === undefined || state.salePrice === null || isNaN(Number(state.salePrice)) || Number(state.salePrice) <= 0) {
       toast({
@@ -161,40 +161,84 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
 
 
   const handleSaveAllAndContinue = () => {
-    for (const product of productsToDisplay) {
-      if (!validateProductInputs(product.id)) {
-        toast({
-          title: t('barcode_prompt_incomplete_details_title'),
-          description: t('barcode_prompt_incomplete_details_desc', { productName: product.shortName || product.description || '' }),
-          variant: 'destructive',
-          duration: 7000,
-        });
-        return;
-      }
+    console.log("[BarcodePromptDialog] 'Confirm & Save All' clicked.");
+    const productsToReturn: Product[] = [];
+    let allValid = true;
+
+    for (const initialProd of initialProducts) {
+        // Check if the product is still in productsToDisplay (meaning it hasn't been "confirmed" or "skipped" yet)
+        const stillNeedsReview = productsToDisplay.some(pDisp => pDisp.id === initialProd.id);
+        const inputs = productInputStates[initialProd.id];
+
+        if (stillNeedsReview) {
+            if (!inputs || inputs.salePrice === undefined || isNaN(Number(inputs.salePrice)) || Number(inputs.salePrice) <= 0) {
+                // This product is still in the review list AND its sale price is not valid.
+                // Trigger validation which will show a toast for this specific product.
+                if (!validateProductInputs(initialProd.id)) {
+                    allValid = false;
+                    console.warn(`[BarcodePromptDialog] Validation failed for product (still in review): ${initialProd.shortName || initialProd.id}`);
+                    // No need to break, let it validate all remaining to show multiple toasts if needed,
+                    // or just return immediately after the first error if preferred.
+                    // For now, let's stop on first error to avoid toast spam.
+                    return; 
+                }
+            }
+        }
+
+        // If the product was either confirmed (removed from productsToDisplay)
+        // or was still in productsToDisplay but passed validation, add its current state.
+        // We always take the latest state from productInputStates.
+        if (inputs && inputs.salePrice !== undefined && !isNaN(Number(inputs.salePrice)) && Number(inputs.salePrice) > 0) {
+            productsToReturn.push({
+                ...initialProd, // Start with original product data
+                barcode: inputs.barcode || undefined,
+                salePrice: inputs.salePrice,
+            });
+        } else {
+            // Product was effectively skipped (either removed from display or had no valid sale price entered)
+            // We still include it but without a sale price if it was never set.
+            productsToReturn.push({
+                ...initialProd,
+                barcode: inputs?.barcode || initialProd.barcode || undefined,
+                salePrice: undefined, // Explicitly mark as undefined if skipped or invalid
+            });
+            console.log(`[BarcodePromptDialog] Product '${initialProd.shortName || initialProd.id}' included without a valid sale price (skipped or invalid).`);
+        }
     }
 
-    const productsToReturn: Product[] = initialProducts
-      .map(p => {
-        const inputs = productInputStates[p.id];
-        return {
-          ...p,
-          barcode: inputs.barcode || undefined,
-          salePrice: inputs.salePrice,
-        };
-      });
+    if (!allValid) {
+        // This state should ideally be caught by the individual validateProductInputs calls
+        console.error("[BarcodePromptDialog] Save aborted due to one or more products failing validation.");
+        return;
+    }
+    
+    if (productsToReturn.filter(p => p.salePrice !== undefined).length === 0 && initialProducts.length > 0) {
+        console.warn("[BarcodePromptDialog] No products with valid sale prices to save.");
+        toast({
+            title: t('barcode_prompt_incomplete_details_title'),
+            description: t('barcode_prompt_no_valid_prices_to_save_desc'),
+            variant: "warning",
+            duration: 5000,
+        });
+        // Decide if you want to proceed with onComplete(productsToReturn) here or not.
+        // For now, let's proceed, as some might have barcodes updated even if sale price was skipped.
+    }
 
+    console.log("[BarcodePromptDialog] Final products to return:", productsToReturn);
     onComplete(productsToReturn);
     onOpenChange(false);
   };
 
   const handleCancel = () => {
-    onComplete(null);
+    onComplete(null); // Pass null to indicate cancellation
     onOpenChange(false);
   };
   
   const handleRemoveFromList = (productId: string) => {
     setProductsToDisplay(prev => prev.filter(p => p.id !== productId));
-     const product = initialProducts.find(p => p.id === productId);
+    // User chose to skip this product for barcode/sale price entry for now
+    // It will be saved with its current barcode (if any) and no sale price.
+    const product = initialProducts.find(p => p.id === productId);
     toast({
         title: t('barcode_prompt_item_skipped_title'),
         description: t('barcode_prompt_item_skipped_desc', { productName: product?.shortName || product?.description || ''}),
@@ -206,7 +250,10 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
       onOpenChange(open);
-      if (!open) handleCancel();
+      if (!open && currentScanningProductId) { // Ensure scanner stops if dialog is closed externally
+        handleScannerClose();
+      }
+      // Do not call handleCancel here as onOpenChange is called for both open/close
     }}>
       <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
@@ -384,11 +431,9 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
         )}
 
         <SheetFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
-          <SheetClose asChild>
-            <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-              <X className="mr-1.5 h-4 w-4" /> {t('barcode_prompt_cancel_button')}
-            </Button>
-          </SheetClose>
+          <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+            <X className="mr-1.5 h-4 w-4" /> {t('barcode_prompt_cancel_button')}
+          </Button>
           <Button
             onClick={handleSaveAllAndContinue}
             className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10 bg-accent hover:bg-accent/90"
@@ -411,3 +456,5 @@ const BarcodePromptDialog: React.FC<BarcodePromptDialogProps> = ({
 };
 
 export default BarcodePromptDialog;
+
+
