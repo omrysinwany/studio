@@ -108,23 +108,27 @@ export default function Navigation() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
-          {currentNavItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                buttonVariants({ variant: pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost', size: 'sm' }),
-                "transition-all duration-200 ease-in-out hover:scale-105",
-                "scale-fade-in",
-                (pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/')) ? "shadow-sm" : "hover:bg-muted"
-              )}
-               style={{ animationDelay: item.animationDelay }}
-               aria-current={pathname === item.href ? 'page' : undefined}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          ))}
+          {currentNavItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  buttonVariants({ variant: isActive ? 'secondary' : 'ghost', size: 'sm' }),
+                  "transition-all duration-200 ease-in-out hover:scale-105",
+                  "scale-fade-in",
+                  isActive ? "shadow-sm" : "hover:bg-muted/60 dark:hover:bg-accent hover:text-primary dark:hover:text-accent-foreground",
+                  !isActive && "text-foreground" // Default text for non-active
+                )}
+                 style={{ animationDelay: item.animationDelay }}
+                 aria-current={isActive ? 'page' : undefined}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
@@ -195,18 +199,14 @@ export default function Navigation() {
               ) : (
                 <>
                    <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login">
-                       <span className="flex items-center">
+                    <Link href="/login" className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                       </span>
                     </Link>
                    </Button>
                   <Button size="sm" className="transition-transform hover:scale-105" asChild>
-                    <Link href="/register">
-                       <span className="flex items-center">
+                    <Link href="/register" className="flex items-center">
                         <UserPlus className="mr-1 h-4 w-4" />
                         {t('nav_register')}
-                       </span>
                     </Link>
                   </Button>
                 </>
@@ -230,17 +230,23 @@ export default function Navigation() {
                       </Link>
                     </div>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
-                        {currentNavItems.map((item) => (
-                          <Button
-                             key={item.href}
-                             variant={pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/') ? 'secondary' : 'ghost'}
-                             className="w-full justify-start gap-2 text-base py-3 h-auto"
-                             onClick={() => handleMobileNavClick(item.href)}
-                          >
-                             <item.icon className="h-5 w-5" />
-                             {item.label}
-                          </Button>
-                        ))}
+                        {currentNavItems.map((item) => {
+                          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                          return (
+                            <Button
+                               key={item.href}
+                               variant={isActive ? 'secondary' : 'ghost'}
+                               className={cn(
+                                 "w-full justify-start gap-2 text-base py-3 h-auto",
+                                 !isActive && "text-foreground hover:text-primary dark:hover:text-accent-foreground hover:bg-muted/60 dark:hover:bg-accent"
+                               )}
+                               onClick={() => handleMobileNavClick(item.href)}
+                            >
+                               <item.icon className="h-5 w-5" />
+                               {item.label}
+                            </Button>
+                          );
+                        })}
                       </nav>
 
                     <div className="mt-auto border-t p-4 space-y-4">
@@ -258,7 +264,7 @@ export default function Navigation() {
                                             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                                         </div>
                                     </div>
-                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto" onClick={() => handleMobileNavClick('/settings')}>
+                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
                                         {t('nav_settings')}
                                      </Button>
@@ -282,7 +288,7 @@ export default function Navigation() {
                          <div className="border-t pt-4">
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
-                               <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto">
+                               <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground">
                                   <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
                                </Button>
                              </DropdownMenuTrigger>

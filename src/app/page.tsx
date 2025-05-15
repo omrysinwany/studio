@@ -27,7 +27,7 @@ import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, form
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
-import styles from "./page.module.scss";
+import styles from "./page.module.scss"; // Assuming you are using this for homeContainerGradient
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
@@ -44,8 +44,6 @@ interface KpiData {
   nextPaymentDueInvoice: InvoiceHistoryItem | null;
   recentActivity: { descriptionKey: string; params?: Record<string, string | number>; time: string; link?: string }[];
   latestDocName?: string;
-  inventoryValueTrend?: { name: string; value: number }[];
-  inventoryValuePrevious?: number;
   grossProfit: number;
   amountRemainingToPay: number;
   currentMonthTotalExpenses?: number;
@@ -138,7 +136,7 @@ const allKpiConfigurations: ItemConfig[] = [
     getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: true,
+    showTrend: false, // Removed sparkline
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -184,7 +182,7 @@ const allKpiConfigurations: ItemConfig[] = [
     iconColor: 'text-orange-500 dark:text-orange-400',
     defaultVisible: true,
   },
-    {
+  {
     id: 'documentsProcessed30d',
     titleKey: 'home_kpi_documents_processed_30d_title',
     icon: FileTextIcon,
@@ -192,7 +190,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_documents_processed_30d_desc',
     link: '/invoices',
     iconColor: 'text-blue-500 dark:text-blue-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
   {
     id: 'averageInvoiceValue',
@@ -202,7 +200,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
   {
     id: 'suppliersCount',
@@ -212,7 +210,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_suppliers_count_desc',
     link: '/suppliers',
     iconColor: 'text-teal-500 dark:text-teal-400',
-    defaultVisible: false, // Hidden by default
+    defaultVisible: false,
   },
 ];
 
@@ -309,44 +307,6 @@ const saveQuickActionPreferences = (preferences: { visibleQuickActionIds: string
 };
 
 
-const SparkLineChart = ({ data, dataKey, strokeColor }: { data: any[], dataKey: string, strokeColor: string }) => {
-  const { t } = useTranslation();
-  if (!data || data.length === 0) {
-    return <div className="h-10 w-full bg-muted/50 rounded-md flex items-center justify-center text-xs text-muted-foreground">{t('home_kpi_no_trend_data')}</div>;
-  }
-  const localeCode = t('locale_code_for_number_formatting') as string | undefined;
-  return (
-    <ResponsiveContainer width="100%" height={40}>
-      <LineChart data={data}>
-        <RechartsTooltip
-          contentStyle={{
-            background: "hsl(var(--background))",
-            borderColor: "hsl(var(--border))",
-            borderRadius: "0.5rem",
-            fontSize: "0.75rem",
-            padding: "0.25rem 0.5rem",
-          }}
-          formatter={(value: number, name: string) => {
-             if (name === 'value') return [`${t('currency_symbol')}${value.toLocaleString(localeCode || undefined, {minimumFractionDigits:0, maximumFractionDigits: 0})}`, t('reports_chart_label_value')];
-             return [value.toLocaleString(localeCode || undefined), name];
-          }}
-          labelFormatter={() => ''}
-        />
-        <XAxis dataKey="name" hide />
-        <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
-        <Line
-          type="monotone"
-          dataKey={dataKey}
-          stroke={strokeColor}
-          strokeWidth={2}
-          dot={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-};
-
-
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -359,16 +319,10 @@ export default function Home() {
   const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
 
   const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
-    {
-      id: 'scanDocument', // Changed from 'addExpense' for primary action
-      titleKey: 'home_scan_button',
-      icon: ScanLine,
-      onClick: () => router.push('/upload'), // Direct navigation
-      defaultVisible: true,
-    },
+    // "Scan Document" is now a primary button, not a quick action here.
     {
       id: 'openInvoices',
-      titleKey: 'home_open_invoices', // Changed key
+      titleKey: 'home_open_invoices',
       icon: FileWarning,
       link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
       defaultVisible: true,
@@ -398,7 +352,7 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory', // This should probably link to an "add product" page or open a modal
+      link: '/inventory',
       defaultVisible: true,
     },
   ], [t, router]);
@@ -536,7 +490,7 @@ export default function Home() {
       const documentsProcessed30d = invoices.filter(inv =>
           inv.status === 'completed' &&
           inv.uploadTime &&
-          isValid(parseISO(inv.uploadTime as string)) && // Added isValid check
+          isValid(parseISO(inv.uploadTime as string)) &&
           parseISO(inv.uploadTime as string) >= thirtyDaysAgo
       ).length;
 
@@ -545,24 +499,17 @@ export default function Home() {
       const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
       const suppliersCount = suppliers.length;
 
-      const mockInventoryValueTrend = [
-        { name: 'Day 1', value: inventoryValue * 0.95 + Math.random() * 1000 - 500 },
-        { name: 'Day 2', value: inventoryValue * 0.98 + Math.random() * 1000 - 500 },
-        { name: 'Day 3', value: inventoryValue * 0.96 + Math.random() * 1000 - 500 },
-        { name: 'Day 4', value: inventoryValue * 1.02 + Math.random() * 1000 - 500 },
-        { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
-      ].map(d => ({...d, value: Math.max(0, Math.round(d.value))}));
-
       const recentInvoices = invoices.sort((a,b) => {
           const timeA = a.uploadTime && isValid(parseISO(a.uploadTime as string)) ? parseISO(a.uploadTime as string).getTime() : 0;
           const timeB = b.uploadTime && isValid(parseISO(b.uploadTime as string)) ? parseISO(b.uploadTime as string).getTime() : 0;
           return timeB - timeA;
       }).slice(0,3);
 
+      const localeToUse = locale === 'he' ? heLocale : enUSLocale;
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) ? formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date'),
+        time: inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) ? formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: localeToUse }) : t('home_unknown_date'),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -575,8 +522,6 @@ export default function Home() {
         nextPaymentDueInvoice,
         recentActivity: mockRecentActivity,
         latestDocName: invoices.length > 0 && invoices[0].fileName ? invoices[0].fileName : undefined,
-        inventoryValueTrend: mockInventoryValueTrend,
-        inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
         grossProfit,
         amountRemainingToPay,
         currentMonthTotalExpenses: calculatedCurrentMonthTotalExpenses,
@@ -596,7 +541,7 @@ export default function Home() {
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast, locale]); // Removed allQuickActionConfigurations dependency
+  }, [user, authLoading, t, toast, locale]);
 
   useEffect(() => {
     if (user) {
@@ -642,7 +587,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData();
+      fetchKpiData(); // Refresh KPI data which includes suppliersCount
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -664,34 +609,36 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
+    <div className={cn("flex flex-col items-center min-h-[calc(100vh-var(--header-height,4rem)-env(safe-area-inset-bottom))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
       <TooltipProvider>
-        <div className="w-full max-w-5xl text-center">
-           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
-             {t('home_welcome_title')}
-          </h1>
-           <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
-             {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
-           </p>
-            <p className="text-sm text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-200">
-             {t('home_tagline')}
-            </p>
+        <div className="w-full max-w-5xl">
+           <div className="text-center mb-6 md:mb-10">
+             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary scale-fade-in">
+               {t('home_welcome_title')}
+            </h1>
+             <p className="text-lg sm:text-xl text-muted-foreground mt-2 scale-fade-in delay-100">
+               {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
+             </p>
+             <p className="text-sm text-muted-foreground mt-1 scale-fade-in delay-200">
+               {t('home_tagline')}
+             </p>
+           </div>
 
-          <div className="mb-6 md:mb-10 scale-fade-in delay-200 flex flex-col items-center gap-3">
+          <div className="mb-6 md:mb-8 flex flex-col items-center gap-3 scale-fade-in delay-200">
               <Button
                 size="lg"
-                className="w-full max-w-md bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-lg transform hover:-translate-y-1 py-3 sm:py-4"
+                className="w-full max-w-xs sm:max-w-sm bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-105 text-base sm:text-lg transform hover:-translate-y-1 py-3 sm:py-4"
                 onClick={handleScanClick}
               >
                 <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
               </Button>
-              <div className="w-full max-w-md grid grid-cols-2 gap-3">
-                  <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+              <div className="w-full max-w-xs sm:max-w-sm grid grid-cols-2 gap-3">
+                  <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
                       <Link href="/inventory">
                           <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
                       </Link>
                   </Button>
-                   <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                   <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
                       <Link href="/invoices">
                           <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
                       </Link>
@@ -761,7 +708,7 @@ export default function Home() {
                     <span className="sr-only">{t('home_customize_dashboard_button')}</span>
                 </Button>
             </div>
-            <p className="text-sm text-muted-foreground mb-4 px-1 sm:px-0">{t('home_quick_overview_desc')}</p>
+            <p className="text-sm text-muted-foreground mb-4 px-1 sm:px-0 text-center">{t('home_quick_overview_desc')}</p>
 
             {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-4 text-left">
@@ -772,15 +719,14 @@ export default function Home() {
             {(isLoadingKpis && user) ? (
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                     <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px] flex flex-col justify-between">
-                        <Skeleton className="h-4 w-2/3 rounded-md bg-muted/50"/>
-                        <Skeleton className="h-8 w-1/2 mb-1 rounded-md bg-muted/50"/>
-                        <Skeleton className="h-3 w-3/4 rounded-md bg-muted/50"/>
-                    </div>
+                     <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 h-[150px] sm:h-[160px]">
+                         <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                         <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                     </Card>
                 ))}
                 </div>
             ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
-                <div className="text-center py-8 text-muted-foreground bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
+                <div className="text-center py-8 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
                     <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
                     <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
                     <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
@@ -792,33 +738,22 @@ export default function Home() {
                     const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
                     const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
                     return (
-                    <Tooltip key={kpi.id}>
-                        <TooltipTrigger asChild>
+                    <div key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in")} style={{animationDelay: `${0.05 * index}s`}}>
                         <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full", !kpi.link && "pointer-events-none")}>
-                            <div className={cn("h-full text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col", styles.kpiCard, "kpiCard scale-fade-in")} style={{animationDelay: `${0.05 * (index + visibleQuickActions.length)}s`}}>
                             <div className="flex flex-row items-center justify-between space-y-0 pb-1">
-                                <h3 className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
-                                <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
+                                <h3 className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
+                                <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
                             </div>
                             <div className="pt-1 flex-grow flex flex-col justify-center">
-                                <div className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-foreground flex items-baseline">
+                                <div className="text-xl sm:text-2xl md:text-3xl font-extrabold text-foreground flex items-baseline">
                                     {renderKpiValueDisplay(valueString)}
-                                    {kpi.id === 'inventoryValue' && kpiData && kpiData.inventoryValueTrend && kpiData.inventoryValueTrend.length > 1 && kpiData.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && (
-                                        kpiData.inventoryValue > kpiData.inventoryValuePrevious ?
-                                        <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 ml-1.5 shrink-0" /> :
-                                        <TrendingDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 ml-1.5 shrink-0" />
-                                    )}
                                 </div>
-                                {kpi.descriptionKey && <p className="text-xs sm:text-sm text-muted-foreground pt-0.5 sm:pt-1 h-8 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>}
-                                {kpi.id === 'inventoryValue' && kpiData?.inventoryValueTrend && (
-                                    <div className="mt-1.5 h-8">
-                                        <SparkLineChart data={kpiData.inventoryValueTrend || []} dataKey="value" strokeColor="hsl(var(--primary))" />
-                                    </div>
-                                )}
+                                {kpi.descriptionKey && <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1 h-7 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>}
+
                                 {kpi.showProgress && kpiData && (
                                     <Progress
                                         value={progress}
-                                        className="h-2 sm:h-2.5 mt-2 sm:mt-2.5 bg-muted/40"
+                                        className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/40"
                                         indicatorClassName={cn(
                                             "transition-all duration-500 ease-out",
                                             progress > 75 ? "bg-destructive" :
@@ -828,18 +763,8 @@ export default function Home() {
                                     />
                                 )}
                             </div>
-                            {kpi.id === 'inventoryValue' && kpiData?.inventoryValuePrevious !== undefined && kpiData.inventoryValue !== kpiData.inventoryValuePrevious && kpiData.inventoryValue !== undefined && (
-                                <div className="text-xs sm:text-sm mt-auto pt-1">
-                                    <p className={cn("text-muted-foreground", kpiData.inventoryValue > kpiData.inventoryValuePrevious ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                        {t('home_kpi_vs_last_period_prefix')} {formatLargeNumber(kpiData.inventoryValuePrevious, t, 0, true)}
-                                    </p>
-                                </div>
-                            )}
-                            </div>
                         </Link>
-                        </TooltipTrigger>
-                        {kpi.descriptionKey && <TooltipContent><p>{t(kpi.titleKey)}: {valueString}</p><p className="text-xs">{t(kpi.descriptionKey)}</p></TooltipContent>}
-                    </Tooltip>
+                    </div>
                     );
                 })}
             </div>
@@ -891,7 +816,7 @@ export default function Home() {
                                 <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                     {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                 </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: locale === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                             </p>
                         ) : (
                              <div className="text-muted-foreground mt-1 text-center py-4">
@@ -972,5 +897,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
