@@ -5,7 +5,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress"; // Keep if used by a KPI that shows progress
 import { useAuth } from "@/context/AuthContext";
 import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, TrendingUp, TrendingDown, DollarSign, HandCoins, ShoppingCart, CreditCard, Banknote, Settings as SettingsIcon, Briefcase, AlertTriangle, BellRing, History, PlusCircle, PackagePlus, Info, ListChecks, FileWarning, UserPlus } from "lucide-react";
 import Link from 'next/link';
@@ -30,6 +29,7 @@ import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
 import styles from "./page.module.scss";
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
+import { Progress } from "@/components/ui/progress";
 
 
 const KPI_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_kpiPreferences_v2';
@@ -50,6 +50,7 @@ interface KpiData {
   documentsProcessed30d?: number;
   averageInvoiceValue?: number;
   suppliersCount?: number;
+  inventoryValueHistory?: { date: string; value: number }[];
 }
 
 export interface ItemConfig {
@@ -136,7 +137,7 @@ const allKpiConfigurations: ItemConfig[] = [
     getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: false,
+    showTrend: false, // Sparkline removed
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -338,7 +339,7 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false,
+      defaultVisible: false, // Hidden by default
     },
      {
       id: 'addExpense',
@@ -351,10 +352,11 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory', // Assuming this leads to a page where a product can be added
+      link: '/inventory',
       defaultVisible: true,
     },
-  ], [t]);
+    // scanDocument removed from here as it's the primary button
+  ], [t, setIsCreateSupplierSheetOpen]);
 
 
   const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
@@ -586,7 +588,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData();
+      fetchKpiData(); // Refetch KPI data to update supplier count
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -656,7 +658,7 @@ export default function Home() {
                     <span className="sr-only">{t('home_customize_qa_button')}</span>
                 </Button>
             </div>
-            <Card className="bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <Card className={cn("bg-card/80 backdrop-blur-sm border-border/50 shadow-lg", styles.kpiCard)}>
                 <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4">
                     {visibleQuickActions.map((action, index) => {
                         const ActionIcon = action.icon;
@@ -715,64 +717,67 @@ export default function Home() {
                 <AlertDescription>{kpiError}</AlertDescription>
             </Alert>
             )}
-            {(isLoadingKpis && user) ? (
-                <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                {Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                     <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col h-[150px] sm:h-[160px]">
-                         <div className="flex flex-row items-center justify-between space-y-0 pb-1"><Skeleton className="h-4 w-2/3"/> <Skeleton className="h-5 w-5 rounded-full"/></div>
-                         <div className="pt-1 flex-grow flex flex-col justify-center"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></div>
-                     </div>
-                ))}
-                </div>
-            ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
-                <div className="text-center py-8 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
-                    <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                    <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
-                    <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
-                </div>
-            ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                {visibleKpiConfigs.map((kpi, index) => {
-                    const Icon = kpi.icon;
-                    const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
-                    const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
-                    return (
-                    <div key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in")} style={{animationDelay: `${0.05 * index}s`}}>
-                        <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full", !kpi.link && "pointer-events-none")}>
-                            <div className="flex flex-row items-center justify-between space-y-0 pb-1">
-                                <h3 className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
-                                <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
-                            </div>
-                            <div className="pt-1 flex-grow flex flex-col justify-center">
-                                <div className="text-xl sm:text-2xl md:text-3xl font-extrabold text-foreground flex items-baseline">
-                                    {renderKpiValueDisplay(valueString)}
-                                </div>
-                                {kpi.descriptionKey && <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1 h-7 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>}
-
-                                {kpi.showProgress && kpiData && (
-                                    <Progress
-                                        value={progress}
-                                        className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/40"
-                                        indicatorClassName={cn(
-                                            "transition-all duration-500 ease-out",
-                                            progress > 75 ? "bg-destructive" :
-                                            progress > 50 ? "bg-yellow-500" :
-                                            "bg-primary"
-                                        )}
-                                    />
-                                )}
-                            </div>
-                        </Link>
+                {(isLoadingKpis && user) ? (
+                    Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
+                         <Card key={`skeleton-${idx}`} className={cn("shadow-md bg-background/80 h-[150px] sm:h-[160px]", styles.kpiCard)}>
+                             <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                             <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                         </Card>
+                    ))
+                ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
+                    <div className="col-span-full text-center py-8 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
+                        <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                        <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
+                        <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
                     </div>
-                    );
-                })}
+                ) : (
+                    visibleKpiConfigs.map((kpi, index) => {
+                        const Icon = kpi.icon;
+                        const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
+                        const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
+                        return (
+                        <Card key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in")} style={{animationDelay: `${0.05 * index}s`}}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full flex flex-col p-3 sm:p-4", !kpi.link && "pointer-events-none")}>
+                                        <div className="flex flex-row items-center justify-between space-y-0 pb-1">
+                                            <h3 className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
+                                            <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
+                                        </div>
+                                        <div className="pt-1 flex-grow flex flex-col justify-center">
+                                            <div className="text-xl sm:text-2xl md:text-3xl font-extrabold text-foreground flex items-baseline">
+                                                {renderKpiValueDisplay(valueString)}
+                                            </div>
+                                            {kpi.descriptionKey && <p className="text-[10px] sm:text-xs text-muted-foreground pt-0.5 sm:pt-1 h-7 sm:h-auto overflow-hidden text-ellipsis">{t(kpi.descriptionKey)}</p>}
+
+                                            {kpi.showProgress && kpiData && (
+                                                <Progress
+                                                    value={progress}
+                                                    className="h-1.5 sm:h-2 mt-1.5 sm:mt-2 bg-muted/40"
+                                                    indicatorClassName={cn(
+                                                        "transition-all duration-500 ease-out",
+                                                        progress > 75 ? "bg-destructive" :
+                                                        progress > 50 ? "bg-yellow-500" :
+                                                        "bg-primary"
+                                                    )}
+                                                />
+                                            )}
+                                        </div>
+                                    </Link>
+                                </TooltipTrigger>
+                                {kpi.descriptionKey && <TooltipContent><p>{t(kpi.descriptionKey)}</p></TooltipContent>}
+                            </Tooltip>
+                        </Card>
+                        );
+                    })
+                )}
             </div>
-            )}
         </div>
 
         {/* Actionable Insights & Recent Activity Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12 text-left">
-            <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <Card className={cn("scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg", styles.kpiCard)}>
                 <CardHeader className="pb-3">
                 <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
@@ -827,7 +832,7 @@ export default function Home() {
                 </CardContent>
             </Card>
 
-            <Card className="scale-fade-in delay-600 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <Card className={cn("scale-fade-in delay-600 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg", styles.kpiCard)}>
                 <CardHeader className="pb-3">
                 <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <History className="mr-2 h-5 w-5" /> {t('home_recent_activity_title')}
@@ -896,3 +901,5 @@ export default function Home() {
     </div>
   );
 }
+
+    

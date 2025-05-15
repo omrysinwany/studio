@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -106,10 +107,10 @@ body {
     content: '';
     position: fixed; /* Cover the entire viewport and stay fixed */
     inset: 0;
-    background-image: url('https://picsum.photos/1920/1080?grayscale&blur=5'); /* Increased blur */
+    background-image: url('https://picsum.photos/1920/1080?grayscale&blur=10'); /* Increased blur */
     background-size: cover;
     background-position: center;
-    opacity: 0.1; /* Kept opacity low */
+    opacity: 0.3; /* Kept opacity low */
     z-index: -1; /* Behind all content */
     pointer-events: none; /* Allow clicks to pass through */
   }
@@ -198,3 +199,6 @@ body {
     100% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
   }
 }
+
+
+    
