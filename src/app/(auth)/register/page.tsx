@@ -39,7 +39,7 @@ const formSchema = z.object({
 });
 
 export default function RegisterPage() {
-  const { register, signInWithGoogle, loading, user } = useAuth();
+  const { registerWithEmail, signInWithGoogle, loading, user } = useAuth(); // Changed to registerWithEmail
   const router = useRouter();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -70,11 +70,17 @@ export default function RegisterPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      await register(values);
-       // Toast is handled by AuthContext
+      // Pass all necessary values for user creation
+      await registerWithEmail({ 
+        email: values.email, 
+        password: values.password, 
+        username: values.username 
+      });
+       // Toast is handled by AuthContext within processFirebaseUser or registerWithEmail
       // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
+      console.error("Registration page error:", error);
     }
   }
 
