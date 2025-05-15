@@ -22,9 +22,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, ChromeIcon } from 'lucide-react'; // Using ChromeIcon as a generic 'Google' icon
+import { LogIn, ChromeIcon, Loader2 } from 'lucide-react'; // Added Loader2
 import { useTranslation } from '@/hooks/useTranslation';
-// Removed Separator import as we'll use a div-based approach
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -67,10 +66,8 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       await login(values);
-      // Toast is handled by AuthContext now for successful login
-      router.push('/'); 
+      router.push('/');
     } catch (error) {
-       // Error toast is handled by AuthContext
        form.resetField("password");
     }
   }
@@ -78,7 +75,6 @@ export default function LoginPage() {
   async function handleGoogleSignIn() {
     try {
       await signInWithGoogle();
-      // Toast is handled by AuthContext
       router.push('/');
     } catch (error) {
       // Error toast is handled by AuthContext
@@ -137,7 +133,7 @@ export default function LoginPage() {
             <ChromeIcon className="mr-2 h-4 w-4" /> {/* Using ChromeIcon as a placeholder */}
             {t('login_google_button')}
           </Button>
-          
+
           <div className="mt-6 text-center text-sm">
             {t('login_no_account')}{' '}
             <Link href="/register" className="font-medium text-accent hover:underline">
