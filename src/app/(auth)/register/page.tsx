@@ -25,7 +25,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, ChromeIcon, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-// Removed Separator import as we'll use a div-based approach
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -55,12 +54,12 @@ export default function RegisterPage() {
   });
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user) { // Check for loading state before redirecting
       router.push('/');
     }
   }, [user, loading, router]);
 
-  if (loading || (!loading && user)) {
+  if (loading || (!loading && user)) { // Show loader if auth is loading OR if user is logged in (and redirecting)
     return (
       <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -73,7 +72,7 @@ export default function RegisterPage() {
     try {
       await register(values);
        // Toast is handled by AuthContext
-      router.push('/'); 
+      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
     }
@@ -83,7 +82,7 @@ export default function RegisterPage() {
     try {
       await signInWithGoogle();
        // Toast is handled by AuthContext
-      router.push('/');
+      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
     }
@@ -150,7 +149,7 @@ export default function RegisterPage() {
           </div>
 
           <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
-            <ChromeIcon className="mr-2 h-4 w-4" /> {/* Using ChromeIcon as a placeholder */}
+            <ChromeIcon className="mr-2 h-4 w-4" />
             {t('register_google_button')}
           </Button>
 

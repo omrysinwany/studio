@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useEffect } from 'react';
+import { useEffect } from 'react'; // Ensure useEffect is imported
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
-import { LogIn, ChromeIcon, Loader2 } from 'lucide-react'; // Added Loader2
+import { LogIn, ChromeIcon, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const formSchema = z.object({
@@ -49,12 +49,12 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user) { // Check for loading state before redirecting
       router.push('/');
     }
   }, [user, loading, router]);
 
-  if (loading || (!loading && user)) {
+  if (loading || (!loading && user)) { // Show loader if auth is loading OR if user is logged in (and redirecting)
     return (
       <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -66,7 +66,7 @@ export default function LoginPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       await login(values);
-      router.push('/');
+      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
        form.resetField("password");
     }
@@ -75,7 +75,7 @@ export default function LoginPage() {
   async function handleGoogleSignIn() {
     try {
       await signInWithGoogle();
-      router.push('/');
+      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
     }
@@ -130,7 +130,7 @@ export default function LoginPage() {
           </div>
 
           <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
-            <ChromeIcon className="mr-2 h-4 w-4" /> {/* Using ChromeIcon as a placeholder */}
+            <ChromeIcon className="mr-2 h-4 w-4" />
             {t('login_google_button')}
           </Button>
 

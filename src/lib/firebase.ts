@@ -12,8 +12,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-let firebaseApp: FirebaseApp | null = null; // Initialize as null
-
+let firebaseApp: FirebaseApp; // Keep as let
 if (!getApps().length) {
   // Check if essential config values are present
   if (
@@ -26,7 +25,7 @@ if (!getApps().length) {
       firebaseApp = initializeApp(firebaseConfig);
     } catch (error) {
       console.error("Firebase initialization error:", error);
-      // firebaseApp remains null
+      // firebaseApp remains as declared initially (potentially undefined or null if not assigned)
     }
   } else {
     console.error(
@@ -40,7 +39,9 @@ if (!getApps().length) {
 }
 
 // Conditionally export db and auth if firebaseApp was initialized successfully
+// @ts-ignore
 export const db = firebaseApp ? getFirestore(firebaseApp) : null;
+// @ts-ignore
 export const auth = firebaseApp ? getAuth(firebaseApp) : null;
 export { GoogleAuthProvider };
 export default firebaseApp;

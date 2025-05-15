@@ -30,27 +30,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   useEffect(() => {
-    const unsubscribe = firebaseAuth.onAuthStateChanged(async (firebaseUser: FirebaseUser | null) => {
+    const unsubscribe = firebaseAuth?.onAuthStateChanged(async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
         try {
           const idToken = await getIdToken(firebaseUser);
           const appUser: User = {
             id: firebaseUser.uid,
-            username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+            username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || t('user_fallback_name'),
             email: firebaseUser.email || '',
           };
           handleAuthResponse({ token: idToken, user: appUser }, false); // Don't show toast on initial load
         } catch (error) {
           console.error("Error getting ID token on auth state change:", error);
-          performLogout(); // Log out if token retrieval fails
+          performLogout(false); // Log out if token retrieval fails
         }
       } else {
         performLogout(false); // Don't show toast on initial load or if already logged out
       }
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [t]); // Added t to dependency array
 
   const handleAuthResponse = (response: AuthResponse, showSuccessToast = true) => {
     setUser(response.user);
@@ -85,9 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (credentials: any) => {
     setLoading(true);
     try {
-      // This will now use the mock loginService from backend.ts for email/password
-      // For a real Firebase email/password login, you'd call signInWithEmailAndPassword here.
-      const response = await loginService(credentials.username, credentials.password);
+      const response = await loginService(credentials); // Use actual backend service
       handleAuthResponse(response);
     } catch (error) {
       console.error('Login failed:', error);
@@ -105,9 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (userData: any) => {
     setLoading(true);
     try {
-      // This will use the mock registerService
-      // For real Firebase email/password registration, call createUserWithEmailAndPassword here.
-      const response = await registerService(userData.username, userData.email, userData.password);
+      const response = await registerService(userData); // Use actual backend service
       handleAuthResponse(response);
       toast({
         title: t('register_toast_success_title'),
@@ -127,6 +125,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signInWithGoogle = async () => {
+    if (!firebaseAuth) {
+      toast({ title: t('error_title'), description: "Firebase not initialized.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
@@ -135,7 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const idToken = await getIdToken(firebaseUser);
       const appUser: User = {
         id: firebaseUser.uid,
-        username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+        username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || t('user_fallback_name'),
         email: firebaseUser.email || '',
       };
       handleAuthResponse({ token: idToken, user: appUser });
@@ -146,7 +149,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: error.message || t('google_signin_toast_fail_desc'),
         variant: "destructive",
       });
-      // Perform logout to clear any partial auth state if sign-in fails
       performLogout(false);
       throw error;
     } finally {
@@ -155,14 +157,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
+    if (!firebaseAuth) {
+      // If Firebase isn't initialized, just clear local state
+      performLogout();
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       await firebaseSignOut(firebaseAuth);
       performLogout();
     } catch (error) {
       console.error('Logout failed:', error);
-      // Still clear client-side state even if Firebase signout fails
-      performLogout(false); 
+      performLogout(false);
       toast({
         title: t('logout_toast_fail_title'),
         description: (error as Error).message || t('logout_toast_fail_desc'),
