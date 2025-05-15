@@ -9,15 +9,15 @@ import { signInWithPopup, signOut as firebaseSignOut, User as FirebaseUser, getI
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from '@/hooks/useTranslation';
 import { useRouter } from 'next/navigation';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, Timestamp, FieldValue } from 'firebase/firestore';
 import { db } from '@/lib/firebase'; // For serverTimestamp
 
 interface AuthContextType {
   user: User | null;
   token: string | null; // Firebase ID token
   loading: boolean;
-  loginWithEmail: (credentials: any) => Promise<void>; // Renamed from login
-  registerWithEmail: (userData: any) => Promise<void>; // Renamed from register
+  loginWithEmail: (credentials: any) => Promise<void>;
+  registerWithEmail: (userData: any) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => void;
 }
@@ -25,48 +25,77 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUserState] = useState<User | null>(null);
-  const [token, setTokenState] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null); // Renamed setUserState to setUser for clarity
+  const [token, setToken] = useState<string | null>(null); // Renamed setTokenState to setToken
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { t } = useTranslation();
   const router = useRouter();
 
+  const performLogout = async (showToast = true) => {
+    setUser(null);
+    setToken(null);
+    if (firebaseAuth) {
+        try {
+            await firebaseSignOut(firebaseAuth);
+            console.log("Successfully signed out from Firebase Auth.");
+        } catch (error) {
+            console.error("Error during Firebase sign out:", error);
+        }
+    }
+    if (showToast) {
+      toast({ title: t('logout_toast_title'), description: t('logout_toast_desc') });
+    }
+    // Do not automatically redirect here, let calling components handle redirection if needed
+  };
+
+
   const processFirebaseUser = async (firebaseUser: FirebaseUser | null, showSuccessToastOnNewAuth = true, redirectPath: string | null = '/') => {
+    console.log("[AuthContext] processFirebaseUser called with firebaseUser:", firebaseUser?.uid);
     if (firebaseUser) {
       try {
         const idToken = await getIdToken(firebaseUser);
-        setTokenState(idToken);
+        setToken(idToken);
+        console.log("[AuthContext] ID token set.");
 
         let appUser = await getUserFromFirestore(firebaseUser.uid);
         const isNewFirestoreUser = !appUser;
+        console.log(`[AuthContext] User from Firestore: ${appUser ? appUser.id : 'null'}. Is new Firestore user: ${isNewFirestoreUser}`);
 
-        if (!appUser) {
-          // If user doesn't exist in Firestore, create them
+        if (!appUser && db) { // Ensure db is initialized
           const newUserDetails: User = {
             id: firebaseUser.uid,
-            email: firebaseUser.email,
+            email: firebaseUser.email || undefined, // Handle null email
             username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || t('user_fallback_name'),
-            createdAt: serverTimestamp(), // Firestore server timestamp
-            lastLoginAt: serverTimestamp(),
+            createdAt: serverTimestamp() as FieldValue,
+            lastLoginAt: serverTimestamp() as FieldValue,
           };
+          console.log("[AuthContext] Attempting to save new user to Firestore:", newUserDetails);
           await saveUserToFirestore(newUserDetails);
-          appUser = await getUserFromFirestore(firebaseUser.uid); // Re-fetch to get Timestamps resolved
+          console.log("[AuthContext] New user saved to Firestore. Re-fetching...");
+          appUser = await getUserFromFirestore(firebaseUser.uid);
           if (!appUser) {
-            // This case should ideally not happen if saveUserToFirestore worked
-            console.error("Failed to fetch user from Firestore even after creation attempt.");
-            performLogout(false); // Log out if we can't get the app user profile
+            console.error("[AuthContext] Critical: Failed to fetch user from Firestore even after creation attempt.");
+            await performLogout(false);
+            setLoading(false);
             return;
           }
-        } else {
-          // User exists, update lastLoginAt
-          if (db) { // Ensure db is initialized
-            const userRef = doc(db, "users", firebaseUser.uid);
-            await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
-          }
+          console.log("[AuthContext] Re-fetched new user:", appUser);
+        } else if (appUser && db) { // User exists, update lastLoginAt
+          console.log("[AuthContext] User exists. Updating lastLoginAt for user:", appUser.id);
+          const userRef = doc(db, "users", firebaseUser.uid);
+          await setDoc(userRef, { lastLoginAt: serverTimestamp() as FieldValue }, { merge: true });
+          // Re-fetch to get the updated timestamp if needed, or merge locally
+          appUser = { ...appUser, lastLoginAt: Timestamp.now() }; // Approximate client-side
+          console.log("[AuthContext] lastLoginAt updated.");
+        } else if (!db) {
+            console.error("[AuthContext] Firestore (db) is not initialized. Cannot save or update user details.");
+            // Potentially sign out or handle error gracefully
+            toast({ title: t('error_title'), description: "Database not available. User details cannot be saved.", variant: "destructive" });
         }
         
-        setUserState(appUser);
+        setUser(appUser);
+        console.log("[AuthContext] App user state set:", appUser);
 
         if (showSuccessToastOnNewAuth && isNewFirestoreUser) {
           toast({ title: t('register_toast_success_title'), description: t('register_toast_success_desc') });
@@ -76,49 +105,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (redirectPath) {
           router.push(redirectPath);
+          console.log(`[AuthContext] Redirecting to ${redirectPath}`);
         }
       } catch (error) {
-        console.error("Error processing Firebase user:", error);
+        console.error("[AuthContext] Error processing Firebase user:", error);
         toast({ title: t('error_title'), description: t('google_signin_toast_fail_desc'), variant: "destructive" });
-        await performLogout(false); // Logout on error
+        await performLogout(false);
       }
     } else {
-      // No Firebase user
-      performLogout(false);
+      // No Firebase user, ensure local state is also cleared
+      console.log("[AuthContext] No Firebase user. Performing local logout.");
+      setUser(null);
+      setToken(null);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     if (!firebaseAuth) {
-      console.error("Firebase auth is not initialized.");
+      console.error("[AuthContext] Firebase auth is not initialized in useEffect.");
       setLoading(false);
-      performLogout(false);
+      setUser(null); // Ensure local state is cleared
+      setToken(null);
       return;
     }
-    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
-      console.log("onAuthStateChanged triggered, firebaseUser:", firebaseUser?.uid);
-      await processFirebaseUser(firebaseUser, false, null); // Don't show toast or redirect on initial load/refresh
+    console.log("[AuthContext] Setting up onAuthStateChanged listener.");
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentFirebaseUser) => {
+      console.log("[AuthContext] onAuthStateChanged triggered. FirebaseUser UID:", currentFirebaseUser?.uid);
+      setLoading(true); // Set loading to true while processing
+      await processFirebaseUser(currentFirebaseUser, false, null);
       setLoading(false);
+      console.log("[AuthContext] Finished processing onAuthStateChanged. Loading set to false.");
     });
-    return () => unsubscribe();
+    return () => {
+      console.log("[AuthContext] Cleaning up onAuthStateChanged listener.");
+      unsubscribe();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const performLogout = async (showToast = true) => {
-    setUserState(null);
-    setTokenState(null);
-    if (firebaseAuth) {
-        try {
-            await firebaseSignOut(firebaseAuth);
-        } catch (error) {
-            console.error("Error during Firebase sign out:", error);
-        }
-    }
-    if (showToast) {
-      toast({ title: t('logout_toast_title'), description: t('logout_toast_desc') });
-    }
-  };
+  }, []); // Ensure this runs only once on mount
 
   const loginWithEmail = async (credentials: any) => {
     if (!firebaseAuth) {
@@ -127,7 +150,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, credentials.email, credentials.password);
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, credentials.username, credentials.password); // Assuming username is email
       await processFirebaseUser(userCredential.user);
     } catch (error: any) {
       console.error('Email/Password Login failed:', error);
@@ -147,9 +170,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password);
-      // Note: We don't manually update displayName here for email/password.
-      // Firebase handles the email, and we'll use Firestore for username/profile.
-      await processFirebaseUser(userCredential.user, true); // Show toast on new registration
+      // We will create the Firestore user profile inside processFirebaseUser
+      await processFirebaseUser(userCredential.user, true); // true to show success toast
     } catch (error: any) {
       console.error('Email/Password Registration failed:', error);
       toast({ title: t('register_toast_fail_title'), description: error.message || t('register_toast_fail_desc'), variant: "destructive" });
@@ -176,21 +198,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error.code === 'auth/popup-closed-by-user') errorMessage = t('google_signin_popup_closed_desc');
       else if (error.code === 'auth/cancelled-popup-request') errorMessage = t('google_signin_popup_cancelled_desc');
       toast({ title: t('google_signin_toast_fail_title'), description: errorMessage, variant: "destructive" });
-      await performLogout(false);
+      await performLogout(false); // Don't redirect on failure
     } finally {
       setLoading(false);
     }
   };
 
   const logout = async () => {
+    console.log("[AuthContext] logout function called.");
     setLoading(true);
-    await performLogout();
+    await performLogout(); // showToast is true by default
     router.push('/login'); // Redirect after logout
     setLoading(false);
+    console.log("[AuthContext] User logged out and redirected to /login.");
   };
 
   return (
-    <AuthContext.Provider value={{ user: userState, token: tokenState, loading, loginWithEmail, registerWithEmail, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, loginWithEmail, registerWithEmail, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
