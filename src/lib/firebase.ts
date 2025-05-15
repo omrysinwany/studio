@@ -1,7 +1,6 @@
-// firebase.ts
+// src/lib/firebase.ts
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-// Updated to import auth and GoogleAuthProvider from 'firebase/auth'
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
@@ -13,14 +12,35 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-let firebaseApp: FirebaseApp;
+let firebaseApp: FirebaseApp | null = null; // Initialize as null
+
 if (!getApps().length) {
-  firebaseApp = initializeApp(firebaseConfig);
+  // Check if essential config values are present
+  if (
+    firebaseConfig.apiKey &&
+    firebaseConfig.authDomain &&
+    firebaseConfig.projectId &&
+    firebaseConfig.appId
+  ) {
+    try {
+      firebaseApp = initializeApp(firebaseConfig);
+    } catch (error) {
+      console.error("Firebase initialization error:", error);
+      // firebaseApp remains null
+    }
+  } else {
+    console.error(
+      'Firebase configuration is missing or incomplete. ' +
+      'Please ensure all NEXT_PUBLIC_FIREBASE_ environment variables are set in your .env file ' +
+      'and that the Next.js development server has been restarted.'
+    );
+  }
 } else {
   firebaseApp = getApps()[0];
 }
 
-export const db = getFirestore(firebaseApp);
-export const auth = getAuth(firebaseApp); // Export auth
-export { GoogleAuthProvider }; // Export GoogleAuthProvider
+// Conditionally export db and auth if firebaseApp was initialized successfully
+export const db = firebaseApp ? getFirestore(firebaseApp) : null;
+export const auth = firebaseApp ? getAuth(firebaseApp) : null;
+export { GoogleAuthProvider };
 export default firebaseApp;
