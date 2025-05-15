@@ -17,7 +17,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null; // Firebase ID token
   loading: boolean;
-  loginWithEmail: (credentials: any) => Promise<void>;
+  loginWithEmail: (credentials: { email: string, password: string }) => Promise<void>;
   registerWithEmail: (userData: {email: string, password: string, username?: string}) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => void;
@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(null);
     if (firebaseAuth) {
         try {
-            await fbAuth.signOut(firebaseAuth); // Use namespaced signOut
+            await fbAuth.signOut(firebaseAuth);
             console.log("[AuthContext] Successfully signed out from Firebase Auth.");
         } catch (error) {
             console.error("[AuthContext] Error during Firebase sign out:", error);
@@ -50,16 +50,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const processFirebaseUser = async (
-    firebaseUser: fbAuth.User | null, // Use namespaced User type
+    firebaseUser: fbAuth.User | null,
     isNewUserRegistration: boolean = false,
     showSuccessToastOnNewAuth = true,
     redirectPath: string | null = '/',
-    formUsername?: string // Added to carry username from registration form
+    formUsername?: string
   ) => {
     console.log("[AuthContext] processFirebaseUser called with firebaseUser:", firebaseUser?.uid, "isNewUserRegistration:", isNewUserRegistration, "formUsername:", formUsername);
     if (firebaseUser) {
       try {
-        const idToken = await fbAuth.getIdToken(firebaseUser); // Use namespaced getIdToken
+        const idToken = await fbAuth.getIdToken(firebaseUser);
         setToken(idToken);
         console.log("[AuthContext] ID token set.");
 
@@ -82,16 +82,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           appUser = await getUserFromFirestore(firebaseUser.uid);
           if (!appUser) {
             console.error("[AuthContext] Critical: Failed to fetch user from Firestore even after creation attempt.");
-            await performLogout(false);
+            // await performLogout(false); // Don't logout here, let the calling function handle UI
             setLoading(false);
-            return;
+            throw new Error("Failed to retrieve user details after creation."); // Throw to signal failure
           }
           console.log("[AuthContext] Re-fetched new user:", appUser);
         } else if (appUser && db) {
           console.log("[AuthContext] User exists. Updating lastLoginAt for user:", appUser.id);
           const userRef = doc(db, "users", firebaseUser.uid);
           await setDoc(userRef, { lastLoginAt: serverTimestamp() as FieldValue }, { merge: true });
-          appUser = { ...appUser, lastLoginAt: Timestamp.now() }; // Optimistically update local state
+          appUser = { ...appUser, lastLoginAt: Timestamp.now() };
           console.log("[AuthContext] lastLoginAt updated.");
         } else if (!db) {
             console.error("[AuthContext] Firestore (db) is not initialized. Cannot save or update user details.");
@@ -114,10 +114,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch (error) {
         console.error("[AuthContext] Error processing Firebase user:", error);
         toast({ title: t('error_title'), description: t('google_signin_toast_fail_desc'), variant: "destructive" });
-        await performLogout(false);
+        // await performLogout(false); // Avoid logout if processing failed, could be transient
+        setUser(null); // Reset user state on processing error
+        setToken(null);
+        throw error; // Re-throw to allow calling function to handle
       }
     } else {
-      console.log("[AuthContext] No Firebase user. Performing local logout.");
+      console.log("[AuthContext] No Firebase user. Local user/token state reset.");
       setUser(null);
       setToken(null);
     }
@@ -132,12 +135,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     console.log("[AuthContext] Setting up onAuthStateChanged listener.");
-    const unsubscribe = fbAuth.onAuthStateChanged(firebaseAuth, async (currentFirebaseUser) => { // Use namespaced onAuthStateChanged
+    const unsubscribe = fbAuth.onAuthStateChanged(firebaseAuth, async (currentFirebaseUser) => {
       console.log("[AuthContext] onAuthStateChanged triggered. FirebaseUser UID:", currentFirebaseUser?.uid);
       setLoading(true);
-      await processFirebaseUser(currentFirebaseUser, false, false, null);
-      setLoading(false);
-      console.log("[AuthContext] Finished processing onAuthStateChanged. Loading set to false.");
+      try {
+        await processFirebaseUser(currentFirebaseUser, false, false, null);
+      } catch (error) {
+        console.warn("[AuthContext] Error in onAuthStateChanged during processFirebaseUser, user state remains null:", error);
+        // User state is already reset by processFirebaseUser on error
+      } finally {
+        setLoading(false);
+        console.log("[AuthContext] Finished processing onAuthStateChanged. Loading set to false.");
+      }
     });
     return () => {
       console.log("[AuthContext] Cleaning up onAuthStateChanged listener.");
@@ -146,19 +155,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loginWithEmail = async (credentials: { username: string, password: string }) => {
+  const loginWithEmail = async (credentials: { email: string, password: string }) => {
     if (!firebaseAuth) {
       toast({ title: t('error_title'), description: "Firebase auth not initialized.", variant: "destructive" });
       throw new Error("Firebase auth not initialized.");
     }
     setLoading(true);
     try {
-      const userCredential = await fbAuth.signInWithEmailAndPassword(firebaseAuth, credentials.username, credentials.password); // Use namespaced signInWithEmailAndPassword
+      const userCredential = await fbAuth.signInWithEmailAndPassword(firebaseAuth, credentials.email, credentials.password);
       await processFirebaseUser(userCredential.user, false, true, '/');
     } catch (error: any) {
       console.error('Email/Password Login failed:', error);
       toast({ title: t('login_toast_fail_title'), description: error.message || t('login_toast_fail_desc'), variant: "destructive" });
-      await performLogout(false);
+      // Don't performLogout here, let the onAuthStateChanged handle it if needed or keep user state as is
       throw error;
     } finally {
       setLoading(false);
@@ -173,16 +182,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       console.log("[AuthContext] Attempting to create user with Firebase Auth:", userData.email);
-      const userCredential = await fbAuth.createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password); // Use namespaced createUserWithEmailAndPassword
+      const userCredential = await fbAuth.createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password);
       console.log("[AuthContext] Firebase Auth user created:", userCredential.user?.uid);
       
-      // Explicitly pass the username from the form to processFirebaseUser
       await processFirebaseUser(userCredential.user, true, true, '/', userData.username);
     } catch (error: any) {
-      console.error('Email/Password Registration failed:', error);
+      console.error('Email/Password Registration failed:', error.code, error.message);
       toast({ title: t('register_toast_fail_title'), description: error.message || t('register_toast_fail_desc'), variant: "destructive" });
-      await performLogout(false);
-      throw error;
+      // No need to performLogout here for registration errors.
+      throw error; // Re-throw so the calling component (RegisterPage) can handle UI state.
     } finally {
       setLoading(false);
     }
@@ -191,12 +199,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signInWithGoogle = async () => {
     if (!firebaseAuth) {
       toast({ title: t('error_title'), description: "Firebase auth not initialized.", variant: "destructive" });
-      return;
+      return; // or throw
     }
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await fbAuth.signInWithPopup(firebaseAuth, provider); // Use namespaced signInWithPopup
+      const result = await fbAuth.signInWithPopup(firebaseAuth, provider);
       await processFirebaseUser(result.user, false, true, '/');
     } catch (error: any) {
       console.error('Google Sign-In failed:', error);
@@ -204,7 +212,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error.code === 'auth/popup-closed-by-user') errorMessage = t('google_signin_popup_closed_desc');
       else if (error.code === 'auth/cancelled-popup-request') errorMessage = t('google_signin_popup_cancelled_desc');
       toast({ title: t('google_signin_toast_fail_title'), description: errorMessage, variant: "destructive" });
-      await performLogout(false);
+      // Don't performLogout here if popup is closed by user or cancelled.
     } finally {
       setLoading(false);
     }
@@ -213,10 +221,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     console.log("[AuthContext] logout function called.");
     setLoading(true);
-    await performLogout();
+    await performLogout(); // This already handles toast and Firebase sign out
+    // onAuthStateChanged will handle resetting user and token state
+    // It's generally better to let onAuthStateChanged handle the redirection after logout
+    // to ensure a consistent state update, but if immediate redirect is preferred:
     router.push('/login');
     setLoading(false);
-    console.log("[AuthContext] User logged out and redirected to /login.");
+    console.log("[AuthContext] User logged out action completed. Redirecting to /login.");
   };
 
   return (
@@ -233,15 +244,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-
-// Timestamp type, if not already globally available (e.g., from firebase/firestore)
-// It seems Timestamp is already imported from 'firebase/firestore' in this file.
-// If it were not, you might define a basic one or ensure correct import.
-// For example:
-// export interface Timestamp {
-//   toDate(): Date;
-//   // other properties/methods if needed
-// }
-// However, since it's imported from firebase/firestore, this is likely fine.
-
-    
