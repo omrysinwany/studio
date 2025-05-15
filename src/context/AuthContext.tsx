@@ -5,19 +5,20 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { User, saveUserToFirestore, getUserFromFirestore } from '@/services/backend'; // Use backend service
 import { auth as firebaseAuth, GoogleAuthProvider } from '@/lib/firebase';
-import { signInWithPopup, signOut as firebaseSignOut, User as FirebaseUser, getIdToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+// Import Firebase Auth functions, and alias the auth module
+import * as fbAuth from 'firebase/auth';
+import { doc, serverTimestamp, setDoc, Timestamp, FieldValue } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from '@/hooks/useTranslation';
 import { useRouter } from 'next/navigation';
-import { doc, serverTimestamp, setDoc, Timestamp, FieldValue } from 'firebase/firestore';
-import { db } from '@/lib/firebase'; // For serverTimestamp
 
 interface AuthContextType {
   user: User | null;
   token: string | null; // Firebase ID token
   loading: boolean;
   loginWithEmail: (credentials: any) => Promise<void>;
-  registerWithEmail: (userData: any) => Promise<void>;
+  registerWithEmail: (userData: {email: string, password: string, username?: string}) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logout: () => void;
 }
@@ -37,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(null);
     if (firebaseAuth) {
         try {
-            await firebaseSignOut(firebaseAuth);
+            await fbAuth.signOut(firebaseAuth); // Use namespaced signOut
             console.log("[AuthContext] Successfully signed out from Firebase Auth.");
         } catch (error) {
             console.error("[AuthContext] Error during Firebase sign out:", error);
@@ -48,11 +49,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const processFirebaseUser = async (firebaseUser: FirebaseUser | null, isNewUserRegistration: boolean = false, showSuccessToastOnNewAuth = true, redirectPath: string | null = '/') => {
-    console.log("[AuthContext] processFirebaseUser called with firebaseUser:", firebaseUser?.uid, "isNewUserRegistration:", isNewUserRegistration);
+  const processFirebaseUser = async (
+    firebaseUser: fbAuth.User | null, // Use namespaced User type
+    isNewUserRegistration: boolean = false,
+    showSuccessToastOnNewAuth = true,
+    redirectPath: string | null = '/',
+    formUsername?: string // Added to carry username from registration form
+  ) => {
+    console.log("[AuthContext] processFirebaseUser called with firebaseUser:", firebaseUser?.uid, "isNewUserRegistration:", isNewUserRegistration, "formUsername:", formUsername);
     if (firebaseUser) {
       try {
-        const idToken = await getIdToken(firebaseUser);
+        const idToken = await fbAuth.getIdToken(firebaseUser); // Use namespaced getIdToken
         setToken(idToken);
         console.log("[AuthContext] ID token set.");
 
@@ -61,11 +68,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log(`[AuthContext] User from Firestore: ${appUser ? appUser.id : 'null'}. Is new Firestore user: ${isNewFirestoreUser}`);
 
         if (!appUser && db) {
+          const usernameForNewUser = formUsername || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || t('user_fallback_name');
           const newUserDetails: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email || undefined,
-            // Use username from registration form if available, otherwise fallback
-            username: (isNewUserRegistration && firebaseUser.displayName) ? firebaseUser.displayName : (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || t('user_fallback_name')),
+            username: usernameForNewUser,
             createdAt: serverTimestamp() as FieldValue,
             lastLoginAt: serverTimestamp() as FieldValue,
           };
@@ -84,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log("[AuthContext] User exists. Updating lastLoginAt for user:", appUser.id);
           const userRef = doc(db, "users", firebaseUser.uid);
           await setDoc(userRef, { lastLoginAt: serverTimestamp() as FieldValue }, { merge: true });
-          appUser = { ...appUser, lastLoginAt: Timestamp.now() };
+          appUser = { ...appUser, lastLoginAt: Timestamp.now() }; // Optimistically update local state
           console.log("[AuthContext] lastLoginAt updated.");
         } else if (!db) {
             console.error("[AuthContext] Firestore (db) is not initialized. Cannot save or update user details.");
@@ -125,10 +132,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     console.log("[AuthContext] Setting up onAuthStateChanged listener.");
-    const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentFirebaseUser) => {
+    const unsubscribe = fbAuth.onAuthStateChanged(firebaseAuth, async (currentFirebaseUser) => { // Use namespaced onAuthStateChanged
       console.log("[AuthContext] onAuthStateChanged triggered. FirebaseUser UID:", currentFirebaseUser?.uid);
       setLoading(true);
-      await processFirebaseUser(currentFirebaseUser, false, false, null); // isNewUserRegistration is false here, showSuccessToast false, no redirect
+      await processFirebaseUser(currentFirebaseUser, false, false, null);
       setLoading(false);
       console.log("[AuthContext] Finished processing onAuthStateChanged. Loading set to false.");
     });
@@ -139,15 +146,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loginWithEmail = async (credentials: any) => {
+  const loginWithEmail = async (credentials: { username: string, password: string }) => {
     if (!firebaseAuth) {
       toast({ title: t('error_title'), description: "Firebase auth not initialized.", variant: "destructive" });
-      return;
+      throw new Error("Firebase auth not initialized.");
     }
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, credentials.username, credentials.password); // Assuming username is email
-      await processFirebaseUser(userCredential.user, false, true, '/'); // isNewUserRegistration is false
+      const userCredential = await fbAuth.signInWithEmailAndPassword(firebaseAuth, credentials.username, credentials.password); // Use namespaced signInWithEmailAndPassword
+      await processFirebaseUser(userCredential.user, false, true, '/');
     } catch (error: any) {
       console.error('Email/Password Login failed:', error);
       toast({ title: t('login_toast_fail_title'), description: error.message || t('login_toast_fail_desc'), variant: "destructive" });
@@ -166,19 +173,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       console.log("[AuthContext] Attempting to create user with Firebase Auth:", userData.email);
-      const userCredential = await createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password);
+      const userCredential = await fbAuth.createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password); // Use namespaced createUserWithEmailAndPassword
       console.log("[AuthContext] Firebase Auth user created:", userCredential.user?.uid);
-      // Pass the username from the form to processFirebaseUser
-      const firebaseUserWithDisplayName = {
-        ...userCredential.user,
-        displayName: userData.username || userCredential.user?.displayName // Prioritize form username
-      } as FirebaseUser;
-      await processFirebaseUser(firebaseUserWithDisplayName, true, true, '/'); // isNewUserRegistration is true
+      
+      // Explicitly pass the username from the form to processFirebaseUser
+      await processFirebaseUser(userCredential.user, true, true, '/', userData.username);
     } catch (error: any) {
       console.error('Email/Password Registration failed:', error);
       toast({ title: t('register_toast_fail_title'), description: error.message || t('register_toast_fail_desc'), variant: "destructive" });
       await performLogout(false);
-      throw error; // Re-throw to be caught by the form if needed
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -192,8 +196,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(firebaseAuth, provider);
-      await processFirebaseUser(result.user, false, true, '/'); // isNewUserRegistration is false
+      const result = await fbAuth.signInWithPopup(firebaseAuth, provider); // Use namespaced signInWithPopup
+      await processFirebaseUser(result.user, false, true, '/');
     } catch (error: any) {
       console.error('Google Sign-In failed:', error);
       let errorMessage = error.message || t('google_signin_toast_fail_desc');
@@ -229,3 +233,15 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+// Timestamp type, if not already globally available (e.g., from firebase/firestore)
+// It seems Timestamp is already imported from 'firebase/firestore' in this file.
+// If it were not, you might define a basic one or ensure correct import.
+// For example:
+// export interface Timestamp {
+//   toDate(): Date;
+//   // other properties/methods if needed
+// }
+// However, since it's imported from firebase/firestore, this is likely fine.
+
+    
