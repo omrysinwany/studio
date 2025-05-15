@@ -27,7 +27,7 @@ import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, form
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
-import styles from "./page.module.scss"; // Assuming this is for the gradient background
+import styles from "./page.module.scss";
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from '@/components/create-supplier-sheet';
 
@@ -184,7 +184,7 @@ const allKpiConfigurations: ItemConfig[] = [
     iconColor: 'text-orange-500 dark:text-orange-400',
     defaultVisible: true,
   },
-  {
+    {
     id: 'documentsProcessed30d',
     titleKey: 'home_kpi_documents_processed_30d_title',
     icon: FileTextIcon,
@@ -192,7 +192,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_documents_processed_30d_desc',
     link: '/invoices',
     iconColor: 'text-blue-500 dark:text-blue-400',
-    defaultVisible: false,
+    defaultVisible: false, // Hidden by default
   },
   {
     id: 'averageInvoiceValue',
@@ -202,7 +202,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
-    defaultVisible: false,
+    defaultVisible: false, // Hidden by default
   },
   {
     id: 'suppliersCount',
@@ -212,7 +212,7 @@ const allKpiConfigurations: ItemConfig[] = [
     descriptionKey: 'home_kpi_suppliers_count_desc',
     link: '/suppliers',
     iconColor: 'text-teal-500 dark:text-teal-400',
-    defaultVisible: false,
+    defaultVisible: false, // Hidden by default
   },
 ];
 
@@ -358,27 +358,17 @@ export default function Home() {
   const [kpiError, setKpiError] = useState<string | null>(null);
   const [isCreateSupplierSheetOpen, setIsCreateSupplierSheetOpen] = useState(false);
 
-  const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
-    { visibleKpiIds: [], kpiOrder: [] }
-  );
-   const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
+  const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
     {
-      id: 'addExpense',
-      titleKey: 'home_quick_action_add_expense',
-      icon: DollarSign,
-      link: '/accounts/other-expenses',
-      defaultVisible: true,
-    },
-    {
-      id: 'addProduct',
-      titleKey: 'home_quick_action_add_product',
-      icon: PackagePlus,
-      link: '/inventory',
+      id: 'scanDocument', // Changed from 'addExpense' for primary action
+      titleKey: 'home_scan_button',
+      icon: ScanLine,
+      onClick: () => router.push('/upload'), // Direct navigation
       defaultVisible: true,
     },
     {
       id: 'openInvoices',
-      titleKey: 'home_open_invoices',
+      titleKey: 'home_open_invoices', // Changed key
       icon: FileWarning,
       link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
       defaultVisible: true,
@@ -395,10 +385,28 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false,
+      defaultVisible: false, // Hidden by default
     },
-  ], [t]); // Re-memoize if t changes (language change)
+     {
+      id: 'addExpense',
+      titleKey: 'home_quick_action_add_expense',
+      icon: DollarSign,
+      link: '/accounts/other-expenses',
+      defaultVisible: true,
+    },
+    {
+      id: 'addProduct',
+      titleKey: 'home_quick_action_add_product',
+      icon: PackagePlus,
+      link: '/inventory', // This should probably link to an "add product" page or open a modal
+      defaultVisible: true,
+    },
+  ], [t, router]);
 
+
+  const [userKpiPreferences, setUserKpiPreferences] = useState<{ visibleKpiIds: string[], kpiOrder: string[] }>(
+    { visibleKpiIds: [], kpiOrder: [] }
+  );
 
   const [userQuickActionPreferences, setUserQuickActionPreferences] = useState<{ visibleQuickActionIds: string[], quickActionOrder: string[] }>(
     getQuickActionPreferences(user?.id, allQuickActionConfigurations)
@@ -528,8 +536,10 @@ export default function Home() {
       const documentsProcessed30d = invoices.filter(inv =>
           inv.status === 'completed' &&
           inv.uploadTime &&
+          isValid(parseISO(inv.uploadTime as string)) && // Added isValid check
           parseISO(inv.uploadTime as string) >= thirtyDaysAgo
       ).length;
+
       const completedInvoices = invoices.filter(inv => inv.status === 'completed' && inv.totalAmount !== undefined);
       const totalInvoiceValue = completedInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
       const averageInvoiceValue = completedInvoices.length > 0 ? totalInvoiceValue / completedInvoices.length : 0;
@@ -543,11 +553,16 @@ export default function Home() {
         { name: 'Day 5', value: inventoryValue + Math.random() * 1000 - 500 },
       ].map(d => ({...d, value: Math.max(0, Math.round(d.value))}));
 
-      const recentInvoices = invoices.sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime()).slice(0,3);
+      const recentInvoices = invoices.sort((a,b) => {
+          const timeA = a.uploadTime && isValid(parseISO(a.uploadTime as string)) ? parseISO(a.uploadTime as string).getTime() : 0;
+          const timeB = b.uploadTime && isValid(parseISO(b.uploadTime as string)) ? parseISO(b.uploadTime as string).getTime() : 0;
+          return timeB - timeA;
+      }).slice(0,3);
+
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
         params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
-        time: formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }),
+        time: inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) ? formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date'),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
 
@@ -559,7 +574,7 @@ export default function Home() {
         criticalLowStockProducts,
         nextPaymentDueInvoice,
         recentActivity: mockRecentActivity,
-        latestDocName: invoices.length > 0 ? invoices[0].fileName : undefined,
+        latestDocName: invoices.length > 0 && invoices[0].fileName ? invoices[0].fileName : undefined,
         inventoryValueTrend: mockInventoryValueTrend,
         inventoryValuePrevious: mockInventoryValueTrend.length > 1 ? mockInventoryValueTrend[mockInventoryValueTrend.length - 2].value : inventoryValue,
         grossProfit,
@@ -581,7 +596,7 @@ export default function Home() {
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast, locale, allQuickActionConfigurations]);
+  }, [user, authLoading, t, toast, locale]); // Removed allQuickActionConfigurations dependency
 
   useEffect(() => {
     if (user) {
@@ -627,7 +642,7 @@ export default function Home() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData(); // Re-fetch KPIs which might include supplier count
+      fetchKpiData();
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -649,15 +664,18 @@ export default function Home() {
   }
 
   return (
-    <div className={cn("flex flex-col items-start min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
+    <div className={cn("flex flex-col items-center min-h-[calc(100vh-var(--header-height,4rem))] p-4 sm:p-6 md:p-8", styles.homeContainerGradient)}>
       <TooltipProvider>
-        <div className="w-full max-w-5xl text-left">
+        <div className="w-full max-w-5xl text-center">
+           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2 text-primary scale-fade-in">
+             {t('home_welcome_title')}
+          </h1>
            <p className="text-base sm:text-lg text-muted-foreground mb-2 scale-fade-in delay-100">
              {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
            </p>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 md:mb-8 text-primary scale-fade-in">
-             {t('home_welcome_title')}
-          </h1>
+            <p className="text-sm text-muted-foreground mb-6 md:mb-8 scale-fade-in delay-200">
+             {t('home_tagline')}
+            </p>
 
           <div className="mb-6 md:mb-10 scale-fade-in delay-200 flex flex-col items-center gap-3">
               <Button
@@ -668,12 +686,12 @@ export default function Home() {
                 <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
               </Button>
               <div className="w-full max-w-md grid grid-cols-2 gap-3">
-                  <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                  <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
                       <Link href="/inventory">
                           <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
                       </Link>
                   </Button>
-                   <Button variant="outline" asChild className="hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
+                   <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-sm sm:text-base h-auto">
                       <Link href="/invoices">
                           <FileTextIcon className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_documents')}
                       </Link>
@@ -681,7 +699,8 @@ export default function Home() {
               </div>
           </div>
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-300">
+          {/* Quick Actions Section */}
+          <div className="mb-6 md:mb-8 text-left">
             <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
@@ -691,7 +710,7 @@ export default function Home() {
                     <span className="sr-only">{t('home_customize_qa_button')}</span>
                 </Button>
             </div>
-             <Card className="bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
+            <Card className="bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
                 <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4">
                     {visibleQuickActions.map((action, index) => {
                         const ActionIcon = action.icon;
@@ -705,13 +724,13 @@ export default function Home() {
                             <Tooltip key={action.id}>
                                 <TooltipTrigger asChild>
                                      {action.link ? (
-                                        <Button variant="outline" asChild className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all" style={{animationDelay: `${0.05 * index}s`}}>
+                                        <Button variant="outline" asChild className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all scale-fade-in" style={{animationDelay: `${0.05 * index}s`}}>
                                             <Link href={action.link} className="flex flex-col sm:flex-row items-center gap-1 sm:gap-1.5 text-center sm:text-left">
                                                 {buttonContent}
                                             </Link>
                                         </Button>
                                      ) : action.onClick ? (
-                                        <Button variant="outline" onClick={action.onClick} className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all" style={{animationDelay: `${0.05 * index}s`}}>
+                                        <Button variant="outline" onClick={action.onClick} className="h-auto py-2.5 sm:py-3 flex-col sm:flex-row items-center justify-center hover:bg-accent/10 hover:border-accent transform hover:scale-[1.02] transition-all scale-fade-in" style={{animationDelay: `${0.05 * index}s`}}>
                                              {buttonContent}
                                         </Button>
                                      ) : null}
@@ -720,7 +739,7 @@ export default function Home() {
                             </Tooltip>
                         );
                     })}
-                    {(isLoadingKpis && user && visibleQuickActions.length === 0) && Array.from({length: 3}).map((_, idx) => <Skeleton key={`qa-skeleton-${idx}`} className="h-12 sm:h-14 w-full rounded-md" />)}
+                    {(isLoadingKpis && user && visibleQuickActions.length === 0) && Array.from({length: 3}).map((_, idx) => <Skeleton key={`qa-skeleton-${idx}`} className="h-12 sm:h-14 w-full rounded-md bg-muted/50" />)}
                     {(!isLoadingKpis || !user) && visibleQuickActions.length === 0 && (
                         <div className="col-span-full text-center py-4 text-muted-foreground">
                             <p className="text-sm">{t('home_no_quick_actions_selected')}</p>
@@ -731,17 +750,18 @@ export default function Home() {
             </Card>
           </div>
 
-          <div className="mb-6 md:mb-8 scale-fade-in delay-400">
-            <div className="flex justify-between items-center mb-4 px-1 sm:px-0">
+         {/* Quick Overview (KPIs) Section */}
+          <div className="mb-6 md:mb-8 text-left">
+            <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <ListChecks className="mr-2 h-5 w-5" /> {t('home_quick_overview_title')}
                 </h2>
-                <Button variant="ghost" size="icon" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
+                 <Button variant="ghost" size="icon" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="h-8 w-8 text-muted-foreground hover:text-primary">
                     <SettingsIcon className="h-4 w-4" />
                     <span className="sr-only">{t('home_customize_dashboard_button')}</span>
                 </Button>
             </div>
-            <p className="text-sm text-muted-foreground mb-6 px-1 sm:px-0">{t('home_quick_overview_desc')}</p>
+            <p className="text-sm text-muted-foreground mb-4 px-1 sm:px-0">{t('home_quick_overview_desc')}</p>
 
             {kpiError && !isLoadingKpis && user && (
             <Alert variant="destructive" className="mb-4 text-left">
@@ -750,20 +770,21 @@ export default function Home() {
             </Alert>
             )}
             {(isLoadingKpis && user) ? (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                    <Card key={`skeleton-${idx}`} className="shadow-md bg-card/80 backdrop-blur-sm border-border/50 h-[150px] sm:h-[160px]">
-                        <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3 rounded-md"/></CardHeader>
-                        <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1 rounded-md"/><Skeleton className="h-3 w-3/4 rounded-md"/></CardContent>
-                    </Card>
+                     <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px] flex flex-col justify-between">
+                        <Skeleton className="h-4 w-2/3 rounded-md bg-muted/50"/>
+                        <Skeleton className="h-8 w-1/2 mb-1 rounded-md bg-muted/50"/>
+                        <Skeleton className="h-3 w-3/4 rounded-md bg-muted/50"/>
+                    </div>
                 ))}
                 </div>
             ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
-                <div className="text-center py-8 text-muted-foreground">
-                <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
-                <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
-            </div>
+                <div className="text-center py-8 text-muted-foreground bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
+                    <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                    <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
+                    <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
+                </div>
             ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {visibleKpiConfigs.map((kpi, index) => {
@@ -774,7 +795,7 @@ export default function Home() {
                     <Tooltip key={kpi.id}>
                         <TooltipTrigger asChild>
                         <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full", !kpi.link && "pointer-events-none")}>
-                            <div className={cn("shadow-lg hover:shadow-xl transition-all duration-300 ease-in-out hover:scale-[1.02] h-full text-left transform hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border border-border/50 rounded-lg p-3 sm:p-4 flex flex-col", styles.kpiCard, "kpiCard")} style={{animationDelay: `${0.05 * index}s`}}>
+                            <div className={cn("h-full text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col", styles.kpiCard, "kpiCard scale-fade-in")} style={{animationDelay: `${0.05 * (index + visibleQuickActions.length)}s`}}>
                             <div className="flex flex-row items-center justify-between space-y-0 pb-1">
                                 <h3 className="text-sm sm:text-base font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
                                 <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", kpi.iconColor || "text-primary")} />
@@ -823,21 +844,16 @@ export default function Home() {
                 })}
             </div>
             )}
-            {(kpiData && visibleKpiConfigs.length === 0 && !isLoadingKpis) && (
-                <div className="text-center py-8 text-muted-foreground">
-                    <SettingsIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                    <p className="text-sm">{t('home_no_kpis_selected_title')}</p>
-                    <Button variant="link" onClick={() => setIsCustomizeKpiSheetOpen(true)} className="text-sm text-primary">{t('home_no_kpis_selected_action')}</Button>
-                </div>
-            )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
+        {/* Actionable Insights & Recent Activity Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12 text-left">
             <Card className="scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg">
                 <CardHeader className="pb-3">
                 <CardTitle className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <Info className="mr-2 h-5 w-5" /> {t('home_actionable_insights_title')}
                 </CardTitle>
+                 <CardDescription>{t('home_actionable_insights_desc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm pt-0">
                     <div>
@@ -845,7 +861,7 @@ export default function Home() {
                             <AlertTriangle className="mr-2 h-4 w-4 text-destructive" />
                             {t('home_critical_low_stock_title')}
                         </h3>
-                        {isLoadingKpis ? <Skeleton className="h-5 w-2/3 my-2 rounded-md" /> :
+                        {isLoadingKpis ? <Skeleton className="h-5 w-2/3 my-2 rounded-md bg-muted/50" /> :
                         kpiData?.criticalLowStockProducts && kpiData.criticalLowStockProducts.length > 0 ? (
                             <ul className="list-disc pl-5 text-muted-foreground mt-1 space-y-0.5">
                             {kpiData.criticalLowStockProducts.map(product => (
@@ -869,13 +885,13 @@ export default function Home() {
                             <BellRing className="mr-2 h-4 w-4 text-primary" />
                             {t('home_next_payment_due_title')}
                         </h3>
-                        {isLoadingKpis ? <Skeleton className="h-5 w-3/4 my-2 rounded-md" /> :
+                        {isLoadingKpis ? <Skeleton className="h-5 w-3/4 my-2 rounded-md bg-muted/50" /> :
                         kpiData?.nextPaymentDueInvoice ? (
                             <p className="text-muted-foreground mt-1">
                                 <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
                                     {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                 </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                             </p>
                         ) : (
                              <div className="text-muted-foreground mt-1 text-center py-4">
@@ -896,9 +912,9 @@ export default function Home() {
                 <CardContent className="pt-0">
                     {isLoadingKpis ?
                         <div className="space-y-2">
-                            <Skeleton className="h-5 w-full rounded-md" />
-                            <Skeleton className="h-5 w-5/6 rounded-md" />
-                            <Skeleton className="h-5 w-3/4 rounded-md" />
+                            <Skeleton className="h-5 w-full rounded-md bg-muted/50" />
+                            <Skeleton className="h-5 w-5/6 rounded-md bg-muted/50" />
+                            <Skeleton className="h-5 w-3/4 rounded-md bg-muted/50" />
                         </div>
                         :
                     kpiData?.recentActivity && kpiData.recentActivity.length > 0 ? (
@@ -956,3 +972,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
