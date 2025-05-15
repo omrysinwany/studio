@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -39,6 +40,15 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   const [selectedOption, setSelectedOption] = useState<DueDateOption>('immediate');
   const [customDate, setCustomDate] = useState<Date | undefined>(new Date());
 
+  useEffect(() => {
+    console.log("[PaymentDueDateDialog] isOpen prop changed to:", isOpen);
+    if (isOpen) {
+        // Reset to default when opened if needed
+        setSelectedOption('immediate');
+        setCustomDate(new Date());
+    }
+  }, [isOpen]);
+
   const handleConfirm = () => {
     let dueDate: string | Date | undefined;
     switch (selectedOption) {
@@ -60,19 +70,33 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
       default:
         dueDate = undefined;
     }
+    console.log("[PaymentDueDateDialog] Confirming with option:", selectedOption, "resulting due date:", dueDate);
     onConfirm(dueDate);
     onOpenChange(false);
   };
 
   const handleDialogCancel = () => {
+    console.log("[PaymentDueDateDialog] Cancelled by user.");
     onCancel();
     onOpenChange(false);
   };
 
+  const handleRadioChange = (value: string) => {
+    console.log("[PaymentDueDateDialog] Radio option changed to:", value);
+    setSelectedOption(value as DueDateOption);
+  };
+  
+  const handleCustomDateChange = (date: Date | undefined) => {
+      console.log("[PaymentDueDateDialog] Custom date selected:", date);
+      setCustomDate(date);
+  };
+
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
+        console.log("[PaymentDueDateDialog] onOpenChange called with:", open);
         onOpenChange(open);
-        if (!open) handleDialogCancel();
+        if (!open) handleDialogCancel(); // Ensure cancel logic is called if closed via X or overlay
     }}>
       <SheetContent side="bottom" className="h-auto max-h-[80vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
@@ -85,7 +109,7 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
         </SheetHeader>
 
         <div className="flex-grow p-4 sm:p-6 space-y-4 overflow-y-auto">
-          <RadioGroup value={selectedOption} onValueChange={(value) => setSelectedOption(value as DueDateOption)} className="space-y-3">
+          <RadioGroup value={selectedOption} onValueChange={handleRadioChange} className="space-y-3">
             <div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="immediate" id="due_immediate" />
@@ -143,7 +167,7 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
                     <Calendar
                       mode="single"
                       selected={customDate}
-                      onSelect={setCustomDate}
+                      onSelect={handleCustomDateChange}
                       initialFocus
                       disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Disable past dates
                     />
@@ -168,3 +192,4 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
 };
 
 export default PaymentDueDateDialog;
+
