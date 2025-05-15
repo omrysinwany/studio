@@ -83,14 +83,13 @@ const formatLargeNumber = (
     const absNum = Math.abs(num);
     const localeCode = t('locale_code_for_number_formatting') as string | undefined;
 
-    // If the number is small or it's an integer that shouldn't be abbreviated, format it directly
-    if (absNum < 10000 || (isInteger && absNum < 1000 && decimals === 0)) {
+    if (isCurrency || absNum < 10000 || (isInteger && absNum < 1000 && decimals === 0)) {
         return prefix + num.toLocaleString(localeCode || undefined, {
-            minimumFractionDigits: isCurrency && decimals !== 0 ? 2 : decimals, // Keep 2 decimals for currency unless explicitly 0
-            maximumFractionDigits: isCurrency && decimals !== 0 ? 2 : decimals
+            minimumFractionDigits: isCurrency ? 0 : decimals,
+            maximumFractionDigits: isCurrency ? 0 : decimals
         });
     }
-    // For larger numbers or when abbreviation is desired (decimals might be > 0 for non-integers like percentages)
+
     const si = [
       { value: 1, symbol: "" },
       { value: 1E3, symbol: t('number_suffix_thousand') },
@@ -110,12 +109,12 @@ const formatLargeNumber = (
     const valAfterSuffix = num / si[i].value;
 
     if (isCurrency) {
-        numDecimals = (valAfterSuffix % 1 === 0 && si[i].value !== 1 && decimals === 0) ? 0 : (absNum < 1000 && decimals === 0 ? 0 : 2);
-         if (decimals === 0) numDecimals = 0; // Explicitly 0 for currency
+        numDecimals = 0; // Always 0 decimals for currency in this function after abbreviation
     } else {
         numDecimals = (isInteger ? 0 : (valAfterSuffix % 1 === 0 && si[i].value !== 1) ? 0 : decimals);
     }
-    if (si[i].value === 1 && decimals === 0) numDecimals = 0;
+    if (si[i].value === 1 && decimals === 0 && !isCurrency) numDecimals = 0;
+
 
     const formattedNum = valAfterSuffix.toFixed(numDecimals).replace(rx, "$1");
     return prefix + formattedNum + si[i].symbol;
@@ -341,7 +340,7 @@ export default function Home() {
       titleKey: 'home_quick_action_add_supplier',
       icon: UserPlus,
       onClick: () => setIsCreateSupplierSheetOpen(true),
-      defaultVisible: false, 
+      defaultVisible: false,
     },
      {
       id: 'addExpense',
@@ -354,7 +353,7 @@ export default function Home() {
       id: 'addProduct',
       titleKey: 'home_quick_action_add_product',
       icon: PackagePlus,
-      link: '/inventory',
+      link: '/inventory', // Assuming a link to the inventory page to add new products
       defaultVisible: true,
     },
   ], [t, setIsCreateSupplierSheetOpen]);
@@ -396,7 +395,7 @@ export default function Home() {
 
 
   const fetchKpiData = useCallback(async () => {
-    if (!user || authLoading) return;
+    if (!user || !user.id || authLoading) return;
 
     setIsLoadingKpis(true);
     setKpiError(null);
@@ -464,9 +463,9 @@ export default function Home() {
       });
 
       const totalOtherExpensesForMonth = otherExpensesData.reduce((sum, exp) => {
-          if (!exp.date || !isValid(parseISO(exp.date))) return sum;
+          if (!exp.date || !isValid(parseISO(exp.date as string))) return sum;
           try {
-              const expenseDate = parseISO(exp.date);
+              const expenseDate = parseISO(exp.date as string);
               if (isSameMonth(expenseDate, new Date())) {
                   let amountToAdd = exp.amount;
                   const internalKey = exp._internalCategoryKey?.toLowerCase();
@@ -507,10 +506,10 @@ export default function Home() {
           return timeB - timeA;
       }).slice(0,3);
 
-      const localeToUse = locale === 'he' ? heLocale : enUSLocale;
+      const localeToUse = t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale;
       const mockRecentActivity = recentInvoices.map(inv => ({
         descriptionKey: 'home_recent_activity_mock_invoice_added',
-        params: { supplier: inv.supplier || t('invoices_unknown_supplier') },
+        params: { supplier: inv.supplierName || t('invoices_unknown_supplier') },
         time: inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) ? formatDateFns(parseISO(inv.uploadTime as string), 'PPp', { locale: localeToUse }) : t('home_unknown_date'),
         link: `/invoices?tab=scanned-docs&viewInvoiceId=${inv.id}`
       }));
@@ -534,21 +533,21 @@ export default function Home() {
 
     } catch (error) {
       console.error("Failed to fetch KPI data:", error);
-      setKpiError(t('home_kpi_error_load_failed'));
+      setKpiError(t('home_kpi_toast_error_load_failed_desc')); // Use translated error
       toast({
         title: t('error_title'),
-        description: t('home_kpi_toast_error_load_failed_desc'),
+        description: t('home_kpi_toast_error_load_failed_desc'), // Use translated error
         variant: "destructive",
       });
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast, locale]);
+  }, [user, authLoading, t, toast]);
 
   useEffect(() => {
-    if (user) {
+    if (user && user.id) {
       fetchKpiData();
-    } else if (!authLoading) {
+    } else if (!authLoading && !user) {
       setIsLoadingKpis(false);
     }
   }, [user, authLoading, fetchKpiData]);
@@ -560,7 +559,7 @@ export default function Home() {
 
   const renderKpiValueDisplay = (valueString: string) => {
     if (isLoadingKpis && user) {
-      return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+      return <Skeleton className="h-7 w-1/2 mt-1" />;
     }
     if (kpiError && user) return <span className="text-destructive text-lg">-</span>;
     return valueString;
@@ -584,12 +583,12 @@ export default function Home() {
   };
 
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string; paymentTerms?: string }) => {
-    if (!user) return;
+    if (!user || !user.id) return;
     try {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSupplierSheetOpen(false);
-      fetchKpiData(); 
+      fetchKpiData();
     } catch (error: any) {
       console.error("Failed to create supplier from home page:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -622,7 +621,7 @@ export default function Home() {
                {t('home_greeting', { username: user?.username || t('user_fallback_name') })}
              </p>
              <p className="text-sm text-muted-foreground mt-1 scale-fade-in delay-200">
-               {t('home_tagline')}
+               {t('home_sub_greeting')}
              </p>
            </div>
 
@@ -649,7 +648,7 @@ export default function Home() {
           </div>
 
           {/* Quick Actions Section */}
-          <div className="mb-6 md:mb-8 text-left">
+           <div className="mb-6 md:mb-8 text-left">
             <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
                     <PlusCircle className="mr-2 h-5 w-5" /> {t('home_quick_actions_title')}
@@ -718,12 +717,12 @@ export default function Home() {
                 <AlertDescription>{kpiError}</AlertDescription>
             </Alert>
             )}
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+             <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {(isLoadingKpis && user) ? (
                     Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                         <Card key={`skeleton-${idx}`} className={cn("shadow-md bg-card/80 backdrop-blur-sm border-border/50 h-[150px] sm:h-[160px]", styles.kpiCard)}>
-                             <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
-                             <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                         <Card key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px]">
+                             <CardHeader className="pb-1 pt-0 px-0"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                             <CardContent className="pt-1 pb-0 px-0"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
                          </Card>
                     ))
                 ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
@@ -738,10 +737,10 @@ export default function Home() {
                         const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
                         const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
                         return (
-                        <Card key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in")} style={{animationDelay: `${0.05 * index}s`}}>
+                        <div key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in p-3 sm:p-4")} style={{animationDelay: `${0.05 * index}s`}}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full flex flex-col p-3 sm:p-4", !kpi.link && "pointer-events-none")}>
+                                    <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full flex flex-col", !kpi.link && "pointer-events-none")}>
                                         <div className="flex flex-row items-center justify-between space-y-0 pb-1">
                                             <h3 className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
                                             <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
@@ -769,7 +768,7 @@ export default function Home() {
                                 </TooltipTrigger>
                                 {kpi.descriptionKey && <TooltipContent><p>{t(kpi.descriptionKey)}</p></TooltipContent>}
                             </Tooltip>
-                        </Card>
+                        </div>
                         );
                     })
                 )}
@@ -819,9 +818,9 @@ export default function Home() {
                         kpiData?.nextPaymentDueInvoice ? (
                             <p className="text-muted-foreground mt-1">
                                 <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
-                                    {kpiData.nextPaymentDueInvoice.supplier || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
+                                    {kpiData.nextPaymentDueInvoice.supplierName || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
                                 </Link>
-                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: locale === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
+                                {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate && isValid(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string)) ? formatDateFns(parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                             </p>
                         ) : (
                              <div className="text-muted-foreground mt-1 text-center py-4">
