@@ -9,7 +9,22 @@ import { Package, FileText as FileTextIcon, BarChart2, ScanLine, Loader2, Trendi
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { getProductsService, InvoiceHistoryItem, getInvoicesService, SupplierSummary, getSupplierSummariesService, Product as BackendProduct, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, UserSettings, getUserSettingsService, MONTHLY_BUDGET_STORAGE_KEY_BASE, createSupplierService, getStoredData } from '@/services/backend';
+import {
+  getProductsService,
+  InvoiceHistoryItem,
+  getInvoicesService,
+  SupplierSummary,
+  getSupplierSummariesService,
+  Product as BackendProduct,
+  OtherExpense,
+  OTHER_EXPENSES_STORAGE_KEY_BASE, // Assuming this will be used for other expenses KPI
+  UserSettings,
+  getUserSettingsService,
+  MONTHLY_BUDGET_STORAGE_KEY_BASE,
+  createSupplierService,
+  getStoredData,
+  getStorageKey // Added this import
+} from '@/services/backend';
 import {
   calculateInventoryValue,
   calculateTotalItems,
@@ -22,7 +37,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import GuestHomePage from '@/components/GuestHomePage';
 import { isValid, parseISO, startOfMonth, endOfMonth, isSameMonth, subDays, format as formatDateFns } from 'date-fns';
-import { Timestamp } from 'firebase/firestore'; // Import Timestamp
+import { Timestamp } from 'firebase/firestore';
 import { he as heLocale, enUS as enUSLocale } from 'date-fns/locale';
 import { useTranslation } from '@/hooks/useTranslation';
 import KpiCustomizationSheet from '@/components/KpiCustomizationSheet';
@@ -71,42 +86,23 @@ export interface ItemConfig {
 const formatLargeNumber = (
     num: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
-    decimals = 0,
     isCurrency = false,
-    isInteger = false
+    decimals = 0 // Default to 0 for currency and general numbers
   ): string => {
     if (num === undefined || num === null || isNaN(num)) {
       return isCurrency ? `${t('currency_symbol')}-` : '-';
     }
 
     const prefix = isCurrency ? `${t('currency_symbol')}` : '';
-    const absNum = Math.abs(num);
     const localeCode = t('locale_code_for_number_formatting') as string | undefined;
 
-    if (isCurrency || absNum < 10000 || (isInteger && absNum < 1000 && decimals === 0)) {
-        return prefix + num.toLocaleString(localeCode || undefined, {
-            minimumFractionDigits: 0, // Always 0 for currency and whole numbers
-            maximumFractionDigits: 0
-        });
-    }
+    // Always show 0 decimals for currency unless specified otherwise (which it isn't here)
+    const effectiveDecimals = isCurrency ? 0 : decimals;
 
-    const si = [
-      { value: 1, symbol: "" },
-      { value: 1E3, symbol: t('number_suffix_thousand') },
-      { value: 1E6, symbol: t('number_suffix_million') },
-      { value: 1E9, symbol: t('number_suffix_billion') },
-      { value: 1E12, symbol: t('number_suffix_trillion') }
-    ];
-    const rx = /\.0+$|(\.[0-9]*[1-9])0+$/;
-    let i;
-    for (i = si.length - 1; i > 0; i--) {
-      if (absNum >= si[i].value) {
-        break;
-      }
-    }
-    
-    const formattedNum = (num / si[i].value).toFixed(decimals === 0 ? 0 : 1).replace(rx, "$1");
-    return prefix + formattedNum + si[i].symbol;
+    return prefix + num.toLocaleString(localeCode || undefined, {
+        minimumFractionDigits: effectiveDecimals,
+        maximumFractionDigits: effectiveDecimals
+    });
   };
 
 const allKpiConfigurations: ItemConfig[] = [
@@ -114,7 +110,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'totalItems',
     titleKey: 'home_kpi_total_items_title',
     icon: Package,
-    getValue: (data, t) => formatLargeNumber(data?.totalItems, t, 0, false, true),
+    getValue: (data, t) => formatLargeNumber(data?.totalItems, t, false, 0),
     descriptionKey: 'home_kpi_total_items_desc',
     link: '/inventory',
     iconColor: 'text-accent',
@@ -124,10 +120,10 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'inventoryValue',
     titleKey: 'home_kpi_inventory_value_title',
     icon: DollarSign,
-    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.inventoryValue, t, true, 0),
     descriptionKey: 'home_kpi_inventory_value_desc',
     link: '/reports',
-    showTrend: false, // Sparkline was removed
+    // showTrend: false, // Sparkline was removed
     iconColor: 'text-green-500 dark:text-green-400',
     defaultVisible: true,
   },
@@ -135,7 +131,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'grossProfit',
     titleKey: 'home_kpi_gross_profit_title',
     icon: HandCoins,
-    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.grossProfit, t, true, 0),
     descriptionKey: 'home_kpi_gross_profit_desc',
     link: '/reports',
     iconColor: 'text-emerald-500 dark:text-emerald-400',
@@ -145,7 +141,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'currentMonthExpenses',
     titleKey: 'home_kpi_current_month_expenses_title',
     icon: CreditCard,
-    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.currentMonthTotalExpenses, t, true, 0),
     descriptionKey: 'home_kpi_current_month_expenses_desc',
     link: '/accounts',
     iconColor: 'text-red-500 dark:text-red-400',
@@ -155,7 +151,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'lowStock',
     titleKey: 'home_kpi_low_stock_title',
     icon: AlertTriangle,
-    getValue: (data, t) => formatLargeNumber(data?.lowStockItemsCount, t, 0, false, true),
+    getValue: (data, t) => formatLargeNumber(data?.lowStockItemsCount, t, false, 0),
     descriptionKey: 'home_kpi_low_stock_desc',
     link: '/inventory?filter=low',
     showProgress: true,
@@ -167,7 +163,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'amountToPay',
     titleKey: 'home_kpi_amount_to_pay_title',
     icon: Banknote,
-    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.amountRemainingToPay, t, true, 0),
     descriptionKey: 'home_kpi_amount_to_pay_desc',
     link: '/invoices?tab=scanned-docs&filterPaymentStatus=unpaid',
     iconColor: 'text-orange-500 dark:text-orange-400',
@@ -177,7 +173,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'documentsProcessed30d',
     titleKey: 'home_kpi_documents_processed_30d_title',
     icon: FileTextIcon,
-    getValue: (data, t) => formatLargeNumber(data?.documentsProcessed30d, t, 0, false, true),
+    getValue: (data, t) => formatLargeNumber(data?.documentsProcessed30d, t, false, 0),
     descriptionKey: 'home_kpi_documents_processed_30d_desc',
     link: '/invoices',
     iconColor: 'text-blue-500 dark:text-blue-400',
@@ -187,7 +183,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'averageInvoiceValue',
     titleKey: 'home_kpi_average_invoice_value_title',
     icon: BarChart2,
-    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, 0, true),
+    getValue: (data, t) => formatLargeNumber(data?.averageInvoiceValue, t, true, 0),
     descriptionKey: 'home_kpi_average_invoice_value_desc',
     link: '/reports',
     iconColor: 'text-purple-500 dark:text-purple-400',
@@ -197,7 +193,7 @@ const allKpiConfigurations: ItemConfig[] = [
     id: 'suppliersCount',
     titleKey: 'home_kpi_suppliers_count_title',
     icon: Briefcase,
-    getValue: (data, t) => formatLargeNumber(data?.suppliersCount, t, 0, false, true),
+    getValue: (data, t) => formatLargeNumber(data?.suppliersCount, t, false, 0),
     descriptionKey: 'home_kpi_suppliers_count_desc',
     link: '/suppliers',
     iconColor: 'text-teal-500 dark:text-teal-400',
@@ -311,6 +307,20 @@ export default function Home() {
 
   const allQuickActionConfigurations: ItemConfig[] = useMemo(() => [
     {
+      id: 'addExpense',
+      titleKey: 'home_quick_action_add_expense',
+      icon: DollarSign,
+      link: '/accounts/other-expenses',
+      defaultVisible: true,
+    },
+    {
+      id: 'addProduct',
+      titleKey: 'home_quick_action_add_product',
+      icon: PackagePlus,
+      link: '/inventory', // Or a dedicated "add product" page
+      defaultVisible: true,
+    },
+    {
       id: 'openInvoices',
       titleKey: 'home_open_invoices',
       icon: FileWarning,
@@ -331,20 +341,6 @@ export default function Home() {
       onClick: () => setIsCreateSupplierSheetOpen(true),
       defaultVisible: false, // Hidden by default
     },
-     {
-      id: 'addExpense',
-      titleKey: 'home_quick_action_add_expense',
-      icon: DollarSign,
-      link: '/accounts/other-expenses',
-      defaultVisible: true,
-    },
-    {
-      id: 'addProduct',
-      titleKey: 'home_quick_action_add_product',
-      icon: PackagePlus,
-      link: '/inventory',
-      defaultVisible: true,
-    },
   ], [t, setIsCreateSupplierSheetOpen]);
 
 
@@ -353,7 +349,7 @@ export default function Home() {
   );
 
   const [userQuickActionPreferences, setUserQuickActionPreferences] = useState<{ visibleQuickActionIds: string[], quickActionOrder: string[] }>(
-    getQuickActionPreferences(user?.id, allQuickActionConfigurations)
+    () => getQuickActionPreferences(user?.id, allQuickActionConfigurations)
   );
 
   const [isCustomizeKpiSheetOpen, setIsCustomizeKpiSheetOpen] = useState(false);
@@ -373,11 +369,11 @@ export default function Home() {
   }, [userQuickActionPreferences, allQuickActionConfigurations]);
 
   useEffect(() => {
-    if (user && user.id) { // Ensure user.id is available
+    if (user && user.id) {
       setUserKpiPreferences(getKpiPreferences(user.id));
       setUserQuickActionPreferences(getQuickActionPreferences(user.id, allQuickActionConfigurations));
     } else if (!authLoading) {
-        setUserKpiPreferences(getKpiPreferences()); // For guest or loading state, use defaults
+        setUserKpiPreferences(getKpiPreferences());
         setUserQuickActionPreferences(getQuickActionPreferences(undefined, allQuickActionConfigurations));
     }
   }, [user, authLoading, allQuickActionConfigurations]);
@@ -385,7 +381,7 @@ export default function Home() {
 
   const fetchKpiData = useCallback(async () => {
     if (!user || !user.id || authLoading) {
-      setIsLoadingKpis(false); // Stop loading if no user or still in auth loading
+      setIsLoadingKpis(false);
       return;
     }
 
@@ -398,7 +394,7 @@ export default function Home() {
         getInvoicesService(user.id),
         getSupplierSummariesService(user.id),
         getUserSettingsService(user.id),
-        getStoredData<OtherExpense>(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id, []) // Fetch other expenses
+        getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), [])
       ]);
       console.log("[HomePage] Data fetched: Products:", products.length, "Invoices:", invoicesData.length, "Suppliers:", suppliers.length);
 
@@ -514,16 +510,14 @@ export default function Home() {
       const mockRecentActivity = recentInvoices.map(inv => {
         let dateToFormat: Date | null = null;
         if (inv.uploadTime) {
-          if (typeof inv.uploadTime === 'string') {
+          if (inv.uploadTime instanceof Timestamp) {
+            dateToFormat = inv.uploadTime.toDate();
+          } else if (typeof inv.uploadTime === 'string') {
             const parsed = parseISO(inv.uploadTime);
             if (isValid(parsed)) {
               dateToFormat = parsed;
             }
-          } else if (inv.uploadTime instanceof Timestamp) { // Check for Firestore Timestamp
-            dateToFormat = inv.uploadTime.toDate();
-          } else if (inv.uploadTime instanceof Date) { // Check if it's already a Date object
-            // This case might not be strictly necessary if all Timestamps are converted to Dates upon fetch
-            // but it's good for robustness if Date objects can appear.
+          } else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) {
             dateToFormat = inv.uploadTime;
           }
         }
@@ -556,24 +550,30 @@ export default function Home() {
 
     } catch (error: any) {
       console.error("[HomePage] Failed to fetch KPI data:", error);
-      const translatedError = t('home_kpi_toast_error_load_failed_desc');
-      const finalErrorMessage = (translatedError === 'home_kpi_toast_error_load_failed_desc' ? "Failed to load dashboard data." : translatedError) + (error.message ? ` (${error.message})` : '');
-      setKpiError(finalErrorMessage);
+      // Use a generic error message key if translation fails, or the specific key if t() works.
+      let errorMessage = t('home_kpi_toast_error_load_failed_desc');
+      if (errorMessage === 'home_kpi_toast_error_load_failed_desc') { // Check if key was returned
+        errorMessage = "Failed to load dashboard data. Please try again later.";
+      }
+      if (error.message) {
+        errorMessage += ` (Error: ${error.message})`;
+      }
+      setKpiError(errorMessage);
       toast({
         title: t('error_title'),
-        description: finalErrorMessage,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoadingKpis(false);
     }
-  }, [user, authLoading, t, toast, locale]); // Added locale to dependencies
+  }, [user, authLoading, t, toast, locale]);
 
   useEffect(() => {
     if (user && user.id) {
       fetchKpiData();
     } else if (!authLoading && !user) {
-      setIsLoadingKpis(false); // Ensure loading stops for guests
+      setIsLoadingKpis(false);
     }
   }, [user, authLoading, fetchKpiData]);
 
@@ -592,7 +592,7 @@ export default function Home() {
 
 
   const handleSaveKpiPreferences = (newPreferences: { visibleKpiIds: string[], kpiOrder: string[] }) => {
-    if (user && user.id) { // Ensure user.id is available
+    if (user && user.id) {
         saveKpiPreferences(newPreferences, user.id);
         setUserKpiPreferences(newPreferences);
         toast({ title: t('home_kpi_prefs_saved_title'), description: t('home_kpi_prefs_saved_desc')});
@@ -600,7 +600,7 @@ export default function Home() {
   };
 
   const handleSaveQuickActionPreferences = (newPreferences: { visibleQuickActionIds: string[], quickActionOrder: string[] }) => {
-    if (user && user.id) { // Ensure user.id is available
+    if (user && user.id) {
       saveQuickActionPreferences(newPreferences, user.id);
       setUserQuickActionPreferences(newPreferences);
       toast({ title: t('home_qa_prefs_saved_title'), description: t('home_qa_prefs_saved_desc')});
@@ -658,7 +658,7 @@ export default function Home() {
               >
                 <ScanLine className="mr-2 h-5 w-5" /> {t('home_scan_button')}
               </Button>
-               <div className="flex gap-3">
+              <div className="flex gap-3">
                  <Button variant="secondary" asChild className="hover:bg-secondary/80 transform hover:scale-[1.02] transition-all py-3 sm:py-4 text-xs sm:text-sm h-auto">
                     <Link href="/inventory">
                         <Package className="mr-1.5 h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" /> {t('nav_inventory')}
@@ -672,7 +672,6 @@ export default function Home() {
                </div>
           </div>
 
-          {/* Quick Actions Section */}
            <div className="mb-6 md:mb-8 text-left">
             <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
@@ -721,7 +720,6 @@ export default function Home() {
             </div>
           </div>
 
-         {/* Quick Overview (KPIs) Section */}
           <div className="mb-6 md:mb-8 text-left">
             <div className="flex justify-between items-center mb-3 px-1 sm:px-0">
                 <h2 className="text-lg sm:text-xl font-semibold text-primary flex items-center">
@@ -743,10 +741,10 @@ export default function Home() {
              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {(isLoadingKpis && user) ? (
                     Array.from({length: Math.min(visibleKpiConfigs.length || 4, 6)}).map((_, idx) => (
-                         <div key={`skeleton-${idx}`} className="bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-3 sm:p-4 h-[150px] sm:h-[160px]">
-                             <div className="pb-1 pt-0 px-0"><Skeleton className="h-4 w-2/3"/></div>
-                             <div className="pt-1 pb-0 px-0"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></div>
-                         </div>
+                         <Card key={`skeleton-${idx}`} className="shadow-md bg-background/80 backdrop-blur-sm border border-border/50 h-[150px] sm:h-[160px]">
+                             <CardHeader className="pb-1 pt-3 px-3 sm:px-4"><Skeleton className="h-4 w-2/3"/></CardHeader>
+                             <CardContent className="pt-1 pb-2 px-3 sm:px-4"><Skeleton className="h-8 w-1/2 mb-1"/><Skeleton className="h-3 w-3/4"/></CardContent>
+                         </Card>
                     ))
                 ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
                     <div className="col-span-full text-center py-8 bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg p-4">
@@ -760,15 +758,15 @@ export default function Home() {
                         const valueString = kpi.getValue ? kpi.getValue(kpiData, t) : '-';
                         const progress = kpi.showProgress && kpi.progressValue && kpiData ? kpi.progressValue(kpiData) : 0;
                         return (
-                        <div key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in p-3 sm:p-4")} style={{animationDelay: `${0.05 * index}s`}}>
+                        <Card key={kpi.id} className={cn("bg-card/80 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg flex flex-col text-left transform transition-all duration-300 ease-in-out hover:scale-[1.02] hover:-translate-y-0.5", styles.kpiCard, "scale-fade-in p-3 sm:p-4")} style={{animationDelay: `${0.05 * index}s`}}>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <Link href={kpi.link || "#"} className={cn("block hover:no-underline h-full flex flex-col", !kpi.link && "pointer-events-none")}>
-                                        <div className="flex flex-row items-center justify-between space-y-0 pb-1">
-                                            <h3 className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</h3>
+                                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-0 pt-0">
+                                            <CardTitle className="text-xs sm:text-sm font-semibold text-muted-foreground">{t(kpi.titleKey)}</CardTitle>
                                             <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", kpi.iconColor || "text-primary")} />
-                                        </div>
-                                        <div className="pt-1 flex-grow flex flex-col justify-center">
+                                        </CardHeader>
+                                        <CardContent className="pt-1 pb-0 px-0 flex-grow flex flex-col justify-center">
                                             <div className="text-xl sm:text-2xl md:text-3xl font-extrabold text-foreground flex items-baseline">
                                                 {renderKpiValueDisplay(valueString)}
                                             </div>
@@ -786,19 +784,18 @@ export default function Home() {
                                                     )}
                                                 />
                                             )}
-                                        </div>
+                                        </CardContent>
                                     </Link>
                                 </TooltipTrigger>
                                 {kpi.descriptionKey && <TooltipContent><p>{t(kpi.descriptionKey)}</p></TooltipContent>}
                             </Tooltip>
-                        </div>
+                        </Card>
                         );
                     })
                 )}
             </div>
         </div>
 
-        {/* Actionable Insights & Recent Activity Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12 text-left">
             <Card className={cn("scale-fade-in delay-500 bg-card/80 backdrop-blur-sm border-border/50 shadow-lg", styles.kpiCard)}>
                 <CardHeader className="pb-3">
@@ -841,7 +838,7 @@ export default function Home() {
                         kpiData?.nextPaymentDueInvoice ? (
                             <p className="text-muted-foreground mt-1">
                                 <Link href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`} className="hover:underline text-primary">
-                                    {kpiData.nextPaymentDueInvoice.supplierName || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, 0, true)}
+                                    {kpiData.nextPaymentDueInvoice.supplierName || t('invoices_unknown_supplier')} - {formatLargeNumber(kpiData.nextPaymentDueInvoice.totalAmount, t, true, 0)}
                                 </Link>
                                 {' '}{t('home_due_on_label')} {kpiData.nextPaymentDueInvoice.paymentDueDate ? formatDateFns(kpiData.nextPaymentDueInvoice.paymentDueDate instanceof Timestamp ? kpiData.nextPaymentDueInvoice.paymentDueDate.toDate() : parseISO(kpiData.nextPaymentDueInvoice.paymentDueDate as string), 'PP', { locale: t('locale_code_for_date_fns') === 'he' ? heLocale : enUSLocale }) : t('home_unknown_date')}
                             </p>
@@ -924,4 +921,3 @@ export default function Home() {
     </div>
   );
 }
-
