@@ -28,15 +28,15 @@ import {
     MAX_INVOICE_HISTORY_ITEMS,
     getStorageKey,
     finalizeSaveProductsService,
-    DOCUMENTS_COLLECTION, // Correctly imported from backend
+    DOCUMENTS_COLLECTION,
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, isValid } from 'date-fns';
-import { Timestamp, doc, setDoc } from 'firebase/firestore'; // Import Timestamp from Firestore
-import { db } from '@/lib/firebase'; // db is imported from here
+import { Timestamp, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { enUS, he } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -139,7 +139,7 @@ export default function UploadPage() {
       router.push('/login');
     } else if (user && user.id) {
       fetchHistory();
-      clearOldTemporaryScanData(false, user.id); // Periodically clear old temp data for the user
+      clearOldTemporaryScanData(false, user.id);
     }
   }, [user, authLoading, router, fetchHistory]);
 
@@ -156,7 +156,7 @@ export default function UploadPage() {
         reader.readAsDataURL(file);
     } else if (file.type === 'application/pdf') {
         setIsPdfPreview(true);
-        setFilePreview(null); // No visual preview for PDF, just name
+        setFilePreview(null);
     }
   };
 
@@ -228,9 +228,8 @@ export default function UploadPage() {
     let progressInterval: NodeJS.Timeout | undefined = undefined;
 
     const uniqueScanId = `${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
-    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`; // Client-generated temporary ID for Firestore
+    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`;
 
-    // Keys for temporary client-side storage (localStorage)
     const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
     const originalImagePreviewKey = getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
     const compressedImageKey = getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
@@ -277,16 +276,15 @@ export default function UploadPage() {
             try {
                 if(selectedFile.type.startsWith('image/')) {
                   imageToStoreForFinalSave = await compressImage(originalBase64Data, 0.6, 1024, 1024);
-                  imageForPreviewOnEditPage = await compressImage(originalBase64Data, 0.5, 800, 800); 
+                  imageForPreviewOnEditPage = await compressImage(originalBase64Data, 0.5, 800, 800);
 
                   if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) {
                       imageForAIScan = imageToStoreForFinalSave;
                   }
                 } else if (selectedFile.type === 'application/pdf') {
-                    // For PDF, keep original for AI, preview, and final save (if small enough)
-                    imageForAIScan = originalBase64Data; // Use original for AI as it might be best
-                    imageForPreviewOnEditPage = originalBase64Data; // Preview might be a generic icon or first page if library allows
-                    imageToStoreForFinalSave = originalBase64Data; // Store original if it's not too large
+                    imageForAIScan = originalBase64Data;
+                    imageForPreviewOnEditPage = originalBase64Data;
+                    imageToStoreForFinalSave = originalBase64Data;
                 }
 
                 if (imageToStoreForFinalSave) {
@@ -296,8 +294,8 @@ export default function UploadPage() {
                        console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
                     } catch (storageError: any) {
                        console.warn(`[UploadPage] Failed to save compressed image for final save:`, storageError.message);
-                       toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(compressed final save)"}), variant: 'destructive', duration: 8000 });
-                       compressedImageForFinalSaveUriSaved = false; // Ensure flag is false
+                       toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: t('upload_context_compressed_final_save')}), variant: 'destructive', duration: 8000 });
+                       compressedImageForFinalSaveUriSaved = false;
                     }
                 } else {
                     console.warn("[UploadPage] No imageToStoreForFinalSave, likely due to PDF or large size.");
@@ -311,7 +309,7 @@ export default function UploadPage() {
                     } catch (storageError: any) {
                         console.warn(`[UploadPage] Failed to save image for preview on edit page:`, storageError.message);
                         originalImagePreviewUriSaved = false;
-                        toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: "(edit page preview)"}), variant: 'destructive', duration: 8000 });
+                        toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: t('upload_context_edit_page_preview')}), variant: 'destructive', duration: 8000 });
                     }
                 } else {
                      console.warn("[UploadPage] No imageForPreviewOnEditPage. Preview might be skipped or use a generic icon.");
@@ -321,9 +319,9 @@ export default function UploadPage() {
             } catch (compressionError) {
                 console.warn("[UploadPage] Image compression failed, will use original for AI and potentially preview:", compressionError);
                 setStreamingContent(t('upload_compression_failed_using_original'));
-                 imageForAIScan = originalBase64Data; // Fallback to original for AI
-                imageForPreviewOnEditPage = originalBase64Data; // Fallback for preview as well
-                imageToStoreForFinalSave = originalBase64Data; // Fallback for final save
+                 imageForAIScan = originalBase64Data;
+                imageForPreviewOnEditPage = originalBase64Data;
+                imageToStoreForFinalSave = originalBase64Data;
             }
             setStreamingContent(t('upload_ai_analysis_inprogress'));
 
@@ -335,10 +333,10 @@ export default function UploadPage() {
                    }
                } catch (aiError: any) {
                     const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error')});
-                    scanResult = { error: errorMessage }; // Ensure scanResult has a defined error structure
+                    scanResult = { error: errorMessage } as ScanTaxInvoiceOutput;
                     setScanError(errorMessage);
                }
-           } else { // deliveryNote
+           } else {
                try {
                    scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => {
                         if(update && update.content) setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`);
@@ -348,7 +346,7 @@ export default function UploadPage() {
                    }
                } catch (aiError: any) {
                     const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error') });
-                    scanResult = { products: [], error: errorMessage }; // Ensure scanResult has a defined error structure
+                    scanResult = { products: [], error: errorMessage } as ScanInvoiceOutput;
                     setScanError(errorMessage);
                }
            }
@@ -366,7 +364,7 @@ export default function UploadPage() {
                     } else {
                         scanResult = { products: [], error: errorMsg } as ScanInvoiceOutput;
                     }
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Save even if too large, with error
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
                     scanDataSavedForEdit = true;
                     setScanError(errorMsg);
                     toast({ title: t('upload_toast_critical_error_save_scan_title'), description: errorMsg, variant: 'destructive', duration: 10000 });
@@ -382,10 +380,10 @@ export default function UploadPage() {
                      variant: 'destructive',
                      duration: 10000,
                  });
-                 clearTemporaryScanData(uniqueScanId, user.id); // Cleanup if scan result save fails
+                 clearTemporaryScanData(uniqueScanId, user.id);
                  setIsProcessing(false); setIsUploading(false); setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = '';
                  fetchHistory();
-                 return; // Critical failure, do not proceed to Firestore
+                 return;
             }
 
 
@@ -396,16 +394,14 @@ export default function UploadPage() {
                });
            }
 
-            // This ensures UI reset and history refresh happens after everything.
            Promise.resolve().finally(async () => {
-                if (scanDataSavedForEdit) { // Only proceed if scan data (even if error) was saved to localStorage
+                if (scanDataSavedForEdit) {
                     const queryParams = new URLSearchParams({
-                        key: dataKey, // Pass the key for scan results
+                        key: dataKey,
                         fileName: encodeURIComponent(originalFileName),
-                        tempInvoiceId: tempInvoiceId, // Pass the client-generated temp ID
+                        tempInvoiceId: tempInvoiceId,
                         docType: documentType,
                     });
-                    // Only pass image keys if the images were actually saved to localStorage
                     if (originalImagePreviewUriSaved && localStorage.getItem(originalImagePreviewKey)) queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
                     if (compressedImageForFinalSaveUriSaved && localStorage.getItem(compressedImageKey)) queryParams.append('compressedImageKey', compressedImageKey);
 
@@ -426,7 +422,7 @@ export default function UploadPage() {
                             invoiceDate: documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceDate : (scanResult as ScanInvoiceOutput)?.invoiceDate,
                             paymentMethod: documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.paymentMethod : (scanResult as ScanInvoiceOutput)?.paymentMethod,
                             paymentStatus: 'unpaid',
-                            errorMessage: scanResult?.error || undefined,
+                            errorMessage: scanResult?.error || null, // Ensure null instead of undefined
                             originalImagePreviewUri: localStorage.getItem(originalImagePreviewKey) || undefined,
                             compressedImageForFinalRecordUri: localStorage.getItem(compressedImageKey) || undefined,
                         };
@@ -441,8 +437,6 @@ export default function UploadPage() {
                     }
                 } else {
                     console.error("[UploadPage] Temporary data (scan result) was not saved to localStorage, aborting Firestore PENDING record creation and navigation to edit page.");
-                    // If scanDataSavedForEdit is false, it means saving the scan result (JSON) failed, likely due to quota.
-                    // The toast for this specific failure should have already been shown. Cleanup is important.
                     clearTemporaryScanData(uniqueScanId, user.id);
                 }
                 setIsUploading(false);
@@ -553,7 +547,7 @@ export default function UploadPage() {
   }
 
   if (!user && !authLoading) {
-    return null; // Or a login prompt
+    return null;
   }
 
   const formatCurrencyDisplay = (
@@ -760,7 +754,7 @@ export default function UploadPage() {
 
                                     const queryParams = new URLSearchParams({
                                         fileName: encodeURIComponent(item.originalFileName),
-                                        tempInvoiceId: item.id, // Use the Firestore document ID as tempInvoiceId
+                                        tempInvoiceId: item.id,
                                         docType: item.documentType,
                                     });
                                     if (localStorage.getItem(dataKey)) queryParams.append('key', dataKey);
