@@ -1,4 +1,3 @@
-
 // src/app/suppliers/page.tsx
 'use client';
 
@@ -8,8 +7,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { getSupplierSummariesService, SupplierSummary, InvoiceHistoryItem, getInvoicesService, updateSupplierContactInfoService, createSupplierService, deleteSupplierService } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, Trash2, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
+import { 
+    getSupplierSummariesService, 
+    SupplierSummary, 
+    InvoiceHistoryItem, 
+    getInvoicesService, 
+    updateSupplierContactInfoService, 
+    deleteSupplierService,
+    createSupplierService // Ensure this is imported
+} from '@/services/backend';
+import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
 import {
@@ -54,7 +61,7 @@ type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount' | 'lastActivi
 type SortDirection = 'asc' | 'desc';
 
 
-const formatDateDisplay = (date: Date | string | undefined, t: (key: string) => string, f: string = 'PP') => {
+const formatDateDisplay = (date: Date | string | undefined, t: (key: string, params?: any) => string, f: string = 'PP') => {
   if (!date) return t('suppliers_na');
   try {
     const dateObj = typeof date === 'string' ? parseISO(date) : date;
@@ -66,13 +73,13 @@ const formatDateDisplay = (date: Date | string | undefined, t: (key: string) => 
   }
 };
 
-const formatCurrencyDisplay = (value: number | undefined | null, t: (key: string) => string): string => {
+const formatCurrencyDisplay = (value: number | undefined | null, t: (key: string, params?: any) => string): string => {
     if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${t('currency_symbol')}${value.toLocaleString(t('locale_code_for_number_formatting') || undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 
-const renderStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string) => string) => {
+const renderStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
@@ -146,9 +153,11 @@ export default function SuppliersPage() {
 
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
+  
   const [isEditingPaymentTerms, setIsEditingPaymentTerms] = useState(false);
   const [editedPaymentTermsOption, setEditedPaymentTermsOption] = useState<PaymentTermOption>('custom');
   const [customPaymentTerm, setCustomPaymentTerm] = useState('');
+
 
   const [isSavingContact, setIsSavingContact] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
@@ -167,7 +176,7 @@ export default function SuppliersPage() {
   }, [user, authLoading, router]);
 
   const fetchData = async () => {
-    if(!user) return;
+    if(!user || !user.id) return;
     setIsLoading(true);
     try {
       const [summaries, invoicesData] = await Promise.all([
@@ -189,7 +198,7 @@ export default function SuppliersPage() {
   };
 
   useEffect(() => {
-    if(user){
+    if(user && user.id){
         fetchData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,8 +227,8 @@ export default function SuppliersPage() {
         let valB = b[sortKey as keyof SupplierSummary];
 
         if (sortKey === 'lastActivityDate') {
-          valA = a.lastActivityDate ? new Date(a.lastActivityDate).getTime() : 0;
-          valB = b.lastActivityDate ? new Date(b.lastActivityDate).getTime() : 0;
+          valA = a.lastActivityDate ? new Date(a.lastActivityDate as string).getTime() : 0;
+          valB = b.lastActivityDate ? new Date(b.lastActivityDate as string).getTime() : 0;
         }
         
         let comparison = 0;
@@ -271,7 +280,7 @@ export default function SuppliersPage() {
     setIsEditingContact(false);
     setIsEditingPaymentTerms(false);
 
-    const invoicesForSupplier = allInvoices.filter(inv => inv.supplier === supplier.name)
+    const invoicesForSupplier = allInvoices.filter(inv => inv.supplierName === supplier.name)
                                       .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
     setSelectedSupplierInvoices(invoicesForSupplier);
 
@@ -308,12 +317,14 @@ export default function SuppliersPage() {
   };
 
   const handleSaveContactInfo = async () => {
-    if (!selectedSupplier || !user) return;
+    if (!selectedSupplier || !user || !user.id) return;
     setIsSavingContact(true);
     try {
-      await updateSupplierContactInfoService(selectedSupplier.name, editedContactInfo, user.id);
-      setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, ...editedContactInfo} : s));
-      setSelectedSupplier(prev => prev ? {...prev, ...editedContactInfo} : null);
+      await updateSupplierContactInfoService(selectedSupplier.id, editedContactInfo, user.id);
+      // Refetch all suppliers to update the list after saving
+      await fetchData();
+      // Update selectedSupplier state after refetching
+      setSelectedSupplier(prev => prev ? { ...prev, ...editedContactInfo } : null);
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
       setIsEditingContact(false);
     } catch (error: any) {
@@ -325,7 +336,7 @@ export default function SuppliersPage() {
   };
 
   const handleSavePaymentTerms = async () => {
-    if (!selectedSupplier || !user) return;
+    if (!selectedSupplier || !user || !user.id) return;
     setIsSavingContact(true); // Re-use for loading state
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
@@ -340,8 +351,8 @@ export default function SuppliersPage() {
     }
 
     try {
-        await updateSupplierContactInfoService(selectedSupplier.name, { paymentTerms: finalPaymentTerm }, user.id);
-        setSuppliers(prev => prev.map(s => s.name === selectedSupplier.name ? {...s, paymentTerms: finalPaymentTerm } : s));
+        await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
+        await fetchData(); // Refetch
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -354,26 +365,26 @@ export default function SuppliersPage() {
   };
 
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }) => {
-    if(!user) return;
+    if(!user || !user.id) return;
     try {
-      const newSupplier = await createSupplierService(name, contactInfo, user.id);
-      setSuppliers(prev => [newSupplier, ...prev]);
+      await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
+      fetchData(); // Refetch suppliers
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
     }
   };
 
-  const handleDeleteSupplier = async (supplierName: string) => {
-    if(!user) return;
+  const handleDeleteSupplier = async (supplierId: string) => {
+    if(!user || !user.id) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierName, user.id);
-      setSuppliers(prev => prev.filter(s => s.name !== supplierName));
-      toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName }) });
-      if (selectedSupplier?.name === supplierName) {
+      await deleteSupplierService(supplierId, user.id); // Use supplierId
+      toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName: selectedSupplier?.name || supplierId }) });
+      fetchData(); // Refetch
+      if (selectedSupplier?.id === supplierId) {
         setIsDetailSheetOpen(false);
         setSelectedSupplier(null);
       }
@@ -388,7 +399,7 @@ export default function SuppliersPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true;
+        if (!dateRange?.from || !invoice.uploadTime) return true; // If no date range, include all
         const invoiceDate = parseISO(invoice.uploadTime as string);
         const startDate = new Date(dateRange.from);
         startDate.setHours(0, 0, 0, 0);
@@ -398,10 +409,10 @@ export default function SuppliersPage() {
     });
 
     filteredPeriodInvoices.forEach(invoice => {
-      if (invoice.supplier && typeof invoice.supplier === 'string' && invoice.totalAmount !== undefined && typeof invoice.totalAmount === 'number') {
+      if (invoice.supplierName && typeof invoice.supplierName === 'string' && invoice.totalAmount !== undefined && typeof invoice.totalAmount === 'number') {
         spendingMap.set(
-          invoice.supplier,
-          (spendingMap.get(invoice.supplier) || 0) + invoice.totalAmount
+          invoice.supplierName,
+          (spendingMap.get(invoice.supplierName) || 0) + invoice.totalAmount
         );
       }
     });
@@ -411,7 +422,7 @@ export default function SuppliersPage() {
   }, [allInvoices, dateRange]);
 
 
-  if (authLoading || isLoading) {
+  if (authLoading || (isLoading && !user)) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -481,7 +492,7 @@ export default function SuppliersPage() {
                         defaultMonth={dateRange?.from}
                         selected={dateRange}
                         onSelect={setDateRange}
-                        numberOfMonths={2}
+                        numberOfMonths={isMobile ? 1 : 2}
                     />
                      {dateRange && (
                         <div className="p-2 border-t flex justify-end">
@@ -503,7 +514,7 @@ export default function SuppliersPage() {
                 ) : (
                     <div className="grid grid-cols-1 gap-4">
                         {paginatedSuppliers.map((supplier) => (
-                            <Card key={supplier.name} className="hover:shadow-md transition-shadow">
+                            <Card key={supplier.id} className="hover:shadow-md transition-shadow">
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
                                         <CardTitle className="text-base font-semibold truncate" title={supplier.name}>
@@ -563,10 +574,10 @@ export default function SuppliersPage() {
                       </TableRow>
                     ) : (
                       paginatedSuppliers.map((supplier) => (
-                        <TableRow key={supplier.name} className="hover:bg-muted/50">
+                        <TableRow key={supplier.id} className="hover:bg-muted/50">
                           <TableCell className="font-medium">{supplier.name}</TableCell>
                           <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
-                          <TableCell className="text-center hidden md:table-cell">{supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate, t, 'PP') : t('suppliers_na')}</TableCell>
+                          <TableCell className="text-center hidden md:table-cell">{supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate as string, t, 'PP') : t('suppliers_na')}</TableCell>
                            <TableCell className="text-center space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
                               <Info className="h-4 w-4 text-primary" />
@@ -586,7 +597,7 @@ export default function SuppliersPage() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.name)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
+                                  <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.id)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
                                     {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     {t('suppliers_delete_confirm_action')}
                                   </AlertDialogAction>
@@ -663,24 +674,24 @@ export default function SuppliersPage() {
                             </TableBody>
                         </Table>
                     </ScrollArea>
-                    <div className={cn("h-[250px] md:h-[350px]", isMobile && supplierSpendingData.length > 0 && "mt-4", supplierSpendingData.length === 0 && "md:col-span-2 flex items-center justify-center")}>
+                    <div className={cn("h-[250px] md:h-[350px] w-full overflow-hidden", isMobile && supplierSpendingData.length > 0 && "mt-4", supplierSpendingData.length === 0 && "md:col-span-2 flex items-center justify-center")}>
                        {supplierSpendingData.length > 0 ? (
                         <ChartContainer config={supplierChartConfig} className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 10: 30, left: isMobile ? 5 : 10, bottom: 20}}>
+                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 10: 30, left: isMobile ? 5 : 10, bottom: isMobile ? 40 : 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={isMobile ? 8 : 10} />
-                                    <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5 }} interval={0} />
+                                    <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5, angle: isMobile ? -15 : 0, textAnchor: isMobile ? 'end' : 'end' }} interval={0} />
                                     <RechartsRechartsTooltip
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => [formatCurrencyDisplay(value, t), t(supplierChartConfig.totalAmount.labelKey) ]}
+                                        formatter={(value: number) => [formatCurrencyDisplay(value, t), t(supplierChartConfig.totalAmount.labelKey as any) ]}
                                     />
                                      <RechartsRechartsLegend verticalAlign="top" content={({ payload }) => (
                                         <ul className="flex flex-wrap justify-center gap-x-4 text-xs text-muted-foreground">
                                             {payload?.map((entry, index) => (
                                                 <li key={`item-${index}`} className="flex items-center gap-1.5">
                                                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                                                    {t(supplierChartConfig.totalAmount.labelKey)}
+                                                    {t(supplierChartConfig.totalAmount.labelKey as any)}
                                                 </li>
                                             ))}
                                         </ul>
@@ -716,7 +727,7 @@ export default function SuppliersPage() {
                   <CardContent>
                     <p className="text-2xl font-bold text-primary">{formatCurrencyDisplay(selectedSupplier.totalSpent,t)}</p>
                     <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
-                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?supplier=${encodeURIComponent(selectedSupplier.name)}`)}>
+                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?tab=scanned-docs&filterSupplier=${encodeURIComponent(selectedSupplier.name)}`)}>
                        {t('suppliers_view_all_documents_button')}
                      </Button>
                   </CardContent>
@@ -829,15 +840,15 @@ export default function SuppliersPage() {
                     </CardContent>
                  </Card>
 
-                 <Card>
+                 <Card className="overflow-hidden"> {/* Added overflow-hidden here */}
                     <CardHeader>
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
-                    <CardContent className="min-h-[200px] p-0 sm:pb-2 overflow-hidden"> {/* Added overflow-hidden */}
+                    <CardContent className="min-h-[200px] p-0 sm:pb-2">
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className="w-full sm:w-11/12 mx-auto"> {/* Reduced width for non-mobile, centered */}
+                        <div className="w-full sm:w-11/12 mx-auto">
                             <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 5 }}>
+                                <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
                                 <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 40 : 50}/>
