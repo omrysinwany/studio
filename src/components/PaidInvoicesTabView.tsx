@@ -21,7 +21,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuTrigger,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIcon, Image as ImageIconLucide } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide } from 'lucide-react';
  import { useRouter } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -31,7 +31,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { enUS, he } from 'date-fns/locale';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getAccountantSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService, getStoredData, SUPPLIERS_STORAGE_KEY_BASE } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -73,7 +73,7 @@ const formatNumber = (
     const { decimals = 2, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(undefined, {
+        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
@@ -81,7 +81,7 @@ const formatNumber = (
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
-    const formattedValue = value.toLocaleString(undefined, {
+    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
@@ -159,7 +159,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
 
 
   const fetchSuppliers = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) return;
     try {
       const managedSuppliers = await getSupplierSummariesService(user.id);
       setExistingSuppliers(managedSuppliers);
@@ -174,7 +174,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
   }, [toast, t, user]);
 
   const fetchInvoices = useCallback(async () => {
-      if (!user) return;
+      if (!user?.id) return;
       setIsLoading(true);
       try {
         let fetchedData = await getInvoicesService(user.id);
@@ -361,7 +361,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
   };
 
   const handleDeleteInvoice = async (invoiceId: string) => {
-    if(!user) return;
+    if(!user?.id) return;
     setIsDeleting(true);
     try {
         await deleteInvoiceService(invoiceId, user.id);
@@ -389,7 +389,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
   };
 
   const handleSaveInvoiceDetails = async () => {
-    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id || !user) return;
+    if (!selectedInvoiceDetails || !selectedInvoiceDetails.id || !user?.id) return;
     setIsSavingDetails(true);
     try {
         const updatedInvoice: Partial<InvoiceHistoryItem> = {
@@ -515,12 +515,12 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
   };
 
   const handleSelectAllLastMonth = async () => {
-    if(!user) return;
+    if(!user?.id) return;
     const allUserInvoices = await getInvoicesService(user.id);
     const paidUserInvoices = allUserInvoices.filter(inv => inv.paymentStatus === 'paid');
     const today = new Date();
-    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); 
-    const lastMonthEnd = endOfMonth(subDays(today, today.getDate())); 
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate()));
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));
 
     const lastMonthInvoices = paidUserInvoices.filter(invoice => {
       const uploadDate = invoice.uploadTime ? new Date(invoice.uploadTime as string) : null;
@@ -544,12 +544,12 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
       });
       return;
     }
-    if (user) {
-        const settings = await getAccountantSettingsService(user.id);
-        if (settings && settings.email) {
-            setAccountantEmail(settings.email);
+    if (user?.id) {
+        const settings = await getUserSettingsService(user.id);
+        if (settings && settings.accountantSettings?.email) {
+            setAccountantEmail(settings.accountantSettings.email);
         } else {
-            setAccountantEmail(''); 
+            setAccountantEmail('');
             toast({
                 title: t('settings_accountant_toast_email_required_desc'),
                 description: t('settings_accountant_toast_email_required_desc_export'),
@@ -586,7 +586,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
             toast({ title: t('invoice_export_success_title'), description: result.message });
             setShowExportDialog(false);
             setSelectedInvoiceIds([]);
-            setEmailNote(''); 
+            setEmailNote('');
         } else {
             toast({ title: t('invoice_export_error_title'), description: result.message, variant: "destructive" });
         }
@@ -598,7 +598,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
  };
 
  const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: string) => {
-    if (!user) return;
+    if (!user?.id) return;
     setShowReceiptUploadDialog(false);
     setInvoiceForReceiptUpload(null);
     toast({ title: t('paid_invoices_toast_receipt_uploaded_title'), description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: selectedInvoiceDetails?.fileName || 'Invoice' }) });
@@ -784,7 +784,7 @@ export default function PaidInvoicesTabView({ filterDocumentType }: { filterDocu
                           header.sortable && "cursor-pointer hover:bg-muted/50",
                           header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
                           'px-2 sm:px-4 py-2',
-                          header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
+                           header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                       )}
                       onClick={() => header.sortable && handleSort(header.key as SortKey)}
                       aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}

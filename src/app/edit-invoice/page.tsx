@@ -7,7 +7,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Trash2, PlusCircle, Save, Loader2, ArrowLeft, Edit, Eye, FileText as FileTextIconLucide, CheckCircle, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -131,7 +131,8 @@ function EditInvoiceContent() {
   const [potentialSupplierName, setPotentialSupplierName] = useState<string | undefined>(undefined);
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
-  const [aiScannedSupplierName, setAiScannedSupplierName] = useState<string | undefined>(undefined);
+  const [aiScannedSupplierNameFromStorage, setAiScannedSupplierNameFromStorage] = useState<string | undefined>(undefined);
+
 
   const [showPaymentDueDateDialog, setShowPaymentDueDateDialog] = useState(false);
   const [selectedPaymentDueDate, setSelectedPaymentDueDate] = useState<string | Date | Timestamp | undefined>(undefined);
@@ -154,6 +155,52 @@ function EditInvoiceContent() {
   }, [user?.id, initialDataKey, initialTempInvoiceId]);
 
 
+  const _internalCheckSupplier = async (scannedSupplierName: string | undefined | null, currentUserId: string, suppliersList: SupplierSummary[]) => {
+    console.log(`[EditInvoice] _internalCheckSupplier called. Scanned: ${scannedSupplierName}, UserID: ${currentUserId}, isNewScan: ${isNewScan}`);
+    setShowSupplierDialog(false);
+    setShowPaymentDueDateDialog(false);
+    setIsBarcodePromptOpen(false);
+
+    if (!isNewScan) {
+        console.log("[EditInvoice] _internalCheckSupplier: Not a new scan, skipping dialogs.");
+        setIsSupplierConfirmed(true); // Assume confirmed for existing invoices or manual entries
+        return;
+    }
+    if (!scannedSupplierName) {
+        console.log("[EditInvoice] _internalCheckSupplier: No supplier name from scan, assuming confirmed and proceeding.");
+        setIsSupplierConfirmed(true);
+        if (!selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
+            console.log("[EditInvoice] _internalCheckSupplier: No supplier name, prompting for Payment Due Date.");
+            setShowPaymentDueDateDialog(true);
+        } else if (documentType === 'deliveryNote' && products.length > 0) {
+            console.log("[EditInvoice] _internalCheckSupplier: No supplier name, prompting for New Product Details.");
+            checkForNewProductsAndDetails(products);
+        }
+        return;
+    }
+
+    setExistingSuppliers(suppliersList);
+    const isExisting = suppliersList.some(s => s.name.toLowerCase() === scannedSupplierName.toLowerCase());
+
+    if (isExisting) {
+      console.log("[EditInvoice] _internalCheckSupplier: Supplier is existing.");
+      setExtractedSupplierName(scannedSupplierName);
+      setIsSupplierConfirmed(true);
+      if (!selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
+           console.log("[EditInvoice] _internalCheckSupplier: Existing supplier, prompting for Payment Due Date.");
+           setShowPaymentDueDateDialog(true);
+      } else if (documentType === 'deliveryNote' && products.length > 0) {
+          console.log("[EditInvoice] _internalCheckSupplier: Existing supplier, prompting for New Product Details.");
+          checkForNewProductsAndDetails(products);
+      }
+    } else {
+      console.log("[EditInvoice] _internalCheckSupplier: Supplier is new. Prompting for confirmation.");
+      setPotentialSupplierName(scannedSupplierName);
+      setShowSupplierDialog(true);
+    }
+  };
+
+
   const loadData = useCallback(async () => {
     if (!user || !searchParams || !user.id) return;
     
@@ -174,14 +221,14 @@ function EditInvoiceContent() {
     console.log(`[EditInvoice] newScanFlag: ${newScanFlag}, docTypeParam: ${docTypeParam}, keyParam: ${keyParam}, tempInvIdParam: ${tempInvIdParam}, invoiceIdParam: ${invoiceIdParam}`);
 
     if (newScanFlag) {
-        console.log("[EditInvoice] New scan detected, resetting dialog states.");
-        setIsViewMode(true); 
-        setIsEditingTaxDetails(false);
-        setIsEditingDeliveryNoteProducts(false);
+        console.log("[EditInvoice] New scan detected, resetting dialog states for new flow.");
         setSelectedPaymentDueDate(undefined);
         setIsSupplierConfirmed(false);
         setPotentialSupplierName(undefined);
-        setAiScannedSupplierName(undefined);
+        setAiScannedSupplierNameFromStorage(undefined);
+        setIsViewMode(true); 
+        setIsEditingTaxDetails(false);
+        setIsEditingDeliveryNoteProducts(false);
     } else if (invoiceIdParam) {
         console.log("[EditInvoice] Existing invoice detected, setting view mode.");
         setIsViewMode(true);
@@ -257,7 +304,7 @@ function EditInvoiceContent() {
                 setDisplayedCompressedImageUrl(inv.compressedImageForFinalRecordUri || null);
                 setProducts([]); 
                 setInitialScannedProducts([]);
-                setIsSupplierConfirmed(true);
+                setIsSupplierConfirmed(true); // For existing invoices, supplier is considered confirmed.
             } else {
                 setErrorLoading(t('edit_invoice_error_invoice_not_found_id', { invoiceId: invoiceIdParam }));
             }
@@ -278,11 +325,12 @@ function EditInvoiceContent() {
 
         try {
             if (actualDataKey) storedData = localStorage.getItem(actualDataKey);
-            const previewKey = initialOriginalImagePreviewKey || getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`);
-            const compressedKey = initialCompressedImageKey || getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`);
-            console.log(`[EditInvoice] Attempting to load images. PreviewKey: ${previewKey}, CompressedKey: ${compressedKey}`);
-            if(previewKey) setDisplayedOriginalImageUrl(localStorage.getItem(previewKey));
-            if(compressedKey) setDisplayedCompressedImageUrl(localStorage.getItem(compressedKey));
+            const previewKeyToLoad = initialOriginalImagePreviewKey || (uniquePartFromKeyOrTempId ? getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`) : null);
+            const compressedKeyToLoad = initialCompressedImageKey || (uniquePartFromKeyOrTempId ? getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, `${user.id}_${uniquePartFromKeyOrTempId}`) : null);
+
+            console.log(`[EditInvoice] Attempting to load images. PreviewKey: ${previewKeyToLoad}, CompressedKey: ${compressedKeyToLoad}`);
+            if(previewKeyToLoad) setDisplayedOriginalImageUrl(localStorage.getItem(previewKeyToLoad));
+            if(compressedKeyToLoad) setDisplayedCompressedImageUrl(localStorage.getItem(compressedKeyToLoad));
 
         } catch(e) {
             console.error("Error reading from localStorage for key:", actualDataKey, e);
@@ -333,6 +381,8 @@ function EditInvoiceContent() {
           setScanProcessErrorState(generalError);
            console.log("[EditInvoice] Scan process error from parsed data:", generalError);
         }
+        
+        let supplierFromScan: string | undefined | null = null;
 
         if (docTypeParam === 'invoice') {
             console.log("[EditInvoice] Processing as Tax Invoice.");
@@ -354,15 +404,8 @@ function EditInvoiceContent() {
             setExtractedTotalAmount(taxData.totalAmount);
             setExtractedInvoiceDate(taxData.invoiceDate);
             setExtractedPaymentMethod(taxData.paymentMethod);
-            setAiScannedSupplierName(taxData.supplierName);
-            
-            if (user?.id && newScanFlag) {
-                console.log("[EditInvoice] New tax invoice scan, checking supplier:", taxData.supplierName);
-                checkSupplier(taxData.supplierName, user.id);
-            } else {
-                console.log("[EditInvoice] Not a new scan or no user, assuming supplier confirmed.");
-                setIsSupplierConfirmed(true);
-            }
+            supplierFromScan = taxData.supplierName;
+            setAiScannedSupplierNameFromStorage(supplierFromScan); // Store it
 
 
         } else if (docTypeParam === 'deliveryNote') {
@@ -397,19 +440,14 @@ function EditInvoiceContent() {
               setInitialScannedTaxDetails(deliveryNoteInvoiceDetails);
 
               setExtractedInvoiceNumber(productData.invoiceNumber);
-              setAiScannedSupplierName(productData.supplier);
               setExtractedSupplierName(productData.supplier);
               setExtractedTotalAmount(productData.totalAmount);
               setExtractedInvoiceDate(productData.invoiceDate);
               setExtractedPaymentMethod(productData.paymentMethod);
+              supplierFromScan = productData.supplier;
+              setAiScannedSupplierNameFromStorage(supplierFromScan); // Store it
 
-              if (user?.id && newScanFlag) {
-                  console.log("[EditInvoice] New delivery note scan, checking supplier:", productData.supplier);
-                  checkSupplier(productData.supplier, user.id);
-              } else {
-                 console.log("[EditInvoice] Not a new scan or no user, assuming supplier confirmed.");
-                  setIsSupplierConfirmed(true);
-              }
+
             } else if (!productData.error){
                 console.error("Parsed product data is missing 'products' array or is invalid:", productData);
                 setErrorLoading(t('edit_invoice_error_invalid_structure_parsed'));
@@ -429,6 +467,30 @@ function EditInvoiceContent() {
              setEditableTaxInvoiceDetails({});
              setInitialScannedTaxDetails({});
         }
+
+        if (newScanFlag && user?.id) {
+            console.log("[EditInvoice] New scan, initiating supplier check sequence for supplier:", supplierFromScan);
+            try {
+                const suppliersList = await getSupplierSummariesService(user.id);
+                console.log("[EditInvoice] Fetched existing suppliers for dialog flow:", suppliersList);
+                await _internalCheckSupplier(supplierFromScan, user.id, suppliersList);
+            } catch (supplierError) {
+                console.error("[EditInvoice] Error fetching suppliers for dialog flow:", supplierError);
+                toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
+                // Fallback: assume supplier is confirmed and proceed to payment due date if applicable
+                setIsSupplierConfirmed(true);
+                if (!selectedPaymentDueDate && (docTypeParam === 'deliveryNote' || docTypeParam === 'invoice')) {
+                    setShowPaymentDueDateDialog(true);
+                } else if (docTypeParam === 'deliveryNote' && products.length > 0) {
+                    checkForNewProductsAndDetails(products);
+                }
+            }
+        } else if (!newScanFlag) {
+            console.log("[EditInvoice] Not a new scan, assuming supplier and payment due date are already set or not needed for dialog flow.");
+            setIsSupplierConfirmed(true); // For existing invoices, or if not a new scan.
+        }
+
+
     } else if (!initialDataLoaded) { 
        console.error("[EditInvoice] No keyParam, tempInvIdParam, or invoiceIdParam provided.");
        setErrorLoading(t('edit_invoice_error_no_key_or_id'));
@@ -445,83 +507,17 @@ function EditInvoiceContent() {
     setIsLoading(false);
     setInitialDataLoaded(true);
     console.log("[EditInvoice] loadData finished.");
-  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded]);
+  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded]); // Removed loadData from dependencies
 
 
   useEffect(() => {
-    if(user && user.id && !initialDataLoaded) { // Run only once after user is available
+    if(user && user.id && !initialDataLoaded) { 
       loadData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, initialDataLoaded]); // Removed loadData from dependencies
+  }, [user, initialDataLoaded]); 
 
 
-  const checkSupplier = async (scannedSupplierName?: string, currentUserId?: string) => {
-    console.log(`[EditInvoice] checkSupplier called. Scanned: ${scannedSupplierName}, UserID: ${currentUserId}, isNewScan: ${isNewScan}`);
-    setShowSupplierDialog(false); // Ensure previous dialog is closed
-    setShowPaymentDueDateDialog(false);
-    setIsBarcodePromptOpen(false);
-
-    if (!currentUserId || !isNewScan) {
-        console.log("[EditInvoice] checkSupplier: Not a new scan or no user, proceeding to next step if applicable.");
-        setIsSupplierConfirmed(true);
-        if (isNewScan && !selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-            console.log("[EditInvoice] checkSupplier: Prompting for Payment Due Date.");
-            setShowPaymentDueDateDialog(true);
-        } else if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
-            console.log("[EditInvoice] checkSupplier: Prompting for New Product Details.");
-            checkForNewProductsAndDetails(products);
-        }
-        return;
-    }
-    if (!scannedSupplierName) {
-        console.log("[EditInvoice] checkSupplier: No supplier name from scan, assuming confirmed and proceeding.");
-        setIsSupplierConfirmed(true);
-        if (!selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-            console.log("[EditInvoice] checkSupplier: No supplier name, prompting for Payment Due Date.");
-            setShowPaymentDueDateDialog(true);
-        } else if (documentType === 'deliveryNote' && products.length > 0) {
-            console.log("[EditInvoice] checkSupplier: No supplier name, prompting for New Product Details.");
-            checkForNewProductsAndDetails(products);
-        }
-        return;
-    }
-
-
-    try {
-      const suppliers = await getSupplierSummariesService(currentUserId);
-      setExistingSuppliers(suppliers);
-      const isExisting = suppliers.some(s => s.name.toLowerCase() === scannedSupplierName.toLowerCase());
-      if (isExisting) {
-        console.log("[EditInvoice] checkSupplier: Supplier is existing.");
-        setExtractedSupplierName(scannedSupplierName);
-        setIsSupplierConfirmed(true);
-        if (!selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-             console.log("[EditInvoice] checkSupplier: Existing supplier, prompting for Payment Due Date.");
-             setShowPaymentDueDateDialog(true);
-        } else if (documentType === 'deliveryNote' && products.length > 0) {
-            console.log("[EditInvoice] checkSupplier: Existing supplier, prompting for New Product Details.");
-            checkForNewProductsAndDetails(products);
-        }
-      } else {
-        console.log("[EditInvoice] checkSupplier: Supplier is new. Prompting for confirmation.");
-        setPotentialSupplierName(scannedSupplierName);
-        setShowSupplierDialog(true);
-      }
-    } catch (error) {
-      console.error("Error fetching existing suppliers:", error);
-      toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-      setExtractedSupplierName(scannedSupplierName); 
-      setIsSupplierConfirmed(true);
-      if (!selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-        console.log("[EditInvoice] checkSupplier: Error fetching suppliers, prompting for Payment Due Date.");
-        setShowPaymentDueDateDialog(true);
-      } else if (documentType === 'deliveryNote' && products.length > 0) {
-         console.log("[EditInvoice] checkSupplier: Error fetching suppliers, prompting for New Product Details.");
-         checkForNewProductsAndDetails(products);
-      }
-    }
-  };
 
   const handleSupplierConfirmation = async (confirmedSupplierName: string | null, isNew: boolean = false) => {
     console.log(`[EditInvoice] handleSupplierConfirmation called. Confirmed: ${confirmedSupplierName}, isNew: ${isNew}`);
@@ -543,8 +539,8 @@ function EditInvoiceContent() {
         }
       }
     } else {
-      setExtractedSupplierName(aiScannedSupplierName || extractedSupplierName);
-      setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName || extractedSupplierName }));
+      setExtractedSupplierName(aiScannedSupplierNameFromStorage || extractedSupplierName);
+      setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierNameFromStorage || extractedSupplierName }));
     }
     setIsSupplierConfirmed(true);
     
@@ -564,8 +560,23 @@ function EditInvoiceContent() {
     if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
         console.log("[EditInvoice] handlePaymentDueDateConfirm: Prompting for New Product Details.");
         checkForNewProductsAndDetails(products);
+    } else if (isNewScan && documentType === 'invoice' && !products.length) {
+        console.log("[EditInvoice] handlePaymentDueDateConfirm for Tax Invoice, no products to detail. Ready for final save.");
+        // Potentially trigger save here or enable save button, as no further dialogs for tax invoice
     }
 };
+
+ const handleCancelPaymentDueDate = () => {
+    console.log("[EditInvoice] Payment Due Date dialog cancelled by user.");
+    setShowPaymentDueDateDialog(false);
+    setSelectedPaymentDueDate(undefined); // Explicitly clear if skipped
+    if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
+        console.log("[EditInvoice] Payment Due Date dialog cancelled, prompting for New Product Details for Delivery Note.");
+        checkForNewProductsAndDetails(products);
+    } else if (isNewScan && documentType === 'invoice') {
+        console.log("[EditInvoice] Payment Due Date dialog cancelled for Tax Invoice. User can click save to proceed without due date.");
+    }
+  };
 
 
   const handleInputChange = (id: string, field: keyof EditableProduct, value: string | number) => {
@@ -906,19 +917,32 @@ function EditInvoiceContent() {
         return;
     }
 
-    if (!isSupplierConfirmed && isNewScan) {
-        console.log("[EditInvoice] handleSaveChecks: Supplier not confirmed, initiating checkSupplier flow.");
-        checkSupplier(aiScannedSupplierName || extractedSupplierName, user.id);
-        return;
+    if (isNewScan && !isSupplierConfirmed) {
+        console.log("[EditInvoice] handleSaveChecks: Supplier not confirmed, initiating checkSupplier flow for:", aiScannedSupplierNameFromStorage);
+         try {
+            const suppliersList = await getSupplierSummariesService(user.id);
+            console.log("[EditInvoice] Fetched existing suppliers for save checks:", suppliersList);
+            await _internalCheckSupplier(aiScannedSupplierNameFromStorage, user.id, suppliersList);
+         } catch (supplierError) {
+            console.error("[EditInvoice] Error fetching suppliers during save checks:", supplierError);
+            toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
+            setIsSupplierConfirmed(true); // Fallback: assume confirmed and proceed
+            if (isNewScan && !selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
+                setShowPaymentDueDateDialog(true);
+                return;
+            }
+             await proceedWithActualSave();
+         }
+        return; // Wait for supplier confirmation flow to complete
     }
 
-    if (!selectedPaymentDueDate && isNewScan && (documentType === 'deliveryNote' || documentType === 'invoice')) {
+    if (isNewScan && !selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
         console.log("[EditInvoice] handleSaveChecks: Payment due date not selected, showing dialog.");
         setShowPaymentDueDateDialog(true);
-        return;
+        return; // Wait for due date selection
     }
     
-    console.log("[EditInvoice] handleSaveChecks: Supplier and due date confirmed (or not needed), proceeding to actual save logic.");
+    console.log("[EditInvoice] handleSaveChecks: Supplier and due date confirmed (or not needed for this flow), proceeding to actual save logic.");
     await proceedWithActualSave();
 };
 
@@ -947,7 +971,6 @@ const proceedWithActualSave = async () => {
         if (priceCheckResult.priceDiscrepancies.length > 0) {
             console.log("[EditInvoice] proceedWithActualSave: Price discrepancies found, showing dialog.");
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
-            setIsSaving(false);
         } else {
             console.log("[EditInvoice] proceedWithActualSave: No price discrepancies. Checking for new products.");
             if (isNewScan && documentType === 'deliveryNote' && priceCheckResult.productsToSaveDirectly.length > 0) { 
@@ -964,7 +987,8 @@ const proceedWithActualSave = async () => {
             description: t('edit_invoice_toast_error_preparing_save_desc', { message: (error as Error).message}),
             variant: "destructive",
         });
-        setIsSaving(false);
+    } finally {
+         setIsSaving(false);
     }
 };
 
@@ -1016,7 +1040,6 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
             setShowSupplierDialog(false);
             setShowPaymentDueDateDialog(false);
             setIsBarcodePromptOpen(true); 
-            setIsSaving(false); 
         } else {
             console.log("[EditInvoice] checkForNewProductsAndDetails: No new products needing details, proceeding to final save.");
             await proceedWithFinalSave(productsReadyForDetailCheck);
@@ -1028,6 +1051,7 @@ const checkForNewProductsAndDetails = async (productsReadyForDetailCheck: Produc
             description: t('edit_invoice_toast_error_new_product_details_desc'),
             variant: "destructive",
         });
+    } finally {
         setIsSaving(false); 
     }
 };
@@ -1225,7 +1249,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                                 <Button variant="outline" onClick={() => { handleAddRow(); setIsEditingDeliveryNoteProducts(true); setIsViewMode(false);}} className="w-full sm:w-auto">
                                 <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                                 </Button>
-                                <Button onClick={handleSaveChecks} disabled={isSaving || products.length === 0 || !isSupplierConfirmed || (documentType === 'deliveryNote' && !selectedPaymentDueDate)} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                                <Button 
+                                    onClick={handleSaveChecks} 
+                                    disabled={isSaving || products.length === 0 || (isNewScan && !isSupplierConfirmed) || (isNewScan && (documentType === 'deliveryNote') && !selectedPaymentDueDate) } 
+                                    className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
+                                >
                                 {isSaving ? (
                                     <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...
@@ -1241,7 +1269,11 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                            {documentType === 'invoice' && (
                             <React.Fragment key="invoice-manual-entry-block">
                                  {renderEditableTaxInvoiceDetails()}
-                                <Button onClick={handleSaveChecks} disabled={isSaving || !isSupplierConfirmed || (documentType === 'invoice' && !selectedPaymentDueDate) } className="bg-primary hover:bg-primary/90 w-full sm:w-auto mt-4">
+                                <Button 
+                                    onClick={handleSaveChecks} 
+                                    disabled={isSaving || (isNewScan && !isSupplierConfirmed) || (isNewScan && (documentType === 'invoice') && !selectedPaymentDueDate) } 
+                                    className="bg-primary hover:bg-primary/90 w-full sm:w-auto mt-4"
+                                >
                                  {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}</>}
                                 </Button>
                              </React.Fragment>
@@ -1352,10 +1384,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                         <FileTextIconLucide className="mr-2 h-5 w-5" />
                         {documentType === 'invoice' ? t('edit_invoice_invoice_details_title') : t('edit_invoice_delivery_note_details_title')}
                     </CardTitle>
-                     {isViewMode && (
+                     {!isSaving && (
                         <Button variant="ghost" size="icon" onClick={toggleEditTaxDetails} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">{t('edit_button')}</span>
+                            {isEditingTaxDetails ? <X className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+                            <span className="sr-only">{isEditingTaxDetails ? t('cancel_button') : t('edit_button')}</span>
                         </Button>
                      )}
                 </div>
@@ -1376,10 +1408,10 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                     {isEditingTaxDetails ? renderEditableTaxInvoiceDetails() : renderReadOnlyTaxInvoiceDetails()}
                 </div>
                  {isEditingTaxDetails && (
-                    <div className="flex justify-end gap-2 pt-2">
+                    <CardFooter className="flex justify-end gap-2 pt-4">
                         <Button variant="outline" onClick={handleCancelEditTaxDetails} disabled={isSaving}>{t('cancel_button')}</Button>
                         <Button onClick={handleSaveEditTaxDetails} disabled={isSaving}>{t('save_button')}</Button>
-                    </div>
+                    </CardFooter>
                  )}
                  {displayedOriginalImageUrl && (
                     <div className="border rounded-lg p-4 mt-6">
@@ -1397,15 +1429,15 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             <div className="mt-6">
                  <div className="flex flex-row items-center justify-between mb-2">
                     <h2 className="text-lg font-semibold text-primary">{t('edit_invoice_extracted_products_title')} ({products.length})</h2>
-                    {isViewMode && products.length > 0 && (
+                    {!isSaving && products.length > 0 && (
                         <Button variant="ghost" size="icon" onClick={toggleEditDeliveryNoteProducts} className="h-8 w-8 text-muted-foreground hover:text-primary">
-                            <Edit className="h-4 w-4" />
-                             <span className="sr-only">{t('edit_button')}</span>
+                            {isEditingDeliveryNoteProducts ? <X className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+                             <span className="sr-only">{isEditingDeliveryNoteProducts ? t('cancel_button') : t('edit_button')}</span>
                         </Button>
                     )}
                 </div>
                 {products.length > 0 || isEditingDeliveryNoteProducts ? (
-                     <div className="overflow-x-auto relative border rounded-md bg-card"> {/* Added bg-card */}
+                     <div className="overflow-x-auto relative border rounded-md bg-card">
                          <Table className="min-w-full sm:min-w-[600px]"> 
                          <TableHeader>
                              <TableRow>
@@ -1422,42 +1454,42 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                                  <TableRow key={product.id}>
                                      <TableCell className="px-2 sm:px-4 py-2 max-w-[100px] sm:max-w-xs truncate">
                                          {isEditingDeliveryNoteProducts ? (
-                                             <Input value={product.catalogNumber || ''} onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)} className="h-9" />
+                                             <Input value={product.catalogNumber || ''} onChange={(e) => handleInputChange(product.id, 'catalogNumber', e.target.value)} className="h-9" disabled={isSaving}/>
                                          ) : (
                                              product.catalogNumber || t('invoices_na')
                                          )}
                                      </TableCell>
                                      <TableCell className="px-2 sm:px-4 py-2 max-w-[150px] sm:max-w-md truncate">
                                           {isEditingDeliveryNoteProducts ? (
-                                             <Input value={product.description || ''} onChange={(e) => handleInputChange(product.id, 'description', e.target.value)} className="h-9" />
+                                             <Input value={product.description || ''} onChange={(e) => handleInputChange(product.id, 'description', e.target.value)} className="h-9" disabled={isSaving}/>
                                           ) : (
                                              product.description || t('invoices_na')
                                           )}
                                      </TableCell>
                                       <TableCell className="text-right px-2 sm:px-4 py-2">
                                           {isEditingDeliveryNoteProducts ? (
-                                             <Input type="number" value={formatInputValue(product.quantity, 'quantity', t)} onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} className="w-20 sm:w-24 text-right h-9" />
+                                             <Input type="number" value={formatInputValue(product.quantity, 'quantity', t)} onChange={(e) => handleInputChange(product.id, 'quantity', e.target.value)} className="w-20 sm:w-24 text-right h-9" disabled={isSaving}/>
                                           ) : (
                                              formatInputValue(product.quantity, 'quantity', t)
                                           )}
                                      </TableCell>
                                      <TableCell className="text-right px-2 sm:px-4 py-2">
                                           {isEditingDeliveryNoteProducts ? (
-                                             <Input type="number" value={formatInputValue(product.unitPrice, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} className="w-24 sm:w-28 text-right h-9" />
+                                             <Input type="number" value={formatInputValue(product.unitPrice, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'unitPrice', e.target.value)} className="w-24 sm:w-28 text-right h-9" disabled={isSaving}/>
                                           ) : (
                                              t('currency_symbol') + formatInputValue(product.unitPrice, 'currency', t)
                                           )}
                                      </TableCell>
                                      <TableCell className="text-right px-2 sm:px-4 py-2">
                                           {isEditingDeliveryNoteProducts ? (
-                                             <Input type="number" value={formatInputValue(product.lineTotal, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} className="w-24 sm:w-28 text-right h-9" />
+                                             <Input type="number" value={formatInputValue(product.lineTotal, 'currency', t)} onChange={(e) => handleInputChange(product.id, 'lineTotal', e.target.value)} className="w-24 sm:w-28 text-right h-9" disabled={isSaving}/>
                                           ) : (
                                              t('currency_symbol') + formatInputValue(product.lineTotal, 'currency', t)
                                           )}
                                      </TableCell>
                                      {isEditingDeliveryNoteProducts && (
                                          <TableCell className="text-right px-2 sm:px-4 py-2">
-                                             <Button variant="ghost" size="icon" onClick={() => handleRemoveRow(product.id)} className="text-destructive hover:text-destructive/80 h-8 w-8">
+                                             <Button variant="ghost" size="icon" onClick={() => handleRemoveRow(product.id)} className="text-destructive hover:text-destructive/80 h-8 w-8" disabled={isSaving}>
                                                  <Trash2 className="h-4 w-4" />
                                              </Button>
                                          </TableCell>
@@ -1472,7 +1504,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 )}
                  {isEditingDeliveryNoteProducts && (
                      <div className="flex justify-between items-center pt-4 mt-2">
-                         <Button variant="outline" onClick={handleAddRow}>
+                         <Button variant="outline" onClick={handleAddRow} disabled={isSaving}>
                              <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                          </Button>
                          <div className="flex justify-end gap-2">
@@ -1483,24 +1515,28 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                  )}
             </div>
         )}
-         {documentType === 'invoice' && !isViewMode && (
-            <div className="mt-4">
-                <Button onClick={handleSaveChecks} disabled={isSaving || !isSupplierConfirmed || (documentType === 'invoice' && !selectedPaymentDueDate) } className="bg-primary hover:bg-primary/90 w-full sm:w-auto mt-4">
-                 {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}</>}
+        {documentType === 'invoice' && !isViewMode && (
+             <div className="mt-4">
+                <Button 
+                    onClick={handleSaveChecks} 
+                    disabled={isSaving || (isNewScan && !isSupplierConfirmed) || (isNewScan && (documentType === 'invoice') && !selectedPaymentDueDate) } 
+                    className="bg-primary hover:bg-primary/90 w-full sm:w-auto mt-4"
+                >
+                    {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {t('edit_invoice_save_changes_button')}</>}
                 </Button>
             </div>
          )}
 
 
         <div className="mt-6 flex flex-col sm:flex-row items-stretch gap-3">
-            <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push(documentType === 'invoice' ? '/invoices?tab=scanned-docs' : '/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first">
+            <Button variant="outline" onClick={isNewScan ? handleGoBack : () => router.push(documentType === 'invoice' ? '/invoices?tab=scanned-docs' : '/invoices?tab=scanned-docs')} className="w-full sm:w-auto order-last sm:order-first" disabled={isSaving}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_discard_scan_button') : t('edit_invoice_go_back_to_invoices_button')}
             </Button>
-            {isViewMode && (documentType === 'deliveryNote' && products.length > 0) && (
+            {(documentType === 'deliveryNote' || documentType === 'invoice') && (
                  <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
                     <Button
                         onClick={handleSaveChecks}
-                        disabled={isSaving || (!isEditingDeliveryNoteProducts && !isEditingTaxDetails && !isNewScan) || (isNewScan && !isSupplierConfirmed) || (isNewScan && (documentType === 'deliveryNote') && !selectedPaymentDueDate) }
+                        disabled={isSaving || (!isEditingDeliveryNoteProducts && !isEditingTaxDetails && !isNewScan && !!initialTempInvoiceId) || (isNewScan && !isSupplierConfirmed) || (isNewScan && !selectedPaymentDueDate) }
                         className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
                     >
                         {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_confirm_and_save_button') : t('edit_invoice_save_changes_button')}</>}
@@ -1508,7 +1544,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
                 </div>
             )}
         </div>
-      {showSupplierDialog && potentialSupplierName && user && (
+       {showSupplierDialog && potentialSupplierName && user && (
         <SupplierConfirmationDialog
           potentialSupplierName={potentialSupplierName}
           existingSuppliers={existingSuppliers}
@@ -1517,8 +1553,8 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
             console.log("[EditInvoice] Supplier confirmation dialog cancelled by user.");
             setShowSupplierDialog(false);
             setIsSupplierConfirmed(true); 
-            setExtractedSupplierName(aiScannedSupplierName || extractedSupplierName);
-            setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierName || extractedSupplierName }));
+            setExtractedSupplierName(aiScannedSupplierNameFromStorage || extractedSupplierName);
+            setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: aiScannedSupplierNameFromStorage || extractedSupplierName }));
             if (isNewScan && !selectedPaymentDueDate && (documentType === 'deliveryNote' || documentType === 'invoice')) {
                  console.log("[EditInvoice] Supplier dialog cancelled, prompting for Payment Due Date.");
                  setShowPaymentDueDateDialog(true);
@@ -1537,18 +1573,7 @@ const handlePriceConfirmationComplete = (resolvedProducts: Product[] | null) => 
           isOpen={showPaymentDueDateDialog}
           onOpenChange={setShowPaymentDueDateDialog}
           onConfirm={handlePaymentDueDateConfirm}
-          onCancel={() => {
-            console.log("[EditInvoice] Payment Due Date dialog cancelled by user.");
-            setShowPaymentDueDateDialog(false);
-            toast({title: t('edit_invoice_toast_payment_due_date_skipped_title'), description: t('edit_invoice_toast_payment_due_date_skipped_desc'), variant: "default"});
-            setSelectedPaymentDueDate(undefined); 
-            if (isNewScan && documentType === 'deliveryNote' && products.length > 0) {
-                console.log("[EditInvoice] Payment Due Date dialog cancelled, prompting for New Product Details.");
-                checkForNewProductsAndDetails(products);
-            } else if (isNewScan && documentType === 'invoice'){
-                 console.log("[EditInvoice] Payment Due Date dialog cancelled for Tax Invoice. User will click save to proceed.");
-            }
-          }}
+          onCancel={handleCancelPaymentDueDate}
         />
       )}
 
@@ -1591,5 +1616,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-
-
