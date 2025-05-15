@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { useEffect } from 'react'; // Added useEffect import
+import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
@@ -24,7 +24,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import { LogIn, ChromeIcon } from 'lucide-react'; // Using ChromeIcon as a generic 'Google' icon
 import { useTranslation } from '@/hooks/useTranslation';
-import { Separator } from '@/components/ui/separator';
+// Removed Separator import as we'll use a div-based approach
 
 const formSchema = z.object({
   username: z.string().min(2, {
@@ -50,10 +50,19 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       router.push('/');
     }
-  }, [user, router]);
+  }, [user, loading, router]);
+
+  if (loading || (!loading && user)) {
+    return (
+      <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
+      </div>
+    );
+  }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
@@ -118,10 +127,10 @@ export default function LoginPage() {
             </form>
           </Form>
 
-          <div className="my-4 flex items-center">
-            <Separator className="flex-grow" />
-            <span className="mx-2 text-xs text-muted-foreground">{t('login_or_divider')}</span>
-            <Separator className="flex-grow" />
+          <div className="my-4 flex items-center text-xs text-muted-foreground">
+            <div className="flex-grow border-t border-border"></div>
+            <span className="mx-2">{t('login_or_divider')}</span>
+            <div className="flex-grow border-t border-border"></div>
           </div>
 
           <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
