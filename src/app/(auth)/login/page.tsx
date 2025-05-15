@@ -26,8 +26,8 @@ import { LogIn, ChromeIcon, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const formSchema = z.object({
-  username: z.string().min(2, {
-    message: 'Username must be at least 2 characters.',
+  email: z.string().email({ // Changed from username to email for Firebase Auth
+    message: 'Please enter a valid email.',
   }),
   password: z.string().min(6, {
     message: 'Password must be at least 6 characters.',
@@ -35,7 +35,7 @@ const formSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { login, signInWithGoogle, loading, user } = useAuth();
+  const { loginWithEmail, signInWithGoogle, loading, user } = useAuth(); // Changed login to loginWithEmail for clarity
   const router = useRouter();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -43,18 +43,18 @@ export default function LoginPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      username: '',
+      email: '',
       password: '',
     },
   });
 
   useEffect(() => {
-    if (!loading && user) { // Check for loading state before redirecting
+    if (!loading && user) {
       router.push('/');
     }
   }, [user, loading, router]);
 
-  if (loading || (!loading && user)) { // Show loader if auth is loading OR if user is logged in (and redirecting)
+  if (loading || (!loading && user)) {
     return (
       <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -65,17 +65,18 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      await login(values);
-      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
+      await loginWithEmail({ email: values.email, password: values.password }); // Use email and password
+      // Navigation is handled by processFirebaseUser or useEffect
     } catch (error) {
        form.resetField("password");
+       // Error toast is handled by AuthContext
     }
   }
 
   async function handleGoogleSignIn() {
     try {
       await signInWithGoogle();
-      // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
+      // Navigation is handled by processFirebaseUser or useEffect
     } catch (error) {
       // Error toast is handled by AuthContext
     }
@@ -93,12 +94,12 @@ export default function LoginPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
-                name="username"
+                name="email" // Changed from username to email
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('login_username_label')}</FormLabel>
+                    <FormLabel>{t('register_email_label')}</FormLabel> {/* Using register_email_label for consistency */}
                     <FormControl>
-                      <Input placeholder={t('login_username_placeholder')} {...field} />
+                      <Input type="email" placeholder={t('register_email_placeholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -118,7 +119,7 @@ export default function LoginPage() {
                 )}
               />
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                {loading ? t('login_button_loading') : <><LogIn className="mr-2 h-4 w-4" /> {t('login_button')}</>}
+                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('login_button_loading')}</> : <><LogIn className="mr-2 h-4 w-4" /> {t('login_button')}</>}
               </Button>
             </form>
           </Form>
