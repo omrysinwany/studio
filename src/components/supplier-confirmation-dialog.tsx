@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -46,46 +47,66 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
   const [chosenExistingSupplier, setChosenExistingSupplier] = useState<string>('');
 
   useEffect(() => {
-    setRenamedSupplier(potentialSupplierName);
-    setSelectedOption('use_new');
-    setChosenExistingSupplier('');
-  }, [potentialSupplierName, isOpen]); // Reset state when dialog opens or potential name changes
+    console.log("[SupplierConfirmationDialog] Props received. isOpen:", isOpen, "potentialSupplierName:", potentialSupplierName);
+    if (isOpen) {
+      setRenamedSupplier(potentialSupplierName);
+      setSelectedOption('use_new');
+      setChosenExistingSupplier('');
+       console.log("[SupplierConfirmationDialog] State reset for new opening.");
+    }
+  }, [potentialSupplierName, isOpen]);
 
   const handleConfirm = () => {
     let confirmedName: string | null = null;
     let isNewSupplier = false;
+    console.log("[SupplierConfirmationDialog] handleConfirm called. Selected option:", selectedOption);
 
     if (selectedOption === 'use_new') {
       confirmedName = potentialSupplierName;
       isNewSupplier = true;
+      console.log("[SupplierConfirmationDialog] Using new supplier name:", confirmedName);
     } else if (selectedOption === 'rename_new') {
       if (renamedSupplier.trim() === '') {
         toast({ title: t('error_title'), description: t('supplier_confirmation_error_empty_name'), variant: 'destructive' });
+        console.warn("[SupplierConfirmationDialog] Renamed supplier name is empty.");
         return;
       }
       confirmedName = renamedSupplier.trim();
       isNewSupplier = true;
+      console.log("[SupplierConfirmationDialog] Using renamed new supplier name:", confirmedName);
     } else if (selectedOption === 'select_existing') {
       if (!chosenExistingSupplier) {
         toast({ title: t('error_title'), description: t('supplier_confirmation_error_select_existing'), variant: 'destructive' });
+        console.warn("[SupplierConfirmationDialog] No existing supplier chosen.");
         return;
       }
       confirmedName = chosenExistingSupplier;
+      console.log("[SupplierConfirmationDialog] Using existing supplier:", confirmedName);
     }
     onConfirm(confirmedName, isNewSupplier);
     onOpenChange(false);
   };
 
   const handleDialogCancel = () => {
-    onCancel(); // Call the original cancel handler
-    onOpenChange(false);
+    console.log("[SupplierConfirmationDialog] Dialog cancelled by user action (Skip or Close).");
+    onCancel(); // Call the original cancel handler from parent
+    onOpenChange(false); // Ensure parent knows the dialog is closed
+  };
+  
+  const handleSheetOpenChange = (open: boolean) => {
+    console.log("[SupplierConfirmationDialog] Sheet onOpenChange called with:", open);
+    if (!open) {
+        // If the dialog is closed by means other than Confirm/Cancel buttons (e.g., overlay click, X button in header)
+        // We treat it as a cancel/skip action.
+        handleDialogCancel();
+    } else {
+        onOpenChange(open); // Propagate open state if it's being opened programmatically
+    }
   };
 
+
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => {
-        onOpenChange(open);
-        if (!open) handleDialogCancel();
-    }}>
+    <Sheet open={isOpen} onOpenChange={handleSheetOpenChange}>
       <SheetContent side="bottom" className="h-[75vh] sm:h-[80vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="flex items-center text-lg sm:text-xl">
@@ -93,7 +114,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
             {t('supplier_confirmation_title')}
           </SheetTitle>
           <SheetDescription className="text-xs sm:text-sm">
-            {t('supplier_confirmation_description', { supplierName: potentialSupplierName })}
+            {t('supplier_confirmation_description', { supplierName: potentialSupplierName || t('invoices_unknown_supplier')})}
           </SheetDescription>
         </SheetHeader>
 
@@ -104,7 +125,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
                 <div className="flex items-center space-x-2">
                     <RadioGroupItem value="use_new" id="use_new_supplier" />
                     <Label htmlFor="use_new_supplier" className="font-medium cursor-pointer">
-                    {t('supplier_confirmation_option_use_new', { supplierName: potentialSupplierName })}
+                    {t('supplier_confirmation_option_use_new', { supplierName: potentialSupplierName || t('invoices_unknown_supplier') })}
                     </Label>
                 </div>
                 </div>
@@ -127,7 +148,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
                 )}
                 </div>
                 
-                {existingSuppliers.length > 0 && (
+                {existingSuppliers && existingSuppliers.length > 0 && (
                     <div>
                         <div className="flex items-center space-x-2">
                         <RadioGroupItem value="select_existing" id="select_existing_supplier" />
@@ -142,7 +163,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
                             </SelectTrigger>
                             <SelectContent>
                             {existingSuppliers.map((supplier) => (
-                                <SelectItem key={supplier.name} value={supplier.name}>
+                                <SelectItem key={supplier.id} value={supplier.name}>
                                 {supplier.name}
                                 </SelectItem>
                             ))}
@@ -156,11 +177,10 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
         </ScrollArea>
 
         <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
-          <SheetClose asChild>
-            <Button variant="outline" onClick={handleDialogCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-              <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
-            </Button>
-          </SheetClose>
+          {/* SheetClose is not needed here if onOpenChange handles closure correctly */}
+          <Button variant="outline" onClick={handleDialogCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+            <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
+          </Button>
           <Button onClick={handleConfirm} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
             <Check className="mr-2 h-4 w-4" /> {t('supplier_confirmation_confirm_button')}
           </Button>
