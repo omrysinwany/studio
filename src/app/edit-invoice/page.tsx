@@ -28,9 +28,9 @@ import {
     getInvoicesService,
     MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES,
     MAX_SCAN_RESULTS_SIZE_BYTES,
-    updateInvoiceService, // Added this
-    DOCUMENTS_COLLECTION, // Ensure this is imported
-    INVENTORY_COLLECTION // Ensure this is imported
+    updateInvoiceService,
+    DOCUMENTS_COLLECTION,
+    INVENTORY_COLLECTION
 } from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 
 interface EditableProduct extends Product {
@@ -129,14 +130,16 @@ function EditInvoiceContent() {
   const [currentDialogStep, setCurrentDialogStep] = useState<DialogFlowStep>('idle');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [potentialSupplierName, setPotentialSupplierName] = useState<string | undefined>(undefined);
+
   const [isSupplierConfirmed, setIsSupplierConfirmed] = useState(false);
   const [selectedPaymentDueDate, setSelectedPaymentDueDate] = useState<string | Date | Timestamp | undefined>(undefined);
   const [isPaymentDueDateDialogSkipped, setIsPaymentDueDateDialogSkipped] = useState(false);
-  const [productsToDisplayForNewDetails, setProductsToDisplayForNewDetails] = useState<Product[]>([]);
+
+  const [promptingForNewProductDetails, setPromptingForNewProductDetails] = useState<Product[] | null>(null);
   const [isBarcodePromptOpen, setIsBarcodePromptOpen] = useState(false);
   const [productInputStates, setProductInputStates] = useState<Record<string, { barcode: string; salePrice?: number }>>({});
   const [priceDiscrepancies, setPriceDiscrepancies] = useState<ProductPriceDiscrepancy[] | null>(null);
-  const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]); // Used to pass products between dialog steps
+  const [productsForNextStep, setProductsForNextStep] = useState<Product[]>([]);
   const [aiScannedSupplierNameFromStorage, setAiScannedSupplierNameFromStorage] = useState<string | undefined | null>(undefined);
 
 
@@ -157,74 +160,77 @@ function EditInvoiceContent() {
   }, [user?.id, initialDataKey, initialTempInvoiceId]);
 
 
-  const processNextDialogStep = useCallback(async (previousStepOutcome?: any, data?: any) => {
-    console.log(`[EditInvoice] processNextDialogStep called. Current Step: ${currentDialogStep}, From Outcome:`, previousStepOutcome, "Data:", data);
+  const processNextDialogStep = useCallback(async (previousStepOutcome?: string, data?: any) => {
+    console.log(`[EditInvoice][processNextDialogStep] Called. Current Step: ${currentDialogStep}, From Outcome:`, previousStepOutcome, "Data:", data);
     if (!isNewScan || !user?.id) {
-        console.log("[EditInvoice] processNextDialogStep: Not a new scan or no user. Setting to ready_to_save.");
+        console.log("[EditInvoice][processNextDialogStep] Not a new scan or no user. Defaulting to ready_to_save.");
         setCurrentDialogStep('ready_to_save');
         setIsSaving(false);
         return;
     }
 
-    switch (previousStepOutcome) {
-        case 'supplier_confirmed':
-        case 'supplier_cancelled_external':
-            console.log("[EditInvoice] processNextDialogStep: Supplier handling complete. SelectedPaymentDueDate:", selectedPaymentDueDate, "isPaymentDueDateDialogSkipped:", isPaymentDueDateDialogSkipped, "DocumentType:", documentType);
-            if (!selectedPaymentDueDate && !isPaymentDueDateDialogSkipped && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-                console.log("[EditInvoice] processNextDialogStep: Moving to payment_due_date.");
-                setCurrentDialogStep('payment_due_date');
-            } else if (documentType === 'deliveryNote' && productsForNextStep.length > 0) {
-                console.log("[EditInvoice] processNextDialogStep: Moving to check for new products after supplier.");
-                await checkForNewProductsAndDetails(productsForNextStep, true);
-            } else {
-                console.log("[EditInvoice] processNextDialogStep: No further dialogs after supplier. Setting to ready_to_save.");
-                setCurrentDialogStep('ready_to_save');
+    switch (currentDialogStep) {
+        case 'supplier_confirmation':
+            if (previousStepOutcome === 'supplier_confirmed_or_skipped') {
+                console.log("[EditInvoice][processNextDialogStep] Supplier handling complete. SelectedPaymentDueDate:", selectedPaymentDueDate, "isPaymentDueDateDialogSkipped:", isPaymentDueDateDialogSkipped, "DocumentType:", documentType);
+                if (!selectedPaymentDueDate && !isPaymentDueDateDialogSkipped && (documentType === 'deliveryNote' || documentType === 'invoice')) {
+                    console.log("[EditInvoice][processNextDialogStep] Moving to payment_due_date dialog.");
+                    setCurrentDialogStep('payment_due_date');
+                } else if (documentType === 'deliveryNote' && productsForNextStep.length > 0) {
+                    console.log("[EditInvoice][processNextDialogStep] Document is delivery note with products. Checking for new product details.");
+                    await checkForNewProductsAndDetails(productsForNextStep, true);
+                } else {
+                    console.log("[EditInvoice][processNextDialogStep] All pre-save dialogs complete. Setting to ready_to_save.");
+                    setCurrentDialogStep('ready_to_save');
+                }
             }
             break;
 
-        case 'payment_due_date_confirmed':
-        case 'payment_due_date_skipped':
-            console.log("[EditInvoice] processNextDialogStep: Payment due date handling complete. DocumentType:", documentType, "productsForNextStep length:", productsForNextStep.length);
-            if (documentType === 'deliveryNote' && productsForNextStep.length > 0) {
-                console.log("[EditInvoice] processNextDialogStep: Moving to check for new products after payment due date.");
-                await checkForNewProductsAndDetails(productsForNextStep, true);
-            } else {
-                console.log("[EditInvoice] processNextDialogStep: No further dialogs after payment due date. Setting to ready_to_save.");
-                setCurrentDialogStep('ready_to_save');
+        case 'payment_due_date':
+            if (previousStepOutcome === 'payment_due_date_confirmed_or_skipped') {
+                console.log("[EditInvoice][processNextDialogStep] Payment due date handling complete. DocumentType:", documentType, "productsForNextStep length:", productsForNextStep.length);
+                if (documentType === 'deliveryNote' && productsForNextStep.length > 0) {
+                    console.log("[EditInvoice][processNextDialogStep] Document is delivery note with products. Checking for new product details.");
+                    await checkForNewProductsAndDetails(productsForNextStep, true);
+                } else {
+                    console.log("[EditInvoice][processNextDialogStep] All pre-save dialogs complete. Setting to ready_to_save.");
+                    setCurrentDialogStep('ready_to_save');
+                }
             }
             break;
-      
-        case 'new_product_details_complete':
-             const updatedProductsFromPrompt = data as Product[] | null; // `data` here is `updatedNewProductsFromDialog`
-             const finalProductsAfterNewDetails = updatedProductsFromPrompt || productsForNextStep; // Use original if dialog was cancelled
+
+        case 'new_product_details':
+             const updatedProductsFromPrompt = data as Product[] | null;
+             const finalProductsAfterNewDetails = updatedProductsFromPrompt || productsForNextStep;
              setProductsForNextStep(finalProductsAfterNewDetails);
              setProducts(finalProductsAfterNewDetails.map(p => ({...p, _originalId: p.id })));
-             console.log("[EditInvoice] processNextDialogStep: New product details handled. Products for final save:", finalProductsAfterNewDetails);
+             console.log("[EditInvoice][processNextDialogStep] New product details handled. Products for final save:", finalProductsAfterNewDetails);
              setCurrentDialogStep('ready_to_save');
             break;
 
-        case 'price_discrepancy_resolved':
+        case 'price_discrepancy':
              const resolvedProductsFromDiscrepancy = data as Product[] | null;
-             if (resolvedProductsFromDiscrepancy === null) { 
+             if (resolvedProductsFromDiscrepancy === null) {
                  toast({ title: t('edit_invoice_toast_save_cancelled_title'), description: t('edit_invoice_toast_save_cancelled_desc_price'), variant: "default" });
-                 setCurrentDialogStep('idle');
+                 setCurrentDialogStep('idle'); // Or a more appropriate state
+                 setIsSaving(false);
                  return;
              }
-            console.log("[EditInvoice] processNextDialogStep: Price discrepancy resolved. Resolved products:", resolvedProductsFromDiscrepancy);
+            console.log("[EditInvoice][processNextDialogStep] Price discrepancy resolved. Resolved products:", resolvedProductsFromDiscrepancy);
             setProductsForNextStep(resolvedProductsFromDiscrepancy);
-            setProducts(resolvedProductsFromDiscrepancy.map(p => ({...p, _originalId: p.id }))); // Update main products state
+            setProducts(resolvedProductsFromDiscrepancy.map(p => ({...p, _originalId: p.id })));
             if (documentType === 'deliveryNote' && resolvedProductsFromDiscrepancy.length > 0) {
-                console.log("[EditInvoice] processNextDialogStep: Moving to check for new products after price discrepancy.");
+                console.log("[EditInvoice][processNextDialogStep] Moving to check for new products after price discrepancy.");
                 await checkForNewProductsAndDetails(resolvedProductsFromDiscrepancy, true);
             } else {
-                console.log("[EditInvoice] processNextDialogStep: No further dialogs after price discrepancy. Setting to ready_to_save.");
+                console.log("[EditInvoice][processNextDialogStep] No further dialogs after price discrepancy. Setting to ready_to_save.");
                 setCurrentDialogStep('ready_to_save');
             }
             break;
-      
+
         default:
-            console.log(`[EditInvoice] processNextDialogStep: In step ${currentDialogStep} with unhandled outcome '${previousStepOutcome}'. Defaulting to ready_to_save if not already there.`);
-            if (currentDialogStep !== 'ready_to_save') {
+            console.log(`[EditInvoice][processNextDialogStep] In step ${currentDialogStep} with unhandled outcome '${previousStepOutcome}'. Defaulting to ready_to_save if not already there.`);
+            if (currentDialogStep !== 'ready_to_save' && currentDialogStep !== 'idle') {
                  setCurrentDialogStep('ready_to_save');
             }
             break;
@@ -233,53 +239,55 @@ function EditInvoiceContent() {
 
 
   const _internalCheckSupplier = useCallback(async (scannedSupplier?: string | null, currentUserId?: string, suppliersList?: SupplierSummary[]) => {
-    console.log(`[EditInvoice] _internalCheckSupplier called. Scanned Supplier: "${scannedSupplier}", UserID: ${currentUserId}, Suppliers List Count: ${suppliersList?.length}, isNewScan: ${isNewScan}`);
+    console.log(`[EditInvoice][_internalCheckSupplier] Called. Scanned Supplier: "${scannedSupplier}", UserID: ${currentUserId}, Suppliers List Count: ${suppliersList?.length}, isNewScan: ${isNewScan}`);
     if (!currentUserId || !isNewScan) {
-      console.log("[EditInvoice] _internalCheckSupplier: Not a new scan or no user. Setting supplier as confirmed and moving.");
+      console.log("[EditInvoice][_internalCheckSupplier] Not a new scan or no user. Setting supplier as confirmed and moving.");
       setIsSupplierConfirmed(true);
-      processNextDialogStep('supplier_confirmed');
+      setCurrentDialogStep('payment_due_date'); // Move to next logical step
+      processNextDialogStep('supplier_confirmed_or_skipped');
       return;
     }
 
     setExistingSuppliers(suppliersList || []);
 
     if (scannedSupplier && scannedSupplier.trim() !== '' && !(suppliersList || []).some(s => s.name.toLowerCase() === scannedSupplier.toLowerCase())) {
-        console.log("[EditInvoice] _internalCheckSupplier: Scanned supplier is NEW. Setting currentDialogStep to 'supplier_confirmation'.");
+        console.log("[EditInvoice][_internalCheckSupplier] Scanned supplier is NEW. Setting currentDialogStep to 'supplier_confirmation'.");
         setPotentialSupplierName(scannedSupplier);
         setCurrentDialogStep('supplier_confirmation');
     } else {
-        console.log("[EditInvoice] _internalCheckSupplier: Supplier is existing, empty, or not scanned. Setting as confirmed and moving to next step.");
-        setExtractedSupplierName(scannedSupplier); 
+        console.log("[EditInvoice][_internalCheckSupplier] Supplier is existing, empty, or not scanned. Setting as confirmed and moving to next step.");
+        setExtractedSupplierName(scannedSupplier);
         setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: scannedSupplier }));
-        setIsSupplierConfirmed(true); 
-        processNextDialogStep('supplier_confirmed');
+        setIsSupplierConfirmed(true);
+        processNextDialogStep('supplier_confirmed_or_skipped');
     }
   }, [isNewScan, processNextDialogStep]);
 
 
   const startDialogFlowForNewScan = useCallback(async (scannedSupplier?: string | null) => {
-    console.log("[EditInvoice] startDialogFlowForNewScan called. Scanned supplier:", scannedSupplier, "isNewScan:", isNewScan, "user ID:", user?.id);
-    if (!isNewScan || !user?.id) {
-        console.log("[EditInvoice] startDialogFlowForNewScan: Not a new scan or no user. Defaulting to ready_to_save.");
+    console.log("[EditInvoice][startDialogFlowForNewScan] Called. Scanned supplier:", scannedSupplier, "isNewScan:", isNewScan, "user ID:", user?.id, "Current Dialog Step:", currentDialogStep);
+    if (!isNewScan || !user?.id ) {
+        console.log("[EditInvoice][startDialogFlowForNewScan] Not a new scan or no user or dialog flow already started. Defaulting to ready_to_save.");
         setCurrentDialogStep('ready_to_save');
         return;
     }
     
-    setIsLoading(true); 
+    setIsLoading(true);
     try {
-        console.log("[EditInvoice] startDialogFlowForNewScan: Fetching suppliers for user:", user.id);
+        console.log("[EditInvoice][startDialogFlowForNewScan] Fetching suppliers for user:", user.id);
         const fetchedSuppliersList = await getSupplierSummariesService(user.id);
-        console.log("[EditInvoice] startDialogFlowForNewScan: Fetched suppliers count:", fetchedSuppliersList.length);
+        console.log("[EditInvoice][startDialogFlowForNewScan] Fetched suppliers count:", fetchedSuppliersList.length);
         await _internalCheckSupplier(scannedSupplier, user.id, fetchedSuppliersList);
     } catch (error) {
-        console.error("[EditInvoice] startDialogFlowForNewScan: Error fetching suppliers:", error);
+        console.error("[EditInvoice][startDialogFlowForNewScan] Error fetching suppliers:", error);
         toast({ title: t('edit_invoice_toast_error_fetching_suppliers'), variant: "destructive" });
-        setIsSupplierConfirmed(true); 
-        processNextDialogStep('supplier_confirmed'); 
+        setIsSupplierConfirmed(true);
+        setCurrentDialogStep('payment_due_date'); // Fallback to next step
+        processNextDialogStep('supplier_confirmed_or_skipped');
     } finally {
         setIsLoading(false);
     }
-  }, [isNewScan, user?.id, toast, t, _internalCheckSupplier, processNextDialogStep]);
+  }, [isNewScan, user?.id, toast, t, _internalCheckSupplier, currentDialogStep, processNextDialogStep]);
 
 
   const loadData = useCallback(async () => {
@@ -311,13 +319,13 @@ function EditInvoiceContent() {
 
     if (newScanFlag) {
         console.log("[EditInvoice][loadData] New scan detected. Resetting relevant states.");
-        setCurrentDialogStep('idle');
+        setCurrentDialogStep('idle'); // Reset dialog step for new scans
         setSelectedPaymentDueDate(undefined);
         setIsSupplierConfirmed(false);
         setPotentialSupplierName(undefined);
         setAiScannedSupplierNameFromStorage(undefined);
         setIsPaymentDueDateDialogSkipped(false);
-        setProductsToDisplayForNewDetails([]);
+        setPromptingForNewProductDetails(null);
         setIsBarcodePromptOpen(false);
         setPriceDiscrepancies(null);
         setIsViewMode(true);
@@ -590,7 +598,8 @@ function EditInvoiceContent() {
     setIsLoading(false);
     setInitialDataLoaded(true);
     console.log("[EditInvoice][loadData] Finished.");
-  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded, startDialogFlowForNewScan, _internalCheckSupplier, processNextDialogStep]); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, searchParams, t, toast, cleanupTemporaryData, initialCompressedImageKey, initialOriginalImagePreviewKey, initialDataLoaded, startDialogFlowForNewScan]);
 
 
   useEffect(() => {
@@ -602,7 +611,7 @@ function EditInvoiceContent() {
 
 
   const handleSupplierConfirmation = useCallback(async (confirmedSupplierName: string | null, isNew: boolean = false) => {
-    console.log(`[EditInvoice] handleSupplierConfirmation. Confirmed: "${confirmedSupplierName}", isNew: ${isNew}. Current Step: ${currentDialogStep}`);
+    console.log(`[EditInvoice][handleSupplierConfirmation] Confirmed: "${confirmedSupplierName}", isNew: ${isNew}. Current Step: ${currentDialogStep}`);
     if (!user?.id) {
         toast({ title: t("edit_invoice_user_not_authenticated_title"), variant: "destructive" });
         setCurrentDialogStep('error_loading');
@@ -615,22 +624,22 @@ function EditInvoiceContent() {
         setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: finalConfirmedName }));
         if (isNew) {
             try {
-                console.log(`[EditInvoice] handleSupplierConfirmation: Attempting to save new supplier '${finalConfirmedName}' to Firestore.`);
+                console.log(`[EditInvoice][handleSupplierConfirmation] Attempting to save new supplier '${finalConfirmedName}' via service.`);
                 await updateSupplierContactInfoService(finalConfirmedName, {}, user.id, true); 
                 toast({ title: t('edit_invoice_toast_new_supplier_added_title'), description: t('edit_invoice_toast_new_supplier_added_desc', { supplierName: finalConfirmedName }) });
             } catch (error: any) {
-                console.error("[EditInvoice] handleSupplierConfirmation: Failed to add new supplier:", error);
+                console.error("[EditInvoice][handleSupplierConfirmation] Failed to add new supplier:", error);
                 toast({ title: t('edit_invoice_toast_fail_add_supplier_title'), description: (error as Error).message, variant: "destructive" });
             }
         }
-    } else { 
+    } else {
         finalConfirmedName = aiScannedSupplierNameFromStorage || extractedSupplierName || null;
         setExtractedSupplierName(finalConfirmedName);
         setEditableTaxInvoiceDetails(prev => ({ ...prev, supplierName: finalConfirmedName }));
-        console.log(`[EditInvoice] handleSupplierConfirmation: Supplier dialog outcome was null, using AI scanned/previous name: ${finalConfirmedName}`);
+        console.log(`[EditInvoice][handleSupplierConfirmation] Supplier dialog outcome was null, using AI scanned/previous name: ${finalConfirmedName}`);
     }
     setIsSupplierConfirmed(true);
-    processNextDialogStep('supplier_confirmed'); 
+    processNextDialogStep('supplier_confirmed_or_skipped');
   }, [user, toast, t, aiScannedSupplierNameFromStorage, extractedSupplierName, processNextDialogStep, currentDialogStep]);
 
 
@@ -638,14 +647,14 @@ function EditInvoiceContent() {
     console.log(`[EditInvoice][PaymentDueDateDialog] Confirmed due date:`, dueDate, "CurrentStep before update:", currentDialogStep);
     setSelectedPaymentDueDate(dueDate);
     setIsPaymentDueDateDialogSkipped(false); 
-    processNextDialogStep('payment_due_date_confirmed'); 
+    processNextDialogStep('payment_due_date_confirmed_or_skipped');
   }, [processNextDialogStep, currentDialogStep]);
 
   const handleCancelPaymentDueDate = useCallback(async () => {
     console.log("[EditInvoice][PaymentDueDateDialog] Skipped/Cancelled. CurrentStep before update:", currentDialogStep);
     setSelectedPaymentDueDate(undefined);
     setIsPaymentDueDateDialogSkipped(true); 
-    processNextDialogStep('payment_due_date_skipped'); 
+    processNextDialogStep('payment_due_date_confirmed_or_skipped');
   }, [processNextDialogStep, currentDialogStep]);
 
 
@@ -754,7 +763,7 @@ function EditInvoiceContent() {
           setIsSaving(false);
           return;
       }
-      setIsSaving(true); // Set saving true here
+      // isSaving should already be true here
       try {
           const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => rest);
 
@@ -795,7 +804,7 @@ function EditInvoiceContent() {
 
           if (result.finalInvoiceRecord) {
             setOriginalFileName(result.finalInvoiceRecord.generatedFileName); 
-            setInitialTempInvoiceId(result.finalInvoiceRecord.id);
+            setInitialTempInvoiceId(result.finalInvoiceRecord.id); // Update temp ID to final ID for non-new scans
             setDocumentType(result.finalInvoiceRecord.documentType as 'deliveryNote' | 'invoice' | null);
             
             const finalTaxDetails = {
@@ -826,7 +835,7 @@ function EditInvoiceContent() {
             setIsEditingDeliveryNoteProducts(false);
             setIsEditingTaxDetails(false);
             setIsViewMode(true);
-            setCurrentDialogStep('idle'); 
+            setCurrentDialogStep('idle');
              toast({
                 title: t('edit_invoice_toast_products_saved_title'),
                 description: t('edit_invoice_toast_products_saved_desc'),
@@ -838,10 +847,7 @@ function EditInvoiceContent() {
             }
           } else {
              console.error("[EditInvoice] proceedWithFinalSave: Final invoice record not returned or error occurred.", result);
-             setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: result.uniqueScanIdToClear ? "Clear temp data & try again." : "Final invoice record not returned."}));
-             if (result.uniqueScanIdToClear && user?.id) {
-                clearTemporaryScanData(result.uniqueScanIdToClear, user.id);
-             }
+             setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
              setCurrentDialogStep('error_loading');
           }
       } catch (error: any) {
@@ -860,9 +866,6 @@ function EditInvoiceContent() {
                 variant: "destructive",
             });
           }
-          if((error as any).uniqueScanIdToClear && user?.id){
-             clearTemporaryScanData((error as any).uniqueScanIdToClear, user.id);
-          }
           setCurrentDialogStep('error_loading');
       } finally {
           console.log("[EditInvoice] proceedWithFinalSave: Setting isSaving to false.");
@@ -870,128 +873,14 @@ function EditInvoiceContent() {
       }
   };
 
-  const proceedWithFinalSaveForTaxInvoice = async () => {
-    console.log("[EditInvoice] proceedWithFinalSaveForTaxInvoice called.");
-    if (!user?.id || !documentType) {
-      toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
-      setCurrentDialogStep('error_loading');
-      setIsSaving(false);
-      return;
-    }
-    setIsSaving(true); // Set saving true here
-    try {
-      let finalFileNameForSave = originalFileName;
-      const finalSupplierNameForSave = editableTaxInvoiceDetails.supplierName || extractedSupplierName;
-      const finalInvoiceNumberForSave = editableTaxInvoiceDetails.invoiceNumber || extractedInvoiceNumber;
-      const finalTotalAmountForSave = editableTaxInvoiceDetails.totalAmount ?? extractedTotalAmount;
-      const finalInvoiceDateForSave = editableTaxInvoiceDetails.invoiceDate || extractedInvoiceDate;
-      const finalPaymentMethodForSave = editableTaxInvoiceDetails.paymentMethod || extractedPaymentMethod;
-
-      if(finalSupplierNameForSave && finalSupplierNameForSave.trim() !== '' && finalInvoiceNumberForSave && finalInvoiceNumberForSave.trim() !== '') {
-        finalFileNameForSave = `${finalSupplierNameForSave}_${finalInvoiceNumberForSave}`;
-      } else if (finalSupplierNameForSave && finalSupplierNameForSave.trim() !== '') {
-        finalFileNameForSave = finalSupplierNameForSave;
-      } else if (finalInvoiceNumberForSave && finalInvoiceNumberForSave.trim() !== '') {
-        finalFileNameForSave = `Invoice_${finalInvoiceNumberForSave}`;
-      }
-      finalFileNameForSave = finalFileNameForSave.replace(/[/\\?%*:|"<>]/g, '-').substring(0, 100);
-
-      const result = await finalizeSaveProductsService(
-        [],
-        finalFileNameForSave,
-        documentType,
-        user.id,
-        initialTempInvoiceId || undefined,
-        finalInvoiceNumberForSave || undefined,
-        finalSupplierNameForSave || undefined,
-        finalTotalAmountForSave ?? undefined,
-        selectedPaymentDueDate ? (selectedPaymentDueDate instanceof Timestamp ? selectedPaymentDueDate : (selectedPaymentDueDate instanceof Date ? selectedPaymentDueDate.toISOString() : selectedPaymentDueDate)) : undefined,
-        finalInvoiceDateForSave || undefined,
-        finalPaymentMethodForSave || undefined,
-        displayedOriginalImageUrl || undefined,
-        displayedCompressedImageUrl || undefined
-      );
-      console.log("[EditInvoice] proceedWithFinalSaveForTaxInvoice: finalizeSaveProductsService result (for tax invoice):", result);
-      cleanupTemporaryData();
-
-      if (result.finalInvoiceRecord) {
-        setOriginalFileName(result.finalInvoiceRecord.generatedFileName);
-        setInitialTempInvoiceId(result.finalInvoiceRecord.id);
-        setDocumentType(result.finalInvoiceRecord.documentType as 'deliveryNote' | 'invoice' | null);
-        
-        const finalTaxDetails = {
-             supplierName: result.finalInvoiceRecord.supplierName,
-             invoiceNumber: result.finalInvoiceRecord.invoiceNumber,
-             totalAmount: result.finalInvoiceRecord.totalAmount,
-             invoiceDate: result.finalInvoiceRecord.invoiceDate,
-             paymentMethod: result.finalInvoiceRecord.paymentMethod,
-        };
-        setEditableTaxInvoiceDetails(finalTaxDetails);
-        setInitialScannedTaxDetails(finalTaxDetails);
-        setExtractedSupplierName(result.finalInvoiceRecord.supplierName);
-        setExtractedInvoiceNumber(result.finalInvoiceRecord.invoiceNumber);
-        setExtractedTotalAmount(result.finalInvoiceRecord.totalAmount);
-        setExtractedInvoiceDate(result.finalInvoiceRecord.invoiceDate);
-        setExtractedPaymentMethod(result.finalInvoiceRecord.paymentMethod);
-
-        setSelectedPaymentDueDate(result.finalInvoiceRecord.paymentDueDate ? (result.finalInvoiceRecord.paymentDueDate instanceof Timestamp ? result.finalInvoiceRecord.paymentDueDate.toDate() : parseISO(result.finalInvoiceRecord.paymentDueDate as string)) : undefined);
-        setDisplayedOriginalImageUrl(result.finalInvoiceRecord.originalImagePreviewUri || null);
-        setDisplayedCompressedImageUrl(result.finalInvoiceRecord.compressedImageForFinalRecordUri || null);
-
-        setProducts([]);
-        setInitialScannedProducts([]);
-        
-        setScanProcessErrorState(result.finalInvoiceRecord.errorMessage || null);
-        setIsEditingDeliveryNoteProducts(false);
-        setIsEditingTaxDetails(false);
-        setIsViewMode(true);
-        setCurrentDialogStep('idle');
-        toast({
-            title: t('edit_invoice_toast_invoice_details_saved_title'),
-            description: t('edit_invoice_toast_invoice_details_saved_desc'),
-        });
-        router.push('/invoices?tab=scanned-docs');
-      } else {
-        setScanProcessErrorState(t('edit_invoice_toast_save_failed_desc_finalize', { message: result.uniqueScanIdToClear ? "Clear temp data & try again." : "Final invoice record not returned for tax invoice."}));
-        if (result.uniqueScanIdToClear && user?.id) {
-            clearTemporaryScanData(result.uniqueScanIdToClear, user.id);
-        }
-        setCurrentDialogStep('error_loading');
-      }
-    } catch (error: any) {
-      console.error("[EditInvoice] proceedWithFinalSaveForTaxInvoice: Failed to finalize save for tax invoice:", error);
-      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-        toast({
-            title: t('upload_toast_storage_full_title_critical'),
-            description: t('upload_toast_storage_full_desc_finalize', {context: "(tax invoice save)"}),
-            variant: "destructive",
-            duration: 10000,
-        });
-      } else {
-        toast({
-            title: t('edit_invoice_toast_save_failed_title'),
-            description: t('edit_invoice_toast_save_failed_desc_finalize', { message: (error as Error).message || t('edit_invoice_try_again')}),
-            variant: "destructive",
-        });
-      }
-        if((error as any).uniqueScanIdToClear && user?.id){
-            clearTemporaryScanData((error as any).uniqueScanIdToClear, user.id);
-        }
-        setCurrentDialogStep('error_loading');
-    } finally {
-        console.log("[EditInvoice] proceedWithFinalSaveForTaxInvoice: Setting isSaving to false.");
-        setIsSaving(false);
-    }
-  };
-
 
  const handleSaveChecks = async () => {
-    console.log(`[EditInvoice] handleSaveChecks called. CurrentDialogStep: ${currentDialogStep}, isNewScan: ${isNewScan}, isSaving: ${isSaving}`);
+    console.log(`[EditInvoice][handleSaveChecks] Called. CurrentDialogStep: ${currentDialogStep}, isNewScan: ${isNewScan}, isSaving: ${isSaving}`);
     if (isSaving) {
-        console.log("[EditInvoice] handleSaveChecks: Already saving, returning.");
+        console.log("[EditInvoice][handleSaveChecks] Already saving, returning.");
         return;
     }
-    setIsSaving(true); 
+    setIsSaving(true);
 
     if (!user?.id) {
         toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
@@ -1000,38 +889,35 @@ function EditInvoiceContent() {
         return;
     }
 
-    // If it's a new scan and dialog flow is not complete, try to advance it
-    if (isNewScan && currentDialogStep !== 'ready_to_save') {
-        console.log(`[EditInvoice] handleSaveChecks: New scan, dialog flow not complete (currentDialogStep: ${currentDialogStep}). Attempting to advance dialog.`);
-        // Determine next logical step based on current state.
-        // This logic mirrors parts of processNextDialogStep but is specific to advancing from a "Save" click
-        if (!isSupplierConfirmed) {
+    if (isNewScan) {
+        console.log("[EditInvoice][handleSaveChecks] Is a new scan. Current Dialog Step:", currentDialogStep);
+        if (currentDialogStep === 'idle' || currentDialogStep === 'supplier_confirmation' || currentDialogStep === 'error_loading') {
+            console.log("[EditInvoice][handleSaveChecks] New scan in early dialog step. Attempting to (re)start dialog flow.");
             await startDialogFlowForNewScan(aiScannedSupplierNameFromStorage || extractedSupplierName || initialScannedTaxDetails.supplierName);
-        } else if (!selectedPaymentDueDate && !isPaymentDueDateDialogSkipped && (documentType === 'deliveryNote' || documentType === 'invoice')) {
-            setCurrentDialogStep('payment_due_date');
-        } else if (documentType === 'deliveryNote' && productsForNextStep.length > 0 && !isBarcodePromptOpen) { // Check if BarcodePrompt was already skipped or completed
-            const needsBarcodeReview = productsForNextStep.some(p => {
-                const isNew = !p.id || p.id.startsWith('prod-temp-');
-                const needsSalePrice = p.salePrice === undefined || p.salePrice === null || Number(p.salePrice) <= 0;
-                return isNew || needsSalePrice;
-            });
-            if (needsBarcodeReview) {
-                await checkForNewProductsAndDetails(productsForNextStep, true);
-            } else {
-                 setCurrentDialogStep('ready_to_save'); // All dialogs presumably done
-            }
-        } else {
-             setCurrentDialogStep('ready_to_save'); // All dialogs presumably done
-        }
-        // If after trying to advance, we are still not ready to save, release the save button
-        if(currentDialogStep !== 'ready_to_save') {
-            setIsSaving(false);
+            setIsSaving(false); // Release save button as dialog flow will handle progression
+            return;
+        } else if (currentDialogStep === 'payment_due_date') {
+            console.log("[EditInvoice][handleSaveChecks] New scan, awaiting payment due date. Dialog should be open.");
+            // The PaymentDueDateDialog should be open and handling this.
+            // User needs to confirm or skip it.
+            setIsSaving(false); // Release save button, user interacts with dialog
+            return;
+        } else if (currentDialogStep === 'new_product_details') {
+             console.log("[EditInvoice][handleSaveChecks] New scan, awaiting new product details. BarcodePromptDialog should be open.");
+            // The BarcodePromptDialog should be open.
+            // User needs to confirm/skip products.
+            setIsSaving(false); // Release save button
+            return;
+        } else if (currentDialogStep === 'price_discrepancy') {
+            console.log("[EditInvoice][handleSaveChecks] New scan, awaiting price discrepancy resolution. UnitPriceConfirmationDialog should be open.");
+            setIsSaving(false); // Release save button
             return;
         }
+        // If currentDialogStep is 'ready_to_save', it will fall through to proceedWithActualSave
+        console.log("[EditInvoice][handleSaveChecks] New scan, dialog step is 'ready_to_save' or unhandled. Proceeding to actual save logic.");
     }
     
-    // If we reached here, either it's not a new scan or dialogs are complete for new scan
-    console.log("[EditInvoice] handleSaveChecks: Proceeding to actual save logic.");
+    console.log("[EditInvoice][handleSaveChecks] Proceeding to actual save logic.");
     await proceedWithActualSave();
 };
 
@@ -1044,15 +930,13 @@ const proceedWithActualSave = async () => {
         return;
     }
 
-    // Ensure productsForNextStep reflects the LATEST state of products (especially if BarcodePrompt was used)
     const currentProductsToProcess = products.map(({ _originalId, ...rest }) => rest);
     console.log("[EditInvoice] proceedWithActualSave: currentProductsToProcess:", currentProductsToProcess);
 
-
     if (documentType === 'invoice') {
-        console.log("[EditInvoice] proceedWithActualSave: Document is Tax Invoice, calling proceedWithFinalSaveForTaxInvoice.");
-        await proceedWithFinalSaveForTaxInvoice(); 
-        return; // Ensures setIsSaving(false) in finally block of proceedWithFinalSaveForTaxInvoice is hit
+        console.log("[EditInvoice] proceedWithActualSave: Document is Tax Invoice, calling proceedWithFinalSave with empty products array (details only).");
+        await proceedWithFinalSave([]); // Tax invoices don't have line items in our current model for inventory
+        return;
     }
 
     // For deliveryNote
@@ -1063,25 +947,24 @@ const proceedWithActualSave = async () => {
         if (priceCheckResult.priceDiscrepancies.length > 0) {
             console.log("[EditInvoice] proceedWithActualSave: Price discrepancies found. Setting currentDialogStep to 'price_discrepancy'.");
             setPriceDiscrepancies(priceCheckResult.priceDiscrepancies);
-            setProductsForNextStep([...priceCheckResult.productsToSaveDirectly, ...priceCheckResult.priceDiscrepancies]);
+            setProductsForNextStep([...priceCheckResult.productsToSaveDirectly, ...priceCheckResult.priceDiscrepancies.map(d => ({...d, unitPrice: d.newUnitPrice}))]); // Use newUnitPrice for review
             setCurrentDialogStep('price_discrepancy');
-            // isSaving remains true until this dialog is resolved. No setIsSaving(false) here.
+            // isSaving is already true, will be set to false by dialog completion
             return; 
         }
         
         console.log("[EditInvoice] proceedWithActualSave: No price discrepancies. Current productsForNextStep for BarcodePrompt:", productsAfterPriceCheck);
-        // Now check for new product details, but use the products that have passed price checks
-        const {needsReview, productsToReview} = await checkForNewProductsAndDetails(productsAfterPriceCheck, false);
+        
+        const {needsReview, productsToReview} = await checkForNewProductsAndDetails(productsAfterPriceCheck, false); // Call with isDialogFlowContinuation = false
         if (needsReview) {
             console.log("[EditInvoice] proceedWithActualSave: Products need barcode/sale price review. Setting currentDialogStep to 'new_product_details'.");
-            setProductsToDisplayForNewDetails(productsToReview);
-            setIsBarcodePromptOpen(true); // This will now control the BarcodePromptDialog visibility
+            // productsToDisplayForNewDetails is already set by checkForNewProductsAndDetails
+            // isBarcodePromptOpen will be set by the new_product_details step
             setCurrentDialogStep('new_product_details');
-            // isSaving remains true until this dialog is resolved. No setIsSaving(false) here.
+            // isSaving is already true, will be set to false by dialog completion
             return;
         }
         
-        // If no price discrepancies AND no new product details needed, proceed to final save
         console.log("[EditInvoice] proceedWithActualSave: All checks passed. Proceeding to final save with products:", productsAfterPriceCheck);
         await proceedWithFinalSave(productsAfterPriceCheck);
     } catch (error) {
@@ -1092,20 +975,14 @@ const proceedWithActualSave = async () => {
             variant: "destructive",
         });
         setCurrentDialogStep('error_loading');
-    } finally {
-        // This finally block in proceedWithActualSave will only be hit if no dialogs were opened
-        // or if proceedWithFinalSave was called and completed.
-        // If a dialog (price or barcode) was opened, setIsSaving(false) should be handled by that dialog's completion.
-        if (currentDialogStep !== 'price_discrepancy' && currentDialogStep !== 'new_product_details' && currentDialogStep !== 'error_loading') {
-            console.log("[EditInvoice] proceedWithActualSave finally block: Setting isSaving to false as no dialogs were opened or final save finished.");
-            setIsSaving(false); 
-        }
+        setIsSaving(false); // Ensure isSaving is reset on error
     }
+    // Removed finally block here, isSaving should be managed by the paths above or by proceedWithFinalSave
 };
 
 
-const checkForNewProductsAndDetails = async (productsToCheck: Product[], isDialogFlowContinuation: boolean): Promise<{needsReview: boolean, productsToReview: Product[]}> => {
-    console.log(`[EditInvoice] checkForNewProductsAndDetails called. isDialogFlowContinuation: ${isDialogFlowContinuation}, productsToCheck count: ${productsToCheck.length}`);
+const checkForNewProductsAndDetails = useCallback(async (productsToCheck: Product[], isDialogFlowContinuation: boolean): Promise<{needsReview: boolean, productsToReview: Product[]}> => {
+    console.log(`[EditInvoice][checkForNewProductsAndDetails] Called. isDialogFlowContinuation: ${isDialogFlowContinuation}, productsToCheck count: ${productsToCheck.length}`);
     if (!user?.id) {
         toast({ title: t('edit_invoice_user_not_authenticated_title'), description: t('edit_invoice_user_not_authenticated_desc'), variant: "destructive" });
         if (isDialogFlowContinuation) setCurrentDialogStep('error_loading');
@@ -1113,13 +990,19 @@ const checkForNewProductsAndDetails = async (productsToCheck: Product[], isDialo
     }
 
     if (productsToCheck.length === 0 && documentType === 'deliveryNote') {
-        console.log("[EditInvoice] checkForNewProductsAndDetails: No products for detail check (delivery note).");
-        if (isDialogFlowContinuation) processNextDialogStep('new_product_details_complete', []); 
+        console.log("[EditInvoice][checkForNewProductsAndDetails] No products for detail check (delivery note).");
+        if (isDialogFlowContinuation) processNextDialogStep('new_product_details', []); 
+        else setCurrentDialogStep('ready_to_save'); // If not part of dialog flow, and no products, we're ready.
+        setPromptingForNewProductDetails(null);
+        setIsBarcodePromptOpen(false);
         return {needsReview: false, productsToReview: []};
     }
     if(documentType === 'invoice') { 
-        console.log("[EditInvoice] checkForNewProductsAndDetails: Tax invoice, skipping new product details check.");
-        if(isDialogFlowContinuation) setCurrentDialogStep('ready_to_save'); 
+        console.log("[EditInvoice][checkForNewProductsAndDetails] Tax invoice, skipping new product details check.");
+        if(isDialogFlowContinuation) processNextDialogStep('new_product_details', []);
+        else setCurrentDialogStep('ready_to_save');
+        setPromptingForNewProductDetails(null);
+        setIsBarcodePromptOpen(false);
         return {needsReview: false, productsToReview: []};
     }
 
@@ -1133,56 +1016,71 @@ const checkForNewProductsAndDetails = async (productsToCheck: Product[], isDialo
         });
 
         const productsRequiringDetailsReview = productsToCheck.filter(p => {
-            const isExistingById = p.id && !p.id.startsWith('prod-temp-') && inventoryMap.has(`id:${p.id}`);
-            const isExistingByCatalog = p.catalogNumber && p.catalogNumber !== "N/A" && inventoryMap.has(`catalog:${p.catalogNumber}`);
-            const isExistingByBarcode = p.barcode && inventoryMap.has(`barcode:${p.barcode}`);
-            const isProductConsideredNew = !(isExistingById || isExistingByCatalog || isExistingByBarcode);
+            const existingInInventory = (p.id && !p.id.startsWith('prod-temp-') && inventoryMap.has(`id:${p.id}`)) ||
+                                      (p.catalogNumber && p.catalogNumber !== "N/A" && inventoryMap.has(`catalog:${p.catalogNumber}`)) ||
+                                      (p.barcode && inventoryMap.has(`barcode:${p.barcode}`));
             const needsSalePriceReview = p.salePrice === undefined || p.salePrice === null || Number(p.salePrice) <= 0;
-            return isProductConsideredNew || needsSalePriceReview;
+            
+            if (!existingInInventory) { // Definitely a new product, requires review if sale price not set.
+                return needsSalePriceReview;
+            }
+            // Product exists in inventory, only review if sale price is missing/invalid
+            const inventoryProduct = inventoryMap.get(`id:${p.id}`) || inventoryMap.get(`catalog:${p.catalogNumber}`) || inventoryMap.get(`barcode:${p.barcode}`);
+            return (inventoryProduct?.salePrice === undefined || inventoryProduct?.salePrice === null || Number(inventoryProduct?.salePrice) <=0) && needsSalePriceReview;
         });
-        console.log("[EditInvoice] checkForNewProductsAndDetails: Products needing details review count:", productsRequiringDetailsReview.length);
+        console.log("[EditInvoice][checkForNewProductsAndDetails] Products needing details review count:", productsRequiringDetailsReview.length);
         
         const initialInputStatesForPrompt: Record<string, { barcode: string; salePrice?: number }> = {};
         productsRequiringDetailsReview.forEach(p => {
-            // Initialize with current values from productsToCheck, which might have been updated by price discrepancy dialog
             initialInputStatesForPrompt[p.id] = { barcode: p.barcode || '', salePrice: p.salePrice };
         });
         setProductInputStates(initialInputStatesForPrompt);
-        setProductsToDisplayForNewDetails(productsRequiringDetailsReview); // Corrected this line
+        setProductsToDisplayForNewDetails(productsRequiringDetailsReview);
+        setPromptingForNewProductDetails(productsRequiringDetailsReview);
+
 
         if (productsRequiringDetailsReview.length > 0) {
-            setIsBarcodePromptOpen(true);
+            setIsBarcodePromptOpen(true); // This will now control the BarcodePromptDialog visibility via currentDialogStep
             if (isDialogFlowContinuation) setCurrentDialogStep('new_product_details');
             return {needsReview: true, productsToReview: productsRequiringDetailsReview};
         } else {
-            console.log("[EditInvoice] checkForNewProductsAndDetails: No new products needing details.");
+            console.log("[EditInvoice][checkForNewProductsAndDetails] No new products needing details.");
             setIsBarcodePromptOpen(false);
-            if (isDialogFlowContinuation) processNextDialogStep('new_product_details_complete', productsToCheck); 
+            setPromptingForNewProductDetails(null);
+            if (isDialogFlowContinuation) processNextDialogStep('new_product_details', productsToCheck); 
+            else setCurrentDialogStep('ready_to_save');
             return {needsReview: false, productsToReview: []};
         }
     } catch (error) {
-        console.error("[EditInvoice] checkForNewProductsAndDetails: Error checking inventory:", error);
+        console.error("[EditInvoice][checkForNewProductsAndDetails] Error checking inventory:", error);
         toast({ title: t('edit_invoice_toast_error_new_product_details_title'), description: t('edit_invoice_toast_error_new_product_details_desc'), variant: "destructive" });
-        if(isDialogFlowContinuation) setCurrentDialogStep('error_loading');
-        return {needsReview: false, productsToReview: []}; // Indicate no review needed on error to prevent loop
+        setIsBarcodePromptOpen(false);
+        setPromptingForNewProductDetails(null);
+        if(isDialogFlowContinuation) setCurrentDialogStep('error_loading'); // Or some other error state
+        else setCurrentDialogStep('ready_to_save'); // Allow save if not in dialog flow, to avoid getting stuck
+        return {needsReview: false, productsToReview: []}; 
     }
-};
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [user?.id, documentType, toast, t, processNextDialogStep]);
 
 
 const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Product[] | null) => {
-    console.log("[EditInvoice] handlePriceConfirmationComplete. Resolved products count:", resolvedProducts ? resolvedProducts.length : 'null (cancelled)', "CurrentStep:", currentDialogStep);
-    setPriceDiscrepancies(null); 
-    processNextDialogStep('price_discrepancy_resolved', resolvedProducts); 
+    console.log("[EditInvoice][handlePriceConfirmationComplete] Resolved products count:", resolvedProducts ? resolvedProducts.length : 'null (cancelled)', "CurrentStep:", currentDialogStep);
+    setPriceDiscrepancies(null);
+    if (resolvedProducts) {
+        setProductsForNextStep(resolvedProducts);
+    }
+    processNextDialogStep('price_discrepancy', resolvedProducts);
 }, [processNextDialogStep, currentDialogStep]);
 
 
  const handleNewProductDetailsComplete = useCallback(async (updatedNewProductsFromDialog: Product[] | null) => {
-     console.log("[EditInvoice] handleNewProductDetailsComplete. Updated products from dialog:", updatedNewProductsFromDialog, "CurrentStep:", currentDialogStep);
+     console.log("[EditInvoice][handleNewProductDetailsComplete] Updated products from dialog:", updatedNewProductsFromDialog, "CurrentStep:", currentDialogStep);
      setIsBarcodePromptOpen(false); 
+     setPromptingForNewProductDetails(null);
      
      let finalProductsForSave: Product[];
      if (updatedNewProductsFromDialog) {
-        // Merge updates from dialog into the productsForNextStep array
         const updatedProductMap = new Map(updatedNewProductsFromDialog.map(p => [p.id, p]));
         finalProductsForSave = productsForNextStep.map(originalProduct => 
             updatedProductMap.get(originalProduct.id) || originalProduct
@@ -1194,7 +1092,7 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
      
      setProducts(finalProductsForSave.map(p => ({...p, _originalId: p.id })));
      setProductsForNextStep(finalProductsForSave); 
-     processNextDialogStep('new_product_details_complete', finalProductsForSave);
+     processNextDialogStep('new_product_details', finalProductsForSave); // Use 'new_product_details' as previousStepOutcome
  }, [productsForNextStep, processNextDialogStep, currentDialogStep]);
 
 
@@ -1449,7 +1347,22 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
             </div>
             <div>
                 <Label htmlFor="taxPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
-                <Input id="taxPaymentMethod" value={editableTaxInvoiceDetails.paymentMethod || ''} onChange={(e) => handleTaxInvoiceDetailsChange('paymentMethod', e.target.value)} disabled={isSaving} />
+                 <Select 
+                    value={editableTaxInvoiceDetails.paymentMethod || ''} 
+                    onValueChange={(value) => handleTaxInvoiceDetailsChange('paymentMethod', value)}
+                    disabled={isSaving}
+                >
+                    <SelectTrigger className="mt-1">
+                        <SelectValue placeholder={t('invoice_details_payment_method_placeholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="cash">{t('payment_method_cash')}</SelectItem>
+                        <SelectItem value="credit_card">{t('payment_method_credit_card')}</SelectItem>
+                        <SelectItem value="bank_transfer">{t('payment_method_bank_transfer')}</SelectItem>
+                        <SelectItem value="check">{t('payment_method_check')}</SelectItem>
+                        <SelectItem value="other">{t('payment_method_other')}</SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
         </div>
     );
@@ -1511,8 +1424,8 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
                     )}
                 </div>
                  {products.length > 0 || isEditingDeliveryNoteProducts ? (
-                     <div className="overflow-x-auto relative border rounded-md bg-card"> {/* Added bg-card here */}
-                         <Table className="min-w-full sm:min-w-[600px]"> {/* Ensure table can be wider than screen */}
+                     <div className="overflow-x-auto relative border rounded-md bg-card">
+                         <Table className="min-w-full sm:min-w-[600px]">
                          <TableHeader>
                              <TableRow>
                              <TableHead className="px-2 sm:px-4 py-2">{t('edit_invoice_th_catalog')}</TableHead>
@@ -1576,7 +1489,7 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
                     <p className="text-muted-foreground">{t('edit_invoice_no_products_in_scan')}</p>
                 )}
                  {isEditingDeliveryNoteProducts && (
-                     <div className="flex justify-between items-center pt-4 mt-2">
+                     <CardFooter className="flex justify-between items-center pt-4 mt-2">
                          <Button variant="outline" onClick={handleAddRow} disabled={isSaving}>
                              <PlusCircle className="mr-2 h-4 w-4" /> {t('edit_invoice_add_row_button')}
                          </Button>
@@ -1584,15 +1497,21 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
                             <Button variant="outline" onClick={handleCancelEditProducts} disabled={isSaving}>{t('cancel_button')}</Button>
                             <Button onClick={handleSaveEditProducts} disabled={isSaving}>{t('save_button')}</Button>
                         </div>
-                     </div>
+                     </CardFooter>
                  )}
                 </>
             )}
-            {(documentType === 'invoice' || (documentType === 'deliveryNote' && (!products || products.length === 0) && !isEditingDeliveryNoteProducts)) && displayedOriginalImageUrl && (
+            {(documentType === 'invoice' || (documentType === 'deliveryNote' && (!products || products.length === 0) && !isEditingDeliveryNoteProducts)) && (displayedOriginalImageUrl || displayedCompressedImageUrl) && (
                 <div className="border rounded-lg p-4 mt-6">
                     <h3 className="text-lg font-semibold mb-2">{t('edit_invoice_image_preview_label')}</h3>
                     <div className="overflow-x-auto">
-                        <NextImage src={displayedOriginalImageUrl} alt={t('edit_invoice_image_preview_alt')} width={600} height={850} className="rounded-md border shadow-md max-w-full h-auto mx-auto" data-ai-hint="document scan" />
+                        <NextImage 
+                            src={displayedOriginalImageUrl || displayedCompressedImageUrl!} // Prioritize original for view
+                            alt={t('edit_invoice_image_preview_alt')} 
+                            width={600} 
+                            height={850} 
+                            className="rounded-md border shadow-md max-w-full h-auto mx-auto" 
+                            data-ai-hint="document scan" />
                     </div>
                 </div>
             )}
@@ -1606,7 +1525,7 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
             <div className="flex-grow flex flex-col sm:flex-row sm:justify-end gap-3">
                 <Button
                     onClick={handleSaveChecks}
-                    disabled={isSaving || (isNewScan && currentDialogStep !== 'ready_to_save')}
+                     disabled={isSaving || (isNewScan && currentDialogStep !== 'ready_to_save')}
                     className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
                 >
                     {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('saving')}...</> : <><Save className="mr-2 h-4 w-4" /> {isNewScan ? t('edit_invoice_confirm_and_save_button') : t('edit_invoice_save_changes_button')}</>}
@@ -1620,16 +1539,16 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
           existingSuppliers={existingSuppliers}
           onConfirm={handleSupplierConfirmation}
           onCancel={() => {
-            console.log("[EditInvoice][SupplierConfirmationDialog] CANCELLED/CLOSED by user (X or overlay). Current Step:", currentDialogStep);
-            setIsSupplierConfirmed(true); 
-            processNextDialogStep('supplier_cancelled_external'); 
+            console.log("[EditInvoice][SupplierConfirmationDialog] CANCELLED/CLOSED by user. Current Step:", currentDialogStep);
+            setIsSupplierConfirmed(true);
+            processNextDialogStep('supplier_confirmed_or_skipped');
           }}
           isOpen={currentDialogStep === 'supplier_confirmation'}
           onOpenChange={(open) => { 
               if (!open && currentDialogStep === 'supplier_confirmation') {
                 console.log("[EditInvoice][SupplierConfirmationDialog] Externally closed. Current step:", currentDialogStep);
-                setIsSupplierConfirmed(true); 
-                processNextDialogStep('supplier_cancelled_external');
+                setIsSupplierConfirmed(true);
+                processNextDialogStep('supplier_confirmed_or_skipped');
               }
           }}
         />
@@ -1638,9 +1557,10 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
       {currentDialogStep === 'payment_due_date' && (
         <PaymentDueDateDialog
           isOpen={currentDialogStep === 'payment_due_date'}
-          onOpenChange={(open) => { 
+          onOpenChange={(open) => {
+              console.log(`[EditInvoice] PaymentDueDateDialog onOpenChange triggered. New open state: ${open}, Current step: ${currentDialogStep}`);
               if (!open && currentDialogStep === 'payment_due_date') {
-                 console.log("[EditInvoice][PaymentDueDateDialog] Externally closed. CurrentStep:", currentDialogStep);
+                 console.log("[EditInvoice][PaymentDueDateDialog] Externally closed by user. CurrentStep:", currentDialogStep);
                  handleCancelPaymentDueDate(); 
               }
           }}
@@ -1649,15 +1569,15 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
         />
       )}
 
-      {currentDialogStep === 'new_product_details' && productsToDisplayForNewDetails.length > 0 && (
+      {currentDialogStep === 'new_product_details' && promptingForNewProductDetails && promptingForNewProductDetails.length > 0 && (
         <BarcodePromptDialog
-          products={productsToDisplayForNewDetails}
+          products={promptingForNewProductDetails}
           onComplete={handleNewProductDetailsComplete}
-          isOpen={currentDialogStep === 'new_product_details'} 
+          isOpen={currentDialogStep === 'new_product_details'}
           onOpenChange={(open) => {
               if (!open && currentDialogStep === 'new_product_details') { 
                 console.log("[EditInvoice][BarcodePromptDialog] Externally closed. CurrentStep:", currentDialogStep);
-                handleNewProductDetailsComplete(null); 
+                handleNewProductDetailsComplete(null);
               }
           }}
         />
@@ -1667,7 +1587,7 @@ const handlePriceConfirmationComplete = useCallback(async (resolvedProducts: Pro
         <UnitPriceConfirmationDialog
           discrepancies={priceDiscrepancies}
           onComplete={handlePriceConfirmationComplete}
-          isOpen={currentDialogStep === 'price_discrepancy'} 
+          isOpen={currentDialogStep === 'price_discrepancy'}
           onOpenChange={(open) => {
               if (!open && currentDialogStep === 'price_discrepancy') { 
                  console.log("[EditInvoice][UnitPriceConfirmationDialog] Externally closed. CurrentStep:", currentDialogStep);
@@ -1693,4 +1613,3 @@ export default function EditInvoicePage() {
     </Suspense>
   );
 }
-

@@ -44,6 +44,7 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
     console.log("[PaymentDueDateDialog] isOpen prop changed to:", isOpen);
     if (isOpen) {
         // Reset to default when opened if needed
+        console.log("[PaymentDueDateDialog] Dialog opened. Resetting to default state (immediate, today).");
         setSelectedOption('immediate');
         setCustomDate(new Date());
     }
@@ -72,13 +73,13 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
     }
     console.log("[PaymentDueDateDialog] Confirming with option:", selectedOption, "resulting due date:", dueDate);
     onConfirm(dueDate);
-    onOpenChange(false);
+    onOpenChange(false); // Close the dialog after confirmation
   };
 
   const handleDialogCancel = () => {
-    console.log("[PaymentDueDateDialog] Cancelled by user.");
+    console.log("[PaymentDueDateDialog] Cancelled by user (Skip or Close button).");
     onCancel();
-    onOpenChange(false);
+    onOpenChange(false); // Close the dialog
   };
 
   const handleRadioChange = (value: string) => {
@@ -95,8 +96,12 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
         console.log("[PaymentDueDateDialog] onOpenChange called with:", open);
-        onOpenChange(open);
-        if (!open) handleDialogCancel(); // Ensure cancel logic is called if closed via X or overlay
+        // If the dialog is closed by means other than Confirm/Cancel buttons (e.g., overlay click, X button)
+        if (!open) {
+            handleDialogCancel(); // Treat external close as a cancel/skip
+        } else {
+            onOpenChange(open); // Propagate open state if it's being opened
+        }
     }}>
       <SheetContent side="bottom" className="h-auto max-h-[80vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
@@ -192,4 +197,3 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
 };
 
 export default PaymentDueDateDialog;
-
