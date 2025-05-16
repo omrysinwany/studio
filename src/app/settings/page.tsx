@@ -28,13 +28,13 @@ import {
     clearOtherExpensesService,
     clearExpenseCategoriesService,
     getStorageKey, // For localStorage
-    USER_SETTINGS_COLLECTION, // Firestore collection name
-    // TEMP_DATA_KEY_PREFIX, // Not directly used here for Firestore deletion
-    // TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
-    // TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
+    USER_SETTINGS_COLLECTION,
+    TEMP_DATA_KEY_PREFIX, // Added import
+    TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, // Added import
+    TEMP_COMPRESSED_IMAGE_KEY_PREFIX, // Added import
 } from '@/services/backend';
-import { db } from '@/lib/firebase'; // Correct import for db
-import { doc, deleteDoc } from 'firebase/firestore'; // Correct import for Firestore functions
+import { db } from '@/lib/firebase';
+import { doc, deleteDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 
 
@@ -72,34 +72,33 @@ export default function SettingsPage() {
         // Clear Firestore data using service functions
         await clearInventoryService(user.id);
         console.log("[SettingsPage] Inventory cleared from Firestore.");
+        
         await clearDocumentsService(user.id);
         console.log("[SettingsPage] Documents cleared from Firestore.");
+
         await clearSuppliersService(user.id);
         console.log("[SettingsPage] Suppliers cleared from Firestore.");
+
         await clearOtherExpensesService(user.id);
         console.log("[SettingsPage] Other Expenses cleared from Firestore.");
+        
         await clearExpenseCategoriesService(user.id);
         console.log("[SettingsPage] Expense Categories cleared from Firestore.");
         
         // Delete userSettings document directly
-        if (db) { // Ensure db is initialized
+        if (db) {
             const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, user.id);
             await deleteDoc(userSettingsRef);
             console.log("[SettingsPage] UserSettings document deleted from Firestore.");
         } else {
             console.error("[SettingsPage] Firestore db instance is not available for deleting userSettings.");
-            // Potentially throw an error or show a more specific toast
         }
 
         // Clear user-specific localStorage items that might still exist
-        // Only clear items that are truly local preferences and NOT data now in Firestore.
-        // Examples might be purely UI preferences not stored in UserSettings.
         const localStorageKeysToClearBases: string[] = [
-          KPI_PREFERENCES_STORAGE_KEY_BASE_LS, // if these are now purely from UserSettings in Firestore, this line might be redundant
-          QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE_LS, // same as above
-          // Add other localStorage keys specific to UI that are NOT part of UserSettings in Firestore
-          // For example, if EXPENSE_CATEGORIES_STORAGE_KEY_BASE_LS was for some local UI filter and not data, include it.
-          // However, since we have `clearExpenseCategoriesService` for Firestore, this localStorage key for data should not be needed.
+          KPI_PREFERENCES_STORAGE_KEY_BASE_LS, 
+          QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE_LS,
+          // Add other specific localStorage keys that are NOT Firestore data if any remain
         ];
         localStorageKeysToClearBases.forEach(baseKey => {
           const userSpecificKey = getStorageKey(baseKey, user.id);
@@ -107,11 +106,11 @@ export default function SettingsPage() {
           console.log(`[SettingsPage] Attempted removal from localStorage: ${userSpecificKey}`);
         });
         
-        // Clear temporary scan data from localStorage (this is separate from primary data stores)
+        // Clear temporary scan data from localStorage 
         const tempScanKeysPrefixes = [
-            TEMP_DATA_KEY_PREFIX, // Ensure this is defined and exported if used
-            TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, // Ensure this is defined and exported
-            TEMP_COMPRESSED_IMAGE_KEY_PREFIX // Ensure this is defined and exported
+            TEMP_DATA_KEY_PREFIX, 
+            TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
+            TEMP_COMPRESSED_IMAGE_KEY_PREFIX 
         ];
         
         const keysToRemoveFromLocalStorage: string[] = [];
@@ -130,10 +129,9 @@ export default function SettingsPage() {
           title: t('settings_delete_all_success_title'),
           description: t('settings_delete_all_success_desc'),
         });
-        // Optionally, refresh data in other parts of the app or navigate
-        // Consider a full logout or redirect to ensure clean state
-        await logout(); // Perform logout after clearing data
-        router.push('/login'); // Redirect to login page
+        
+        await logout(); 
+        router.push('/login'); 
 
       } catch (error) {
         console.error("[SettingsPage] Error deleting all user data:", error);
