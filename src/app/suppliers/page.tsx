@@ -1,3 +1,4 @@
+
 // src/app/suppliers/page.tsx
 'use client';
 
@@ -7,16 +8,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { 
-    getSupplierSummariesService, 
-    SupplierSummary, 
-    InvoiceHistoryItem, 
-    getInvoicesService, 
-    updateSupplierContactInfoService, 
+import {
+    getSupplierSummariesService,
+    SupplierSummary,
+    InvoiceHistoryItem,
+    getInvoicesService,
+    updateSupplierContactInfoService,
     deleteSupplierService,
     createSupplierService
-} from '@/services/backend'; // Ensure all services are from backend (Firestore)
-import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
+} from '@/services/backend';
+import { Briefcase, Search, DollarSign, FileText as FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
 import { Timestamp } from 'firebase/firestore';
@@ -52,7 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { useIsMobile } from '@/hooks/use-mobile'; 
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
@@ -164,7 +165,7 @@ export default function SuppliersPage() {
 
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [editedContactInfo, setEditedContactInfo] = useState<{ phone?: string; email?: string }>({});
-  
+
   const [isEditingPaymentTerms, setIsEditingPaymentTerms] = useState(false);
   const [editedPaymentTermsOption, setEditedPaymentTermsOption] = useState<PaymentTermOption>('custom');
   const [customPaymentTerm, setCustomPaymentTerm] = useState('');
@@ -188,7 +189,7 @@ export default function SuppliersPage() {
 
   const fetchData = useCallback(async () => {
     if(!user || !user.id) {
-      setIsLoading(false); // Ensure loading state is turned off if no user
+      setIsLoading(false);
       return;
     }
     setIsLoading(true);
@@ -259,15 +260,15 @@ export default function SuppliersPage() {
             valA = dateA as any;
             valB = dateB as any;
         }
-        
+
         let comparison = 0;
         if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = (valA || "").localeCompare(valB || "");
         } else {
-          if ((valA === undefined || valA === null) && (valB !== undefined && valB !== null)) comparison = 1; 
-          else if ((valA !== undefined && valA !== null) && (valB === undefined || valB === null)) comparison = -1; 
+          if ((valA === undefined || valA === null) && (valB !== undefined && valB !== null)) comparison = 1;
+          else if ((valA !== undefined && valA !== null) && (valB === undefined || valB === null)) comparison = -1;
           else comparison = 0;
         }
         return sortDirection === 'asc' ? comparison : -comparison;
@@ -292,7 +293,7 @@ export default function SuppliersPage() {
   const handleViewSupplierDetails = (supplier: SupplierSummary) => {
     setSelectedSupplier(supplier);
     setEditedContactInfo({ phone: supplier.phone || '', email: supplier.email || '' });
-    
+
     const terms = supplier.paymentTerms || '';
     const predefinedOptions: PaymentTermOption[] = ['immediate', 'net30', 'net60', 'eom'];
     const matchingOption = predefinedOptions.find(opt => t(`suppliers_payment_terms_option_${opt}`) === terms);
@@ -317,7 +318,7 @@ export default function SuppliersPage() {
 
                                         if (aDate instanceof Timestamp) dateA = aDate.toDate().getTime();
                                         else if (typeof aDate === 'string' && isValid(parseISO(aDate))) dateA = parseISO(aDate).getTime();
-                                        
+
                                         if (bDate instanceof Timestamp) dateB = bDate.toDate().getTime();
                                         else if (typeof bDate === 'string' && isValid(parseISO(bDate))) dateB = parseISO(bDate).getTime();
 
@@ -341,7 +342,7 @@ export default function SuppliersPage() {
         let uploadTimeDate: Date | null = null;
         if (invoice.uploadTime instanceof Timestamp) uploadTimeDate = invoice.uploadTime.toDate();
         else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadTimeDate = parseISO(invoice.uploadTime);
-        
+
         if (uploadTimeDate && isValid(uploadTimeDate)){
             const monthYear = formatDateDisplay(uploadTimeDate, t, 'MMM yyyy');
             if(spendingByMonth.hasOwnProperty(monthYear)){
@@ -352,7 +353,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); 
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime());
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -370,12 +371,9 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
-        // Payment terms are saved separately now
       }, user.id);
-      
-      // Refetch all supplier data to get updated summary
-      await fetchData(); 
-      // Update the selected supplier state to reflect changes immediately in the sheet
+
+      await fetchData();
       setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
 
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
@@ -390,7 +388,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); 
+    setIsSavingContact(true);
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -405,7 +403,7 @@ export default function SuppliersPage() {
 
     try {
         await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
-        await fetchData(); 
+        await fetchData();
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -423,7 +421,7 @@ export default function SuppliersPage() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
-      fetchData(); 
+      fetchData();
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc')} ${error.message}`, variant: "destructive" });
@@ -434,9 +432,9 @@ export default function SuppliersPage() {
     if(!user || !user.id) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierId, user.id); 
+      await deleteSupplierService(supplierId, user.id);
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName: selectedSupplier?.name || supplierId }) });
-      fetchData(); 
+      fetchData();
       if (selectedSupplier?.id === supplierId) {
         setIsDetailSheetOpen(false);
         setSelectedSupplier(null);
@@ -452,17 +450,17 @@ export default function SuppliersPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true; 
-        
+        if (!dateRange?.from || !invoice.uploadTime) return true;
+
         let uploadTimeDate: Date | null = null;
         if (invoice.uploadTime instanceof Timestamp) {
             uploadTimeDate = invoice.uploadTime.toDate();
         } else if (typeof invoice.uploadTime === 'string') {
             uploadTimeDate = parseISO(invoice.uploadTime);
         }
-        
+
         if (!uploadTimeDate || !isValid(uploadTimeDate)) return false;
-        
+
         const startDate = new Date(dateRange.from);
         startDate.setHours(0, 0, 0, 0);
         const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
@@ -908,12 +906,12 @@ export default function SuppliersPage() {
                     </CardHeader>
                     <CardContent className={cn("min-h-[200px] p-0 sm:pb-2", isMobile && "overflow-x-auto")}>
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}> {/* Reduced width on desktop */}
+                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}>
                             <ResponsiveContainer width="100%" height={200}>
                                 <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
-                                <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/> {/* Reduced YAxis width on mobile */}
+                                <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/>
                                 <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
                                 <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
                                 <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
@@ -979,3 +977,6 @@ export default function SuppliersPage() {
     </div>
   );
 }
+
+
+    
