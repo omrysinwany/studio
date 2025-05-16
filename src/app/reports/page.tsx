@@ -1,4 +1,3 @@
-
 // src/app/reports/page.tsx
 'use client';
 
@@ -6,7 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Package, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Loader2, Repeat, ShoppingCart, FileTextIcon, HandCoins, BarChart3, Download, Banknote, Info, Briefcase, ListChecks, FileWarning } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
+import { Bar, BarChart, Line, LineChart, Pie, Cell, ResponsiveContainer, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, PieChart as RechartsPieChart } from 'recharts';
 import { Button } from '@/components/ui/button';
 import type { DateRange } from 'react-day-picker';
 import { Calendar } from '@/components/ui/calendar';
@@ -17,7 +16,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey, SupplierSummary, getSupplierSummariesService } from '@/services/backend';
+import { getProductsService, Product, InvoiceHistoryItem, getInvoicesService, OtherExpense, getOtherExpensesService, getStorageKey, SupplierSummary, getSupplierSummariesService, UserSettings, getUserSettingsService } from '@/services/backend';
 import {
     calculateInventoryValue,
     calculateTotalItems,
@@ -32,6 +31,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { Timestamp } from 'firebase/firestore';
 
 
 const formatNumber = (
@@ -39,20 +39,20 @@ const formatNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 0, useGrouping = true, currency = false } = options || {}; // Default decimals to 0
+    const { decimals = 0, useGrouping = true, currency = false } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: currency && decimals !==0 ? 2 : decimals, // Keep 2 for currency unless explicitly 0
-            maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
+            minimumFractionDigits: currency ? (decimals === 0 ? 0 : 2) : decimals,
+            maximumFractionDigits: currency ? (decimals === 0 ? 0 : 2) : decimals,
             useGrouping: useGrouping,
         });
         return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
     }
 
     const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-        minimumFractionDigits: currency && decimals !==0 ? 2 : decimals,
-        maximumFractionDigits: currency && decimals !==0 ? 2 : decimals,
+        minimumFractionDigits: currency ? (decimals === 0 ? 0 : 2) : decimals,
+        maximumFractionDigits: currency ? (decimals === 0 ? 0 : 2) : decimals,
         useGrouping: useGrouping,
     });
     return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
@@ -86,8 +86,8 @@ interface StockAlert {
   catalogNumber: string;
   quantity: number;
   status: 'Low Stock' | 'Out of Stock' | 'Over Stock';
-  minStock?: number;
-  maxStock?: number;
+  minStock?: number | null;
+  maxStock?: number | null;
   isDefaultMinStock?: boolean;
 }
 
@@ -106,7 +106,7 @@ interface ProductProfitability {
     name: string;
     catalogNumber: string;
     unitPrice: number;
-    salePrice?: number;
+    salePrice?: number | null;
     potentialProfitPerUnit?: number;
     profitMarginPercent?: number;
 }
@@ -151,18 +151,18 @@ export default function ReportsPage() {
 
 
     const fetchInitialData = useCallback(async () => {
-        if(!user) return;
+        if(!user || !user.id) return;
         setIsLoading(true);
         try {
-            const [inventoryData, invoicesData, otherExpensesStored, suppliersData] = await Promise.all([
+            const [inventoryData, invoicesData, otherExpensesDataFromDb, suppliersData] = await Promise.all([
                 getProductsService(user.id),
                 getInvoicesService(user.id),
-                getStoredData<OtherExpense>(getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id), user.id, []),
+                getOtherExpensesService(user.id), // Fetch from Firestore
                 getSupplierSummariesService(user.id)
             ]);
             setInventory(inventoryData);
             setInvoices(invoicesData);
-            setOtherExpenses(otherExpensesStored);
+            setOtherExpenses(otherExpensesDataFromDb);
 
         } catch (error) {
             console.error("Failed to fetch initial data for reports:", error);
@@ -180,7 +180,7 @@ export default function ReportsPage() {
     }, [toast, t, user]);
 
     useEffect(() => {
-        if(user) {
+        if(user && user.id) {
             fetchInitialData();
         }
     }, [fetchInitialData, user]);
@@ -191,8 +191,13 @@ export default function ReportsPage() {
        if (isLoading || !user) return;
 
        const filteredInvoicesByDate = invoices.filter(invoice => {
-         if (!invoice.uploadTime || !isValid(parseISO(invoice.uploadTime))) return false;
-         const invoiceDate = parseISO(invoice.uploadTime);
+         if (!invoice.uploadTime) return false;
+         let invoiceDate: Date | null = null;
+         if (invoice.uploadTime instanceof Timestamp) invoiceDate = invoice.uploadTime.toDate();
+         else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) invoiceDate = parseISO(invoice.uploadTime);
+         else if (invoice.uploadTime instanceof Date && isValid(invoice.uploadTime)) invoiceDate = invoice.uploadTime;
+         
+         if(!invoiceDate || !isValid(invoiceDate)) return false;
          return isWithinInterval(invoiceDate, {
             start: dateRange?.from || new Date(0),
             end: dateRange?.to || new Date()
@@ -200,8 +205,13 @@ export default function ReportsPage() {
        });
 
        const filteredOtherExpensesByDate = otherExpenses.filter(expense => {
-          if (!expense.date || !isValid(parseISO(expense.date))) return false;
-          const expenseDate = parseISO(expense.date);
+          if (!expense.date) return false;
+          let expenseDate: Date | null = null;
+          if (expense.date instanceof Timestamp) expenseDate = expense.date.toDate();
+          else if (typeof expense.date === 'string' && isValid(parseISO(expense.date))) expenseDate = parseISO(expense.date);
+          else if (expense.date instanceof Date && isValid(expense.date)) expenseDate = expense.date;
+
+          if(!expenseDate || !isValid(expenseDate)) return false;
           return isWithinInterval(expenseDate, {
             start: dateRange?.from || new Date(0),
             end: dateRange?.to || new Date()
@@ -215,7 +225,7 @@ export default function ReportsPage() {
        const lowStockItemsCount = getLowStockItems(inventory).length;
        const totalPotentialGrossProfit = calculateTotalPotentialGrossProfit(inventory);
        const averageInvoiceValue = calculateAverageOrderValue(filteredInvoicesByDate.filter(inv => inv.status === 'completed'));
-       const activeSuppliers = new Set(filteredInvoicesByDate.map(inv => inv.supplier).filter(Boolean));
+       const activeSuppliers = new Set(filteredInvoicesByDate.map(inv => inv.supplierName).filter(Boolean));
 
        const totalInvoiceCostsPeriod = filteredInvoicesByDate
             .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
@@ -254,7 +264,15 @@ export default function ReportsPage() {
        for(let i=0; i < numPointsVOT; i++) {
            const pointDate = new Date(currentDateForVOT.getTime() + i * stepDurationVOT);
            const monthStr = format(pointDate, "MMM dd");
-           const invoicesUpToPointDate = invoices.filter(inv => isValid(parseISO(inv.uploadTime)) && parseISO(inv.uploadTime) <= pointDate && inv.documentType === 'deliveryNote');
+           // This is a mock value for VOT as true historical inventory value is complex to track
+           const invoicesUpToPointDate = invoices.filter(inv => {
+               if(!inv.uploadTime) return false;
+               let invDate: Date | null = null;
+               if(inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
+               else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+               else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
+               return invDate && invDate <= pointDate && inv.documentType === 'deliveryNote';
+           });
            const simulatedValue = invoicesUpToPointDate.reduce((sum, inv) => sum + (inv.totalAmount || 0),0) * (0.8 + Math.random() * 0.4);
            votData.push({
                date: monthStr,
@@ -264,9 +282,9 @@ export default function ReportsPage() {
        setValueOverTime(votData);
 
        // Expenses by Category Chart
-       const categories = Array.from(new Set(filteredOtherExpensesByDate.map(exp => exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_'))));
+       const categories = Array.from(new Set(filteredOtherExpensesByDate.map(exp => exp._internalCategoryKey || exp.category?.toLowerCase().replace(/\s+/g, '_') || 'unknown')));
         const catDistData = categories.map(catKey => {
-            const categoryExpenses = filteredOtherExpensesByDate.filter(exp => (exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_')) === catKey);
+            const categoryExpenses = filteredOtherExpensesByDate.filter(exp => (exp._internalCategoryKey || exp.category?.toLowerCase().replace(/\s+/g, '_') || 'unknown') === catKey);
             const categoryLabel = t(`accounts_other_expenses_tab_${catKey}` as any, {defaultValue: catKey.charAt(0).toUpperCase() + catKey.slice(1).replace(/_/g, ' ')});
             return {
                 category: categoryLabel,
@@ -286,7 +304,14 @@ export default function ReportsPage() {
         for(let i=0; i< procVolNumPoints; i++) {
            const pointDate = new Date(currentDateForProcVol.getTime() + i * procVolStepDuration);
            const monthStr = format(pointDate, "MMM yy");
-           const count = filteredInvoicesByDate.filter(inv => isValid(parseISO(inv.uploadTime)) && format(parseISO(inv.uploadTime), "MMM yy") === monthStr && inv.status === 'completed').length;
+           const count = filteredInvoicesByDate.filter(inv => {
+               if(!inv.uploadTime || inv.status !== 'completed') return false;
+               let invDate : Date | null = null;
+               if (inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
+               else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+               else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
+               return invDate && format(invDate, "MMM yy") === monthStr;
+            }).length;
            if(!procVolData.find(d => d.period === monthStr)) {
              procVolData.push({ period: monthStr, documents: count });
            }
@@ -294,12 +319,12 @@ export default function ReportsPage() {
        setProcessingVolume(procVolData);
 
         const topProducts = inventory
-            .filter(p => p.salePrice !== undefined && p.salePrice > 0)
+            .filter(p => p.salePrice !== undefined && p.salePrice !== null && p.salePrice > 0)
             .map(p => ({
                 id: p.id,
                 name: p.shortName || p.description.slice(0,25) + (p.description.length > 25 ? '...' : ''),
-                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, 
-                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1) 
+                quantitySold: Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1, // Mock sales data
+                totalValue: (p.salePrice || 0) * (Math.floor(Math.random() * (p.quantity > 0 ? p.quantity/2 : 5)) + 1) // Mock sales data
             }))
             .sort((a,b) => b.totalValue - a.totalValue)
             .slice(0, 5);
@@ -349,11 +374,11 @@ export default function ReportsPage() {
         filteredInvoicesByDate
             .filter(inv => inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment')
             .forEach(inv => {
-                if (inv.supplier) {
-                    const current = liabilitiesMap.get(inv.supplier) || { totalDue: 0, invoiceCount: 0 };
+                if (inv.supplierName && typeof inv.supplierName === 'string') {
+                    const current = liabilitiesMap.get(inv.supplierName) || { totalDue: 0, invoiceCount: 0 };
                     current.totalDue += (inv.totalAmount || 0);
                     current.invoiceCount += 1;
-                    liabilitiesMap.set(inv.supplier, current);
+                    liabilitiesMap.set(inv.supplierName, current);
                 }
             });
         setSupplierLiabilitiesData(
@@ -368,9 +393,9 @@ export default function ReportsPage() {
             const sale = p.salePrice;
             let profitPerUnit: number | undefined = undefined;
             let marginPercent: number | undefined = undefined;
-            if (sale !== undefined && sale > 0 && cost >= 0) { 
+            if (sale !== undefined && sale !== null && sale > 0 && cost >= 0) {
                 profitPerUnit = sale - cost;
-                if (sale > 0) { 
+                if (sale > 0) {
                   marginPercent = (profitPerUnit / sale) * 100;
                 }
             }
@@ -383,13 +408,13 @@ export default function ReportsPage() {
                 potentialProfitPerUnit: profitPerUnit,
                 profitMarginPercent: marginPercent
             };
-        }).filter(p => p.potentialProfitPerUnit !== undefined && p.potentialProfitPerUnit >= 0); 
+        }).filter(p => p.potentialProfitPerUnit !== undefined && p.potentialProfitPerUnit >= 0);
         setProductProfitabilityData(profitability);
 
 
      };
 
-     if (user && !isLoading) { 
+     if (user && !isLoading) {
         generateReports();
      }
    // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -549,7 +574,16 @@ export default function ReportsPage() {
                 <Card key={index} className={cn("xl:col-span-1", index >= 9 && "lg:col-span-2 xl:col-span-3")}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 sm:pb-1.5 pt-2.5 px-3">
                         <CardTitle className="text-[11px] sm:text-xs font-medium">{t(kpi.titleKey)}</CardTitle>
-                        <kpi.Icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground", kpi.iconColor)} />
+                         <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-5 w-5 -mt-1 -mr-1 opacity-70 hover:opacity-100">
+                                  <kpi.Icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground", kpi.iconColor)} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="end" className="max-w-xs">
+                                <p className="text-xs">{t(`${kpi.titleKey}_desc` as any, {defaultValue: t('reports_kpi_default_desc')})}</p>
+                            </TooltipContent>
+                        </Tooltip>
                     </CardHeader>
                     <CardContent className="pb-2 sm:pb-3 px-3">
                         <div className="text-lg sm:text-xl font-bold">{formatNumber(kpi.value, t, { currency: kpi.currency, decimals: kpi.decimals })}</div>
@@ -560,7 +594,7 @@ export default function ReportsPage() {
 
 
         {/* Product Profitability Report */}
-        <Card className="w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.05s'}}>
+        <Card className="w-full overflow-hidden scale-fade-in md:col-span-full" style={{animationDelay: '0.05s'}}>
             <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                 <div className="flex items-center">
                     <CardTitle className="text-base sm:text-lg">{t('reports_profitability_title')}</CardTitle>
@@ -604,7 +638,7 @@ export default function ReportsPage() {
                                         <TableCell className="font-medium text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5 truncate max-w-[100px] sm:max-w-xs">{p.name}</TableCell>
                                         <TableCell className="text-[10px] sm:text-xs hidden md:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{p.catalogNumber}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{formatNumber(p.unitPrice, t, {currency: true, decimals: 0})}</TableCell>
-                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined ? formatNumber(p.salePrice, t, {currency: true, decimals: 0}) : '-'}</TableCell>
+                                        <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.salePrice !== undefined && p.salePrice !== null ? formatNumber(p.salePrice, t, {currency: true, decimals: 0}) : '-'}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.potentialProfitPerUnit !== undefined ? formatNumber(p.potentialProfitPerUnit, t, {currency: true, decimals: 0}) : '-'}</TableCell>
                                         <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">{p.profitMarginPercent !== undefined ? `${formatNumber(p.profitMarginPercent, t, {decimals:1})}%` : '-'}</TableCell>
                                     </TableRow>
@@ -631,7 +665,7 @@ export default function ReportsPage() {
                            <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={valueOverTime} margin={{ top: 5, right: isMobile ? 5 : 15, left: isMobile ? -25 : -10, bottom: isMobile ? 30 : 20 }}>
                                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-                                     <XAxis
+                                     <RechartsXAxis
                                         dataKey="date"
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
@@ -642,7 +676,7 @@ export default function ReportsPage() {
                                         height={isMobile ? 40 : 30}
                                         interval={isMobile ? Math.max(0, Math.floor(valueOverTime.length / 3) -1) : "preserveStartEnd"}
                                      />
-                                     <YAxis
+                                     <RechartsYAxis
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
@@ -676,7 +710,7 @@ export default function ReportsPage() {
                            <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={processingVolume} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -20 : -15, bottom: isMobile ? 30 : 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
-                                    <XAxis
+                                    <RechartsXAxis
                                         dataKey="period"
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
@@ -687,7 +721,7 @@ export default function ReportsPage() {
                                         height={isMobile ? 40 : 30}
                                         interval={isMobile ? Math.max(0, Math.floor(processingVolume.length / 2) -1) : "preserveStartEnd"}
                                     />
-                                     <YAxis
+                                     <RechartsYAxis
                                         stroke="hsl(var(--muted-foreground))"
                                         fontSize={isMobile ? 8 : 10}
                                         tickLine={false}
@@ -710,7 +744,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="w-full overflow-hidden scale-fade-in md:col-span-1 lg:col-span-2" style={{animationDelay: '0.3s'}}>
+            <Card className="w-full overflow-hidden scale-fade-in md:col-span-full lg:col-span-2" style={{animationDelay: '0.3s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                      <div className="flex items-center">
                         <CardTitle className="text-base sm:text-lg">{t('reports_expenses_by_category_title')}</CardTitle>
@@ -792,7 +826,7 @@ export default function ReportsPage() {
                                                      content={({ payload }) => (
                                                          <ul className="flex flex-wrap justify-center gap-x-1.5 gap-y-0.5 mt-1 text-[9px] sm:text-[10px]">
                                                              {payload?.map((entry, index) => (
-                                                                 <li key={`item-expense-${index}`} className="flex items-center gap-1">
+                                                                 <li key={`item-expense-${index}`} className="flex items-center gap-1.5">
                                                                      <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full" style={{ backgroundColor: entry.color }} />
                                                                      {entry.value}
                                                                  </li>
@@ -814,7 +848,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="md:col-span-full lg:col-span-2 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.4s'}}>
+            <Card className="md:col-span-full lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.4s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                      <CardTitle className="text-base sm:text-lg">{t('reports_table_top_selling_title')}</CardTitle>
                       <Button
@@ -858,7 +892,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-            <Card className="md:col-span-1 lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
+            <Card className="md:col-span-full lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.5s'}}>
                  <CardHeader className="pb-2 sm:pb-4 flex flex-col">
                      <div className="flex items-center justify-between">
                         <CardTitle className="text-base sm:text-lg">{t('reports_pnl_summary_title')}</CardTitle>
@@ -895,8 +929,7 @@ export default function ReportsPage() {
                  </CardContent>
             </Card>
 
-
-            <Card className="md:col-span-1 lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.6s'}}>
+            <Card className="md:col-span-full lg:col-span-1 w-full overflow-hidden scale-fade-in" style={{animationDelay: '0.6s'}}>
                 <CardHeader className="pb-2 sm:pb-4 flex flex-row items-center justify-between">
                     <CardTitle className="text-base sm:text-lg">{t('reports_supplier_liabilities_title')}</CardTitle>
                      <Button
@@ -990,9 +1023,9 @@ export default function ReportsPage() {
                                             <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 {alert.isDefaultMinStock && alert.status === 'Low Stock'
                                                     ? `${formatNumber(10, t, { decimals: 0 })} (${t('reports_default_min_stock_suffix')})`
-                                                    : (alert.minStock !== undefined ? formatNumber(alert.minStock, t, { decimals: 0 }) : '-')}
+                                                    : (alert.minStock !== undefined && alert.minStock !== null ? formatNumber(alert.minStock, t, { decimals: 0 }) : '-')}
                                             </TableCell>
-                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined ? formatNumber(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
+                                            <TableCell className="text-right text-[10px] sm:text-xs hidden sm:table-cell px-1.5 sm:px-2 py-1 sm:py-1.5">{alert.maxStock !== undefined && alert.maxStock !== null ? formatNumber(alert.maxStock, t, { decimals: 0 }) : '-'}</TableCell>
                                             <TableCell className="text-right text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 sm:py-1.5">
                                                 <Badge variant={alert.status === 'Out of Stock' ? 'destructive' : (alert.status === 'Over Stock' ? 'default' : 'secondary')}
                                                     className={cn(
@@ -1002,7 +1035,7 @@ export default function ReportsPage() {
                                                     )}
                                                 >
                                                     <AlertTriangle className="mr-0.5 sm:mr-1 h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                                                    {t(`reports_stock_status_${alert.status.toLowerCase().replace(' ', '_')}` as any) || alert.status}
+                                                    {t(`reports_stock_status_${alert.status.toLowerCase().replace(/ /g, '_')}` as any) || alert.status}
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>
@@ -1035,7 +1068,7 @@ export default function ReportsPage() {
                             {drillDownDialogData.map((expense) => (
                                 <TableRow key={expense.id}>
                                     <TableCell>{expense.description}</TableCell>
-                                    <TableCell>{format(parseISO(expense.date), 'PP')}</TableCell>
+                                    <TableCell>{expense.date instanceof Timestamp ? format(expense.date.toDate(), 'PP') : (typeof expense.date === 'string' && isValid(parseISO(expense.date)) ? format(parseISO(expense.date), 'PP') : t('invoices_invalid_date'))}</TableCell>
                                     <TableCell className="text-right">{formatNumber(expense.amount, t, {currency: true, decimals: 0})}</TableCell>
                                 </TableRow>
                             ))}
@@ -1049,4 +1082,3 @@ export default function ReportsPage() {
   );
 }
 
-    
