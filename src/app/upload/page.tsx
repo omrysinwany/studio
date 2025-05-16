@@ -14,7 +14,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { scanTaxInvoice } from '@/ai/flows/scan-tax-invoice';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit } from 'lucide-react';
+import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit, RefreshCw, X as ClearIcon } from 'lucide-react'; // Added RefreshCw, ClearIcon
 import {
     InvoiceHistoryItem,
     getInvoicesService,
@@ -24,18 +24,18 @@ import {
     MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES,
     MAX_SCAN_RESULTS_SIZE_BYTES,
     clearTemporaryScanData,
-    clearOldTemporaryScanData,
     INVOICES_STORAGE_KEY_BASE,
     MAX_INVOICE_HISTORY_ITEMS,
     getStorageKey,
     finalizeSaveProductsService,
     DOCUMENTS_COLLECTION,
+    clearOldTemporaryScanData,
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, } from 'date-fns';
 import { Timestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { enUS, he } from 'date-fns/locale';
@@ -115,9 +115,12 @@ export default function UploadPage() {
 
   const fetchHistory = useCallback(async () => {
     if (!user || !user.id) {
+        setUploadHistory([]);
+        setIsLoadingHistory(false);
         return;
     }
-    // setIsLoadingHistory(true); // Already set before calling this in useEffect
+    setUploadHistory([]); // Clear history before fetching new data
+    setIsLoadingHistory(true);
     try {
       const invoices = await getInvoicesService(user.id);
       const sortedInvoices = invoices.sort((a, b) => {
@@ -155,8 +158,6 @@ export default function UploadPage() {
       setUploadHistory([]);
       setIsLoadingHistory(false);
     } else if (user && user.id) {
-      setUploadHistory([]); // Reset history for the current user
-      setIsLoadingHistory(true); // Set loading true before fetch
       fetchHistory();
       clearOldTemporaryScanData(false, user.id); // Periodically clear old temp data for the user
     }
@@ -232,6 +233,18 @@ export default function UploadPage() {
     }
   };
 
+  const clearSelection = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    setIsPdfPreview(false);
+    setScanError(null);
+    setUploadProgress(0);
+    setStreamingContent('');
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
+  };
+
 
   const handleUpload = async () => {
     if (!selectedFile || !user || !user.id) return;
@@ -247,15 +260,14 @@ export default function UploadPage() {
     let progressInterval: NodeJS.Timeout | undefined = undefined;
 
     const uniqueScanId = `${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
-    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`;
+    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`; // Firestore document ID
 
-    const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-    const originalImagePreviewKey = getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-    const compressedImageKey = getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
+    // No more localStorage keys for images themselves
+    const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`); // For scan JSON results
 
     let scanDataSavedForEdit = false;
-    let originalImagePreviewUriSaved = false;
-    let compressedImageForFinalSaveUriSaved = false;
+    let originalImagePreviewFirebaseUrl: string | null = null;
+    let compressedImageForFinalSaveFirebaseUrl: string | null = null;
     let scanResult: ScanInvoiceOutput | ScanTaxInvoiceOutput | null = null;
 
 
@@ -287,86 +299,45 @@ export default function UploadPage() {
 
            const originalBase64Data = reader.result;
            let imageForAIScan = originalBase64Data;
-           let imageToStoreForFinalSave: string | undefined = undefined;
-           let imageForPreviewOnEditPage: string | undefined = undefined;
 
+           // Upload images to Firebase Storage
+           const timestamp = Date.now();
+           const baseFilePath = `user_uploads/${user.id}/images/${timestamp}_${originalFileName}`;
 
-            try {
-                if(selectedFile.type.startsWith('image/')) {
-                  imageToStoreForFinalSave = await compressImage(originalBase64Data, 0.6, 1024, 1024);
-                  if (originalBase64Data.length > MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                    imageForPreviewOnEditPage = await compressImage(originalBase64Data, 0.5, 800, 800);
-                  } else {
-                    imageForPreviewOnEditPage = originalBase64Data;
-                  }
-                  if (imageToStoreForFinalSave.length < (originalBase64Data.length * 0.8)) {
-                      imageForAIScan = imageToStoreForFinalSave;
-                  }
-                } else if (selectedFile.type === 'application/pdf') {
-                    imageForAIScan = originalBase64Data;
-                    if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                        imageForPreviewOnEditPage = originalBase64Data;
-                    }
-                    if (originalBase64Data.length <= MAX_SCAN_RESULTS_SIZE_BYTES * 1.5) {
-                        imageToStoreForFinalSave = originalBase64Data;
-                    }
-                }
+           try {
+               if (selectedFile.type.startsWith('image/')) {
+                   const compressedForFinal = await compressImage(originalBase64Data, 0.6, 1024, 1024);
+                   compressedImageForFinalSaveFirebaseUrl = await uploadImageToFirebaseStorage(compressedForFinal, `${baseFilePath}_final.jpg`);
+                   
+                   const previewForEdit = await compressImage(originalBase64Data, 0.5, 800, 800); // Create a reasonably sized preview
+                   originalImagePreviewFirebaseUrl = await uploadImageToFirebaseStorage(previewForEdit, `${baseFilePath}_preview.jpg`);
 
-                if (imageToStoreForFinalSave) {
-                    try {
-                       localStorage.setItem(compressedImageKey, imageToStoreForFinalSave);
-                       compressedImageForFinalSaveUriSaved = true;
-                       console.log(`[UploadPage] Image URI for final save stored with key: ${compressedImageKey}`);
-                    } catch (storageError: any) {
-                       console.warn(`[UploadPage] Failed to save compressed image for final save to localStorage:`, storageError.message);
-                       toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: t('upload_context_compressed_final_save')}), variant: 'destructive', duration: 8000 });
-                       compressedImageForFinalSaveUriSaved = false;
-                    }
-                }
+                   imageForAIScan = compressedForFinal; // Use compressed for AI if smaller
+               } else if (selectedFile.type === 'application/pdf') {
+                   // For PDF, we might just upload the original if it's not too large for AI, or skip direct preview storage if large
+                   // For simplicity, let's assume PDFs are directly processed or we use a placeholder/link.
+                   // If PDFs are small enough to be re-uploaded as "preview" for consistency in Firestore record:
+                   originalImagePreviewFirebaseUrl = await uploadImageToFirebaseStorage(originalBase64Data, baseFilePath);
+                   compressedImageForFinalSaveFirebaseUrl = originalImagePreviewFirebaseUrl; // Same for PDF in this example
+                   imageForAIScan = originalBase64Data;
+               }
+           } catch (uploadError: any) {
+               console.error("[UploadPage] Firebase Storage upload failed:", uploadError);
+               setScanError(t('upload_toast_storage_upload_fail_desc', { message: uploadError.message || 'Unknown storage error' }));
+               toast({ title: t('upload_toast_upload_failed_title'), description: t('upload_toast_storage_upload_fail_desc', { message: uploadError.message }), variant: 'destructive', duration: 8000 });
+               setIsProcessing(false); setIsUploading(false);
+               clearTemporaryScanData(uniqueScanId, user.id); // Also clear scan result data
+               return;
+           }
 
-                if (imageForPreviewOnEditPage) {
-                    try {
-                        if (imageForPreviewOnEditPage.length > MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                           console.warn(`[UploadPage] Preview image (size: ${imageForPreviewOnEditPage.length}) exceeds localStorage quota (${MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES}). Attempting smaller compression or skipping.`);
-                           const smallerPreview = await compressImage(originalBase64Data, 0.4, 600, 600);
-                           if(smallerPreview.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) {
-                               localStorage.setItem(originalImagePreviewKey, smallerPreview);
-                               originalImagePreviewUriSaved = true;
-                               console.log(`[UploadPage] Saved smaller preview image with key: ${originalImagePreviewKey}`);
-                           } else {
-                               console.warn(`[UploadPage] Smaller preview still too large. Skipping localStorage for preview.`);
-                               originalImagePreviewUriSaved = false;
-                           }
-                        } else {
-                            localStorage.setItem(originalImagePreviewKey, imageForPreviewOnEditPage);
-                            originalImagePreviewUriSaved = true;
-                            console.log(`[UploadPage] Image for preview on edit page saved with key: ${originalImagePreviewKey}`);
-                        }
-                    } catch (storageError: any) {
-                        console.warn(`[UploadPage] Failed to save image for preview on edit page:`, storageError.message);
-                        originalImagePreviewUriSaved = false;
-                        toast({ title: t('upload_toast_storage_full_title_critical'), description: t('upload_toast_storage_full_desc_finalize', {context: t('upload_context_edit_page_preview')}), variant: 'destructive', duration: 8000 });
-                    }
-                }
-
-
-            } catch (compressionError) {
-                console.warn("[UploadPage] Image compression failed, will use original for AI and potentially preview:", compressionError);
-                setStreamingContent(t('upload_compression_failed_using_original'));
-                imageForAIScan = originalBase64Data;
-                if (originalBase64Data.length <= MAX_ORIGINAL_IMAGE_PREVIEW_STORAGE_BYTES) imageForPreviewOnEditPage = originalBase64Data;
-                if (originalBase64Data.length <= MAX_SCAN_RESULTS_SIZE_BYTES * 1.5) imageToStoreForFinalSave = originalBase64Data;
-            }
             setStreamingContent(t('upload_ai_analysis_inprogress'));
 
            if (documentType === 'invoice') {
                try {
                    scanResult = await scanTaxInvoice({ invoiceDataUri: imageForAIScan });
-                   if (scanResult.error) {
-                       setScanError(scanResult.error);
-                   }
+                   if (scanResult.error) setScanError(scanResult.error);
                } catch (aiError: any) {
-                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error')});
+                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || 'Unknown AI error' });
                     scanResult = { error: errorMessage } as ScanTaxInvoiceOutput;
                     setScanError(errorMessage);
                }
@@ -375,11 +346,9 @@ export default function UploadPage() {
                    scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => {
                         if(update && update.content) setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`);
                    });
-                   if (scanResult.error) {
-                       setScanError(scanResult.error);
-                   }
+                   if (scanResult.error) setScanError(scanResult.error);
                } catch (aiError: any) {
-                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || t('pos_unknown_error') });
+                    const errorMessage = t('upload_toast_ai_processing_error_desc', { message: (aiError as Error).message || 'Unknown AI error'});
                     scanResult = { products: [], error: errorMessage } as ScanInvoiceOutput;
                     setScanError(errorMessage);
                }
@@ -390,22 +359,8 @@ export default function UploadPage() {
 
             try {
                 if (!scanResult) throw new Error("Scan result is null or undefined after AI call.");
-                const scanResultString = JSON.stringify(scanResult);
-                if (scanResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
-                    const errorMsg = t('upload_toast_scan_results_too_large_error', { size: (scanResultString.length / (1024*1024)).toFixed(2) });
-                     if (documentType === 'invoice') {
-                        scanResult = { error: errorMsg } as ScanTaxInvoiceOutput;
-                    } else {
-                        scanResult = { products: [], error: errorMsg } as ScanInvoiceOutput;
-                    }
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
-                    scanDataSavedForEdit = true;
-                    setScanError(errorMsg);
-                    toast({ title: t('upload_toast_critical_error_save_scan_title'), description: errorMsg, variant: 'destructive', duration: 10000 });
-                } else {
-                    localStorage.setItem(dataKey, JSON.stringify(scanResult));
-                    scanDataSavedForEdit = true;
-                }
+                localStorage.setItem(dataKey, JSON.stringify(scanResult));
+                scanDataSavedForEdit = true;
             } catch (storageError: any) {
                  console.error(`[UploadPage] Error saving scan results to localStorage for key ${dataKey}:`, storageError);
                  toast({
@@ -415,7 +370,10 @@ export default function UploadPage() {
                      duration: 10000,
                  });
                  clearTemporaryScanData(uniqueScanId, user.id);
-                 setIsProcessing(false); setIsUploading(false); setSelectedFile(null); setFilePreview(null); if (fileInputRef.current) fileInputRef.current.value = '';
+                 // Also attempt to delete uploaded images if scan data saving fails
+                 if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+                 if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
+                 setIsProcessing(false); setIsUploading(false); clearSelection();
                  fetchHistory();
                  return;
             }
@@ -428,21 +386,16 @@ export default function UploadPage() {
                });
            }
 
-           // This ensures UI reset and history refresh happens after everything.
            Promise.resolve().finally(async () => {
-                if (scanDataSavedForEdit) { // Only proceed if scan data (even if error) was saved
+                if (scanDataSavedForEdit) {
                     const queryParams = new URLSearchParams({
-                        key: dataKey,
+                        // key: dataKey, // No longer needed if we pass URLs directly
                         fileName: originalFileName,
                         tempInvoiceId: tempInvoiceId,
                         docType: documentType,
                     });
-                     if (localStorage.getItem(originalImagePreviewKey)) {
-                        queryParams.append('originalImagePreviewKey', originalImagePreviewKey);
-                     }
-                     if (localStorage.getItem(compressedImageKey)) {
-                        queryParams.append('compressedImageKey', compressedImageKey);
-                     }
+                     if (originalImagePreviewFirebaseUrl) queryParams.append('originalImagePreviewUrl', originalImagePreviewFirebaseUrl);
+                     if (compressedImageForFinalSaveFirebaseUrl) queryParams.append('compressedImageUrl', compressedImageForFinalSaveFirebaseUrl);
 
                     try {
                         if (!db || !user || !user.id) throw new Error("Firestore (db) or user is not initialized.");
@@ -451,8 +404,8 @@ export default function UploadPage() {
                         const pendingInvoice: Omit<InvoiceHistoryItem, 'id'> = {
                             userId: user.id,
                             originalFileName: originalFileName,
-                            generatedFileName: originalFileName, // Will be updated on final save
-                            uploadTime: Timestamp.now(), // Use Firestore Timestamp
+                            generatedFileName: originalFileName,
+                            uploadTime: Timestamp.now(),
                             status: scanResult?.error ? 'error' : 'pending',
                             documentType: documentType,
                             supplierName: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.supplierName : (scanResult as ScanInvoiceOutput)?.supplier) || null,
@@ -460,11 +413,11 @@ export default function UploadPage() {
                             totalAmount: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.totalAmount : (scanResult as ScanInvoiceOutput)?.totalAmount) ?? null,
                             invoiceDate: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceDate : (scanResult as ScanInvoiceOutput)?.invoiceDate) || null,
                             paymentMethod: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.paymentMethod : (scanResult as ScanInvoiceOutput)?.paymentMethod) || null,
-                            paymentStatus: 'unpaid', // Default for new scans
+                            paymentStatus: 'unpaid',
                             paymentDueDate: null,
-                            errorMessage: scanResult?.error || null, // Ensure this is null not undefined
-                            originalImagePreviewUri: localStorage.getItem(originalImagePreviewKey) || null,
-                            compressedImageForFinalRecordUri: localStorage.getItem(compressedImageKey) || null,
+                            errorMessage: scanResult?.error || null,
+                            originalImagePreviewUri: originalImagePreviewFirebaseUrl, // Store Firebase URL
+                            compressedImageForFinalRecordUri: compressedImageForFinalSaveFirebaseUrl, // Store Firebase URL
                             paymentReceiptImageUri: null,
                             linkedDeliveryNoteId: null,
                         };
@@ -476,16 +429,17 @@ export default function UploadPage() {
                         console.error("[UploadPage] Failed to create PENDING Firestore document:", e);
                         toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: e.message}), variant: 'destructive', duration: 8000 });
                         clearTemporaryScanData(uniqueScanId, user.id);
+                        if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+                        if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
                     }
                 } else {
-                    console.error("[UploadPage] Temporary data (scan result or image) was not saved, aborting Firestore PENDING record creation and navigation to edit page.");
+                    console.error("[UploadPage] Temporary data (scan result) was not saved to localStorage, or image upload to Firebase Storage failed. Aborting Firestore PENDING record creation and navigation to edit page.");
                     clearTemporaryScanData(uniqueScanId, user.id);
+                    if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+                    if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
                 }
                 setIsUploading(false);
-                setSelectedFile(null);
-                setFilePreview(null);
-                setIsPdfPreview(false);
-                if (fileInputRef.current) fileInputRef.current.value = '';
+                clearSelection();
            });
        };
 
@@ -500,6 +454,8 @@ export default function UploadPage() {
          variant: 'destructive',
        });
        clearTemporaryScanData(uniqueScanId, user.id);
+       if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+       if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
      };
 
   } catch (error) {
@@ -513,6 +469,8 @@ export default function UploadPage() {
        variant: 'destructive',
      });
      clearTemporaryScanData(uniqueScanId, user.id);
+     if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+     if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
    }
 };
 
@@ -545,8 +503,15 @@ export default function UploadPage() {
   };
 
   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-      setSelectedInvoiceDetails(invoice);
+      const detailsToSet = {...invoice, _displayContext: 'full_details'};
+      setSelectedInvoiceDetails(detailsToSet);
       setShowDetailsModal(true);
+  };
+
+  const handleViewImage = (invoice: InvoiceHistoryItem) => {
+    const detailsToSet = {...invoice, _displayContext: 'image_only'};
+    setSelectedInvoiceDetails(detailsToSet);
+    setShowDetailsModal(true);
   };
 
   const renderStatusBadge = (status: InvoiceHistoryItem['status']) => {
@@ -656,6 +621,7 @@ export default function UploadPage() {
             </TabsContent>
           </Tabs>
 
+        {!selectedFile ? (
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -683,23 +649,29 @@ export default function UploadPage() {
               disabled={isUploading || isProcessing}
             />
           </div>
+           ) : (
+             <div className="mt-4 p-3 border rounded-md bg-muted/50">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-sm font-medium text-foreground">{t('upload_selected_file_label')}: {selectedFile.name}</p>
+                  <Button variant="ghost" size="icon" onClick={clearSelection} className="h-7 w-7 text-muted-foreground hover:text-destructive">
+                    <ClearIcon className="h-4 w-4" />
+                    <span className="sr-only">{t('upload_clear_selection_button')}</span>
+                  </Button>
+                </div>
+                {filePreview && !isPdfPreview && (
+                  <div className="mt-2 relative w-full max-w-xs h-40 mx-auto">
+                    <NextImage src={filePreview} alt={t('upload_preview_alt')} layout="fill" objectFit="contain" data-ai-hint="document preview" />
+                  </div>
+                )}
+                {isPdfPreview && (
+                  <div className="mt-2 flex items-center justify-center text-muted-foreground">
+                    <FileTextIconLucide className="h-10 w-10 mr-2" />
+                    <span>{selectedFile.name} (PDF)</span>
+                  </div>
+                )}
+              </div>
+           )}
 
-          {selectedFile && (
-            <div className="mt-4 p-3 border rounded-md bg-muted/50">
-              <p className="text-sm font-medium text-foreground">{t('upload_selected_file_label')}: {selectedFile.name}</p>
-              {filePreview && !isPdfPreview && (
-                <div className="mt-2 relative w-full max-w-xs h-40 mx-auto">
-                  <NextImage src={filePreview} alt={t('upload_preview_alt')} layout="fill" objectFit="contain" data-ai-hint="document preview" />
-                </div>
-              )}
-              {isPdfPreview && (
-                <div className="mt-2 flex items-center justify-center text-muted-foreground">
-                  <FileTextIconLucide className="h-10 w-10 mr-2" />
-                  <span>{selectedFile.name} (PDF)</span>
-                </div>
-              )}
-            </div>
-          )}
 
           <Button
             onClick={handleUpload}
@@ -780,8 +752,10 @@ export default function UploadPage() {
                     {uploadHistory.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2" title={item.originalFileName || item.generatedFileName}>
-                           { (item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) && <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
-                            {item.originalFileName || item.generatedFileName}
+                           <Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => handleViewImage(item)}>
+                             {(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) && <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
+                              {item.originalFileName || item.generatedFileName}
+                           </Button>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell px-2 sm:px-4 py-2">{formatDateForDisplay(item.uploadTime)}</TableCell>
                         <TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.status)}</TableCell>
@@ -794,31 +768,32 @@ export default function UploadPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => {
+                                    if (!item.id) {
+                                        toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"});
+                                        return;
+                                    }
                                     const uniqueScanId = item.id.startsWith(`pending-inv-${user.id}_`)
                                                        ? item.id.substring(`pending-inv-${user.id}_`.length)
-                                                       : item.id;
-
+                                                       : item.id; // Fallback if ID structure isn't as expected
+                                    
                                     const dataKeyForEdit = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-                                    const originalImageKeyForEdit = getStorageKey(TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-                                    const compressedImageKeyForEdit = getStorageKey(TEMP_COMPRESSED_IMAGE_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-
-
+                                    
                                     const queryParams = new URLSearchParams({
-                                        fileName: encodeURIComponent(item.originalFileName),
-                                        tempInvoiceId: item.id,
+                                        fileName: encodeURIComponent(item.originalFileName || 'unknown_doc'),
+                                        tempInvoiceId: item.id, // This is the PENDING Firestore document ID
                                         docType: item.documentType,
                                     });
-                                    if (localStorage.getItem(dataKeyForEdit)) queryParams.append('key', dataKeyForEdit);
-                                    if (localStorage.getItem(originalImageKeyForEdit)) queryParams.append('originalImagePreviewKey', originalImageKeyForEdit);
-                                    if (localStorage.getItem(compressedImageKeyForEdit)) queryParams.append('compressedImageKey', compressedImageKeyForEdit);
-
+                                    // Add Firebase Storage URLs if they exist on the item
+                                    if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewUrl', item.originalImagePreviewUri);
+                                    if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageUrl', item.compressedImageForFinalRecordUri);
+                                    
                                     router.push(`/edit-invoice?${queryParams.toString()}`);
                                 }}
                                 className="h-8 w-8"
-                                title={t('edit_invoice_button_title')}
-                                aria-label={t('edit_invoice_button_aria', {fileName: item.originalFileName || item.generatedFileName})}
+                                title={t('upload_history_retry_upload_title')}
+                                aria-label={t('upload_history_retry_upload_aria', {fileName: item.originalFileName || item.generatedFileName})}
                             >
-                                <Edit className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                                <RefreshCw className="h-4 w-4 text-amber-600 dark:text-amber-500" />
                             </Button>
                           )}
                         </TableCell>
@@ -834,52 +809,78 @@ export default function UploadPage() {
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="p-4 sm:p-6 border-b">
-            <DialogTitle>{t('invoice_details_title')}</DialogTitle>
-            <DialogDescription>
-              {t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || selectedInvoiceDetails?.generatedFileName || '' })}
-            </DialogDescription>
+            <DialogTitle>{selectedInvoiceDetails?._displayContext === 'image_only' ? t('upload_history_image_preview_title') : t('invoice_details_title')}</DialogTitle>
+            {selectedInvoiceDetails?._displayContext !== 'image_only' && (
+                <DialogDescription>
+                {t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || selectedInvoiceDetails?.generatedFileName || '' })}
+                </DialogDescription>
+            )}
           </DialogHeader>
           {selectedInvoiceDetails && (
              <ScrollArea className="flex-grow p-0">
               <div className="p-4 sm:p-6 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.originalFileName || selectedInvoiceDetails.generatedFileName}</p>
-                      <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime)}</p>
-                      <div className="flex items-center">
-                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
-                      </div>
-                    </div>
-                    <div>
-                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplierName || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
-                    </div>
-                  </div>
-                  {selectedInvoiceDetails.errorMessage && (
-                    <div className="mt-2">
-                      <p className="font-semibold text-destructive">{t('invoice_details_error_message_label')}:</p>
-                      <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
-                    </div>
+                  {selectedInvoiceDetails._displayContext === 'image_only' || !selectedInvoiceDetails._displayContext ? (
+                     <>
+                      {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) ? (
+                        <NextImage
+                            src={selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri!}
+                            alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || selectedInvoiceDetails.generatedFileName || '' })}
+                            width={800}
+                            height={1100}
+                            className="rounded-md object-contain mx-auto"
+                            data-ai-hint="invoice document"
+                        />
+                        ) : (
+                          <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                            <ImageIconLucide className="h-10 w-10 mb-2"/>
+                            <p>{t('invoice_details_no_image_available')}</p>
+                          </div>
+                        )}
+                     </>
+                  ) : null }
+
+                  {selectedInvoiceDetails._displayContext === 'full_details' && (
+                    <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div>
+                            <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.originalFileName || selectedInvoiceDetails.generatedFileName}</p>
+                            <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime)}</p>
+                            <div className="flex items-center">
+                                <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status)}
+                            </div>
+                            </div>
+                            <div>
+                            <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                            <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplierName || t('invoices_na')}</p>
+                            <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount) : t('invoices_na')}</p>
+                            </div>
+                        </div>
+                        {selectedInvoiceDetails.errorMessage && (
+                            <div className="mt-2">
+                            <p className="font-semibold text-destructive">{t('invoice_details_error_message_label')}:</p>
+                            <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
+                            </div>
+                        )}
+                        <Separator className="my-4"/>
+                        <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
+                        {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) ? (
+                            <NextImage
+                                src={selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri!}
+                                alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || selectedInvoiceDetails.generatedFileName || '' })}
+                                width={800}
+                                height={1100}
+                                className="rounded-md object-contain mx-auto"
+                                data-ai-hint="invoice document"
+                            />
+                            ) : (
+                            <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
+                                <ImageIconLucide className="h-10 w-10 mb-2"/>
+                                <p>{t('invoice_details_no_image_available')}</p>
+                            </div>
+                            )}
+                        </div>
+                    </>
                   )}
-                  <Separator className="my-4"/>
-                  <div className="overflow-auto max-h-[calc(85vh-320px)] sm:max-h-[calc(90vh-350px)]">
-                  {isValidImageSrc(selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) ? (
-                    <NextImage
-                        src={selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri!}
-                        alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || selectedInvoiceDetails.generatedFileName || '' })}
-                        width={800}
-                        height={1100}
-                        className="rounded-md object-contain mx-auto"
-                        data-ai-hint="invoice document"
-                    />
-                    ) : (
-                      <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
-                        <ImageIconLucide className="h-10 w-10 mb-2"/>
-                        <p>{t('invoice_details_no_image_available')}</p>
-                      </div>
-                    )}
-                  </div>
               </div>
             </ScrollArea>
           )}
@@ -888,3 +889,4 @@ export default function UploadPage() {
     </div>
   );
 }
+
