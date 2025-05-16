@@ -14,7 +14,7 @@ import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import { scanTaxInvoice } from '@/ai/flows/scan-tax-invoice';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit, RefreshCw, X as ClearIcon } from 'lucide-react'; // Added RefreshCw, ClearIcon
+import { UploadCloud, FileText as FileTextIconLucide, Clock, CheckCircle, XCircle, Loader2, Image as ImageIconLucide, Info, Edit, RefreshCw, X as ClearIcon } from 'lucide-react';
 import {
     InvoiceHistoryItem,
     getInvoicesService,
@@ -28,8 +28,10 @@ import {
     MAX_INVOICE_HISTORY_ITEMS,
     getStorageKey,
     finalizeSaveProductsService,
-    DOCUMENTS_COLLECTION,
     clearOldTemporaryScanData,
+    DOCUMENTS_COLLECTION,
+    uploadImageToFirebaseStorage, // Added import
+    deleteImageFromFirebaseStorage // Added import
 } from '@/services/backend';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import NextImage from 'next/image';
@@ -126,6 +128,7 @@ export default function UploadPage() {
       const sortedInvoices = invoices.sort((a, b) => {
           let timeA = 0;
           let timeB = 0;
+          // Handle both string ISO dates and Firestore Timestamps
           if (a.uploadTime) {
               timeA = a.uploadTime instanceof Timestamp ? a.uploadTime.toMillis() : parseISO(a.uploadTime as string).getTime();
           }
@@ -134,7 +137,8 @@ export default function UploadPage() {
           }
         return timeB - timeA;
       });
-      setUploadHistory(sortedInvoices.slice(0, 10));
+      // Limit history to MAX_INVOICE_HISTORY_ITEMS for display
+      setUploadHistory(sortedInvoices.slice(0, MAX_INVOICE_HISTORY_ITEMS));
     } catch (error) {
       console.error("Failed to load upload history:", error);
       toast({
@@ -158,6 +162,8 @@ export default function UploadPage() {
       setUploadHistory([]);
       setIsLoadingHistory(false);
     } else if (user && user.id) {
+      setUploadHistory([]); // Explicitly clear history on user change or initial load for this user
+      setIsLoadingHistory(true);
       fetchHistory();
       clearOldTemporaryScanData(false, user.id); // Periodically clear old temp data for the user
     }
@@ -176,7 +182,7 @@ export default function UploadPage() {
         reader.readAsDataURL(file);
     } else if (file.type === 'application/pdf') {
         setIsPdfPreview(true);
-        setFilePreview(null);
+        setFilePreview(null); // No direct preview for PDF, just show icon and name
     }
   };
 
@@ -259,11 +265,14 @@ export default function UploadPage() {
     const reader = new FileReader();
     let progressInterval: NodeJS.Timeout | undefined = undefined;
 
-    const uniqueScanId = `${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
-    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanId}`; // Firestore document ID
+    // For Firestore, the tempInvoiceId will be the actual Firestore document ID for the PENDING doc.
+    // We use a unique part for any potential localStorage keys for scan results if needed,
+    // or for constructing Firebase Storage paths if we go that route for images.
+    const uniqueScanIdPart = `${Date.now()}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '')}`;
+    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanIdPart}`; // Firestore document ID
 
-    // No more localStorage keys for images themselves
-    const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`); // For scan JSON results
+    // This key is still used to pass scan results to the edit page via localStorage
+    const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanIdPart}`);
 
     let scanDataSavedForEdit = false;
     let originalImagePreviewFirebaseUrl: string | null = null;
@@ -293,46 +302,58 @@ export default function UploadPage() {
              console.error("FileReader did not return a string result.");
              toast({ title: t('upload_toast_upload_failed_title'), description: t('upload_toast_upload_failed_read_desc'), variant: 'destructive' });
              setIsProcessing(false); setIsUploading(false);
-             clearTemporaryScanData(uniqueScanId, user.id);
+             // No localStorage image keys to clear anymore directly
+             localStorage.removeItem(dataKey); // Still clear scan result JSON
              return;
            }
 
            const originalBase64Data = reader.result;
-           let imageForAIScan = originalBase64Data;
+           let imageForAIScan = originalBase64Data; // Default to original for PDF or if no compression needed for AI
 
            // Upload images to Firebase Storage
            const timestamp = Date.now();
-           const baseFilePath = `user_uploads/${user.id}/images/${timestamp}_${originalFileName}`;
+           const baseFilePath = `user_uploads/${user.id}/images/${timestamp}_${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
            try {
                if (selectedFile.type.startsWith('image/')) {
                    const compressedForFinal = await compressImage(originalBase64Data, 0.6, 1024, 1024);
                    compressedImageForFinalSaveFirebaseUrl = await uploadImageToFirebaseStorage(compressedForFinal, `${baseFilePath}_final.jpg`);
                    
-                   const previewForEdit = await compressImage(originalBase64Data, 0.5, 800, 800); // Create a reasonably sized preview
+                   // Create a smaller preview for the edit page and for display in lists if needed
+                   const previewForEdit = await compressImage(originalBase64Data, 0.5, 800, 800);
                    originalImagePreviewFirebaseUrl = await uploadImageToFirebaseStorage(previewForEdit, `${baseFilePath}_preview.jpg`);
 
-                   imageForAIScan = compressedForFinal; // Use compressed for AI if smaller
+                   imageForAIScan = previewForEdit; // Use a reasonably sized image for AI, not necessarily the smallest
                } else if (selectedFile.type === 'application/pdf') {
-                   // For PDF, we might just upload the original if it's not too large for AI, or skip direct preview storage if large
-                   // For simplicity, let's assume PDFs are directly processed or we use a placeholder/link.
-                   // If PDFs are small enough to be re-uploaded as "preview" for consistency in Firestore record:
+                   // For PDF, upload the original (or a converted image if PDF is too large for AI later)
+                   // For simplicity here, we'll assume the PDF itself or its first page (if converted) goes to preview
+                   // And the same or original PDF goes to final record.
+                   // This might need a PDF-to-image conversion step if AI model requires image.
+                   // For now, storing the base64 as placeholder if no conversion, or link if direct upload.
+                   // For Firestore storage of actual file, we'd use Firebase Storage upload for the File object.
+                   // Here, we're simulating by preparing URLs for what *would* be stored.
+                   // Let's assume we upload the original PDF file directly to storage
+                   // This part needs actual File object upload, not base64 for PDF typically for Firebase Storage
+                   // For the purpose of this flow with base64, let's assume `uploadImageToFirebaseStorage` can handle it for now.
                    originalImagePreviewFirebaseUrl = await uploadImageToFirebaseStorage(originalBase64Data, baseFilePath);
-                   compressedImageForFinalSaveFirebaseUrl = originalImagePreviewFirebaseUrl; // Same for PDF in this example
-                   imageForAIScan = originalBase64Data;
+                   compressedImageForFinalSaveFirebaseUrl = originalImagePreviewFirebaseUrl; // For PDF, use the same for now
+                   imageForAIScan = originalBase64Data; // AI will need to handle PDF or a converted image
                }
            } catch (uploadError: any) {
                console.error("[UploadPage] Firebase Storage upload failed:", uploadError);
                setScanError(t('upload_toast_storage_upload_fail_desc', { message: uploadError.message || 'Unknown storage error' }));
                toast({ title: t('upload_toast_upload_failed_title'), description: t('upload_toast_storage_upload_fail_desc', { message: uploadError.message }), variant: 'destructive', duration: 8000 });
                setIsProcessing(false); setIsUploading(false);
-               clearTemporaryScanData(uniqueScanId, user.id); // Also clear scan result data
+               localStorage.removeItem(dataKey);
+               // Attempt to delete already uploaded images if one failed
+               if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+               if (compressedImageForFinalSaveFirebaseUrl && compressedImageForFinalSaveFirebaseUrl !== originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
                return;
            }
 
             setStreamingContent(t('upload_ai_analysis_inprogress'));
 
-           if (documentType === 'invoice') {
+           if (documentType === 'invoice') { // Tax Invoice
                try {
                    scanResult = await scanTaxInvoice({ invoiceDataUri: imageForAIScan });
                    if (scanResult.error) setScanError(scanResult.error);
@@ -341,7 +362,7 @@ export default function UploadPage() {
                     scanResult = { error: errorMessage } as ScanTaxInvoiceOutput;
                     setScanError(errorMessage);
                }
-           } else {
+           } else { // Delivery Note
                try {
                    scanResult = await scanInvoice({ invoiceDataUri: imageForAIScan }, (update) => {
                         if(update && update.content) setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`);
@@ -356,11 +377,21 @@ export default function UploadPage() {
            setIsProcessing(false);
            setStreamingContent('');
 
-
+            // Save scan result JSON to localStorage for the edit page
             try {
                 if (!scanResult) throw new Error("Scan result is null or undefined after AI call.");
-                localStorage.setItem(dataKey, JSON.stringify(scanResult));
-                scanDataSavedForEdit = true;
+                const scanResultString = JSON.stringify(scanResult);
+                if (scanResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
+                    const errorMsg = t('upload_toast_scan_results_too_large_error', { size: (scanResultString.length / (1024*1024)).toFixed(2) });
+                    scanResult = { products: [], error: errorMsg } as ScanInvoiceOutput; // Adjust for both types
+                    localStorage.setItem(dataKey, JSON.stringify(scanResult)); // Save error state
+                    scanDataSavedForEdit = true; // Still save, but with error
+                    setScanError(errorMsg);
+                    toast({ title: t('upload_toast_scan_error_title'), description: errorMsg, variant: 'destructive', duration: 8000 });
+                } else {
+                    localStorage.setItem(dataKey, scanResultString);
+                    scanDataSavedForEdit = true;
+                }
             } catch (storageError: any) {
                  console.error(`[UploadPage] Error saving scan results to localStorage for key ${dataKey}:`, storageError);
                  toast({
@@ -369,8 +400,7 @@ export default function UploadPage() {
                      variant: 'destructive',
                      duration: 10000,
                  });
-                 clearTemporaryScanData(uniqueScanId, user.id);
-                 // Also attempt to delete uploaded images if scan data saving fails
+                 // Attempt to delete uploaded images if scan JSON saving fails
                  if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
                  if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
                  setIsProcessing(false); setIsUploading(false); clearSelection();
@@ -385,62 +415,60 @@ export default function UploadPage() {
                  description: t('upload_toast_scan_complete_desc', { fileName: originalFileName }),
                });
            }
+           
+           // Create PENDING document in Firestore and then navigate
+            try {
+                if (!db || !user || !user.id) throw new Error("Firestore (db) or user is not initialized for creating pending document.");
+                const pendingInvoiceDocRef = doc(db, DOCUMENTS_COLLECTION, tempInvoiceId);
 
-           Promise.resolve().finally(async () => {
-                if (scanDataSavedForEdit) {
-                    const queryParams = new URLSearchParams({
-                        // key: dataKey, // No longer needed if we pass URLs directly
-                        fileName: originalFileName,
-                        tempInvoiceId: tempInvoiceId,
-                        docType: documentType,
-                    });
-                     if (originalImagePreviewFirebaseUrl) queryParams.append('originalImagePreviewUrl', originalImagePreviewFirebaseUrl);
-                     if (compressedImageForFinalSaveFirebaseUrl) queryParams.append('compressedImageUrl', compressedImageForFinalSaveFirebaseUrl);
+                const pendingInvoice: Omit<InvoiceHistoryItem, 'id'> = {
+                    userId: user.id,
+                    originalFileName: originalFileName,
+                    generatedFileName: originalFileName, // Will be updated in edit/finalize
+                    uploadTime: Timestamp.now(), // Use Firestore Timestamp
+                    status: scanResult?.error ? 'error' : 'pending',
+                    documentType: documentType,
+                    supplierName: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.supplierName : (scanResult as ScanInvoiceOutput)?.supplier) || null,
+                    invoiceNumber: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber : (scanResult as ScanInvoiceOutput)?.invoiceNumber) || null,
+                    totalAmount: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.totalAmount : (scanResult as ScanInvoiceOutput)?.totalAmount) ?? null,
+                    invoiceDate: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceDate : (scanResult as ScanInvoiceOutput)?.invoiceDate) || null,
+                    paymentMethod: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.paymentMethod : (scanResult as ScanInvoiceOutput)?.paymentMethod) || null,
+                    paymentStatus: 'unpaid',
+                    paymentDueDate: null,
+                    errorMessage: scanResult?.error || null,
+                    originalImagePreviewUri: originalImagePreviewFirebaseUrl, // Firebase Storage URL
+                    compressedImageForFinalRecordUri: compressedImageForFinalSaveFirebaseUrl, // Firebase Storage URL
+                    paymentReceiptImageUri: null,
+                    linkedDeliveryNoteId: null,
+                };
+                await setDoc(pendingInvoiceDocRef, pendingInvoice);
+                console.log(`[UploadPage] Created PENDING Firestore document record ID: ${tempInvoiceId}`);
+                fetchHistory();
+                
+                // Navigate to edit page with necessary info (Firestore ID, filenames, and image URLs)
+                const queryParams = new URLSearchParams({
+                    // key: dataKey, // Still pass dataKey for edit page to load scan JSON from localStorage
+                    fileName: originalFileName,
+                    tempInvoiceId: tempInvoiceId, // Pass the Firestore ID of the PENDING document
+                    docType: documentType,
+                });
+                // Add image URLs to query params if they exist
+                if (originalImagePreviewFirebaseUrl) queryParams.append('originalImagePreviewUrl', originalImagePreviewFirebaseUrl);
+                if (compressedImageForFinalSaveFirebaseUrl) queryParams.append('compressedImageUrl', compressedImageForFinalSaveFirebaseUrl);
 
-                    try {
-                        if (!db || !user || !user.id) throw new Error("Firestore (db) or user is not initialized.");
-                        const pendingInvoiceDocRef = doc(db, DOCUMENTS_COLLECTION, tempInvoiceId);
+                 router.push(`/edit-invoice?${queryParams.toString()}`);
 
-                        const pendingInvoice: Omit<InvoiceHistoryItem, 'id'> = {
-                            userId: user.id,
-                            originalFileName: originalFileName,
-                            generatedFileName: originalFileName,
-                            uploadTime: Timestamp.now(),
-                            status: scanResult?.error ? 'error' : 'pending',
-                            documentType: documentType,
-                            supplierName: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.supplierName : (scanResult as ScanInvoiceOutput)?.supplier) || null,
-                            invoiceNumber: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceNumber : (scanResult as ScanInvoiceOutput)?.invoiceNumber) || null,
-                            totalAmount: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.totalAmount : (scanResult as ScanInvoiceOutput)?.totalAmount) ?? null,
-                            invoiceDate: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.invoiceDate : (scanResult as ScanInvoiceOutput)?.invoiceDate) || null,
-                            paymentMethod: (documentType === 'invoice' ? (scanResult as ScanTaxInvoiceOutput)?.paymentMethod : (scanResult as ScanInvoiceOutput)?.paymentMethod) || null,
-                            paymentStatus: 'unpaid',
-                            paymentDueDate: null,
-                            errorMessage: scanResult?.error || null,
-                            originalImagePreviewUri: originalImagePreviewFirebaseUrl, // Store Firebase URL
-                            compressedImageForFinalRecordUri: compressedImageForFinalSaveFirebaseUrl, // Store Firebase URL
-                            paymentReceiptImageUri: null,
-                            linkedDeliveryNoteId: null,
-                        };
-                        await setDoc(pendingInvoiceDocRef, pendingInvoice);
-                        console.log(`[UploadPage] Created PENDING Firestore document record ID: ${tempInvoiceId}`);
-                        fetchHistory();
-                         router.push(`/edit-invoice?${queryParams.toString()}`);
-                    } catch (e: any) {
-                        console.error("[UploadPage] Failed to create PENDING Firestore document:", e);
-                        toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: e.message}), variant: 'destructive', duration: 8000 });
-                        clearTemporaryScanData(uniqueScanId, user.id);
-                        if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
-                        if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
-                    }
-                } else {
-                    console.error("[UploadPage] Temporary data (scan result) was not saved to localStorage, or image upload to Firebase Storage failed. Aborting Firestore PENDING record creation and navigation to edit page.");
-                    clearTemporaryScanData(uniqueScanId, user.id);
-                    if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
-                    if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
-                }
+            } catch (e: any) {
+                console.error("[UploadPage] Failed to create PENDING Firestore document or navigate:", e);
+                toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: e.message}), variant: 'destructive', duration: 8000 });
+                // Cleanup if Firestore save failed
+                localStorage.removeItem(dataKey);
+                if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
+                if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
+            } finally {
                 setIsUploading(false);
                 clearSelection();
-           });
+            }
        };
 
      reader.onerror = async (errorEvent) => {
@@ -453,7 +481,7 @@ export default function UploadPage() {
          description: t('upload_toast_upload_failed_read_desc'),
          variant: 'destructive',
        });
-       clearTemporaryScanData(uniqueScanId, user.id);
+       localStorage.removeItem(dataKey); // Clear any potentially partially saved scan data
        if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
        if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
      };
@@ -468,9 +496,8 @@ export default function UploadPage() {
        description: t('upload_toast_upload_failed_unexpected_desc', { message: (error as Error).message }),
        variant: 'destructive',
      });
-     clearTemporaryScanData(uniqueScanId, user.id);
-     if (originalImagePreviewFirebaseUrl) await deleteImageFromFirebaseStorage(originalImagePreviewFirebaseUrl);
-     if (compressedImageForFinalSaveFirebaseUrl) await deleteImageFromFirebaseStorage(compressedImageForFinalSaveFirebaseUrl);
+      localStorage.removeItem(dataKey);
+      // No Firebase URLs to clear here as error is before upload attempt
    }
 };
 
@@ -503,13 +530,13 @@ export default function UploadPage() {
   };
 
   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-      const detailsToSet = {...invoice, _displayContext: 'full_details'};
+      const detailsToSet: InvoiceHistoryItem & { _displayContext?: 'image_only' | 'full_details' } = {...invoice, _displayContext: 'full_details'};
       setSelectedInvoiceDetails(detailsToSet);
       setShowDetailsModal(true);
   };
 
   const handleViewImage = (invoice: InvoiceHistoryItem) => {
-    const detailsToSet = {...invoice, _displayContext: 'image_only'};
+    const detailsToSet: InvoiceHistoryItem & { _displayContext?: 'image_only' | 'full_details' } = {...invoice, _displayContext: 'image_only'};
     setSelectedInvoiceDetails(detailsToSet);
     setShowDetailsModal(true);
   };
@@ -563,7 +590,7 @@ export default function UploadPage() {
   }
 
   if (!user && !authLoading) {
-    return null;
+    return null; // Or a redirect to login, handled by AuthContext effect
   }
 
   const formatCurrencyDisplay = (
@@ -772,18 +799,13 @@ export default function UploadPage() {
                                         toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"});
                                         return;
                                     }
-                                    const uniqueScanId = item.id.startsWith(`pending-inv-${user.id}_`)
-                                                       ? item.id.substring(`pending-inv-${user.id}_`.length)
-                                                       : item.id; // Fallback if ID structure isn't as expected
-                                    
-                                    const dataKeyForEdit = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanId}`);
-                                    
+                                    // tempInvoiceId is the Firestore ID of the PENDING doc
                                     const queryParams = new URLSearchParams({
                                         fileName: encodeURIComponent(item.originalFileName || 'unknown_doc'),
-                                        tempInvoiceId: item.id, // This is the PENDING Firestore document ID
+                                        tempInvoiceId: item.id, 
                                         docType: item.documentType,
                                     });
-                                    // Add Firebase Storage URLs if they exist on the item
+                                    // Add image URLs to query params if they exist
                                     if (item.originalImagePreviewUri) queryParams.append('originalImagePreviewUrl', item.originalImagePreviewUri);
                                     if (item.compressedImageForFinalRecordUri) queryParams.append('compressedImageUrl', item.compressedImageForFinalRecordUri);
                                     
@@ -806,7 +828,12 @@ export default function UploadPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
+      <Dialog open={showDetailsModal} onOpenChange={(open) => {
+          setShowDetailsModal(open);
+          if (!open) {
+            setSelectedInvoiceDetails(null); // Clear details when closing
+          }
+      }}>
         <DialogContent className="max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="p-4 sm:p-6 border-b">
             <DialogTitle>{selectedInvoiceDetails?._displayContext === 'image_only' ? t('upload_history_image_preview_title') : t('invoice_details_title')}</DialogTitle>
@@ -889,4 +916,3 @@ export default function UploadPage() {
     </div>
   );
 }
-
