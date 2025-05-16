@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText as FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText as FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard, ListChecks, Grid } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,7 @@ import {
   DropdownMenuPortal
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'; // Added SheetHeader and SheetTitle
 import React, { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { useLanguage, Locale } from '@/context/LanguageContext';
@@ -69,8 +69,12 @@ export default function Navigation() {
     const isAuthPage = publicPaths.includes(pathname);
     const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path) && path !== '/');
 
-    if (!user && isProtectedPage) {
+    if (!user && isProtectedPage && !isAuthPage) { // Ensure we don't redirect if already on an auth page
+        console.log(`[Navigation] User not authenticated and on protected page ${pathname}. Redirecting to login.`);
         router.push('/login');
+    } else if (user && isAuthPage) {
+        console.log(`[Navigation] User authenticated and on auth page ${pathname}. Redirecting to home.`);
+        router.push('/');
     }
   }, [user, authLoading, pathname, router, navItemsBase]);
 
@@ -92,12 +96,12 @@ export default function Navigation() {
 
   const changeLanguage = (newLocale: string) => {
     setLocale(newLocale as Locale);
-    if (isMobileSheetOpen) setIsMobileSheetOpen(false);
+    // No need to close mobile sheet here, DropdownMenu handles its own closure.
   };
 
   const changeTheme = (newTheme: string) => {
     setTheme(newTheme);
-    if (isMobileSheetOpen) setIsMobileSheetOpen(false);
+    // No need to close mobile sheet here, DropdownMenu handles its own closure.
   }
 
   return (
@@ -112,7 +116,6 @@ export default function Navigation() {
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {currentNavItems.map((item) => {
-            // For desktop, only show items if user is logged in OR if item is not protected
             if (!user && item.protected) return null;
 
             const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
@@ -124,7 +127,7 @@ export default function Navigation() {
                   buttonVariants({ variant: isActive ? 'secondary' : 'ghost', size: 'sm' }),
                   "transition-all duration-200 ease-in-out hover:scale-105",
                   "scale-fade-in",
-                  isActive ? "shadow-sm" : "hover:bg-muted/60 dark:hover:bg-accent hover:text-primary dark:hover:text-accent-foreground",
+                  isActive ? "shadow-sm" : "text-foreground hover:bg-muted/60 hover:text-primary dark:hover:bg-accent dark:hover:text-accent-foreground",
                   !isActive && "text-foreground"
                 )}
                  style={{ animationDelay: item.animationDelay }}
@@ -208,7 +211,6 @@ export default function Navigation() {
                 <>
                    <Button variant="ghost" size="sm" asChild>
                     <Link href="/login" className="flex items-center">
-                        {/* The Link component must have exactly one child when used with asChild */}
                        <span className="flex items-center">
                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
@@ -245,7 +247,6 @@ export default function Navigation() {
                     </SheetHeader>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
                         {currentNavItems.map((item) => {
-                           // For mobile, only show items if user is logged in OR if item is not protected
                           if (!user && item.protected) return null;
 
                           const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
@@ -265,7 +266,6 @@ export default function Navigation() {
                           );
                         })}
 
-                        {/* View options for specific pages (mobile sheet) */}
                         {(pathname.startsWith('/inventory') || pathname.startsWith('/invoices')) && (
                           <>
                             <DropdownMenuSeparator className="my-2"/>
@@ -277,9 +277,11 @@ export default function Navigation() {
                             variant="ghost"
                             className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
                             onClick={() => {
-                              const currentView = new URLSearchParams(window.location.search).get('mobileView') || 'cards';
+                              const currentSearchParams = new URLSearchParams(window.location.search);
+                              const currentView = currentSearchParams.get('mobileView') || 'cards';
                               const nextView = currentView === 'cards' ? 'table' : 'cards';
-                              handleMobileNavClick(`/inventory?mobileView=${nextView}`);
+                              currentSearchParams.set('mobileView', nextView);
+                              handleMobileNavClick(`/inventory?${currentSearchParams.toString()}`);
                             }}
                           >
                             <Palette className="h-5 w-5" />
@@ -291,9 +293,11 @@ export default function Navigation() {
                             variant="ghost"
                             className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
                             onClick={() => {
-                              const currentView = new URLSearchParams(window.location.search).get('mobileView') || 'grid';
+                              const currentSearchParams = new URLSearchParams(window.location.search);
+                              const currentView = currentSearchParams.get('mobileView') || 'grid';
                               const nextView = currentView === 'grid' ? 'list' : 'grid';
-                              handleMobileNavClick(`/invoices?mobileView=${nextView}`);
+                              currentSearchParams.set('mobileView', nextView);
+                              handleMobileNavClick(`/invoices?${currentSearchParams.toString()}`);
                             }}
                           >
                             <Palette className="h-5 w-5" />
@@ -338,7 +342,6 @@ export default function Navigation() {
                            )}
                          </div>
 
-                         {/* Appearance Settings inside Mobile Sheet */}
                          <div className="border-t pt-4">
                             <DropdownMenu>
                              <DropdownMenuTrigger asChild>
@@ -381,3 +384,4 @@ export default function Navigation() {
     </header>
   );
 }
+
