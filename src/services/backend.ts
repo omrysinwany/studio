@@ -29,11 +29,11 @@ import type { PosConnectionConfig } from './pos-integration/pos-adapter.interfac
 export const USERS_COLLECTION = "users";
 export const INVENTORY_COLLECTION = "inventoryProducts";
 export const DOCUMENTS_COLLECTION = "documents";
-export const SUPPLIERS_COLLECTION = "suppliers"; // New
-export const OTHER_EXPENSES_COLLECTION = "otherExpenses"; // New
-export const EXPENSE_CATEGORIES_COLLECTION = "expenseCategories"; // New
-export const EXPENSE_TEMPLATES_COLLECTION = "expenseTemplates"; // New
-export const USER_SETTINGS_COLLECTION = "userSettings"; // New
+export const SUPPLIERS_COLLECTION = "suppliers";
+export const OTHER_EXPENSES_COLLECTION = "otherExpenses";
+export const EXPENSE_CATEGORIES_COLLECTION = "expenseCategories";
+export const EXPENSE_TEMPLATES_COLLECTION = "expenseTemplates"; // Not yet fully Firestore integrated
+export const USER_SETTINGS_COLLECTION = "userSettings";
 
 
 export interface User {
@@ -52,13 +52,13 @@ export interface Product {
   shortName?: string;
   barcode?: string | null;
   quantity: number;
-  unitPrice: number; // Represents cost price
+  unitPrice: number;
   salePrice?: number | null;
-  lineTotal: number; // Typically quantity * unitPrice (cost price) from the document
+  lineTotal: number;
   minStockLevel?: number | null;
   maxStockLevel?: number | null;
   imageUrl?: string | null;
-  _originalId?: string; // Internal use, e.g., for matching during edits
+  _originalId?: string;
   lastUpdated?: Timestamp | FieldValue;
 }
 
@@ -84,7 +84,6 @@ export interface InvoiceHistoryItem {
   linkedDeliveryNoteId?: string | null;
 }
 
-
 export interface DocumentLineItem {
   documentId?: string;
   userId?: string;
@@ -97,7 +96,6 @@ export interface DocumentLineItem {
   lineTotal: number;
   shortProductName?: string;
 }
-
 
 export interface SupplierSummary {
   id: string;
@@ -118,16 +116,27 @@ export interface AccountantSettings {
   phone?: string | null;
 }
 
+export interface KpiPreferences {
+  visibleKpiIds: string[];
+  kpiOrder: string[];
+}
+
+export interface QuickActionPreferences {
+  visibleQuickActionIds: string[];
+  quickActionOrder: string[];
+}
+
 export interface UserSettings {
-  userId: string;
+  userId: string; // Should match the auth UID and be the document ID
   reminderDaysBefore?: number | null;
   posSystemId?: string | null;
   posConfig?: PosConnectionConfig | null;
   accountantSettings?: AccountantSettings | null;
   monthlyBudget?: number | null;
-  kpiPreferences?: { visibleKpiIds: string[], kpiOrder: string[] } | null;
-  quickActionPreferences?: { visibleQuickActionIds: string[], quickActionOrder: string[] } | null;
+  kpiPreferences?: KpiPreferences | null;
+  quickActionPreferences?: QuickActionPreferences | null;
 }
+
 
 export interface OtherExpense {
   id: string;
@@ -135,36 +144,30 @@ export interface OtherExpense {
   description: string;
   amount: number;
   date: string | Timestamp;
-  category: string; 
-  _internalCategoryKey?: string | null; 
-  categoryId?: string | null; 
+  category: string;
+  _internalCategoryKey?: string | null;
+  categoryId?: string | null;
 }
 
 export interface ExpenseCategory {
   id: string;
   userId: string;
-  name: string; 
-  internalKey: string; 
-  isFixed?: boolean; 
-  defaultAmount?: number | null; 
+  name: string;
+  internalKey: string;
+  isFixed?: boolean;
+  defaultAmount?: number | null;
   createdAt: Timestamp | FieldValue;
 }
-
 
 export interface ExpenseTemplate {
   id: string;
   userId: string;
   name: string;
-  categoryKey: string; 
+  categoryKey: string;
   description: string;
   amount: number;
   createdAt: Timestamp | FieldValue;
 }
-
-// --- Storage Keys for localStorage (mostly for UI preferences now) ---
-export const KPI_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_kpiPreferences_v2';
-export const QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_quickActionsPreferences_v1';
-export const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget'; // Still needed for reading budget in accounts page until fully migrated
 
 // --- Storage Keys for temporary data during scan process (localStorage) ---
 export const TEMP_DATA_KEY_PREFIX = 'invoTrackTempScan_';
@@ -187,7 +190,6 @@ export interface PriceCheckResult {
   priceDiscrepancies: ProductPriceDiscrepancy[];
 }
 
-// Helper to generate storage keys consistently
 export const getStorageKey = (baseKey: string, userId?: string): string => {
   if (!userId) {
     if ([KPI_PREFERENCES_STORAGE_KEY_BASE, QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE].includes(baseKey)) {
@@ -199,15 +201,20 @@ export const getStorageKey = (baseKey: string, userId?: string): string => {
   return `${baseKey}_${userId}`;
 };
 
+// --- Storage Keys for localStorage (primarily for UI preferences NOT in Firestore yet) ---
+// These will be deprecated as settings move to Firestore
+export const KPI_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_kpiPreferences_v2'; // Keep for now, will be migrated
+export const QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE = 'invoTrack_quickActionsPreferences_v1'; // Keep for now, will be migrated
+export const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget'; // To be removed after migration to UserSettings
 
-// Function to get data from localStorage (primarily for UI preferences now)
-export const getStoredData = <T>(keyBase: string, userId?: string, defaultDataIfNoUserOrError: T[] = []): T[] => {
+
+export const getStoredData = <T>(keyBase: string, userId?: string, defaultDataIfNoUserOrError: T | T[] = []): T | T[] => {
   if (typeof window === 'undefined') return defaultDataIfNoUserOrError;
   const storageKey = getStorageKey(keyBase, userId);
   try {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      return JSON.parse(stored) as T[];
+      return JSON.parse(stored) as T[]; // Assuming arrays, adjust if single objects are stored sometimes
     }
     return defaultDataIfNoUserOrError;
   } catch (error) {
@@ -216,7 +223,6 @@ export const getStoredData = <T>(keyBase: string, userId?: string, defaultDataIf
   }
 };
 
-// Function to save data to localStorage (primarily for UI preferences now)
 const saveStoredData = (keyBase: string, data: any, userId?: string): boolean => {
   if (typeof window === 'undefined') return false;
   if (!userId && ![KPI_PREFERENCES_STORAGE_KEY_BASE, QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE].includes(keyBase)) {
@@ -250,7 +256,6 @@ const saveStoredData = (keyBase: string, data: any, userId?: string): boolean =>
   }
 };
 
-// Helper to sanitize data for Firestore (replace undefined with null)
 export function sanitizeForFirestore<T extends object>(data: T): T {
   const sanitizedData = { ...data } as Record<string, any>;
   for (const key in sanitizedData) {
@@ -260,7 +265,6 @@ export function sanitizeForFirestore<T extends object>(data: T): T {
   }
   return sanitizedData as T;
 }
-
 
 // --- User Management (Firestore) ---
 export async function saveUserToFirestore(userData: User): Promise<void> {
@@ -432,8 +436,8 @@ export async function getInvoicesService(userId: string): Promise<InvoiceHistory
         const data = docSnap.data();
         const convertTimestampToString = (field: any) => {
             if (field instanceof Timestamp) return field.toDate().toISOString();
-            if (typeof field === 'string' && isValid(parseISO(field))) return field; // Already a string
-            if (field instanceof Date && isValid(field)) return field.toISOString(); // If it's a Date object
+            if (typeof field === 'string' && isValid(parseISO(field))) return field; 
+            if (field instanceof Date && isValid(field)) return field.toISOString();
             return null;
         };
         return {
@@ -469,7 +473,6 @@ export async function updateInvoiceService(invoiceId: string, updatedData: Parti
   if (dataToUpdate.hasOwnProperty('uploadTime')) {
     dataToUpdate.uploadTime = convertToTimestampIfValidString(dataToUpdate.uploadTime);
   }
-
 
   try {
     const docSnap = await getDoc(docRef);
@@ -591,7 +594,7 @@ export async function finalizeSaveProductsService(
     originalFileNameFromUpload: string,
     documentType: 'deliveryNote' | 'invoice',
     userId: string,
-    tempInvoiceId?: string, // This is the ID of the "pending" document in Firestore
+    tempInvoiceId?: string,
     extractedInvoiceNumber?: string | null,
     finalSupplierName?: string | null,
     extractedTotalAmount?: number | null,
@@ -629,7 +632,6 @@ export async function finalizeSaveProductsService(
             let existingProductRef;
             let existingProductData: Product | undefined = undefined;
 
-            // Priority: ID -> Catalog Number -> Barcode
             if (productFromDoc.id && !productFromDoc.id.startsWith('prod-temp-') && !productFromDoc.id.includes('-new')) {
                 existingProductRef = doc(db, INVENTORY_COLLECTION, productFromDoc.id);
                 const snap = await getDoc(existingProductRef);
@@ -655,22 +657,22 @@ export async function finalizeSaveProductsService(
             if (existingProductRef && existingProductData) {
                 const currentInventoryQuantity = Number(existingProductData.quantity) || 0;
                 const updatedQuantity = currentInventoryQuantity + quantityFromDoc;
-                const updatePayload: Partial<Product> = sanitizeForFirestore({
+                const updatePayload: Partial<Product> = {
+                    userId, // Ensure userId is part of the update payload
                     quantity: updatedQuantity,
                     unitPrice: unitPriceFromDoc > 0 ? unitPriceFromDoc : (existingProductData.unitPrice || 0),
                     lastUpdated: serverTimestamp(),
-                    // Only update description/shortName if the new one is non-empty and different
-                    description: (productFromDoc.description && productFromDoc.description.trim() && productFromDoc.description !== existingProductData.description) ? productFromDoc.description : existingProductData.description,
-                    shortName: (productFromDoc.shortName && productFromDoc.shortName.trim() && productFromDoc.shortName !== existingProductData.shortName) ? productFromDoc.shortName : existingProductData.shortName,
-                    // Only update salePrice, min/max stock if provided in productFromDoc (from BarcodePromptDialog)
+                    // Preserve existing details unless explicitly provided in productFromDoc for update
+                    description: productFromDoc.description && productFromDoc.description !== existingProductData.description ? productFromDoc.description : existingProductData.description,
+                    shortName: productFromDoc.shortName && productFromDoc.shortName !== existingProductData.shortName ? productFromDoc.shortName : existingProductData.shortName,
                     salePrice: productFromDoc.salePrice !== undefined ? (Number(productFromDoc.salePrice) ?? null) : existingProductData.salePrice,
                     minStockLevel: productFromDoc.minStockLevel !== undefined ? (Number(productFromDoc.minStockLevel) ?? null) : existingProductData.minStockLevel,
                     maxStockLevel: productFromDoc.maxStockLevel !== undefined ? (Number(productFromDoc.maxStockLevel) ?? null) : existingProductData.maxStockLevel,
                     barcode: productFromDoc.barcode !== undefined ? (productFromDoc.barcode || null) : existingProductData.barcode,
                     imageUrl: productFromDoc.imageUrl !== undefined ? (productFromDoc.imageUrl || null) : existingProductData.imageUrl,
-                });
+                };
                 updatePayload.lineTotal = parseFloat(((updatePayload.quantity || 0) * (updatePayload.unitPrice || 0)).toFixed(2));
-                batchOp.update(existingProductRef, updatePayload);
+                batchOp.update(existingProductRef, sanitizeForFirestore(updatePayload));
                 savedProductsWithFinalIds.push({ ...existingProductData, ...updatePayload, id: existingProductData.id } as Product);
             } else {
                 if (!productFromDoc.catalogNumber && !productFromDoc.description && !productFromDoc.barcode) {
@@ -678,7 +680,7 @@ export async function finalizeSaveProductsService(
                     continue;
                 }
                 const newProductRef = doc(collection(db, INVENTORY_COLLECTION));
-                const productDataForFirestore: Omit<Product, 'id'> = {
+                const newProductData: Omit<Product, 'id'> = {
                     userId,
                     catalogNumber: productFromDoc.catalogNumber || 'N/A',
                     description: productFromDoc.description || 'No Description',
@@ -693,12 +695,12 @@ export async function finalizeSaveProductsService(
                     imageUrl: productFromDoc.imageUrl || null,
                     lastUpdated: serverTimestamp(),
                 };
-                batchOp.set(newProductRef, sanitizeForFirestore(productDataForFirestore));
-                savedProductsWithFinalIds.push({ ...productDataForFirestore, id: newProductRef.id } as Product);
+                batchOp.set(newProductRef, sanitizeForFirestore(newProductData));
+                savedProductsWithFinalIds.push({ ...newProductData, id: newProductRef.id } as Product);
             }
         }
     } else if (documentType === 'invoice') {
-        console.log("[finalizeSaveProductsService] Tax Invoice: Products not added to inventory. Calculating total from provided products.");
+        console.log("[finalizeSaveProductsService] Tax Invoice: Products not added to inventory. Calculating total from provided products if any.");
         productsToFinalizeSave.forEach(p => calculatedInvoiceTotalAmountFromProducts += (parseFloat(String(p.lineTotal)) || 0));
     }
 
@@ -778,7 +780,6 @@ export async function finalizeSaveProductsService(
     if (documentDataForFirestore.uploadTime instanceof Timestamp) {
         finalUploadTimeForReturn = documentDataForFirestore.uploadTime.toDate().toISOString();
     } else {
-        // For serverTimestamp, we use current client time as an approximation for immediate UI update
         finalUploadTimeForReturn = new Date().toISOString();
     }
     
@@ -807,7 +808,6 @@ export async function finalizeSaveProductsService(
     return { finalInvoiceRecord, savedProductsWithFinalIds };
 }
 
-
 // --- Supplier Management (Firestore) ---
 export async function getSupplierSummariesService(userId: string): Promise<SupplierSummary[]> {
   if (!db) {
@@ -825,33 +825,33 @@ export async function getSupplierSummariesService(userId: string): Promise<Suppl
   try {
     const [suppliersSnapshot, documentsSnapshot] = await Promise.all([
       getDocs(suppliersQuery),
-      getDocs(documentsQuery) 
+      getDocs(documentsQuery)
     ]);
 
     const supplierMap = new Map<string, SupplierSummary>();
 
     suppliersSnapshot.docs.forEach(docSnap => {
       const data = docSnap.data();
-      const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt : (data.createdAt ? Timestamp.fromDate(new Date(data.createdAt)) : serverTimestamp());
-      const lastActivityDateTimestamp = data.lastActivityDate instanceof Timestamp ? data.lastActivityDate : (data.lastActivityDate ? Timestamp.fromDate(new Date(data.lastActivityDate)) : null);
+      const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt : (data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt : serverTimestamp());
+      const lastActivityDateTimestamp = data.lastActivityDate instanceof Timestamp ? data.lastActivityDate : (data.lastActivityDate && typeof data.lastActivityDate.toDate === 'function' ? data.lastActivityDate : null);
 
-      supplierMap.set(data.name, { 
+      supplierMap.set(data.name, {
         id: docSnap.id, userId, name: data.name,
         phone: data.phone || null, email: data.email || null, paymentTerms: data.paymentTerms || null,
-        invoiceCount: 0, // Will be calculated from documents
-        totalSpent: 0,  // Will be calculated from documents
+        invoiceCount: 0,
+        totalSpent: 0,
         lastActivityDate: lastActivityDateTimestamp,
         createdAt: createdAtTimestamp,
       });
     });
 
     documentsSnapshot.docs.forEach(docSnap => {
-      const docData = docSnap.data() as InvoiceHistoryItem; // Assume it's InvoiceHistoryItem
+      const docData = docSnap.data() as InvoiceHistoryItem;
       if (docData.supplierName && docData.status === 'completed') {
         let supplierEntry = supplierMap.get(docData.supplierName);
         if (!supplierEntry) {
             supplierEntry = {
-                id: `temp-${docData.supplierName.replace(/\s+/g, '_')}-${Date.now()}`, // More unique temp ID
+                id: `temp-${docData.supplierName.replace(/\s+/g, '_')}-${Date.now()}`,
                 userId,
                 name: docData.supplierName,
                 invoiceCount: 0,
@@ -873,9 +873,14 @@ export async function getSupplierSummariesService(userId: string): Promise<Suppl
         }
 
         if (docUploadTime) {
-          const currentLastActivity = supplierEntry.lastActivityDate instanceof Timestamp 
-            ? supplierEntry.lastActivityDate.toDate() 
-            : (supplierEntry.lastActivityDate ? parseISO(supplierEntry.lastActivityDate as string) : null);
+          let currentLastActivity: Date | null = null;
+          if (supplierEntry.lastActivityDate instanceof Timestamp) {
+            currentLastActivity = supplierEntry.lastActivityDate.toDate();
+          } else if (typeof supplierEntry.lastActivityDate === 'string' && isValid(parseISO(supplierEntry.lastActivityDate))) {
+            currentLastActivity = parseISO(supplierEntry.lastActivityDate);
+          } else if (supplierEntry.lastActivityDate instanceof Date) {
+            currentLastActivity = supplierEntry.lastActivityDate;
+          }
           
           if (!currentLastActivity || docUploadTime > currentLastActivity) {
             supplierEntry.lastActivityDate = Timestamp.fromDate(docUploadTime);
@@ -910,12 +915,12 @@ export async function createSupplierService(name: string, contactInfo: { phone?:
     invoiceCount: 0, totalSpent: 0, lastActivityDate: null, createdAt: serverTimestamp(),
   };
   await setDoc(newSupplierRef, sanitizeForFirestore(newSupplierData));
-  const now = Timestamp.now(); // Use this for immediate return as serverTimestamp is a token
+  const now = Timestamp.now();
   return { 
       id: newSupplierRef.id, 
       ...newSupplierData, 
       createdAt: now, 
-      lastActivityDate: null // Explicitly set to null if new
+      lastActivityDate: null
   } as SupplierSummary;
 }
 
@@ -968,8 +973,9 @@ export async function saveUserSettingsService(settings: Partial<Omit<UserSetting
     if (!db || !userId) throw new Error("User authentication is required for saveUserSettingsService.");
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     
-    const settingsToSave: Partial<UserSettings> = JSON.parse(JSON.stringify(settings));
+    const settingsToSave: Partial<UserSettings> = JSON.parse(JSON.stringify(settings)); // Deep copy
 
+    // Sanitize nested objects if they exist
     if (settingsToSave.accountantSettings) {
         settingsToSave.accountantSettings = sanitizeForFirestore({
             name: settingsToSave.accountantSettings.name || null,
@@ -985,6 +991,18 @@ export async function saveUserSettingsService(settings: Partial<Omit<UserSetting
     } else if (settings.hasOwnProperty('posConfig')) {
         settingsToSave.posConfig = {}; 
     }
+    
+    if (settingsToSave.kpiPreferences) {
+        settingsToSave.kpiPreferences = sanitizeForFirestore(settingsToSave.kpiPreferences);
+    } else if (settings.hasOwnProperty('kpiPreferences')) {
+        settingsToSave.kpiPreferences = null;
+    }
+
+    if (settingsToSave.quickActionPreferences) {
+        settingsToSave.quickActionPreferences = sanitizeForFirestore(settingsToSave.quickActionPreferences);
+    } else if (settings.hasOwnProperty('quickActionPreferences')) {
+        settingsToSave.quickActionPreferences = null;
+    }
 
     if (settingsToSave.monthlyBudget === undefined && settings.hasOwnProperty('monthlyBudget')) {
         settingsToSave.monthlyBudget = null;
@@ -992,21 +1010,33 @@ export async function saveUserSettingsService(settings: Partial<Omit<UserSetting
      if (settingsToSave.reminderDaysBefore === undefined && settings.hasOwnProperty('reminderDaysBefore')) {
         settingsToSave.reminderDaysBefore = null;
     }
-
-    delete (settingsToSave as any).userId;
+    
+    delete (settingsToSave as any).userId; // Ensure userId is not part of the data being set/merged
     
     await setDoc(userSettingsRef, sanitizeForFirestore(settingsToSave), { merge: true });
 }
 
-export async function getUserSettingsService(userId: string): Promise<UserSettings | null> {
-    if (!db || !userId) return null;
+export async function getUserSettingsService(userId: string): Promise<UserSettings> {
+    if (!db || !userId) {
+        // Return default settings if db or userId is not available
+        return { 
+            userId: userId || '', // Fallback for userId if not provided, though it's essential
+            reminderDaysBefore: 3, 
+            posSystemId: null,
+            posConfig: {},
+            accountantSettings: { name: null, email: null, phone: null },
+            monthlyBudget: null,
+            kpiPreferences: { visibleKpiIds: [], kpiOrder: [] }, // Default to empty arrays
+            quickActionPreferences: { visibleQuickActionIds: [], quickActionOrder: [] } // Default to empty arrays
+        };
+    }
     const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, userId);
     const docSnap = await getDoc(userSettingsRef);
     if (docSnap.exists()) {
         const data = docSnap.data();
         return { 
             userId, 
-            reminderDaysBefore: data.reminderDaysBefore ?? null,
+            reminderDaysBefore: data.reminderDaysBefore ?? 3, // Default to 3 if null/undefined
             posSystemId: data.posSystemId || null,
             posConfig: data.posConfig || {},
             accountantSettings: data.accountantSettings ? {
@@ -1015,10 +1045,11 @@ export async function getUserSettingsService(userId: string): Promise<UserSettin
                 phone: data.accountantSettings.phone || null,
             } : { name: null, email: null, phone: null },
             monthlyBudget: data.monthlyBudget === undefined ? null : (data.monthlyBudget ?? null),
-            kpiPreferences: data.kpiPreferences || null,
-            quickActionPreferences: data.quickActionPreferences || null,
+            kpiPreferences: data.kpiPreferences || { visibleKpiIds: [], kpiOrder: [] },
+            quickActionPreferences: data.quickActionPreferences || { visibleQuickActionIds: [], quickActionOrder: [] },
         } as UserSettings;
     }
+    // Return default settings if document doesn't exist
     return { 
         userId,
         reminderDaysBefore: 3, 
@@ -1026,8 +1057,8 @@ export async function getUserSettingsService(userId: string): Promise<UserSettin
         posConfig: {},
         accountantSettings: { name: null, email: null, phone: null },
         monthlyBudget: null,
-        kpiPreferences: null,
-        quickActionPreferences: null,
+        kpiPreferences: { visibleKpiIds: [], kpiOrder: [] },
+        quickActionPreferences: { visibleQuickActionIds: [], quickActionOrder: [] }
     };
 }
 
@@ -1114,18 +1145,19 @@ export async function saveExpenseCategoryService(categoryData: Omit<ExpenseCateg
 
 export async function getExpenseTemplatesService(userId: string): Promise<ExpenseTemplate[]> {
   if (!db || !userId) return [];
-  console.warn("getExpenseTemplatesService is reading from localStorage. Should be Firestore.");
-  return getStoredData<ExpenseTemplate>(EXPENSE_TEMPLATES_COLLECTION, userId, []); 
+  const templatesQuery = query(collection(db, EXPENSE_TEMPLATES_COLLECTION), where("userId", "==", userId), orderBy("name"));
+  const snapshot = await getDocs(templatesQuery);
+  return snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data(), createdAt: docSnap.data().createdAt instanceof Timestamp ? docSnap.data().createdAt : serverTimestamp() } as ExpenseTemplate));
 }
 
 export async function saveExpenseTemplateService(templateData: Omit<ExpenseTemplate, 'id' | 'userId' | 'createdAt'>, userId: string): Promise<string> {
   if (!db || !userId) throw new Error("User authentication required for saveExpenseTemplateService.");
-  console.warn("saveExpenseTemplateService is saving to localStorage. Should be Firestore.");
-  const templates = await getExpenseTemplatesService(userId);
-  const newId = `tmpl-${Date.now()}`;
-  const newTemplate: ExpenseTemplate = { ...templateData, id: newId, userId, createdAt: Timestamp.now() };
-  saveStoredData(EXPENSE_TEMPLATES_COLLECTION, [...templates, newTemplate], userId);
-  return newId;
+  if (!templateData.name || !templateData.categoryKey) throw new Error("Template name and categoryKey are required.");
+
+  const newDocRef = doc(collection(db, EXPENSE_TEMPLATES_COLLECTION));
+  const dataToSave: Omit<ExpenseTemplate, 'id'> = { ...templateData, userId, createdAt: serverTimestamp() };
+  await setDoc(newDocRef, sanitizeForFirestore(dataToSave));
+  return newDocRef.id;
 }
 
 
@@ -1182,12 +1214,3 @@ export function clearOldTemporaryScanData(emergencyClear: boolean = false, userI
   });
   if (itemsCleared > 0) console.log(`Cleared ${itemsCleared} old/emergency temp scan items (User: ${userIdToClear || 'All Relevant'}).`);
 }
-
-// Constants for localStorage keys - keep only those genuinely used for localStorage
-export const INVENTORY_STORAGE_KEY_BASE = 'invoTrack_inventory'; // Example if still used for something specific, otherwise remove
-export const POS_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_posSettings'; // Should be part of userSettings now
-export const ACCOUNTANT_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_accountantSettings'; // Should be part of userSettings now
-export const USER_SETTINGS_STORAGE_KEY_BASE = 'invoTrack_userSettings'; // Used by getUserSettingsService (actual data in Firestore)
-
-export const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses_localStorage_temp'; // If needed for temp before Firestore save
-export const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories_localStorage_temp';

@@ -302,8 +302,14 @@ export default function SuppliersPage() {
 
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplierName === supplier.name)
                                       .sort((a,b) => {
-                                        const dateA = a.uploadTime instanceof Timestamp ? a.uploadTime.toDate().getTime() : (typeof a.uploadTime === 'string' ? parseISO(a.uploadTime).getTime() : 0);
-                                        const dateB = b.uploadTime instanceof Timestamp ? b.uploadTime.toDate().getTime() : (typeof b.uploadTime === 'string' ? parseISO(b.uploadTime).getTime() : 0);
+                                        let dateA = 0;
+                                        let dateB = 0;
+                                        if (a.uploadTime instanceof Timestamp) dateA = a.uploadTime.toDate().getTime();
+                                        else if (typeof a.uploadTime === 'string' && isValid(parseISO(a.uploadTime))) dateA = parseISO(a.uploadTime).getTime();
+                                        
+                                        if (b.uploadTime instanceof Timestamp) dateB = b.uploadTime.toDate().getTime();
+                                        else if (typeof b.uploadTime === 'string' && isValid(parseISO(b.uploadTime))) dateB = parseISO(b.uploadTime).getTime();
+
                                         return dateB - dateA;
                                       });
     setSelectedSupplierInvoices(invoicesForSupplier);
@@ -321,9 +327,13 @@ export default function SuppliersPage() {
 
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
-        const uploadTime = invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : (typeof invoice.uploadTime === 'string' ? parseISO(invoice.uploadTime) : null);
-        if (uploadTime && isValid(uploadTime)){
-            const monthYear = formatDateDisplay(uploadTime, t, 'MMM yyyy');
+        let uploadTimeDate: Date | null = null;
+        if (invoice.uploadTime instanceof Timestamp) uploadTimeDate = invoice.uploadTime.toDate();
+        else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadTimeDate = parseISO(invoice.uploadTime);
+        else if (invoice.uploadTime instanceof Date) uploadTimeDate = invoice.uploadTime;
+
+        if (uploadTimeDate && isValid(uploadTimeDate)){
+            const monthYear = formatDateDisplay(uploadTimeDate, t, 'MMM yyyy');
             if(spendingByMonth.hasOwnProperty(monthYear)){
                 spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
             }
@@ -350,6 +360,7 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
+        // paymentTerms field is handled separately now
       }, user.id);
       
       await fetchData();
@@ -366,7 +377,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); 
+    setIsSavingContact(true); // Use the same saving flag or create a new one for payment terms
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -428,7 +439,7 @@ export default function SuppliersPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true; // If no date range, include all
+        if (!dateRange?.from || !invoice.uploadTime) return true; 
         
         let uploadTimeDate: Date | null = null;
         if (invoice.uploadTime instanceof Timestamp) {
@@ -669,7 +680,7 @@ export default function SuppliersPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={()={() => handlePageChange(currentPage + 1)}
+                onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
               >
                 {t('inventory_pagination_next')}
@@ -718,7 +729,7 @@ export default function SuppliersPage() {
                        {supplierSpendingData.length > 0 ? (
                         <ChartContainer config={supplierChartConfig} className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 10: 30, left: isMobile ? 5 : 10, bottom: isMobile ? 40 : 20 }}>
+                                <BarChart data={supplierSpendingData.slice(0, 10)} layout="vertical" margin={{top: 5, right: isMobile ? 0: 30, left: isMobile ? 5 : 10, bottom: isMobile ? 40 : 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={isMobile ? 8 : 10} />
                                     <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5, angle: isMobile ? -15 : 0, textAnchor: isMobile ? 'end' : 'end' }} interval={0} />
@@ -884,10 +895,10 @@ export default function SuppliersPage() {
                     <CardHeader>
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
-                    <CardContent className="min-h-[200px] p-0 sm:pb-2">
+                    <CardContent className={cn("min-h-[200px] p-0 sm:pb-2", isMobile && "overflow-x-auto")}>
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className={cn("w-full overflow-x-auto", isMobile ? "" : "sm:w-11/12 mx-auto")}> {/* Allow horizontal scroll on mobile for chart */}
-                            <ResponsiveContainer width="100%" height={200} minWidth={isMobile ? 300 : undefined}> {/* Ensure minWidth for mobile */}
+                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}>
+                            <ResponsiveContainer width="100%" height={200}>
                                 <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
@@ -957,3 +968,4 @@ export default function SuppliersPage() {
     </div>
   );
 }
+
