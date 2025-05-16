@@ -19,6 +19,7 @@ import {
 import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
+import { Timestamp } from 'firebase/firestore';
 import {
   Sheet,
   SheetContent,
@@ -53,7 +54,6 @@ import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useIsMobile } from '@/hooks/use-mobile'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Timestamp } from 'firebase/firestore';
 
 
 const ITEMS_PER_PAGE = 4;
@@ -229,7 +229,7 @@ export default function SuppliersPage() {
     let result = [...suppliers];
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
-      result = result.filter(s => s.name.toLowerCase().includes(lowerSearchTerm));
+      result = result.filter(s => (s.name || "").toLowerCase().includes(lowerSearchTerm));
     }
 
     if (sortKey) {
@@ -256,7 +256,7 @@ export default function SuppliersPage() {
         if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
         } else if (typeof valA === 'string' && typeof valB === 'string') {
-          comparison = valA.localeCompare(valB);
+          comparison = (valA || "").localeCompare(valB || "");
         } else {
           if (valA === undefined || valA === null) comparison = (valB === undefined || valB === null) ? 0 : 1; 
           else if (valB === undefined || valB === null) comparison = -1; 
@@ -332,7 +332,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Ensure chronological order
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); 
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -350,7 +350,6 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
-        // paymentTerms will be saved separately
       }, user.id);
       
       await fetchData();
@@ -429,15 +428,24 @@ export default function SuppliersPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true;
-        const uploadTime = invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : (typeof invoice.uploadTime === 'string' ? parseISO(invoice.uploadTime) : null);
-        if (!uploadTime || !isValid(uploadTime)) return false;
+        if (!dateRange?.from || !invoice.uploadTime) return true; // If no date range, include all
+        
+        let uploadTimeDate: Date | null = null;
+        if (invoice.uploadTime instanceof Timestamp) {
+            uploadTimeDate = invoice.uploadTime.toDate();
+        } else if (typeof invoice.uploadTime === 'string') {
+            uploadTimeDate = parseISO(invoice.uploadTime);
+        } else if (invoice.uploadTime instanceof Date) {
+            uploadTimeDate = invoice.uploadTime;
+        }
+
+        if (!uploadTimeDate || !isValid(uploadTimeDate)) return false;
         
         const startDate = new Date(dateRange.from);
         startDate.setHours(0, 0, 0, 0);
         const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
         endDate.setHours(23, 59, 59, 999);
-        return uploadTime >= startDate && uploadTime <= endDate && invoice.status === 'completed';
+        return uploadTimeDate >= startDate && uploadTimeDate <= endDate && invoice.status === 'completed';
     });
 
     filteredPeriodInvoices.forEach(invoice => {
@@ -523,6 +531,7 @@ export default function SuppliersPage() {
                         mode="range"
                         defaultMonth={dateRange?.from}
                         selected={dateRange}
+                        onSelect={setDateRange}
                         numberOfMonths={isMobile ? 1 : 2}
                     />
                      {dateRange && (
@@ -660,7 +669,7 @@ export default function SuppliersPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
+                onClick={()={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
               >
                 {t('inventory_pagination_next')}
@@ -877,8 +886,8 @@ export default function SuppliersPage() {
                     </CardHeader>
                     <CardContent className="min-h-[200px] p-0 sm:pb-2">
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className="w-full sm:w-11/12 mx-auto"> {/* Adjusted width for non-mobile and centered */}
-                            <ResponsiveContainer width="100%" height={200}>
+                        <div className={cn("w-full overflow-x-auto", isMobile ? "" : "sm:w-11/12 mx-auto")}> {/* Allow horizontal scroll on mobile for chart */}
+                            <ResponsiveContainer width="100%" height={200} minWidth={isMobile ? 300 : undefined}> {/* Ensure minWidth for mobile */}
                                 <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
@@ -948,4 +957,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-
