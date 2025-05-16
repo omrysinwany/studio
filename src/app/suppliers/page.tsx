@@ -1,7 +1,7 @@
 // src/app/suppliers/page.tsx
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
     updateSupplierContactInfoService, 
     deleteSupplierService,
     createSupplierService
-} from '@/services/backend';
+} from '@/services/backend'; // Ensure all services are from backend (Firestore)
 import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
@@ -186,34 +186,38 @@ export default function SuppliersPage() {
     }
   }, [user, authLoading, router]);
 
-  const fetchData = async () => {
-    if(!user || !user.id) return;
+  const fetchData = useCallback(async () => {
+    if(!user || !user.id) {
+      setIsLoading(false); // Ensure loading state is turned off if no user
+      return;
+    }
     setIsLoading(true);
     try {
+      console.log("[SuppliersPage] Fetching data for user:", user.id);
       const [summaries, invoicesData] = await Promise.all([
         getSupplierSummariesService(user.id),
         getInvoicesService(user.id)
       ]);
+      console.log("[SuppliersPage] Fetched summaries:", summaries.length, "Fetched invoices:", invoicesData.length);
       setSuppliers(summaries);
       setAllInvoices(invoicesData);
     } catch (error) {
       console.error("Failed to fetch supplier data:", error);
       toast({
         title: t('suppliers_toast_error_load_title'),
-        description: t('suppliers_toast_error_load_desc'),
+        description: `${t('suppliers_toast_error_load_desc')} ${(error as Error).message}`,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, t, toast]);
 
   useEffect(() => {
     if(user && user.id){
         fetchData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, fetchData]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -239,14 +243,18 @@ export default function SuppliersPage() {
 
         if (sortKey === 'lastActivityDate') {
             let dateA = 0;
-            if (a.lastActivityDate) {
-                if (a.lastActivityDate instanceof Timestamp) dateA = a.lastActivityDate.toDate().getTime();
-                else if (typeof a.lastActivityDate === 'string' && isValid(parseISO(a.lastActivityDate))) dateA = parseISO(a.lastActivityDate).getTime();
+            const aDateVal = a.lastActivityDate;
+            if (aDateVal) {
+                if (aDateVal instanceof Timestamp) dateA = aDateVal.toDate().getTime();
+                else if (typeof aDateVal === 'string' && isValid(parseISO(aDateVal))) dateA = parseISO(aDateVal).getTime();
+                else if (aDateVal instanceof Date && isValid(aDateVal)) dateA = aDateVal.getTime();
             }
             let dateB = 0;
-            if (b.lastActivityDate) {
-                if (b.lastActivityDate instanceof Timestamp) dateB = b.lastActivityDate.toDate().getTime();
-                else if (typeof b.lastActivityDate === 'string' && isValid(parseISO(b.lastActivityDate))) dateB = parseISO(b.lastActivityDate).getTime();
+            const bDateVal = b.lastActivityDate;
+            if (bDateVal) {
+                if (bDateVal instanceof Timestamp) dateB = bDateVal.toDate().getTime();
+                else if (typeof bDateVal === 'string' && isValid(parseISO(bDateVal))) dateB = parseISO(bDateVal).getTime();
+                else if (bDateVal instanceof Date && isValid(bDateVal)) dateB = bDateVal.getTime();
             }
             valA = dateA as any;
             valB = dateB as any;
@@ -258,8 +266,8 @@ export default function SuppliersPage() {
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = (valA || "").localeCompare(valB || "");
         } else {
-          if (valA === undefined || valA === null) comparison = (valB === undefined || valB === null) ? 0 : 1; 
-          else if (valB === undefined || valB === null) comparison = -1; 
+          if ((valA === undefined || valA === null) && (valB !== undefined && valB !== null)) comparison = 1; 
+          else if ((valA !== undefined && valA !== null) && (valB === undefined || valB === null)) comparison = -1; 
           else comparison = 0;
         }
         return sortDirection === 'asc' ? comparison : -comparison;
@@ -304,11 +312,14 @@ export default function SuppliersPage() {
                                       .sort((a,b) => {
                                         let dateA = 0;
                                         let dateB = 0;
-                                        if (a.uploadTime instanceof Timestamp) dateA = a.uploadTime.toDate().getTime();
-                                        else if (typeof a.uploadTime === 'string' && isValid(parseISO(a.uploadTime))) dateA = parseISO(a.uploadTime).getTime();
+                                        const aDate = a.uploadTime;
+                                        const bDate = b.uploadTime;
+
+                                        if (aDate instanceof Timestamp) dateA = aDate.toDate().getTime();
+                                        else if (typeof aDate === 'string' && isValid(parseISO(aDate))) dateA = parseISO(aDate).getTime();
                                         
-                                        if (b.uploadTime instanceof Timestamp) dateB = b.uploadTime.toDate().getTime();
-                                        else if (typeof b.uploadTime === 'string' && isValid(parseISO(b.uploadTime))) dateB = parseISO(b.uploadTime).getTime();
+                                        if (bDate instanceof Timestamp) dateB = bDate.toDate().getTime();
+                                        else if (typeof bDate === 'string' && isValid(parseISO(bDate))) dateB = parseISO(bDate).getTime();
 
                                         return dateB - dateA;
                                       });
@@ -330,8 +341,7 @@ export default function SuppliersPage() {
         let uploadTimeDate: Date | null = null;
         if (invoice.uploadTime instanceof Timestamp) uploadTimeDate = invoice.uploadTime.toDate();
         else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadTimeDate = parseISO(invoice.uploadTime);
-        else if (invoice.uploadTime instanceof Date) uploadTimeDate = invoice.uploadTime;
-
+        
         if (uploadTimeDate && isValid(uploadTimeDate)){
             const monthYear = formatDateDisplay(uploadTimeDate, t, 'MMM yyyy');
             if(spendingByMonth.hasOwnProperty(monthYear)){
@@ -342,7 +352,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); 
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); 
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -360,16 +370,19 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
-        // paymentTerms field is handled separately now
+        // Payment terms are saved separately now
       }, user.id);
       
-      await fetchData();
+      // Refetch all supplier data to get updated summary
+      await fetchData(); 
+      // Update the selected supplier state to reflect changes immediately in the sheet
       setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
+
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
       setIsEditingContact(false);
     } catch (error: any) {
       console.error("Failed to update contact info:", error);
-      toast({ title: t('suppliers_toast_update_fail_title'), description: t('suppliers_toast_update_fail_desc', { message: error.message }), variant: "destructive" });
+      toast({ title: t('suppliers_toast_update_fail_title'), description: `${t('suppliers_toast_update_fail_desc')} ${error.message}`, variant: "destructive" });
     } finally {
       setIsSavingContact(false);
     }
@@ -377,7 +390,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); // Use the same saving flag or create a new one for payment terms
+    setIsSavingContact(true); 
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -398,7 +411,7 @@ export default function SuppliersPage() {
         setIsEditingPaymentTerms(false);
     } catch (error: any) {
         console.error("Failed to update payment terms:", error);
-        toast({ title: t('suppliers_toast_update_fail_title'), description: t('suppliers_toast_update_fail_desc', { message: error.message }), variant: "destructive" });
+        toast({ title: t('suppliers_toast_update_fail_title'), description: `${t('suppliers_toast_update_fail_desc')} ${error.message}`, variant: "destructive" });
     } finally {
         setIsSavingContact(false);
     }
@@ -413,7 +426,7 @@ export default function SuppliersPage() {
       fetchData(); 
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
-      toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
+      toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc')} ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -430,7 +443,7 @@ export default function SuppliersPage() {
       }
     } catch (error: any) {
       console.error("Failed to delete supplier:", error);
-      toast({ title: t('suppliers_toast_delete_fail_title'), description: t('suppliers_toast_delete_fail_desc', { message: error.message }), variant: "destructive" });
+      toast({ title: t('suppliers_toast_delete_fail_title'), description: `${t('suppliers_toast_delete_fail_desc')} ${error.message}`, variant: "destructive" });
     } finally {
       setIsDeletingSupplier(false);
     }
@@ -446,10 +459,8 @@ export default function SuppliersPage() {
             uploadTimeDate = invoice.uploadTime.toDate();
         } else if (typeof invoice.uploadTime === 'string') {
             uploadTimeDate = parseISO(invoice.uploadTime);
-        } else if (invoice.uploadTime instanceof Date) {
-            uploadTimeDate = invoice.uploadTime;
         }
-
+        
         if (!uploadTimeDate || !isValid(uploadTimeDate)) return false;
         
         const startDate = new Date(dateRange.from);
@@ -761,7 +772,7 @@ export default function SuppliersPage() {
       </Card>
 
       <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 overflow-hidden">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
             <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || t('suppliers_details_title_generic')}</SheetTitle>
             <SheetDescription>
@@ -897,12 +908,12 @@ export default function SuppliersPage() {
                     </CardHeader>
                     <CardContent className={cn("min-h-[200px] p-0 sm:pb-2", isMobile && "overflow-x-auto")}>
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}>
+                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}> {/* Reduced width on desktop */}
                             <ResponsiveContainer width="100%" height={200}>
                                 <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
-                                <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 40 : 50}/>
+                                <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/> {/* Reduced YAxis width on mobile */}
                                 <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
                                 <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
                                 <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
@@ -968,4 +979,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-
