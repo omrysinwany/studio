@@ -30,8 +30,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import NextImage from 'next/image';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO, isValid, } from 'date-fns';
-import { Timestamp, doc, setDoc, serverTimestamp, FieldValue } from 'firebase/firestore'; // Added FieldValue
+import { format, parseISO, isValid } from 'date-fns';
+import { Timestamp, serverTimestamp, FieldValue, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { enUS, he } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -43,11 +43,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
+  // Allow data URIs and common image URLs
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
 // This function is kept for client-side compression if needed before AI scan, or for previews
-// but is NOT used for storing images in Firebase Storage directly anymore.
 async function compressImage(base64Str: string, quality = 0.6, maxWidth = 800, maxHeight = 1024): Promise<string> {
     console.log(`[compressImage] Starting compression. Quality: ${quality}, MaxWidth: ${maxWidth}, MaxHeight: ${maxHeight}, Original size (approx chars): ${base64Str.length}`);
     return new Promise((resolve, reject) => {
@@ -77,7 +77,8 @@ async function compressImage(base64Str: string, quality = 0.6, maxWidth = 800, m
             }
             ctx.drawImage(img, 0, 0, width, height);
             const mimeType = base64Str.substring(base64Str.indexOf(':') + 1, base64Str.indexOf(';'));
-            const outputMimeType = (mimeType === 'image/png') ? 'image/jpeg' : 'image/jpeg';
+            // Always compress to JPEG for potentially smaller size unless it's a GIF (which might lose animation)
+            const outputMimeType = (mimeType === 'image/gif') ? 'image/gif' : 'image/jpeg';
             const compressedDataUrl = canvas.toDataURL(outputMimeType, quality);
             console.log(`[compressImage] Compression complete. New size (approx chars): ${compressedDataUrl.length}`);
             resolve(compressedDataUrl);
@@ -96,7 +97,7 @@ export default function UploadPage() {
   const { t, locale } = useTranslation();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null); // For image previews
   const [isPdfPreview, setIsPdfPreview] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -122,7 +123,7 @@ export default function UploadPage() {
     }
     console.log("[UploadPage] fetchHistory called for user:", user.id);
     setIsLoadingHistory(true);
-    setUploadHistory([]); // Clear previous user's history
+    setUploadHistory([]); 
     try {
       const invoices = await getInvoicesService(user.id);
       setUploadHistory(invoices.slice(0, MAX_INVOICE_HISTORY_ITEMS));
@@ -141,6 +142,7 @@ export default function UploadPage() {
   }, [toast, t, user]);
 
   useEffect(() => {
+    console.log("[UploadPage] useEffect triggered. AuthLoading:", authLoading, "User:", user?.id);
     if (authLoading) {
       console.log("[UploadPage] Auth loading, clearing history and setting loading state.");
       setUploadHistory([]);
@@ -153,11 +155,11 @@ export default function UploadPage() {
       setUploadHistory([]); 
       setIsLoadingHistory(false);
     } else if (user && user.id) {
-      console.log("[UploadPage] User identified, fetching history and clearing old temp data. User ID:", user.id);
+      console.log("[UploadPage] User identified, fetching history. User ID:", user.id);
       setUploadHistory([]); 
       setIsLoadingHistory(true); 
       fetchHistory();
-      clearOldTemporaryScanData(false, user.id);
+      // clearOldTemporaryScanData(false, user.id); // This can be called less frequently, or on logout
     }
   }, [user, authLoading, router, fetchHistory]);
 
@@ -176,7 +178,7 @@ export default function UploadPage() {
         reader.readAsDataURL(file);
     } else if (file.type === 'application/pdf') {
         setIsPdfPreview(true);
-        setFilePreview(null);
+        setFilePreview(null); // No direct preview for PDF, show icon and name
     }
   };
 
@@ -256,15 +258,12 @@ export default function UploadPage() {
     const originalFileName = selectedFile.name;
     const safeFileNamePartForId = originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 50);
     const uniqueScanIdPart = `${Date.now()}_${safeFileNamePartForId}`;
-    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanIdPart}`;
-
-    // Key for localStorage, used as a fallback if Firestore pending doc creation initially fails or for quick resume scenarios (less critical now)
-    const dataKeyForLocalStorageJson = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${uniqueScanIdPart}`);
+    const tempInvoiceId = `pending-inv-${user.id}_${uniqueScanIdPart}`; // For Firestore pending doc
 
     let finalScanResult: ScanInvoiceOutput | ScanTaxInvoiceOutput | null = null;
-    let originalImagePreviewDataUri: string | null = null; // Will hold base64 for Firestore
-    let compressedImageForFinalRecordDataUri: string | null = null; // Will hold base64 for Firestore
-    let scanDataSavedForLocalStorage = false; // Still useful to track if this succeeds as a fallback
+    let originalImagePreviewDataUri: string | null = null;
+    let compressedImageForFinalRecordDataUri: string | null = null;
+    let scanResultString: string | null = null;
     let pendingFirestoreDocCreated = false;
 
     const reader = new FileReader();
@@ -285,17 +284,19 @@ export default function UploadPage() {
                 setStreamingContent(t('upload_compressing_image'));
                 console.log("[UploadPage] Compressing image for AI scan and storage...");
                 try {
+                    // For display on edit page if something goes wrong or for initial display
                     originalImagePreviewDataUri = await compressImage(originalBase64Data, 0.7, 800, 1024);
-                    compressedImageForFinalRecordDataUri = await compressImage(originalBase64Data, 0.5, 1024, 1280);
+                    // For final storage after editing and confirmation (can be more compressed)
+                    compressedImageForFinalRecordDataUri = await compressImage(originalBase64Data, 0.5, 1024, 1280); 
                 } catch (compError) {
-                    console.warn("[UploadPage] Image compression failed, using original Data URI:", compError);
+                    console.warn("[UploadPage] Image compression failed, using original Data URI for both:", compError);
                     originalImagePreviewDataUri = originalBase64Data;
                     compressedImageForFinalRecordDataUri = originalBase64Data;
                     toast({ title: t('upload_toast_compression_failed_title'), description: `${t('upload_toast_compression_failed_desc')} (${(compError as Error).message})`, variant: 'warning'});
                 }
             } else if (selectedFile.type === 'application/pdf') {
-                originalImagePreviewDataUri = originalBase64Data;
-                compressedImageForFinalRecordDataUri = originalBase64Data; 
+                originalImagePreviewDataUri = originalBase64Data; // Store the PDF data URI directly
+                compressedImageForFinalRecordDataUri = originalBase64Data; // No further compression for PDF on client
                 if (originalBase64Data.length > MAX_SCAN_RESULTS_SIZE_BYTES * 1.5) { // ~1.5MB check for PDF Data URI
                     throw new Error(t('upload_toast_pdf_too_large_firestore_error', {size: (originalBase64Data.length / (1024*1024)).toFixed(2)}));
                 }
@@ -304,11 +305,14 @@ export default function UploadPage() {
             }
             setUploadProgress(20);
 
+            const aiInputDataUri = originalImagePreviewDataUri; 
+            if (!aiInputDataUri) {
+                throw new Error("Image data for AI scan is missing after processing.");
+            }
+
             setStreamingContent(t('upload_ai_analysis_inprogress'));
             console.log("[UploadPage] Starting AI scan. Document type:", documentType);
             
-            const aiInputDataUri = originalImagePreviewDataUri; 
-
             if (documentType === 'invoice') {
                 finalScanResult = await scanTaxInvoice({ invoiceDataUri: aiInputDataUri }, (update) => {
                     if (update && update.content) setStreamingContent(prev => `${t('upload_ai_analysis_inprogress')}... ${update.content}`);
@@ -320,40 +324,25 @@ export default function UploadPage() {
             }
             console.log("[UploadPage] AI scan result received:", finalScanResult);
 
-            if (!finalScanResult || typeof finalScanResult !== 'object') {
+            if (!finalScanResult || (typeof finalScanResult !== 'object')) {
                 console.error("[UploadPage] AI scan returned invalid result (null, undefined, or not an object).");
                 finalScanResult = { error: t('upload_toast_ai_processing_error_desc_generic_server_response') } as any;
             }
-
-
-            if (finalScanResult && finalScanResult.error) {
+             if (finalScanResult && finalScanResult.error) {
                 setScanError(finalScanResult.error);
                 console.warn("[UploadPage] AI scan returned an error:", finalScanResult.error);
             }
             setUploadProgress(40);
 
-            const scanResultString = JSON.stringify(finalScanResult);
+            scanResultString = JSON.stringify(finalScanResult);
             if (scanResultString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
                 const errorMsg = t('upload_toast_scan_results_too_large_error', { size: (scanResultString.length / (1024*1024)).toFixed(2) });
                 console.error(`[UploadPage] ${errorMsg}`);
                 if (finalScanResult) finalScanResult.error = finalScanResult.error ? `${finalScanResult.error}; ${errorMsg}` : errorMsg;
-                else finalScanResult = { error: errorMsg } as any;
+                else finalScanResult = { error: errorMsg } as any; // Cast to allow adding error prop
                 setScanError(finalScanResult.error);
             }
             
-            try {
-                localStorage.setItem(dataKeyForLocalStorageJson, scanResultString);
-                scanDataSavedForLocalStorage = true;
-                console.log(`[UploadPage] Scan results JSON saved to localStorage: ${dataKeyForLocalStorageJson}`);
-            } catch (storageError: any) {
-                console.warn("[UploadPage] Warning: Failed to save scan JSON to localStorage. This is a fallback, proceeding with Firestore.", storageError);
-                toast({
-                    title: t('upload_toast_storage_full_pending_title'),
-                    description: t('upload_toast_storage_full_desc_scan_json', {context: 'scan result JSON', message: storageError.message}),
-                    variant: 'warning',
-                    duration: 7000
-                });
-            }
             setUploadProgress(60);
 
             console.log("[UploadPage] Attempting to create PENDING Firestore document. User ID:", user.id, "DB Initialized:", !!db);
@@ -366,7 +355,7 @@ export default function UploadPage() {
             const pendingInvoice: Omit<InvoiceHistoryItem, 'id' | 'uploadTime'> & { userId: string, uploadTime: FieldValue } = {
                 userId: user.id,
                 originalFileName: originalFileName,
-                generatedFileName: originalFileName, 
+                generatedFileName: originalFileName,
                 uploadTime: serverTimestamp(),
                 status: finalScanResult?.error ? 'error' : 'pending',
                 documentType: documentType,
@@ -378,15 +367,16 @@ export default function UploadPage() {
                 paymentStatus: 'unpaid',
                 paymentDueDate: null,
                 errorMessage: finalScanResult?.error || null,
-                rawScanResultJson: scanDataSavedForLocalStorage ? scanResultString : null, // Only store if successfully saved to LS as well
-                originalImagePreviewUri: originalImagePreviewDataUri,
-                compressedImageForFinalRecordUri: compressedImageForFinalRecordDataUri,
+                rawScanResultJson: scanResultString, // Store the full JSON from AI
+                originalImagePreviewUri: originalImagePreviewDataUri, // Store base64 for preview
+                compressedImageForFinalRecordUri: compressedImageForFinalRecordDataUri, // Store base64 for final save
                 paymentReceiptImageUri: null,
                 linkedDeliveryNoteId: null,
             };
+            console.log("[UploadPage] Pending Firestore document data:", pendingInvoice);
 
             try {
-                await setDoc(pendingInvoiceDocRef, pendingInvoice); // No need to sanitize here as we ensured nulls
+                await setDoc(pendingInvoiceDocRef, pendingInvoice);
                 pendingFirestoreDocCreated = true;
                 console.log(`[UploadPage] Created PENDING Firestore document record ID: ${tempInvoiceId}`);
             } catch (firestoreError: any) {
@@ -394,6 +384,7 @@ export default function UploadPage() {
                  if (finalScanResult) finalScanResult.error = finalScanResult.error ? `${finalScanResult.error}; DB_PENDING_SAVE_FAILED: ${firestoreError.message}` : `DB_PENDING_SAVE_FAILED: ${firestoreError.message}`;
                  else finalScanResult = { error: `DB_PENDING_SAVE_FAILED: ${firestoreError.message}` } as any;
                  setScanError(finalScanResult.error);
+                 // Don't throw here, let finally block handle navigation if localStorage succeeded
                  toast({ title: t('upload_toast_error_pending_record_title'), description: t('upload_toast_error_pending_record_desc', {fileName: originalFileName, message: firestoreError.message }), variant: 'destructive', duration: 7000 });
             }
             setUploadProgress(100);
@@ -405,44 +396,33 @@ export default function UploadPage() {
             else finalScanResult = { error: `MAIN_ERROR: ${errorMessage}` } as any;
             setScanError(finalScanResult.error);
         } finally {
-            console.log("[UploadPage] Entering finally block. pendingFirestoreDocCreated:", pendingFirestoreDocCreated, "scanDataSavedForLocalStorage:", scanDataSavedForLocalStorage, "selectedFile:", !!selectedFile);
+            console.log("[UploadPage] Entering finally block. pendingFirestoreDocCreated:", pendingFirestoreDocCreated, "selectedFile:", !!selectedFile);
             setIsUploading(false);
             setIsProcessing(false);
             setStreamingContent('');
 
-            const queryParams = new URLSearchParams();
-            if (selectedFile) queryParams.append('originalFileName', selectedFile.name); // Keep originalFileName for display
-            queryParams.append('docType', documentType);
-            
-            // Navigate if Firestore pending doc was created OR if localStorage save worked (fallback)
             if (pendingFirestoreDocCreated && selectedFile) {
-                queryParams.append('tempInvoiceId', tempInvoiceId);
-                if (!scanDataSavedForLocalStorage) { // Firestore OK, LS failed (e.g. quota for scan JSON)
-                    queryParams.append('localStorageScanDataMissing', 'true');
-                }
+                const queryParams = new URLSearchParams({
+                    tempInvoiceId: tempInvoiceId,
+                    docType: documentType,
+                    originalFileName: encodeURIComponent(selectedFile.name)
+                });
+                // If rawScanResultJson failed to save in Firestore (e.g. due to its own size limits for some reason, though unlikely with the outer check)
+                // we might still want to pass its key if it was saved to LS, but for now, rely on Firestore having it.
+                
                 let toastDesc = finalScanResult?.error ? finalScanResult.error : t('upload_toast_scan_complete_desc_firestore_pending', { fileName: originalFileName });
-                if (!scanDataSavedForLocalStorage && !finalScanResult?.error) {
-                    toastDesc += ` ${t('upload_toast_warn_ls_fail')}`;
-                }
                 toast({ title: finalScanResult?.error ? t('upload_toast_scan_error_title') : t('upload_toast_scan_complete_title'), description: toastDesc, variant: finalScanResult?.error ? 'warning' : 'default', duration: finalScanResult?.error ? 8000 : 5000 });
                 console.log("[UploadPage] Navigating to edit-invoice (Firestore pending doc created). Params:", queryParams.toString());
                 router.push(`/edit-invoice?${queryParams.toString()}`);
+                clearSelection(); 
 
-            } else if (scanDataSavedForLocalStorage && selectedFile) { // Firestore pending doc failed, but LS save worked
-                queryParams.append('key', dataKeyForLocalStorageJson);
-                toast({ title: t('upload_toast_scan_complete_pending_save_failed_title'), description: finalScanResult?.error || t('upload_toast_scan_complete_pending_save_failed_desc', { fileName: originalFileName }), variant: 'warning', duration: 8000 });
-                console.warn("[UploadPage] Navigating to edit-invoice with localStorage key (Firestore pending doc failed). Params:", queryParams.toString());
-                router.push(`/edit-invoice?${queryParams.toString()}`);
-            
-            } else if (selectedFile) { // Both failed or critical error before attempting save
-                console.error("[UploadPage] Critical failure: Neither Firestore pending doc nor localStorage scan data saved. Cannot navigate. File was:", selectedFile.name, "Final Scan Error:", finalScanResult?.error);
+            } else if (selectedFile) { 
+                console.error("[UploadPage] Critical failure: Firestore pending doc was not created. Cannot navigate. File was:", selectedFile.name, "Final Scan Error:", finalScanResult?.error);
                 toast({ title: t('upload_toast_upload_failed_title'), description: finalScanResult?.error || t('upload_toast_processing_failed_desc_generic'), variant: 'destructive', duration: 10000});
+                // Do not clear selection here, user might want to retry without re-selecting
             }
             
-            if (pendingFirestoreDocCreated || scanDataSavedForLocalStorage) {
-                clearSelection();
-            }
-            fetchHistory(); // Refresh history regardless of individual scan success/failure
+            fetchHistory(); 
             console.log("[UploadPage] Exiting finally block of onloadend.");
         }
     };
@@ -483,10 +463,15 @@ export default function UploadPage() {
     }
   };
 
-  const handleViewDetails = (invoice: InvoiceHistoryItem) => {
-      const detailsToSet: InvoiceHistoryItem & { _displayContext?: 'image_only' | 'full_details' } = {...invoice, _displayContext: 'full_details'};
-      setSelectedInvoiceDetails(detailsToSet);
-      setShowDetailsModal(true);
+  const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
+    if (invoice) {
+        const detailsToSet: InvoiceHistoryItem & { _displayContext?: 'image_only' | 'full_details' } = {...invoice, _displayContext: 'full_details'};
+        setSelectedInvoiceDetails(detailsToSet);
+        setShowDetailsModal(true);
+    } else {
+        setSelectedInvoiceDetails(null);
+        setShowDetailsModal(false);
+    }
   };
 
   const handleViewImage = (invoice: InvoiceHistoryItem) => {
@@ -544,6 +529,7 @@ export default function UploadPage() {
   }
 
   if (!user && !authLoading) {
+    // User will be redirected by useEffect logic
     return null;
   }
 
@@ -754,10 +740,11 @@ export default function UploadPage() {
                                         return;
                                     }
                                     const queryParams = new URLSearchParams({
-                                        tempInvoiceId: item.id,
+                                        tempInvoiceId: item.id, // Pass the Firestore pending doc ID
                                         docType: item.documentType,
                                         originalFileName: encodeURIComponent(item.originalFileName || 'unknown_doc'),
                                     });
+                                    // No need to pass localStorage keys as query params anymore
                                     router.push(`/edit-invoice?${queryParams.toString()}`);
                                 }}
                                 className="h-8 w-8"
