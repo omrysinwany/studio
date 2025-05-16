@@ -27,27 +27,28 @@ import {
     clearSuppliersService,
     clearOtherExpensesService,
     clearExpenseCategoriesService,
-    // USER_SETTINGS_COLLECTION, // No direct function to clear this, done via deleteDoc
-    // TEMP_DATA_KEY_PREFIX, // Used for localStorage clearing
+    getStorageKey, // For localStorage
+    USER_SETTINGS_COLLECTION, // Firestore collection name
+    // TEMP_DATA_KEY_PREFIX, // Not directly used here for Firestore deletion
     // TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
     // TEMP_COMPRESSED_IMAGE_KEY_PREFIX,
-    getStorageKey, // For localStorage
-    deleteDoc, // For userSettings specific doc
-    doc, // For userSettings specific doc
-    db, // For userSettings specific doc
-    USERS_COLLECTION,
-    USER_SETTINGS_COLLECTION,
 } from '@/services/backend';
+import { db } from '@/lib/firebase'; // Correct import for db
+import { doc, deleteDoc } from 'firebase/firestore'; // Correct import for Firestore functions
 import { cn } from '@/lib/utils';
 
-// Base keys from other-expenses page (assuming they are exported or redefined if not)
-// const EXPENSE_CATEGORIES_STORAGE_KEY_BASE = 'invoTrack_expenseCategories'; // Now in Firestore
-// const OTHER_EXPENSES_STORAGE_KEY_BASE = 'invoTrack_otherExpenses'; // Now in Firestore
-// const MONTHLY_BUDGET_STORAGE_KEY_BASE = 'invoTrack_monthlyBudget'; // Now in UserSettings in Firestore
+
+// Base keys for localStorage cleanup (related to other-expenses if they were ever in localStorage)
+// These might not be strictly necessary if all data is now in Firestore and `clearTemporaryScanData` is robust
+const EXPENSE_CATEGORIES_STORAGE_KEY_BASE_LS = 'invoTrack_expenseCategories';
+const OTHER_EXPENSES_STORAGE_KEY_BASE_LS = 'invoTrack_otherExpenses';
+const EXPENSE_TEMPLATES_STORAGE_KEY_BASE_LS = 'invoTrack_expenseTemplates';
+const KPI_PREFERENCES_STORAGE_KEY_BASE_LS = 'invoTrack_kpiPreferences_v2';
+const QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE_LS = 'invoTrack_quickActionsPreferences_v1';
 
 
 export default function SettingsPage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, logout } = useAuth();
     const router = useRouter();
     const { t } = useTranslation();
     const { toast } = useToast();
@@ -67,7 +68,8 @@ export default function SettingsPage() {
       setIsDeletingAllData(true);
       try {
         console.log(`[SettingsPage] Initiating delete all data for user: ${user.id}`);
-        // Delete Firestore data
+        
+        // Clear Firestore data using service functions
         await clearInventoryService(user.id);
         console.log("[SettingsPage] Inventory cleared from Firestore.");
         await clearDocumentsService(user.id);
@@ -79,49 +81,60 @@ export default function SettingsPage() {
         await clearExpenseCategoriesService(user.id);
         console.log("[SettingsPage] Expense Categories cleared from Firestore.");
         
-        // Delete userSettings document
+        // Delete userSettings document directly
         if (db) { // Ensure db is initialized
             const userSettingsRef = doc(db, USER_SETTINGS_COLLECTION, user.id);
             await deleteDoc(userSettingsRef);
             console.log("[SettingsPage] UserSettings document deleted from Firestore.");
         } else {
             console.error("[SettingsPage] Firestore db instance is not available for deleting userSettings.");
+            // Potentially throw an error or show a more specific toast
         }
 
-        // Optionally, clear user-specific localStorage items if any remain (e.g., UI preferences not in UserSettings)
-        const localStorageKeysToClearBases = [
-          // Add any user-specific localStorage keys that are NOT part of UserSettings
-          // For example, if KPI_PREFERENCES_STORAGE_KEY_BASE was still in localStorage:
-          // 'invoTrack_kpiPreferences_v2', 
-          // 'invoTrack_quickActionsPreferences_v1',
+        // Clear user-specific localStorage items that might still exist
+        // Only clear items that are truly local preferences and NOT data now in Firestore.
+        // Examples might be purely UI preferences not stored in UserSettings.
+        const localStorageKeysToClearBases: string[] = [
+          KPI_PREFERENCES_STORAGE_KEY_BASE_LS, // if these are now purely from UserSettings in Firestore, this line might be redundant
+          QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE_LS, // same as above
+          // Add other localStorage keys specific to UI that are NOT part of UserSettings in Firestore
+          // For example, if EXPENSE_CATEGORIES_STORAGE_KEY_BASE_LS was for some local UI filter and not data, include it.
+          // However, since we have `clearExpenseCategoriesService` for Firestore, this localStorage key for data should not be needed.
         ];
         localStorageKeysToClearBases.forEach(baseKey => {
           const userSpecificKey = getStorageKey(baseKey, user.id);
           localStorage.removeItem(userSpecificKey);
-          console.log(`[SettingsPage] Removed from localStorage: ${userSpecificKey}`);
+          console.log(`[SettingsPage] Attempted removal from localStorage: ${userSpecificKey}`);
         });
         
-        // Clear temporary scan data from localStorage
-        const tempKeysToRemove: string[] = [];
+        // Clear temporary scan data from localStorage (this is separate from primary data stores)
+        const tempScanKeysPrefixes = [
+            TEMP_DATA_KEY_PREFIX, // Ensure this is defined and exported if used
+            TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, // Ensure this is defined and exported
+            TEMP_COMPRESSED_IMAGE_KEY_PREFIX // Ensure this is defined and exported
+        ];
+        
+        const keysToRemoveFromLocalStorage: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && (key.startsWith(`invoTrackTempScan_${user.id}_`) ||
-                      key.startsWith(`invoTrackTempOriginalImagePreviewUri_${user.id}_`) ||
-                      key.startsWith(`invoTrackTempCompressedImageUri_${user.id}_`))) {
-            tempKeysToRemove.push(key);
+          if (key && tempScanKeysPrefixes.some(prefix => key.startsWith(getStorageKey(prefix, user.id )))) {
+            keysToRemoveFromLocalStorage.push(key);
           }
         }
-        tempKeysToRemove.forEach(key => {
+        keysToRemoveFromLocalStorage.forEach(key => {
           localStorage.removeItem(key);
           console.log(`[SettingsPage] Removed temporary scan data from localStorage: ${key}`);
         });
-
 
         toast({
           title: t('settings_delete_all_success_title'),
           description: t('settings_delete_all_success_desc'),
         });
-        router.refresh(); // Refresh to reflect cleared state
+        // Optionally, refresh data in other parts of the app or navigate
+        // Consider a full logout or redirect to ensure clean state
+        await logout(); // Perform logout after clearing data
+        router.push('/login'); // Redirect to login page
+
       } catch (error) {
         console.error("[SettingsPage] Error deleting all user data:", error);
         toast({
