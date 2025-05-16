@@ -1,4 +1,3 @@
-
 // src/app/suppliers/page.tsx
 'use client';
 
@@ -171,7 +170,7 @@ export default function SuppliersPage() {
   const [customPaymentTerm, setCustomPaymentTerm] = useState('');
 
 
-  const [isSavingContact, setIsSavingContact] = useState(false);
+  const [isSavingContact, setIsSavingContact] = useState(false); // Used for both contact and payment terms saving
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -196,8 +195,8 @@ export default function SuppliersPage() {
     try {
       console.log("[SuppliersPage] Fetching data for user:", user.id);
       const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(user.id),
-        getInvoicesService(user.id)
+        getSupplierSummariesService(user.id), // Fetches from Firestore
+        getInvoicesService(user.id) // Fetches from Firestore
       ]);
       console.log("[SuppliersPage] Fetched summaries:", summaries.length, "Fetched invoices:", invoicesData.length);
       setSuppliers(summaries);
@@ -353,7 +352,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime());
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); // Sorting might not be needed if last12Months is already sorted
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -371,9 +370,10 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
+        // paymentTerms not saved here
       }, user.id);
 
-      await fetchData();
+      await fetchData(); // Refetch all supplier data to get updates
       setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
 
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
@@ -388,7 +388,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); // Re-use isSavingContact for simplicity here
+    setIsSavingContact(true);
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -403,7 +403,7 @@ export default function SuppliersPage() {
 
     try {
         await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
-        await fetchData();
+        await fetchData(); // Refetch all supplier data
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -418,7 +418,7 @@ export default function SuppliersPage() {
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }) => {
     if(!user || !user.id) return;
     try {
-      await createSupplierService(name, contactInfo, user.id);
+      await createSupplierService(name, contactInfo, user.id); // Uses Firestore
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
       fetchData();
@@ -432,7 +432,7 @@ export default function SuppliersPage() {
     if(!user || !user.id) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierId, user.id);
+      await deleteSupplierService(supplierId, user.id); // Uses Firestore
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName: selectedSupplier?.name || supplierId }) });
       fetchData();
       if (selectedSupplier?.id === supplierId) {
@@ -744,7 +744,7 @@ export default function SuppliersPage() {
                                     <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5, angle: isMobile ? -15 : 0, textAnchor: isMobile ? 'end' : 'end' }} interval={0} />
                                     <RechartsRechartsTooltip
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => [formatCurrencyDisplay(value, t), t(supplierChartConfig.totalAmount.labelKey as any) ]}
+                                        formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals: 0}), t(supplierChartConfig.totalAmount.labelKey as any) ]}
                                     />
                                      <RechartsRechartsLegend verticalAlign="top" content={({ payload }) => (
                                         <ul className="flex flex-wrap justify-center gap-x-4 text-xs text-muted-foreground">
@@ -787,7 +787,7 @@ export default function SuppliersPage() {
                   <CardContent>
                     <p className="text-2xl font-bold text-primary">{formatCurrencyDisplay(selectedSupplier.totalSpent,t)}</p>
                     <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
-                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?tab=scanned-docs&filterSupplier=${encodeURIComponent(selectedSupplier.name)}`)}>
+                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?supplier=${encodeURIComponent(selectedSupplier.name)}`)}>
                        {t('suppliers_view_all_documents_button')}
                      </Button>
                   </CardContent>
@@ -908,11 +908,11 @@ export default function SuppliersPage() {
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
                         <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}>
                             <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
+                                <BarChart data={monthlySpendingData} margin={{top: 5, right: isMobile ? 0: 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
                                 <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/>
-                                <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t), t('suppliers_tooltip_total_spent')]}/>
+                                <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals:0}), t('suppliers_tooltip_total_spent')]}/>
                                 <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
                                 <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
                                 </BarChart>
@@ -977,3 +977,4 @@ export default function SuppliersPage() {
     </div>
   );
 }
+

@@ -3,6 +3,7 @@ import { initializeApp, getApps, FirebaseApp, FirebaseOptions } from 'firebase/a
 import { getFirestore, Firestore }
 from 'firebase/firestore';
 import { getAuth, Auth, GoogleAuthProvider } from "firebase/auth";
+import { getStorage, FirebaseStorage } from "firebase/storage"; // Added Firebase Storage import
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,15 +12,15 @@ const firebaseConfig: FirebaseOptions = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID // Optional, include if you use it
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
 let firebaseApp: FirebaseApp | undefined;
 let dbInstance: Firestore | null = null;
 let authInstance: Auth | null = null;
+let storageInstance: FirebaseStorage | null = null; // Added storage instance
 
 if (typeof window !== 'undefined' && !getApps().length) {
-  // Check if essential config values are present and valid strings
   if (
     firebaseConfig.apiKey && typeof firebaseConfig.apiKey === 'string' &&
     firebaseConfig.authDomain && typeof firebaseConfig.authDomain === 'string' &&
@@ -30,10 +31,10 @@ if (typeof window !== 'undefined' && !getApps().length) {
       firebaseApp = initializeApp(firebaseConfig);
       dbInstance = getFirestore(firebaseApp);
       authInstance = getAuth(firebaseApp);
-      console.log("Firebase initialized successfully via firebase.ts.");
+      storageInstance = getStorage(firebaseApp); // Initialize Firebase Storage
+      console.log("Firebase initialized successfully via firebase.ts (including Storage).");
     } catch (error) {
       console.error("Firebase initialization error in firebase.ts:", error);
-      // firebaseApp, dbInstance, authInstance remain in their default error state (undefined/null)
     }
   } else {
     console.error(
@@ -46,10 +47,12 @@ if (typeof window !== 'undefined' && !getApps().length) {
   firebaseApp = getApps()[0];
   dbInstance = getFirestore(firebaseApp);
   authInstance = getAuth(firebaseApp);
-  console.log("Firebase app already initialized in firebase.ts.");
+  storageInstance = getStorage(firebaseApp); // Get Storage instance if app already initialized
+  console.log("Firebase app already initialized in firebase.ts (including Storage).");
 }
 
 export const db = dbInstance;
 export const auth = authInstance;
+export const storage = storageInstance; // Export Firebase Storage instance
 export { GoogleAuthProvider };
 export default firebaseApp;
