@@ -16,7 +16,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, CreditCard, AlertTriangle, CalendarClock, CalendarDays, TrendingDown as TrendingDownIcon, Landmark, BarChart3, ArrowRightCircle, Edit2, Save, Target, ChevronLeft, ChevronRight, Banknote, Bell, TrendingUp, DollarSign, Info } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getInvoicesService, type InvoiceHistoryItem, UserSettings, getUserSettingsService, saveUserSettingsService, OtherExpense, OTHER_EXPENSES_STORAGE_KEY_BASE, getStoredData, getStorageKey, MONTHLY_BUDGET_STORAGE_KEY_BASE } from '@/services/backend';
+import {
+    getInvoicesService,
+    type InvoiceHistoryItem,
+    UserSettings,
+    getUserSettingsService,
+    saveUserSettingsService,
+    OtherExpense,
+    getOtherExpensesService, // Now using this service
+} from '@/services/backend';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Timestamp } from 'firebase/firestore';
 
 
 const ITEMS_PER_PAGE_OPEN_INVOICES = 4;
@@ -49,45 +58,32 @@ export default function AccountsPage() {
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
 
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    } else if (user) {
-      const expensesStorageKey = getStorageKey(OTHER_EXPENSES_STORAGE_KEY_BASE, user.id);
-      const storedExpenses = localStorage.getItem(expensesStorageKey);
-      if (storedExpenses) {
-        setOtherExpenses(JSON.parse(storedExpenses));
-      }
+  const fetchAccountData = useCallback(async () => {
+    if (!user || !user.id) {
+        setIsLoadingData(false);
+        return;
+    }
+    setIsLoadingData(true);
+    console.log("[AccountsPage] fetchAccountData called for user:", user.id);
+    try {
+      const [invoicesData, fetchedOtherExpensesData, settingsData] = await Promise.all([
+        getInvoicesService(user.id),
+        getOtherExpensesService(user.id),
+        getUserSettingsService(user.id)
+      ]);
+      console.log("[AccountsPage] Data fetched: Invoices:", invoicesData.length, "Other Expenses:", fetchedOtherExpensesData.length, "Settings:", settingsData);
 
-      const budgetStorageKey = getStorageKey(MONTHLY_BUDGET_STORAGE_KEY_BASE, user.id);
-      const storedBudget = localStorage.getItem(budgetStorageKey);
-      if (storedBudget) {
-        setMonthlyBudget(parseFloat(storedBudget));
-        setTempBudget(storedBudget);
+      setAllInvoices(invoicesData);
+      setOtherExpenses(fetchedOtherExpensesData);
+      setUserSettings(settingsData);
+
+      if (settingsData && settingsData.monthlyBudget !== undefined && settingsData.monthlyBudget !== null) {
+        setMonthlyBudget(settingsData.monthlyBudget);
+        setTempBudget(String(settingsData.monthlyBudget));
       } else {
-        setMonthlyBudget(0); // Default to 0 if no budget is set
+        setMonthlyBudget(0); 
         setTempBudget('0');
       }
-
-      getUserSettingsService(user.id).then(settings => {
-        setUserSettings(settings);
-        if (settings && settings.reminderDaysBefore === undefined) {
-          console.log("Reminder days not set, consider prompting user or setting a default.");
-        }
-      }).catch(err => {
-        console.error("Failed to load user settings for reminders:", err);
-        toast({ title: t('error_title'), description: t('settings_notification_toast_load_error_desc'), variant: "destructive" });
-      });
-    }
-  }, [user, authLoading, router, t, toast]);
-
-
-  const fetchAccountData = useCallback(async () => {
-    if (!user) return;
-    setIsLoadingData(true);
-    try {
-      const invoices = await getInvoicesService(user.id);
-      setAllInvoices(invoices);
     } catch (error) {
       console.error("Failed to fetch account data:", error);
       toast({
@@ -97,14 +93,18 @@ export default function AccountsPage() {
       });
     } finally {
       setIsLoadingData(false);
+      console.log("[AccountsPage] fetchAccountData finished. isLoadingData set to false.");
     }
   }, [user, toast, t]);
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && !user) {
+      router.push('/login');
+    } else if (user && user.id) {
       fetchAccountData();
     }
-  }, [user, fetchAccountData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, router]);
 
 
   const filteredInvoicesByDateRange = useMemo(() => {
@@ -117,8 +117,8 @@ export default function AccountsPage() {
     return allInvoices.filter(invoice => {
       if (!invoice.uploadTime) return false;
       try {
-        const invoiceDate = parseISO(invoice.uploadTime as string);
-        return invoiceDate >= startDate && invoiceDate <= endDate;
+        const invoiceDate = invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : parseISO(invoice.uploadTime as string);
+        return isValid(invoiceDate) && invoiceDate >= startDate && invoiceDate <= endDate;
       } catch (e) {
         console.error("Invalid date encountered in filteredInvoicesByDateRange:", invoice.uploadTime);
         return false;
@@ -135,21 +135,27 @@ export default function AccountsPage() {
       .filter(invoice => invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment')
       .sort((a, b) => {
         try {
-            const dateA = a.paymentDueDate ? parseISO(a.paymentDueDate as string) : null;
-            const dateB = b.paymentDueDate ? parseISO(b.paymentDueDate as string) : null;
+            const dateA = a.paymentDueDate ? (a.paymentDueDate instanceof Timestamp ? a.paymentDueDate.toDate() : parseISO(a.paymentDueDate as string)) : null;
+            const dateB = b.paymentDueDate ? (b.paymentDueDate instanceof Timestamp ? b.paymentDueDate.toDate() : parseISO(b.paymentDueDate as string)) : null;
 
-            const isAOverdue = dateA ? isBefore(dateA, today) : false;
-            const isBOverdue = dateB ? isBefore(dateB, today) : false;
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return 1; 
+            if (!dateB) return -1;
+            
+            if (!isValid(dateA) && !isValid(dateB)) return 0;
+            if (!isValid(dateA)) return 1;
+            if (!isValid(dateB)) return -1;
+
+            const isAOverdue = isBefore(dateA, today);
+            const isBOverdue = isBefore(dateB, today);
 
             if (isAOverdue && !isBOverdue) return -1;
             if (!isAOverdue && isBOverdue) return 1;
-
-            const timeA = dateA?.getTime() ?? Infinity;
-            const timeB = dateB?.getTime() ?? Infinity;
-            return timeA - timeB;
+            
+            return dateA.getTime() - dateB.getTime();
 
         } catch (e) {
-            console.error("Error sorting open invoices by due date:", e);
+            console.error("Error sorting open invoices by due date:", e, "A:", a.paymentDueDate, "B:", b.paymentDueDate);
             return 0;
         }
       });
@@ -176,40 +182,55 @@ export default function AccountsPage() {
         if (invoice.status !== 'completed') return;
 
         let relevantDateForExpense: Date | null = null;
-        if (invoice.paymentDueDate && isValid(parseISO(invoice.paymentDueDate as string))) {
-            const paymentDate = parseISO(invoice.paymentDueDate as string);
-            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
-                relevantDateForExpense = paymentDate;
-            }
+        let paymentDateTs: Date | null = null;
+        let uploadDateTs: Date | null = null;
+
+        if (invoice.paymentDueDate) {
+            if (invoice.paymentDueDate instanceof Timestamp) paymentDateTs = invoice.paymentDueDate.toDate();
+            else if (typeof invoice.paymentDueDate === 'string' && isValid(parseISO(invoice.paymentDueDate))) paymentDateTs = parseISO(invoice.paymentDueDate);
         }
-        if (!relevantDateForExpense && invoice.uploadTime && isValid(parseISO(invoice.uploadTime as string))) {
-            const uploadDate = parseISO(invoice.uploadTime as string);
-             if (uploadDate >= currentMonthStart && uploadDate <= currentMonthEnd) {
-                relevantDateForExpense = uploadDate;
-            }
+        if (invoice.uploadTime) {
+            if (invoice.uploadTime instanceof Timestamp) uploadDateTs = invoice.uploadTime.toDate();
+            else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadDateTs = parseISO(invoice.uploadTime);
+        }
+        
+        if (paymentDateTs && paymentDateTs >= currentMonthStart && paymentDateTs <= currentMonthEnd ) {
+          // Consider a payment as an expense only if it's *for* the current month's goods/services
+          // OR if it's a payment for an invoice that itself was for the current month (e.g. paymentDueDate is this month).
+          // This logic might need refinement based on how you define "current month expenses" from invoices.
+          // For now, if payment due date is this month and it's paid/unpaid, we count it.
+           if (invoice.paymentStatus === 'paid' || invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') {
+             relevantDateForExpense = paymentDateTs;
+           }
+        } 
+        else if (uploadDateTs && uploadDateTs >= currentMonthStart && uploadDateTs <= currentMonthEnd) {
+           // If an invoice was uploaded this month (and is completed), it's likely an expense for this month
+           // unless its payment due date implies otherwise.
+           if (invoice.paymentStatus === 'paid' || invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment') {
+             relevantDateForExpense = uploadDateTs;
+           }
         }
 
-        if (relevantDateForExpense && (invoice.paymentStatus === 'unpaid' || invoice.paymentStatus === 'pending_payment' || invoice.paymentStatus === 'paid')) {
-            totalInvoiceExpenses += (invoice.totalAmount || 0);
+
+        if (relevantDateForExpense) { 
+             totalInvoiceExpenses += (invoice.totalAmount || 0);
         }
     });
 
     const totalOtherExpensesForMonth = otherExpenses.reduce((sum, exp) => {
-        if (!exp.date || !isValid(parseISO(exp.date))) return sum;
+        if (!exp.date) return sum;
         try {
-            const expenseDate = parseISO(exp.date);
-            if (isSameMonth(expenseDate, new Date())) {
+            const expenseDate = exp.date instanceof Timestamp ? exp.date.toDate() : parseISO(exp.date as string);
+            if (isValid(expenseDate) && isSameMonth(expenseDate, new Date())) {
                 let amountToAdd = exp.amount;
                 const internalKey = exp._internalCategoryKey?.toLowerCase();
-                const categoryString = exp.category.toLowerCase();
-                const biMonthlyKeys = [
-                    'property_tax', 'rent',
-                    t('accounts_other_expenses_tab_property_tax').toLowerCase(),
-                    t('accounts_other_expenses_tab_rent').toLowerCase()
-                ];
-                 if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                    // No division by 2 for bi-monthly, as they are entered for the month they occur
-                }
+                const categoryString = exp.category?.toLowerCase();
+                const biMonthlyKeys = ['property_tax', 'rent',
+                                       t('accounts_other_expenses_tab_property_tax').toLowerCase(),
+                                       t('accounts_other_expenses_tab_rent').toLowerCase()];
+
+                 if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))){
+                 }
                 return sum + amountToAdd;
             }
             return sum;
@@ -230,27 +251,31 @@ export default function AccountsPage() {
     endDate.setHours(23,59,59,999);
 
     const invoiceCosts = allInvoices
-        .filter(inv => inv.uploadTime && isValid(parseISO(inv.uploadTime as string)) && parseISO(inv.uploadTime as string) >= startDate && parseISO(inv.uploadTime as string) <= endDate && (inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'pending_payment' || inv.paymentStatus === 'paid') )
+        .filter(inv => {
+            if (!inv.uploadTime) return false;
+            const invDate = inv.uploadTime instanceof Timestamp ? inv.uploadTime.toDate() : parseISO(inv.uploadTime as string);
+            // Count all invoices within the period as a cost/liability, regardless of paymentStatus for this summary
+            return isValid(invDate) && invDate >= startDate && invDate <= endDate;
+        })
         .reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
 
     const otherExpensesInRange = otherExpenses
         .filter(exp => {
-            if (!exp.date || !isValid(parseISO(exp.date))) return false;
-            const expenseDate = parseISO(exp.date);
-            return expenseDate >= startDate && expenseDate <= endDate;
+            if (!exp.date) return false;
+            const expenseDate = exp.date instanceof Timestamp ? exp.date.toDate() : parseISO(exp.date as string);
+            return isValid(expenseDate) && expenseDate >= startDate && expenseDate <= endDate;
         })
         .reduce((sum, exp) => {
             let amountToAdd = exp.amount;
             const internalKey = exp._internalCategoryKey?.toLowerCase();
-            const categoryString = exp.category.toLowerCase();
+            const categoryString = exp.category?.toLowerCase();
              const biMonthlyKeys = [
                 'property_tax', 'rent',
                 t('accounts_other_expenses_tab_property_tax').toLowerCase(),
                 t('accounts_other_expenses_tab_rent').toLowerCase()
             ];
-             if ((internalKey && biMonthlyKeys.includes(internalKey)) || (!internalKey && biMonthlyKeys.includes(categoryString))) {
-                 // No division for bi-monthly as they are whole amounts for the month they occur
-            }
+             if ((internalKey && biMonthlyKeys.includes(internalKey)) || (categoryString && !internalKey && biMonthlyKeys.includes(categoryString))) {
+             }
             return sum + amountToAdd;
         }, 0);
 
@@ -269,12 +294,12 @@ export default function AccountsPage() {
     const categoryMap: Record<string, number> = {};
     otherExpenses
         .filter(exp => {
-            if (!exp.date || !isValid(parseISO(exp.date))) return false;
-            const expenseDate = parseISO(exp.date);
-            return expenseDate >= startDate && expenseDate <= endDate;
+            if (!exp.date) return false;
+            const expenseDate = exp.date instanceof Timestamp ? exp.date.toDate() : parseISO(exp.date as string);
+            return isValid(expenseDate) && expenseDate >= startDate && expenseDate <= endDate;
         })
         .forEach(exp => {
-            const categoryKey = exp._internalCategoryKey || exp.category.toLowerCase().replace(/\s+/g, '_');
+            const categoryKey = exp._internalCategoryKey || exp.category?.toLowerCase().replace(/\s+/g, '_') || 'unknown';
             categoryMap[categoryKey] = (categoryMap[categoryKey] || 0) + exp.amount;
         });
 
@@ -284,26 +309,28 @@ export default function AccountsPage() {
             amount
         }))
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
+        .slice(0, 5); 
   }, [otherExpenses, dateRange, t]);
 
 
   const getDueDateStatus = (
-    dueDateStr: string | undefined,
+    dueDateStr: string | Timestamp | undefined | null,
     paymentStatus: InvoiceHistoryItem['paymentStatus'],
-    reminderDays?: number
+    reminderDays?: number | null
   ): { textKey: string; params?: Record<string, any>; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: React.ElementType; isReminderActive?: boolean } | null => {
     if (!dueDateStr || paymentStatus === 'paid') return null;
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const dueDateObj = parseISO(dueDateStr);
+        const dueDateObj = dueDateStr instanceof Timestamp ? dueDateStr.toDate() : parseISO(dueDateStr as string);
         dueDateObj.setHours(0,0,0,0);
+
+        if (!isValid(dueDateObj)) return null;
 
         let isReminderActive = false;
         const daysUntilDue = differenceInCalendarDays(dueDateObj, today);
 
-        if (reminderDays !== undefined && reminderDays >= 0 && paymentStatus !== 'paid') {
+        if (reminderDays !== undefined && reminderDays !== null && reminderDays >= 0 && paymentStatus !== 'paid') {
             if (daysUntilDue >= 0 && daysUntilDue <= reminderDays) {
                 isReminderActive = true;
             }
@@ -315,45 +342,51 @@ export default function AccountsPage() {
         if (daysUntilDue === 0) {
             return { textKey: 'accounts_due_date_due_today', variant: 'destructive', icon: AlertTriangle, isReminderActive };
         }
-        if (daysUntilDue > 0 && daysUntilDue <= 7) {
+        if (daysUntilDue > 0 && daysUntilDue <= 7) { 
             return { textKey: 'accounts_due_date_upcoming_soon', params: { days: daysUntilDue }, variant: 'secondary', icon: CalendarClock, isReminderActive };
         }
-        if (isReminderActive) {
+        if (isReminderActive) { 
              return { textKey: 'accounts_due_date_reminder_active', params: { days: daysUntilDue }, variant: 'outline', icon: Bell, isReminderActive };
         }
 
-        return null;
+        return null; 
     } catch(e) {
         console.error("Error in getDueDateStatus:", e);
         return null;
     }
   };
 
-  const formatDateDisplay = (dateString: string | undefined, formatStr: string = 'PP') => {
-    if (!dateString) return t('invoices_na');
+  const formatDateDisplay = (dateInput: string | Date | Timestamp | undefined, formatStr: string = 'PP') => {
+    if (!dateInput) return t('invoices_na');
     try {
-      const dateObj = parseISO(dateString);
+      const dateObj = dateInput instanceof Timestamp ? dateInput.toDate() : (typeof dateInput === 'string' ? parseISO(dateInput) : dateInput);
+      if (!isValid(dateObj)) return t('invoices_invalid_date');
       return format(dateObj, formatStr);
     } catch (e) {
-      console.error("Error formatting date for display:", e, "Input:", dateString);
+      console.error("Error formatting date for display:", e, "Input:", dateInput);
       return t('invoices_invalid_date');
     }
   };
 
   const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return t('invoices_na');
-    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (value === undefined || value === null || isNaN(value)) return t('invoices_na');
+    return `${t('currency_symbol')}${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
 
-  const handleSaveBudget = () => {
-    if (!user) return;
+  const handleSaveBudget = async () => {
+    if (!user || !user.id) return;
     const newBudget = parseFloat(tempBudget);
     if (isNaN(newBudget) || newBudget < 0) {
       toast({ title: t('error_title'), description: t('accounts_budget_invalid_amount'), variant: 'destructive' });
       return;
     }
+    // Save through UserSettings
+    const currentSettings = await getUserSettingsService(user.id);
+    const settingsToSave: Partial<UserSettings> = { monthlyBudget: newBudget };
+    await saveUserSettingsService(settingsToSave, user.id);
+
     setMonthlyBudget(newBudget);
-    localStorage.setItem(getStorageKey(MONTHLY_BUDGET_STORAGE_KEY_BASE, user.id), String(newBudget));
+    setUserSettings(prev => prev ? { ...prev, monthlyBudget: newBudget } : { userId: user.id!, monthlyBudget: newBudget });
     setIsEditingBudget(false);
     toast({ title: t('accounts_budget_saved_title'), description: t('accounts_budget_saved_desc') });
   };
@@ -469,7 +502,7 @@ export default function AccountsPage() {
                     )}
                     {monthlyBudget !== null && monthlyBudget > 0 && (
                       <div className="mt-2">
-                        <Progress value={budgetProgress} className="h-2" indicatorClassName={budgetProgress > 100 ? "bg-destructive" : (budgetProgress > 75 ? "bg-yellow-500" : "bg-primary")} />
+                        <Progress value={Math.min(budgetProgress, 100)} className="h-2" indicatorClassName={budgetProgress > 100 ? "bg-destructive" : (budgetProgress > 75 ? "bg-yellow-500" : "bg-primary")} />
                         <p className="text-xs text-muted-foreground mt-1">
                            {budgetProgress > 100 ? t('accounts_budget_exceeded_by', {amount: formatCurrency(currentMonthTotalExpenses - monthlyBudget)}) :
                            t('accounts_budget_remaining', {amount: formatCurrency(monthlyBudget - currentMonthTotalExpenses)})}
@@ -544,7 +577,7 @@ export default function AccountsPage() {
                     const IconComponent = dueDateStatus?.icon;
                     return (
                       <TableRow key={invoice.id} className={cn(dueDateStatus?.variant === 'destructive' && 'bg-destructive/10 hover:bg-destructive/20')}>
-                        <TableCell className="font-medium">{invoice.supplier || t('invoices_na')}</TableCell>
+                        <TableCell className="font-medium">{invoice.supplierName || t('invoices_na')}</TableCell>
                         <TableCell>{invoice.invoiceNumber || t('invoices_na')}</TableCell>
                         <TableCell className="text-right">{formatCurrency(invoice.totalAmount)}</TableCell>
                         <TableCell className="text-center">{formatDateDisplay(invoice.paymentDueDate)}</TableCell>
@@ -557,7 +590,7 @@ export default function AccountsPage() {
                                             <Bell className="h-3.5 w-3.5 text-blue-500" />
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>{t('accounts_tooltip_reminder_active', {days: differenceInCalendarDays(parseISO(invoice.paymentDueDate!), new Date())})}</p>
+                                            <p>{t('accounts_tooltip_reminder_active', {days: differenceInCalendarDays(invoice.paymentDueDate instanceof Timestamp ? invoice.paymentDueDate.toDate() : parseISO(invoice.paymentDueDate as string), new Date())})}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 )}
@@ -630,7 +663,10 @@ export default function AccountsPage() {
                     </div>
                 ) : (
                     <p className="text-2xl font-bold">{formatCurrency(otherExpenses.filter(exp => {
-                        try { return isValid(parseISO(exp.date)) && isSameMonth(parseISO(exp.date), new Date())} catch { return false;}
+                        try { 
+                          const expDate = exp.date instanceof Timestamp ? exp.date.toDate() : parseISO(exp.date as string);
+                          return isValid(expDate) && isSameMonth(expDate, new Date())
+                        } catch { return false;}
                         }).reduce((sum, exp) => sum + exp.amount, 0))}
                     </p>
                 )}
