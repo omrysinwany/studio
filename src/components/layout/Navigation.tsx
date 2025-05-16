@@ -20,12 +20,13 @@ import {
   DropdownMenuPortal
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'; // Added SheetHeader and SheetTitle
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import React, { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { useLanguage, Locale } from '@/context/LanguageContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Separator } from '@/components/ui/separator';
 
 
 export default function Navigation() {
@@ -67,9 +68,20 @@ export default function Navigation() {
     const protectedPaths = navItemsBase.filter(item => item.protected).map(item => item.href);
     const publicPaths = ['/login', '/register'];
     const isAuthPage = publicPaths.includes(pathname);
-    const isProtectedPage = protectedPaths.some(path => pathname.startsWith(path) && path !== '/');
-
-    if (!user && isProtectedPage && !isAuthPage) { // Ensure we don't redirect if already on an auth page
+    
+    // Check if current pathname starts with any of the protected paths
+    // and is not exactly '/' if '/' is also considered protected for some reason.
+    // It's generally better to be explicit about which paths are protected.
+    // For now, assuming / is public unless specified otherwise.
+    let isActuallyProtectedPage = false;
+    for (const protectedPath of protectedPaths) {
+        if (pathname === protectedPath || (protectedPath !== '/' && pathname.startsWith(protectedPath + '/'))) {
+            isActuallyProtectedPage = true;
+            break;
+        }
+    }
+    
+    if (!user && isActuallyProtectedPage && !isAuthPage) {
         console.log(`[Navigation] User not authenticated and on protected page ${pathname}. Redirecting to login.`);
         router.push('/login');
     } else if (user && isAuthPage) {
@@ -91,29 +103,25 @@ export default function Navigation() {
 
   const getInitials = (name: string | undefined | null) => {
     if (!name) return '?';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    return name.trim().split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   const changeLanguage = (newLocale: string) => {
     setLocale(newLocale as Locale);
-    // No need to close mobile sheet here, DropdownMenu handles its own closure.
   };
 
   const changeTheme = (newTheme: string) => {
     setTheme(newTheme);
-    // No need to close mobile sheet here, DropdownMenu handles its own closure.
   }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-        {/* Logo/Brand */}
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
           <span className="text-primary">{t('app_name_short')}</span>
         </Link>
 
-        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {currentNavItems.map((item) => {
             if (!user && item.protected) return null;
@@ -141,8 +149,7 @@ export default function Navigation() {
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
-           {/* Appearance Settings Button - Visible only on md screens and up */}
-           <div className="hidden md:flex">
+           <div className="hidden md:flex"> {/* This div hides the button on mobile */}
              <DropdownMenu>
                <DropdownMenuTrigger asChild>
                  <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 transition-transform hover:scale-110">
@@ -175,7 +182,6 @@ export default function Navigation() {
              </DropdownMenu>
             </div>
 
-          {/* User Controls (Desktop) */}
           <div className="hidden md:flex items-center gap-2">
               {authLoading ? (
                 <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
@@ -210,17 +216,17 @@ export default function Navigation() {
               ) : (
                 <>
                    <Button variant="ghost" size="sm" asChild>
-                    <Link href="/login" className="flex items-center">
+                     <Link href="/login" className="flex items-center">
                        <span className="flex items-center">
-                        <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
                        </span>
-                    </Link>
+                     </Link>
                    </Button>
                   <Button size="sm" className="transition-transform hover:scale-105" asChild>
                     <Link href="/register" className="flex items-center">
                        <span className="flex items-center">
-                        <UserPlus className="mr-1 h-4 w-4" />
-                        {t('nav_register')}
+                         <UserPlus className="mr-1 h-4 w-4" />
+                         {t('nav_register')}
                        </span>
                     </Link>
                   </Button>
@@ -228,7 +234,6 @@ export default function Navigation() {
               )}
           </div>
 
-            {/* Mobile Menu Trigger */}
             <div className="md:hidden">
               <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
                 <SheetTrigger asChild>
@@ -306,26 +311,58 @@ export default function Navigation() {
                         )}
                       </nav>
 
-                    <div className="mt-auto border-t p-4 space-y-4">
+                    <div className="mt-auto border-t p-4 space-y-2 bg-muted/30">
                          <div>
                            {authLoading ? (
                               <div className="h-10 w-full animate-pulse rounded-md bg-muted"></div>
                            ) : user ? (
-                               <div className="flex flex-col gap-2">
-                                   <div className="flex items-center gap-2 mb-2 border-b pb-2">
-                                        <Avatar className="h-8 w-8 border-2 border-primary/50">
-                                            <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">{getInitials(user.username)}</AvatarFallback>
+                               <div className="flex flex-col gap-1">
+                                   <div className="flex items-center gap-3 mb-2 p-2 rounded-md">
+                                        <Avatar className="h-10 w-10 border-2 border-primary/50">
+                                            <AvatarFallback className="text-sm bg-primary/10 text-primary font-semibold">{getInitials(user.username)}</AvatarFallback>
                                         </Avatar>
                                         <div className="flex flex-col">
-                                            <p className="text-sm font-medium leading-none">{user.username || user.email}</p>
-                                            {user.username && user.email && <p className="text-xs leading-none text-muted-foreground">{user.email}</p>}
+                                            <p className="text-base font-medium leading-tight">{user.username || user.email}</p>
+                                            {user.username && user.email && <p className="text-xs leading-tight text-muted-foreground">{user.email}</p>}
                                         </div>
                                     </div>
-                                     <Button variant="ghost" className="justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground" onClick={() => handleMobileNavClick('/settings')}>
+                                     <Separator className="my-2 bg-border/50" />
+                                     <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground" onClick={() => handleMobileNavClick('/settings')}>
                                         <SettingsIcon className="h-5 w-5" />
                                         {t('nav_settings')}
                                      </Button>
-                                   <Button variant="ghost" className="justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
+                                     <DropdownMenu>
+                                         <DropdownMenuTrigger asChild>
+                                           <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground">
+                                              <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
+                                           </Button>
+                                         </DropdownMenuTrigger>
+                                         <DropdownMenuPortal>
+                                              <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
+                                               <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
+                                               <DropdownMenuSeparator />
+                                               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
+                                               <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
+                                                 <DropdownMenuRadioItem value="light">
+                                                   <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
+                                                 </DropdownMenuRadioItem>
+                                                 <DropdownMenuRadioItem value="dark">
+                                                   <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
+                                                 </DropdownMenuRadioItem>
+                                                 <DropdownMenuRadioItem value="system">
+                                                   <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
+                                                 </DropdownMenuRadioItem>
+                                               </DropdownMenuRadioGroup>
+                                               <DropdownMenuSeparator />
+                                               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
+                                                <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
+                                                  <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
+                                                  <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
+                                                </DropdownMenuRadioGroup>
+                                             </DropdownMenuContent>
+                                          </DropdownMenuPortal>
+                                       </DropdownMenu>
+                                   <Button variant="ghost" className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
                                       <LogOut className="h-5 w-5" />
                                       {t('nav_logout')}
                                    </Button>
@@ -341,40 +378,6 @@ export default function Navigation() {
                                </div>
                            )}
                          </div>
-
-                         <div className="border-t pt-4">
-                            <DropdownMenu>
-                             <DropdownMenuTrigger asChild>
-                               <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground">
-                                  <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
-                               </Button>
-                             </DropdownMenuTrigger>
-                             <DropdownMenuPortal>
-                                  <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
-                                   <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
-                                   <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
-                                   <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
-                                     <DropdownMenuRadioItem value="light">
-                                       <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
-                                     </DropdownMenuRadioItem>
-                                     <DropdownMenuRadioItem value="dark">
-                                       <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
-                                     </DropdownMenuRadioItem>
-                                     <DropdownMenuRadioItem value="system">
-                                       <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
-                                     </DropdownMenuRadioItem>
-                                   </DropdownMenuRadioGroup>
-                                   <DropdownMenuSeparator />
-                                   <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
-                                    <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
-                                      <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
-                                      <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
-                                    </DropdownMenuRadioGroup>
-                                 </DropdownMenuContent>
-                              </DropdownMenuPortal>
-                           </DropdownMenu>
-                         </div>
                     </div>
                 </SheetContent>
               </Sheet>
@@ -385,3 +388,4 @@ export default function Navigation() {
   );
 }
 
+    
