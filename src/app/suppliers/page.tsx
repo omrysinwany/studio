@@ -14,7 +14,7 @@ import {
     getInvoicesService, 
     updateSupplierContactInfoService, 
     deleteSupplierService,
-    createSupplierService // Ensure this is imported
+    createSupplierService
 } from '@/services/backend';
 import { Briefcase, Search, DollarSign, FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -53,6 +53,7 @@ import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useIsMobile } from '@/hooks/use-mobile'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Timestamp } from 'firebase/firestore';
 
 
 const ITEMS_PER_PAGE = 4;
@@ -61,10 +62,20 @@ type SortKey = keyof Pick<SupplierSummary, 'name' | 'invoiceCount' | 'lastActivi
 type SortDirection = 'asc' | 'desc';
 
 
-const formatDateDisplay = (date: Date | string | undefined, t: (key: string, params?: any) => string, f: string = 'PP') => {
+const formatDateDisplay = (date: Date | string | Timestamp | undefined, t: (key: string, params?: any) => string, f: string = 'PP') => {
   if (!date) return t('suppliers_na');
   try {
-    const dateObj = typeof date === 'string' ? parseISO(date) : date;
+    let dateObj: Date;
+    if (date instanceof Timestamp) {
+        dateObj = date.toDate();
+    } else if (typeof date === 'string') {
+        dateObj = parseISO(date);
+    } else if (date instanceof Date) {
+        dateObj = date;
+    } else {
+        return t('suppliers_invalid_date');
+    }
+
     if (isNaN(dateObj.getTime()) || !isValid(dateObj)) return t('suppliers_invalid_date');
     return format(dateObj, f);
   } catch (e) {
@@ -112,7 +123,7 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string
     return (
         <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
             {icon}
-            {t(`invoice_status_${status}` as any) || status.charAt(0).toUpperCase() + status.slice(1)}
+            {t(`invoice_status_${status}` as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
         </Badge>
     );
 };
@@ -184,7 +195,7 @@ export default function SuppliersPage() {
         getInvoicesService(user.id)
       ]);
       setSuppliers(summaries);
-      setAllInvoices(invoicesData.map(inv => ({...inv, uploadTime: inv.uploadTime as string })));
+      setAllInvoices(invoicesData);
     } catch (error) {
       console.error("Failed to fetch supplier data:", error);
       toast({
@@ -227,8 +238,18 @@ export default function SuppliersPage() {
         let valB = b[sortKey as keyof SupplierSummary];
 
         if (sortKey === 'lastActivityDate') {
-          valA = a.lastActivityDate ? new Date(a.lastActivityDate as string).getTime() : 0;
-          valB = b.lastActivityDate ? new Date(b.lastActivityDate as string).getTime() : 0;
+            let dateA = 0;
+            if (a.lastActivityDate) {
+                if (a.lastActivityDate instanceof Timestamp) dateA = a.lastActivityDate.toDate().getTime();
+                else if (typeof a.lastActivityDate === 'string' && isValid(parseISO(a.lastActivityDate))) dateA = parseISO(a.lastActivityDate).getTime();
+            }
+            let dateB = 0;
+            if (b.lastActivityDate) {
+                if (b.lastActivityDate instanceof Timestamp) dateB = b.lastActivityDate.toDate().getTime();
+                else if (typeof b.lastActivityDate === 'string' && isValid(parseISO(b.lastActivityDate))) dateB = parseISO(b.lastActivityDate).getTime();
+            }
+            valA = dateA as any;
+            valB = dateB as any;
         }
         
         let comparison = 0;
@@ -237,9 +258,8 @@ export default function SuppliersPage() {
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = valA.localeCompare(valB);
         } else {
-          
-          if (valA === undefined && valB !== undefined) comparison = 1; 
-          else if (valA !== undefined && valB === undefined) comparison = -1; 
+          if (valA === undefined || valA === null) comparison = (valB === undefined || valB === null) ? 0 : 1; 
+          else if (valB === undefined || valB === null) comparison = -1; 
           else comparison = 0;
         }
         return sortDirection === 'asc' ? comparison : -comparison;
@@ -281,7 +301,11 @@ export default function SuppliersPage() {
     setIsEditingPaymentTerms(false);
 
     const invoicesForSupplier = allInvoices.filter(inv => inv.supplierName === supplier.name)
-                                      .sort((a,b) => new Date(b.uploadTime as string).getTime() - new Date(a.uploadTime as string).getTime());
+                                      .sort((a,b) => {
+                                        const dateA = a.uploadTime instanceof Timestamp ? a.uploadTime.toDate().getTime() : (typeof a.uploadTime === 'string' ? parseISO(a.uploadTime).getTime() : 0);
+                                        const dateB = b.uploadTime instanceof Timestamp ? b.uploadTime.toDate().getTime() : (typeof b.uploadTime === 'string' ? parseISO(b.uploadTime).getTime() : 0);
+                                        return dateB - dateA;
+                                      });
     setSelectedSupplierInvoices(invoicesForSupplier);
 
     const last12Months = eachMonthOfInterval({
@@ -297,15 +321,18 @@ export default function SuppliersPage() {
 
     invoicesForSupplier.forEach(invoice => {
       if (invoice.totalAmount && invoice.status === 'completed') {
-        const monthYear = formatDateDisplay(invoice.uploadTime as string, t, 'MMM yyyy');
-        if(spendingByMonth.hasOwnProperty(monthYear)){
-            spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
+        const uploadTime = invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : (typeof invoice.uploadTime === 'string' ? parseISO(invoice.uploadTime) : null);
+        if (uploadTime && isValid(uploadTime)){
+            const monthYear = formatDateDisplay(uploadTime, t, 'MMM yyyy');
+            if(spendingByMonth.hasOwnProperty(monthYear)){
+                spendingByMonth[monthYear] = (spendingByMonth[monthYear] || 0) + invoice.totalAmount;
+            }
         }
       }
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+      .sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime()); // Ensure chronological order
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -320,11 +347,14 @@ export default function SuppliersPage() {
     if (!selectedSupplier || !user || !user.id) return;
     setIsSavingContact(true);
     try {
-      await updateSupplierContactInfoService(selectedSupplier.id, editedContactInfo, user.id);
-      // Refetch all suppliers to update the list after saving
+      await updateSupplierContactInfoService(selectedSupplier.id, {
+        phone: editedContactInfo.phone,
+        email: editedContactInfo.email,
+        // paymentTerms will be saved separately
+      }, user.id);
+      
       await fetchData();
-      // Update selectedSupplier state after refetching
-      setSelectedSupplier(prev => prev ? { ...prev, ...editedContactInfo } : null);
+      setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
       setIsEditingContact(false);
     } catch (error: any) {
@@ -337,7 +367,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); // Re-use for loading state
+    setIsSavingContact(true); 
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -352,7 +382,7 @@ export default function SuppliersPage() {
 
     try {
         await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
-        await fetchData(); // Refetch
+        await fetchData(); 
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -370,7 +400,7 @@ export default function SuppliersPage() {
       await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
-      fetchData(); // Refetch suppliers
+      fetchData(); 
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
       toast({ title: t('suppliers_toast_create_fail_title'), description: t('suppliers_toast_create_fail_desc', { message: error.message }), variant: "destructive" });
@@ -381,9 +411,9 @@ export default function SuppliersPage() {
     if(!user || !user.id) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierId, user.id); // Use supplierId
+      await deleteSupplierService(supplierId, user.id); 
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName: selectedSupplier?.name || supplierId }) });
-      fetchData(); // Refetch
+      fetchData(); 
       if (selectedSupplier?.id === supplierId) {
         setIsDetailSheetOpen(false);
         setSelectedSupplier(null);
@@ -399,13 +429,15 @@ export default function SuppliersPage() {
   const supplierSpendingData = useMemo(() => {
     const spendingMap = new Map<string, number>();
     const filteredPeriodInvoices = allInvoices.filter(invoice => {
-        if (!dateRange?.from || !invoice.uploadTime) return true; // If no date range, include all
-        const invoiceDate = parseISO(invoice.uploadTime as string);
+        if (!dateRange?.from || !invoice.uploadTime) return true;
+        const uploadTime = invoice.uploadTime instanceof Timestamp ? invoice.uploadTime.toDate() : (typeof invoice.uploadTime === 'string' ? parseISO(invoice.uploadTime) : null);
+        if (!uploadTime || !isValid(uploadTime)) return false;
+        
         const startDate = new Date(dateRange.from);
         startDate.setHours(0, 0, 0, 0);
         const endDate = dateRange.to ? new Date(dateRange.to) : new Date();
         endDate.setHours(23, 59, 59, 999);
-        return invoiceDate >= startDate && invoiceDate <= endDate && invoice.status === 'completed';
+        return uploadTime >= startDate && uploadTime <= endDate && invoice.status === 'completed';
     });
 
     filteredPeriodInvoices.forEach(invoice => {
@@ -491,7 +523,6 @@ export default function SuppliersPage() {
                         mode="range"
                         defaultMonth={dateRange?.from}
                         selected={dateRange}
-                        onSelect={setDateRange}
                         numberOfMonths={isMobile ? 1 : 2}
                     />
                      {dateRange && (
@@ -556,7 +587,7 @@ export default function SuppliersPage() {
                       <TableHead className="text-center cursor-pointer hover:bg-muted/50 hidden md:table-cell" onClick={() => handleSort('lastActivityDate')}>
                         {t('suppliers_col_last_activity')} {sortKey === 'lastActivityDate' && (sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4" /> : <ChevronDown className="inline h-4 w-4" />)}
                       </TableHead>
-                      <TableHead className="text-center">{t('suppliers_col_actions')}</TableHead>
+                       <TableHead className="text-center">{t('suppliers_col_actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -577,7 +608,7 @@ export default function SuppliersPage() {
                         <TableRow key={supplier.id} className="hover:bg-muted/50">
                           <TableCell className="font-medium">{supplier.name}</TableCell>
                           <TableCell className="text-center">{supplier.invoiceCount}</TableCell>
-                          <TableCell className="text-center hidden md:table-cell">{supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate as string, t, 'PP') : t('suppliers_na')}</TableCell>
+                          <TableCell className="text-center hidden md:table-cell">{supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate, t, 'PP') : t('suppliers_na')}</TableCell>
                            <TableCell className="text-center space-x-1">
                             <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
                               <Info className="h-4 w-4 text-primary" />
@@ -840,13 +871,13 @@ export default function SuppliersPage() {
                     </CardContent>
                  </Card>
 
-                 <Card className="overflow-hidden"> {/* Added overflow-hidden here */}
+                 <Card className="overflow-hidden">
                     <CardHeader>
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
                     <CardContent className="min-h-[200px] p-0 sm:pb-2">
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className="w-full sm:w-11/12 mx-auto">
+                        <div className="w-full sm:w-11/12 mx-auto"> {/* Adjusted width for non-mobile and centered */}
                             <ResponsiveContainer width="100%" height={200}>
                                 <BarChart data={monthlySpendingData} margin={{ top: 5, right: isMobile ? 0 : 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -879,10 +910,10 @@ export default function SuppliersPage() {
                                 {index < selectedSupplierInvoices.slice(0, 10).length - 1 && <div className="h-full w-px bg-border" />}
                               </div>
                               <div className="pb-3 flex-1">
-                                <p className="text-xs text-muted-foreground">{formatDateDisplay(invoice.uploadTime as string, t, 'PPp')}</p>
+                                <p className="text-xs text-muted-foreground">{formatDateDisplay(invoice.uploadTime, t, 'PPp')}</p>
                                 <p className="text-sm font-medium">
                                   <Button variant="link" className="p-0 h-auto text-sm" onClick={() => navigateToInvoiceDetails(invoice.id)}>
-                                    {invoice.fileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
+                                    {invoice.generatedFileName || invoice.originalFileName} {invoice.invoiceNumber && `(#${invoice.invoiceNumber})`}
                                   </Button>
                                 </p>
                                 <div className="text-xs text-muted-foreground">

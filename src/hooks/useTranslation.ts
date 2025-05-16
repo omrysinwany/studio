@@ -4,6 +4,7 @@
 import { useLanguage, Locale } from '@/context/LanguageContext';
 
 export const useTranslation = () => {
-  const { t, locale } = useLanguage(); // Removed isLoadingTranslations as it's not directly used here often
+  const { t, locale } = useLanguage(); 
   return { t, locale };
 };
+
