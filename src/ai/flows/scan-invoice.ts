@@ -27,14 +27,15 @@ import type {
 export type { ScanInvoiceInput, ScanInvoiceOutput };
 
 
-export async function scanInvoice(input: ScanInvoiceInput, streamingCallback?: (update: any) => void): Promise<ScanInvoiceOutput> {
+export async function scanInvoice(input: ScanInvoiceInput): Promise<ScanInvoiceOutput> {
   try {
     console.log("[scanInvoice Server Action] Received input:", input ? "Data URI present" : "No input");
     if (!input || !input.invoiceDataUri) {
       console.error("[scanInvoice Server Action] Error: invoiceDataUri is missing in input.");
       return { products: [], error: "AI Scan Error: Missing invoice image data." };
     }
-    const result = await scanInvoiceFlow(input, streamingCallback);
+    // Removed streamingCallback from the call
+    const result = await scanInvoiceFlow(input);
     console.log("[scanInvoice Server Action] Result from flow:", result ? (result.error ? `Error: ${result.error}` : `${result.products?.length} products`) : "null/undefined result");
     if (!result) {
         return { products: [], error: "AI Scan Error: Flow returned no result." };
@@ -42,9 +43,11 @@ export async function scanInvoice(input: ScanInvoiceInput, streamingCallback?: (
     return result;
   } catch (error: any) {
     console.error("[scanInvoice Server Action] Unhandled error in scanInvoice:", error);
+    // Ensure a serializable error object is returned
+    const errorMessage = error.message || 'Unknown error';
     return {
       products: [],
-      error: `AI Scan Error: Unhandled server error during invoice scan. ${error.message || 'Unknown error'}`
+      error: `AI Scan Error: Unhandled server error during invoice scan. ${errorMessage}`
     };
   }
 }
@@ -110,11 +113,12 @@ const prompt = ai.definePrompt({
 });
 
 
+// Removed streamingCallback from the flow definition
 const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
   name: 'scanInvoiceFlow',
   inputSchema: ScanInvoiceInputSchema,
   outputSchema: ScanInvoiceOutputSchema
-}, async (input, streamingCallback) => {
+}, async (input) => { // Removed streamingCallback from async parameters
     let rawOutputFromAI: PromptOutputType | null = null;
     let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
     let invoiceDetailsForOutput: Partial<Omit<ScanInvoiceOutput, 'products' | 'error'>> = {};
@@ -126,12 +130,7 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
 
     while (currentRetry < maxRetries) {
         try {
-            if (streamingCallback) {
-              streamingCallback({
-                index: currentRetry > 0 ? currentRetry + maxRetries + 1 : 0, // Ensure unique index for retries
-                content: currentRetry > 0 ? `Retrying AI call (attempt ${currentRetry + 1})...` : 'Calling AI for scan...'
-              });
-            }
+            // Removed streamingCallback call
             console.log(`[scanInvoiceFlow] Attempting AI call, try ${currentRetry + 1}. Input provided: ${!!input.invoiceDataUri}`);
             const { output } = await prompt(input);
             console.log("[scanInvoiceFlow] Raw output from AI:", JSON.stringify(output, null, 2));
@@ -163,12 +162,7 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
 
             if ((isServiceUnavailable || isRateLimit) && currentRetry < maxRetries - 1) {
                 currentRetry++;
-                if (streamingCallback) {
-                  streamingCallback({
-                    index: currentRetry + maxRetries + 1,
-                    content: `AI service temporarily unavailable. Retrying in ${delay/1000}s... (Attempt ${currentRetry + 1})`
-                  });
-                }
+                // Removed streamingCallback call
                 await new Promise(resolve => setTimeout(resolve, delay));
                 delay *= 2; 
             } else {
@@ -189,7 +183,8 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
         return { products: [], error: "AI processing failed after multiple retries. The AI service might be temporarily unavailable. Please try again later or add products manually." };
     }
     
-    if (streamingCallback) streamingCallback({ index: maxRetries * 2 + 2, content: 'Processing scanned data...' });
+    // Removed streamingCallback call
+    console.log("[scanInvoiceFlow] Processing scanned data...");
 
     try {
         if (!rawOutputFromAI || !Array.isArray(rawOutputFromAI.products)) {
@@ -206,20 +201,16 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
 
                 let finalUnitPrice = 0; 
 
-                // Prioritize calculating unit price from lineTotal and quantity if both are valid and positive
                 if (quantity > 0 && lineTotal > 0) {
                     finalUnitPrice = parseFloat((lineTotal / quantity).toFixed(2));
-                    // Log if AI's purchase_price differs significantly (optional)
                     if (aiExtractedPurchasePrice !== undefined && Math.abs(finalUnitPrice - aiExtractedPurchasePrice) > 0.01) {
                         console.warn(`[ScanInvoiceFlow] Unit price discrepancy for "${rawProduct.product_name || rawProduct.catalog_number}". Calculated from total/qty: ${finalUnitPrice}, AI extracted purchase_price: ${aiExtractedPurchasePrice}. Prioritizing calculated value.`);
                     }
                 } 
-                // Fallback to AI extracted purchase price if it's valid and calculation wasn't possible or resulted in zero
                 else if (aiExtractedPurchasePrice !== undefined && aiExtractedPurchasePrice > 0) {
                     finalUnitPrice = aiExtractedPurchasePrice;
                      console.log(`[ScanInvoiceFlow] Using AI extracted purchase_price (${finalUnitPrice}) for "${rawProduct.product_name || rawProduct.catalog_number}" as total/quantity calculation was not possible or resulted in zero (qty: ${quantity}, total: ${lineTotal}).`);
                 }
-                // If all else fails, default to 0, but log a warning.
                 else {
                      console.warn(`[ScanInvoiceFlow] Could not determine unit price for "${rawProduct.product_name || rawProduct.catalog_number}". Qty: ${quantity}, Total: ${lineTotal}, AI Purchase Price: ${aiExtractedPurchasePrice}. Setting to 0.`);
                     finalUnitPrice = 0;
@@ -230,7 +221,6 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
                 const shortName = rawProduct.short_product_name || description.split(' ').slice(0, 3).join(' ') || rawProduct.catalog_number || undefined;
 
                 const finalProduct: z.infer<typeof FinalProductSchema> = {
-                    // id is not part of ExtractedProductSchema, will be added in backend
                     catalogNumber: rawProduct.catalog_number || 'N/A',
                     barcode: rawProduct.barcode,
                     description: description,
@@ -255,7 +245,7 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
             invoiceDetailsForOutput.paymentMethod = rawOutputFromAI.invoice_details.payment_method;
         }
         
-        if (streamingCallback) streamingCallback({ index: maxRetries * 2 + 3 , content: 'Scan processing complete!' });
+        // Removed streamingCallback call
         console.log("[scanInvoiceFlow] Successfully processed scan. Output:", { products: productsForOutput, ...invoiceDetailsForOutput });
         return { 
             products: productsForOutput,
