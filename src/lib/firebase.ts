@@ -1,9 +1,8 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, FirebaseApp, FirebaseOptions } from 'firebase/app';
-import { getFirestore, Firestore }
-from 'firebase/firestore';
+import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth, GoogleAuthProvider } from "firebase/auth";
-import { getStorage, FirebaseStorage } from "firebase/storage"; // Added Firebase Storage import
+// Removed Firebase Storage import: import { getStorage, FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -18,7 +17,7 @@ const firebaseConfig: FirebaseOptions = {
 let firebaseApp: FirebaseApp | undefined;
 let dbInstance: Firestore | null = null;
 let authInstance: Auth | null = null;
-let storageInstance: FirebaseStorage | null = null; // Added storage instance
+// Removed storage instance: let storageInstance: FirebaseStorage | null = null;
 
 if (typeof window !== 'undefined' && !getApps().length) {
   if (
@@ -31,8 +30,8 @@ if (typeof window !== 'undefined' && !getApps().length) {
       firebaseApp = initializeApp(firebaseConfig);
       dbInstance = getFirestore(firebaseApp);
       authInstance = getAuth(firebaseApp);
-      storageInstance = getStorage(firebaseApp); // Initialize Firebase Storage
-      console.log("Firebase initialized successfully via firebase.ts (including Storage).");
+      // Removed storage initialization: storageInstance = getStorage(firebaseApp);
+      console.log("Firebase initialized successfully via firebase.ts.");
     } catch (error) {
       console.error("Firebase initialization error in firebase.ts:", error);
     }
@@ -47,12 +46,12 @@ if (typeof window !== 'undefined' && !getApps().length) {
   firebaseApp = getApps()[0];
   dbInstance = getFirestore(firebaseApp);
   authInstance = getAuth(firebaseApp);
-  storageInstance = getStorage(firebaseApp); // Get Storage instance if app already initialized
-  console.log("Firebase app already initialized in firebase.ts (including Storage).");
+  // Removed getting storage instance: storageInstance = getStorage(firebaseApp);
+  console.log("Firebase app already initialized in firebase.ts.");
 }
 
 export const db = dbInstance;
 export const auth = authInstance;
-export const storage = storageInstance; // Export Firebase Storage instance
+// Removed storage export: export const storage = storageInstance;
 export { GoogleAuthProvider };
 export default firebaseApp;

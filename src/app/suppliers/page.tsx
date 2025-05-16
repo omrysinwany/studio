@@ -15,7 +15,7 @@ import {
     updateSupplierContactInfoService,
     deleteSupplierService,
     createSupplierService
-} from '@/services/backend';
+} from '@/services/backend'; // Ensure services use Firestore
 import { Briefcase, Search, DollarSign, FileText as FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
@@ -170,7 +170,7 @@ export default function SuppliersPage() {
   const [customPaymentTerm, setCustomPaymentTerm] = useState('');
 
 
-  const [isSavingContact, setIsSavingContact] = useState(false); // Used for both contact and payment terms saving
+  const [isSavingContact, setIsSavingContact] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
@@ -193,12 +193,10 @@ export default function SuppliersPage() {
     }
     setIsLoading(true);
     try {
-      console.log("[SuppliersPage] Fetching data for user:", user.id);
       const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(user.id), // Fetches from Firestore
-        getInvoicesService(user.id) // Fetches from Firestore
+        getSupplierSummariesService(user.id), 
+        getInvoicesService(user.id) 
       ]);
-      console.log("[SuppliersPage] Fetched summaries:", summaries.length, "Fetched invoices:", invoicesData.length);
       setSuppliers(summaries);
       setAllInvoices(invoicesData);
     } catch (error) {
@@ -352,7 +350,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); // Sorting might not be needed if last12Months is already sorted
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime());
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -370,10 +368,9 @@ export default function SuppliersPage() {
       await updateSupplierContactInfoService(selectedSupplier.id, {
         phone: editedContactInfo.phone,
         email: editedContactInfo.email,
-        // paymentTerms not saved here
       }, user.id);
 
-      await fetchData(); // Refetch all supplier data to get updates
+      await fetchData(); 
       setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
 
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
@@ -388,7 +385,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true);
+    setIsSavingContact(true); // Use the same saving flag for simplicity
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -403,7 +400,7 @@ export default function SuppliersPage() {
 
     try {
         await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
-        await fetchData(); // Refetch all supplier data
+        await fetchData(); 
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -418,7 +415,7 @@ export default function SuppliersPage() {
   const handleCreateSupplier = async (name: string, contactInfo: { phone?: string; email?: string, paymentTerms?: string }) => {
     if(!user || !user.id) return;
     try {
-      await createSupplierService(name, contactInfo, user.id); // Uses Firestore
+      await createSupplierService(name, contactInfo, user.id);
       toast({ title: t('suppliers_toast_created_title'), description: t('suppliers_toast_created_desc', { supplierName: name }) });
       setIsCreateSheetOpen(false);
       fetchData();
@@ -432,7 +429,7 @@ export default function SuppliersPage() {
     if(!user || !user.id) return;
     setIsDeletingSupplier(true);
     try {
-      await deleteSupplierService(supplierId, user.id); // Uses Firestore
+      await deleteSupplierService(supplierId, user.id);
       toast({ title: t('suppliers_toast_deleted_title'), description: t('suppliers_toast_deleted_desc', { supplierName: selectedSupplier?.name || supplierId }) });
       fetchData();
       if (selectedSupplier?.id === supplierId) {
@@ -597,6 +594,7 @@ export default function SuppliersPage() {
                                         </a>
                                     )}
                                     <p>{t('suppliers_col_orders')}: {supplier.invoiceCount}</p>
+                                    <p>{t('suppliers_col_last_activity')}: {supplier.lastActivityDate ? formatDateDisplay(supplier.lastActivityDate, t, 'PP') : t('suppliers_na')}</p>
                                 </CardContent>
                             </Card>
                         ))}
@@ -744,7 +742,7 @@ export default function SuppliersPage() {
                                     <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5, angle: isMobile ? -15 : 0, textAnchor: isMobile ? 'end' : 'end' }} interval={0} />
                                     <RechartsRechartsTooltip
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
-                                        formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals: 0}), t(supplierChartConfig.totalAmount.labelKey as any) ]}
+                                        formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals:0}), t(supplierChartConfig.totalAmount.labelKey as any) ]}
                                     />
                                      <RechartsRechartsLegend verticalAlign="top" content={({ payload }) => (
                                         <ul className="flex flex-wrap justify-center gap-x-4 text-xs text-muted-foreground">
