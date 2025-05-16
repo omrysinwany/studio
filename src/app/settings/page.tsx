@@ -29,17 +29,14 @@ import {
     clearExpenseCategoriesService,
     getStorageKey, // For localStorage
     USER_SETTINGS_COLLECTION,
-    TEMP_DATA_KEY_PREFIX, // Added import
-    TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX, // Added import
-    TEMP_COMPRESSED_IMAGE_KEY_PREFIX, // Added import
+    TEMP_DATA_KEY_PREFIX, // For cleaning up old scan JSON if any
 } from '@/services/backend';
 import { db } from '@/lib/firebase';
 import { doc, deleteDoc, collection, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 
 
-// Base keys for localStorage cleanup (related to other-expenses if they were ever in localStorage)
-// These might not be strictly necessary if all data is now in Firestore and `clearTemporaryScanData` is robust
+// Base keys from other-expenses page (assuming they are exported or redefined if not)
 const EXPENSE_CATEGORIES_STORAGE_KEY_BASE_LS = 'invoTrack_expenseCategories';
 const OTHER_EXPENSES_STORAGE_KEY_BASE_LS = 'invoTrack_otherExpenses';
 const EXPENSE_TEMPLATES_STORAGE_KEY_BASE_LS = 'invoTrack_expenseTemplates';
@@ -73,16 +70,41 @@ export default function SettingsPage() {
         await clearInventoryService(user.id);
         console.log("[SettingsPage] Inventory cleared from Firestore.");
         
-        await clearDocumentsService(user.id);
+        // Documents might have subcollections (like documentLineItems), ensure robust deletion
+        const documentsQuery = query(collection(db, DOCUMENTS_COLLECTION), where("userId", "==", user.id));
+        const documentsSnapshot = await getDocs(documentsQuery);
+        if (!documentsSnapshot.empty) {
+            const batch = writeBatch(db);
+            documentsSnapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+        }
         console.log("[SettingsPage] Documents cleared from Firestore.");
 
-        await clearSuppliersService(user.id);
+        const suppliersQuery = query(collection(db, SUPPLIERS_COLLECTION), where("userId", "==", user.id));
+        const suppliersSnapshot = await getDocs(suppliersQuery);
+         if (!suppliersSnapshot.empty) {
+            const batch = writeBatch(db);
+            suppliersSnapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+        }
         console.log("[SettingsPage] Suppliers cleared from Firestore.");
 
-        await clearOtherExpensesService(user.id);
+        const otherExpensesQuery = query(collection(db, OTHER_EXPENSES_COLLECTION), where("userId", "==", user.id));
+        const otherExpensesSnapshot = await getDocs(otherExpensesQuery);
+        if (!otherExpensesSnapshot.empty) {
+            const batch = writeBatch(db);
+            otherExpensesSnapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+        }
         console.log("[SettingsPage] Other Expenses cleared from Firestore.");
         
-        await clearExpenseCategoriesService(user.id);
+        const expenseCategoriesQuery = query(collection(db, EXPENSE_CATEGORIES_COLLECTION), where("userId", "==", user.id));
+        const expenseCategoriesSnapshot = await getDocs(expenseCategoriesQuery);
+        if (!expenseCategoriesSnapshot.empty) {
+            const batch = writeBatch(db);
+            expenseCategoriesSnapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+            await batch.commit();
+        }
         console.log("[SettingsPage] Expense Categories cleared from Firestore.");
         
         // Delete userSettings document directly
@@ -98,20 +120,19 @@ export default function SettingsPage() {
         const localStorageKeysToClearBases: string[] = [
           KPI_PREFERENCES_STORAGE_KEY_BASE_LS, 
           QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE_LS,
+          EXPENSE_CATEGORIES_STORAGE_KEY_BASE_LS, // These might have been used before Firestore migration
+          OTHER_EXPENSES_STORAGE_KEY_BASE_LS,
+          EXPENSE_TEMPLATES_STORAGE_KEY_BASE_LS,
           // Add other specific localStorage keys that are NOT Firestore data if any remain
         ];
         localStorageKeysToClearBases.forEach(baseKey => {
-          const userSpecificKey = getStorageKey(baseKey, user.id);
+          const userSpecificKey = getStorageKey(baseKey, user.id); // Assuming getStorageKey is still available
           localStorage.removeItem(userSpecificKey);
           console.log(`[SettingsPage] Attempted removal from localStorage: ${userSpecificKey}`);
         });
         
-        // Clear temporary scan data from localStorage 
-        const tempScanKeysPrefixes = [
-            TEMP_DATA_KEY_PREFIX, 
-            TEMP_ORIGINAL_IMAGE_PREVIEW_KEY_PREFIX,
-            TEMP_COMPRESSED_IMAGE_KEY_PREFIX 
-        ];
+        // Clear temporary scan data (raw JSON) from localStorage 
+        const tempScanKeysPrefixes = [ TEMP_DATA_KEY_PREFIX ];
         
         const keysToRemoveFromLocalStorage: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -130,8 +151,13 @@ export default function SettingsPage() {
           description: t('settings_delete_all_success_desc'),
         });
         
-        await logout(); 
-        router.push('/login'); 
+        // Optionally, logout the user after deleting their data
+        // await logout(); 
+        // router.push('/login'); 
+        // For now, let's refresh the page to reflect data clearing.
+        // A full logout might be too disruptive if not explicitly desired.
+        router.refresh(); 
+
 
       } catch (error) {
         console.error("[SettingsPage] Error deleting all user data:", error);
@@ -295,3 +321,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
