@@ -388,7 +388,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true);
+    setIsSavingContact(true); // Re-use isSavingContact for simplicity here
     let finalPaymentTerm: string;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -424,7 +424,7 @@ export default function SuppliersPage() {
       fetchData();
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
-      toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc')} ${error.message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc')} ${(error as Error).message}`, variant: "destructive" });
     }
   };
 
@@ -441,7 +441,7 @@ export default function SuppliersPage() {
       }
     } catch (error: any) {
       console.error("Failed to delete supplier:", error);
-      toast({ title: t('suppliers_toast_delete_fail_title'), description: `${t('suppliers_toast_delete_fail_desc')} ${error.message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_delete_fail_title'), description: `${t('suppliers_toast_delete_fail_desc')} ${(error as Error).message}`, variant: "destructive" });
     } finally {
       setIsDeletingSupplier(false);
     }
@@ -977,6 +977,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-
-
-    
