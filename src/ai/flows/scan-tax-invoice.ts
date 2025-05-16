@@ -22,8 +22,25 @@ import type {
 
 export type { ScanTaxInvoiceInput, ScanTaxInvoiceOutput };
 
-export async function scanTaxInvoice(input: ScanTaxInvoiceInput): Promise<ScanTaxInvoiceOutput> {
-  return scanTaxInvoiceFlow(input);
+export async function scanTaxInvoice(input: ScanTaxInvoiceInput, streamingCallback?: (update: any) => void): Promise<ScanTaxInvoiceOutput> {
+  try {
+    console.log("[scanTaxInvoice Server Action] Received input:", input ? "Data URI present" : "No input");
+    if (!input || !input.invoiceDataUri) {
+        console.error("[scanTaxInvoice Server Action] Error: invoiceDataUri is missing in input.");
+        return { error: "AI Scan Error: Missing invoice image data." };
+    }
+    const result = await scanTaxInvoiceFlow(input, streamingCallback);
+    console.log("[scanTaxInvoice Server Action] Result from flow:", result ? (result.error ? `Error: ${result.error}` : "Success") : "null/undefined result");
+     if (!result) {
+        return { error: "AI Scan Error: Flow returned no result." };
+    }
+    return result;
+  } catch (error: any) {
+    console.error("[scanTaxInvoice Server Action] Unhandled error in scanTaxInvoice:", error);
+    return {
+      error: `AI Scan Error: Unhandled server error during tax invoice scan. ${error.message || 'Unknown error'}`
+    };
+  }
 }
 
 const prompt = ai.definePrompt({
@@ -50,8 +67,8 @@ const prompt = ai.definePrompt({
 });
 
 const scanTaxInvoiceFlow = ai.defineFlow<
-  typeof ScanTaxInvoiceInputSchema,
-  typeof ScanTaxInvoiceOutputSchema
+  ScanTaxInvoiceInput, // Changed from typeof ScanTaxInvoiceInputSchema to the actual type
+  ScanTaxInvoiceOutput // Changed from typeof ScanTaxInvoiceOutputSchema to the actual type
 >({
   name: 'scanTaxInvoiceFlow',
   inputSchema: ScanTaxInvoiceInputSchema,
@@ -66,17 +83,20 @@ const scanTaxInvoiceFlow = ai.defineFlow<
     try {
       if (streamingCallback) {
         streamingCallback({
-          index: currentRetry,
+          index: currentRetry > 0 ? currentRetry + maxRetries + 1 : 0, // Ensure unique index for retries
           content: currentRetry > 0 ? `Retrying AI call for tax invoice (attempt ${currentRetry + 1})...` : 'Calling AI for tax invoice scan...'
         });
       }
+      console.log(`[scanTaxInvoiceFlow] Attempting AI call, try ${currentRetry + 1}. Input provided: ${!!input.invoiceDataUri}`);
       const { output } = await prompt(input);
+      console.log("[scanTaxInvoiceFlow] Raw output from AI:", JSON.stringify(output, null, 2));
+
       const validationResult = TaxInvoicePromptOutputSchema.safeParse(output);
 
       if (!validationResult.success) {
-        console.error('AI output structure validation failed for tax invoice. Received:', output, 'Errors:', validationResult.error.flatten());
-        if (currentRetry < maxRetries - 1 && output === null) {
-          console.log(`AI returned null for tax invoice, retrying... (Attempt ${currentRetry + 1})`);
+        console.error('[scanTaxInvoiceFlow] AI output structure validation failed for tax invoice. Received:', output, 'Errors:', validationResult.error.flatten());
+        if (currentRetry < maxRetries - 1 && (output === null || typeof output !== 'object')) {
+          console.log(`[scanTaxInvoiceFlow] AI returned null or non-object for tax invoice, retrying... (Attempt ${currentRetry + 1})`);
           currentRetry++;
           await new Promise(resolve => setTimeout(resolve, delay));
           delay *= 2;
@@ -90,7 +110,7 @@ const scanTaxInvoiceFlow = ai.defineFlow<
       break;
 
     } catch (promptError: any) {
-      console.error(`Error calling AI prompt for tax invoice (attempt ${currentRetry + 1}):`, promptError);
+      console.error(`[scanTaxInvoiceFlow] Error calling AI prompt for tax invoice (attempt ${currentRetry + 1}):`, promptError.message, promptError.stack);
       const isServiceUnavailable = promptError.message?.includes("503") || promptError.message?.toLowerCase().includes("service unavailable") || promptError.message?.toLowerCase().includes("model is overloaded");
       const isRateLimit = promptError.message?.includes("429") || promptError.message?.toLowerCase().includes("rate limit");
 
@@ -98,14 +118,14 @@ const scanTaxInvoiceFlow = ai.defineFlow<
         currentRetry++;
         if (streamingCallback) {
           streamingCallback({
-            index: currentRetry,
+            index: currentRetry + maxRetries + 1,
             content: `AI service temporarily unavailable for tax invoice. Retrying in ${delay / 1000}s... (Attempt ${currentRetry + 1})`
           });
         }
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2;
       } else {
-        let userErrorMessage = `Error calling AI for tax invoice: ${promptError.message || 'Unknown AI error'}`;
+        let userErrorMessage = `AI Scan Error: ${promptError.message || 'Unknown AI error'}`;
         if (isServiceUnavailable) {
           userErrorMessage = "The AI scanning service is temporarily unavailable for tax invoices due to high demand. Please try again in a few minutes.";
         }
@@ -118,8 +138,9 @@ const scanTaxInvoiceFlow = ai.defineFlow<
     return { error: "AI processing failed for tax invoice after multiple retries. The AI service might be temporarily unavailable. Please try again later." };
   }
 
-  if (streamingCallback) streamingCallback({ index: maxRetries, content: 'Tax invoice scan processing complete!' });
+  if (streamingCallback) streamingCallback({ index: maxRetries * 2 + 2, content: 'Tax invoice scan processing complete!' });
 
+  console.log("[scanTaxInvoiceFlow] Successfully processed tax invoice scan. Output:", rawOutputFromAI);
   // Directly return the extracted fields
   return {
     supplierName: rawOutputFromAI.supplierName,
@@ -127,5 +148,6 @@ const scanTaxInvoiceFlow = ai.defineFlow<
     totalAmount: rawOutputFromAI.totalAmount,
     invoiceDate: rawOutputFromAI.invoiceDate,
     paymentMethod: rawOutputFromAI.paymentMethod,
+    // error field will be implicitly undefined if no error, which is fine for ScanTaxInvoiceOutputSchema
   };
 });
