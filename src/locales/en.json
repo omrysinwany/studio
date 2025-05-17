@@ -75,9 +75,9 @@
   "home_empty_state_upcoming_payments": "No upcoming payments found.",
   "home_recent_activity_title": "Recent Activity",
   "home_recent_activity_mock_invoice_added": "Document from {{supplier}} added",
+  "home_view_all_activity_link": "View All Activity",
   "home_empty_state_recent_activity_title": "No recent activity yet.",
   "home_empty_state_recent_activity_desc": "Scan a document to see activity here!",
-  "home_view_all_activity_link": "View All Activity",
   "home_quick_actions_title": "Quick Actions",
   "home_quick_action_add_expense": "Add Manual Expense",
   "home_quick_action_add_product": "Add New Product",
@@ -96,7 +96,7 @@
   "home_no_quick_actions_action": "Customize your quick actions.",
   "home_customize_dashboard_button": "Customize Dashboard",
   "home_customize_qa_button": "Customize Quick Actions",
-  "home_kpi_toast_error_load_failed_desc": "Failed to load dashboard data. Please check your connection or try again later. Error: {{error}}",
+  "home_kpi_toast_error_load_failed_desc": "Failed to load dashboard data. Please check your connection or try again later. Error: {{message}}",
   "home_welcome_new_user_title": "Welcome to InvoTrack!",
   "home_welcome_new_user_message": "It looks like you're just getting started. Let's get your first document scanned!",
   "home_welcome_new_user_action_prompt": "Click the '{{scan_button_text}}' button below to begin.",
@@ -610,7 +610,7 @@
   "invoices_filter_payment_status_aria": "Filter documents by payment status: {{paymentStatus}}",
   "invoices_filter_payment_status_label": "Payment Status",
   "invoices_filter_payment_status_all": "All Payment Statuses",
-  "invoices_filter_button_label": "Filter Documents",
+  "invoices_filter_button_label": "Filter Options",
   "invoices_filter_options_label": "Filter Options",
   "invoices_filter_advanced_toggle_label": "Show Advanced Filters",
   "invoices_filter_sheet_title": "Filter Options",
@@ -1106,5 +1106,7 @@
   "filter_label_scan_status": "Scan",
   "filter_label_payment_status": "Payment",
   "filter_label_columns": "Columns",
-  "filter_options_button_aria": "Filter Options"
+  "filter_options_button_aria": "Filter Options",
+  "inventory_filter_pill_stock": "Stock",
+  "inventory_filter_pill_columns": "Columns"
 }
