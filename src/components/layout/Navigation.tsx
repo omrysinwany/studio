@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText as FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard, ListChecks, Grid } from 'lucide-react';
+import { Briefcase, Menu, Palette, Sun, Moon, Settings as SettingsIcon, Home, ScanLine, Package, BarChart2, FileText as FileTextIcon, LogIn, UserPlus, LogOut, Languages, Wand2, CreditCard, ListChecks, Grid, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,7 @@ export default function Navigation() {
   const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const [isUserMenuExpanded, setIsUserMenuExpanded] = useState(false); // For mobile user menu
   const { theme, setTheme } = useTheme();
   const { locale, setLocale } = useLanguage();
   const { t } = useTranslation();
@@ -69,10 +70,6 @@ export default function Navigation() {
     const publicPaths = ['/login', '/register'];
     const isAuthPage = publicPaths.includes(pathname);
     
-    // Check if current pathname starts with any of the protected paths
-    // and is not exactly '/' if '/' is also considered protected for some reason.
-    // It's generally better to be explicit about which paths are protected.
-    // For now, assuming / is public unless specified otherwise.
     let isActuallyProtectedPage = false;
     for (const protectedPath of protectedPaths) {
         if (pathname === protectedPath || (protectedPath !== '/' && pathname.startsWith(protectedPath + '/'))) {
@@ -94,6 +91,7 @@ export default function Navigation() {
   const handleLogout = () => {
     logout();
     setIsMobileSheetOpen(false);
+    setIsUserMenuExpanded(false);
   };
 
    const handleMobileNavClick = (href: string) => {
@@ -119,7 +117,7 @@ export default function Navigation() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
-          <span className="text-primary">{t('app_name_short')}</span>
+          <span className="text-primary">InvoTrack</span> {/* Always English */}
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
@@ -135,13 +133,13 @@ export default function Navigation() {
                   buttonVariants({ variant: isActive ? 'secondary' : 'ghost', size: 'sm' }),
                   "transition-all duration-200 ease-in-out hover:scale-105",
                   "scale-fade-in",
-                  isActive ? "shadow-sm" : "text-foreground hover:bg-muted/60 hover:text-primary dark:hover:bg-accent dark:hover:text-accent-foreground",
+                  isActive ? "shadow-sm" : "text-foreground hover:text-primary dark:hover:text-accent-foreground hover:bg-muted/60 dark:hover:bg-accent",
                   !isActive && "text-foreground"
                 )}
                  style={{ animationDelay: item.animationDelay }}
                  aria-current={isActive ? 'page' : undefined}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-4 w-4 mr-1.5" /> {/* Added margin for consistency */}
                 {item.label}
               </Link>
             );
@@ -149,7 +147,7 @@ export default function Navigation() {
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
-           <div className="hidden md:flex"> {/* This div hides the button on mobile */}
+           <div className="hidden md:flex">
              <DropdownMenu>
                <DropdownMenuTrigger asChild>
                  <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 transition-transform hover:scale-110">
@@ -247,7 +245,7 @@ export default function Navigation() {
                       <SheetTitle className="sr-only">{t('nav_menu_title')}</SheetTitle>
                        <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg mb-4" onClick={() => setIsMobileSheetOpen(false)}>
                           <Package className="h-6 w-6 text-primary" />
-                          <span className="text-primary">{t('app_name_short')}</span>
+                          <span className="text-primary">InvoTrack</span> {/* Always English */}
                       </Link>
                     </SheetHeader>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
@@ -273,7 +271,7 @@ export default function Navigation() {
 
                         {(pathname.startsWith('/inventory') || pathname.startsWith('/invoices')) && (
                           <>
-                            <DropdownMenuSeparator className="my-2"/>
+                            <Separator className="my-2"/>
                             <DropdownMenuLabel className="px-2 text-xs text-muted-foreground">{t('nav_view_options_label')}</DropdownMenuLabel>
                           </>
                         )}
@@ -283,13 +281,13 @@ export default function Navigation() {
                             className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
                             onClick={() => {
                               const currentSearchParams = new URLSearchParams(window.location.search);
-                              const currentView = currentSearchParams.get('mobileView') || 'cards';
+                              const currentView = currentSearchParams.get('mobileView') || (isMobile ? 'cards' : 'table');
                               const nextView = currentView === 'cards' ? 'table' : 'cards';
                               currentSearchParams.set('mobileView', nextView);
                               handleMobileNavClick(`/inventory?${currentSearchParams.toString()}`);
                             }}
                           >
-                            <Palette className="h-5 w-5" />
+                            {new URLSearchParams(window.location.search).get('mobileView') === 'table' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
                             {t(new URLSearchParams(window.location.search).get('mobileView') === 'table' ? 'nav_view_cards_inventory' : 'nav_view_table_inventory')}
                           </Button>
                         )}
@@ -299,13 +297,13 @@ export default function Navigation() {
                             className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
                             onClick={() => {
                               const currentSearchParams = new URLSearchParams(window.location.search);
-                              const currentView = currentSearchParams.get('mobileView') || 'grid';
+                              const currentView = currentSearchParams.get('mobileView') || (isMobile ? 'grid' : 'list');
                               const nextView = currentView === 'grid' ? 'list' : 'grid';
                               currentSearchParams.set('mobileView', nextView);
                               handleMobileNavClick(`/invoices?${currentSearchParams.toString()}`);
                             }}
                           >
-                            <Palette className="h-5 w-5" />
+                             {new URLSearchParams(window.location.search).get('mobileView') === 'list' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
                              {t(new URLSearchParams(window.location.search).get('mobileView') === 'list' ? 'nav_view_grid_invoices' : 'nav_view_list_invoices')}
                           </Button>
                         )}
@@ -317,55 +315,67 @@ export default function Navigation() {
                               <div className="h-10 w-full animate-pulse rounded-md bg-muted"></div>
                            ) : user ? (
                                <div className="flex flex-col gap-1">
-                                   <div className="flex items-center gap-3 mb-2 p-2 rounded-md">
+                                   <Button
+                                      variant="ghost"
+                                      className="w-full justify-between items-center gap-3 p-2 rounded-md hover:bg-primary/5"
+                                      onClick={() => setIsUserMenuExpanded(!isUserMenuExpanded)}
+                                    >
+                                      <div className="flex items-center gap-3">
                                         <Avatar className="h-10 w-10 border-2 border-primary/50">
                                             <AvatarFallback className="text-sm bg-primary/10 text-primary font-semibold">{getInitials(user.username)}</AvatarFallback>
                                         </Avatar>
-                                        <div className="flex flex-col">
-                                            <p className="text-base font-medium leading-tight">{user.username || user.email}</p>
+                                        <div className="flex flex-col items-start">
+                                            <p className="text-base font-medium leading-tight text-foreground">{user.username || user.email}</p>
                                             {user.username && user.email && <p className="text-xs leading-tight text-muted-foreground">{user.email}</p>}
                                         </div>
+                                      </div>
+                                      {isUserMenuExpanded ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
+                                    </Button>
+
+                                    {isUserMenuExpanded && (
+                                      <div className="pl-2 mt-1 space-y-1 animate-in fade-in-50 duration-300">
+                                        <Separator className="my-2 bg-border/50" />
+                                        <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground" onClick={() => handleMobileNavClick('/settings')}>
+                                            <SettingsIcon className="h-5 w-5" />
+                                            {t('nav_settings')}
+                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground">
+                                                 <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuPortal>
+                                                 <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-3rem)] max-w-xs mb-2">
+                                                  <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
+                                                  <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
+                                                    <DropdownMenuRadioItem value="light">
+                                                      <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
+                                                    </DropdownMenuRadioItem>
+                                                    <DropdownMenuRadioItem value="dark">
+                                                      <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
+                                                    </DropdownMenuRadioItem>
+                                                    <DropdownMenuRadioItem value="system">
+                                                      <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
+                                                    </DropdownMenuRadioItem>
+                                                  </DropdownMenuRadioGroup>
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
+                                                   <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
+                                                     <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
+                                                     <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
+                                                   </DropdownMenuRadioGroup>
+                                                </DropdownMenuContent>
+                                             </DropdownMenuPortal>
+                                          </DropdownMenu>
+                                      <Button variant="ghost" className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
+                                         <LogOut className="h-5 w-5" />
+                                         {t('nav_logout')}
+                                      </Button>
                                     </div>
-                                     <Separator className="my-2 bg-border/50" />
-                                     <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground" onClick={() => handleMobileNavClick('/settings')}>
-                                        <SettingsIcon className="h-5 w-5" />
-                                        {t('nav_settings')}
-                                     </Button>
-                                     <DropdownMenu>
-                                         <DropdownMenuTrigger asChild>
-                                           <Button variant="ghost" className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground">
-                                              <Wand2 className="h-5 w-5" /> {t('nav_appearance_settings_title')}
-                                           </Button>
-                                         </DropdownMenuTrigger>
-                                         <DropdownMenuPortal>
-                                              <DropdownMenuContent align="start" side="top" className="w-[calc(100vw-2rem)] max-w-xs mb-2">
-                                               <DropdownMenuLabel>{t('nav_appearance_settings_title')}</DropdownMenuLabel>
-                                               <DropdownMenuSeparator />
-                                               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_theme_label')}</DropdownMenuLabel>
-                                               <DropdownMenuRadioGroup value={theme} onValueChange={changeTheme}>
-                                                 <DropdownMenuRadioItem value="light">
-                                                   <Sun className="mr-2 h-4 w-4" /> {t('nav_theme_light')}
-                                                 </DropdownMenuRadioItem>
-                                                 <DropdownMenuRadioItem value="dark">
-                                                   <Moon className="mr-2 h-4 w-4" /> {t('nav_theme_dark')}
-                                                 </DropdownMenuRadioItem>
-                                                 <DropdownMenuRadioItem value="system">
-                                                   <SettingsIcon className="mr-2 h-4 w-4" /> {t('nav_theme_system')}
-                                                 </DropdownMenuRadioItem>
-                                               </DropdownMenuRadioGroup>
-                                               <DropdownMenuSeparator />
-                                               <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1">{t('nav_language_label')}</DropdownMenuLabel>
-                                                <DropdownMenuRadioGroup value={locale} onValueChange={(value) => changeLanguage(value as string)}>
-                                                  <DropdownMenuRadioItem value="en">{t('nav_language_en')}</DropdownMenuRadioItem>
-                                                  <DropdownMenuRadioItem value="he">{t('nav_language_he')}</DropdownMenuRadioItem>
-                                                </DropdownMenuRadioGroup>
-                                             </DropdownMenuContent>
-                                          </DropdownMenuPortal>
-                                       </DropdownMenu>
-                                   <Button variant="ghost" className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 text-base py-3 h-auto" onClick={handleLogout}>
-                                      <LogOut className="h-5 w-5" />
-                                      {t('nav_logout')}
-                                   </Button>
+                                    )}
                                </div>
                            ) : (
                                <div className="flex flex-col gap-2">
