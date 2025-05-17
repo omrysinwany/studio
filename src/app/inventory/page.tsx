@@ -117,8 +117,8 @@ export default function InventoryPage() {
     unitPrice: false, 
     salePrice: true,
     lineTotal: false,
-    minStockLevel: false, // Hidden by default
-    maxStockLevel: false, // Hidden by default
+    minStockLevel: false,
+    maxStockLevel: false,
     lastUpdated: false,
     userId: false,
     _originalId: false,
@@ -129,7 +129,10 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(isMobileViewHook ? 'cards' : 'table');
+  
+  const initialViewMode = typeof window !== 'undefined' && localStorage.getItem('inventoryViewMode') as 'cards' | 'table' || 'table';
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(initialViewMode);
+
   const [updatingQuantityProductId, setUpdatingQuantityProductId] = useState<string | null>(null);
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
@@ -180,6 +183,18 @@ export default function InventoryPage() {
   useEffect(() => {
     const initialFilter = searchParams.get('filter') as 'all' | 'low' | 'inStock' | 'out' | 'over' | null;
     const shouldRefresh = searchParams.get('refresh');
+    const urlViewMode = searchParams.get('mobileView') as 'cards' | 'table' | null;
+
+    if (urlViewMode) {
+        setViewMode(urlViewMode);
+        localStorage.setItem('inventoryViewMode', urlViewMode);
+         const current = new URLSearchParams(Array.from(searchParams.entries()));
+         current.delete('mobileView');
+         const search = current.toString();
+         const query = search ? `?${search}` : "";
+         router.replace(`${window.location.pathname}${query}`, { scroll: false });
+    }
+
 
     if (user && user.id && (inventory.length === 0 || shouldRefresh === 'true')) {
         fetchInventory();
@@ -196,7 +211,7 @@ export default function InventoryPage() {
         current.delete('refresh');
         const search = current.toString();
         const query = search ? `?${search}` : "";
-        router.replace(`${window.location.pathname}${query}`, { scroll: false }); // Use window.location.pathname
+        router.replace(`${window.location.pathname}${query}`, { scroll: false }); 
      }
    }, [authLoading, user, fetchInventory, router, searchParams, inventory.length]);
 
@@ -302,7 +317,7 @@ export default function InventoryPage() {
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
     ];
@@ -446,39 +461,44 @@ export default function InventoryPage() {
   return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <div>
-              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
-              </CardTitle>
-              <CardDescription>{t('inventory_description')}</CardDescription>
-            </div>
-            <div className="flex items-center gap-2 self-start sm:self-center">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
-                    className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-                    aria-label={t('inventory_filter_button_aria')}
-                >
-                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                </Button>
-                <Button
-                    variant="outline"
-                    onClick={() => {
-                        const newMode = viewMode === 'table' ? 'cards' : 'table';
-                        setViewMode(newMode);
-                    }}
-                    className="h-9 sm:h-10 px-3"
-                    aria-label={t('inventory_toggle_view_mode_aria')}
-                >
-                    {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
-                </Button>
-            </div>
+         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+           {/* Top line for Title and Control Icons */}
+           <div className="flex justify-between items-center w-full">
+             <div>
+               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                 <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
+               </CardTitle>
+             </div>
+             <div className="flex items-center gap-2">
+               <Button
+                 variant="ghost"
+                 size="icon"
+                 onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
+                 className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
+                 aria-label={t('inventory_filter_button_aria')}
+               >
+                 <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+               </Button>
+               <Button
+                 variant="outline"
+                 onClick={() => {
+                   const newMode = viewMode === 'table' ? 'cards' : 'table';
+                   setViewMode(newMode);
+                   localStorage.setItem('inventoryViewMode', newMode);
+                 }}
+                 className="h-9 sm:h-10 px-3"
+                 aria-label={t('inventory_toggle_view_mode_aria')}
+               >
+                 {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
+               </Button>
+             </div>
+           </div>
+           {/* Description on a new line */}
+           <CardDescription className="pt-1">{t('inventory_description')}</CardDescription>
          </CardHeader>
          <CardContent>
-           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6">
-            <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm">
+           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-4">
+             <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                <Input
                  placeholder={t('inventory_search_placeholder')}
@@ -488,8 +508,9 @@ export default function InventoryPage() {
                  aria-label={t('inventory_search_aria')}
                />
              </div>
-             {showAdvancedInventoryFilters && (
-                <div className="flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
+           </div>
+            {showAdvancedInventoryFilters && (
+                <div className="flex flex-wrap items-center gap-2 mb-4 animate-in fade-in-0 duration-300">
                     <DropdownMenu>
                        <DropdownMenuTrigger asChild>
                          <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
@@ -533,7 +554,6 @@ export default function InventoryPage() {
                     </DropdownMenu>
                 </div>
             )}
-            </div>
              <Card className="shadow-sm bg-muted/30 border-border/50 mb-6">
                 <CardHeader className="pb-2 pt-3 px-4">
                     <CardTitle className="text-base font-medium text-muted-foreground">{t('inventory_summary_card_title')}</CardTitle>
@@ -835,4 +855,3 @@ export default function InventoryPage() {
      </div>
    );
 }
-
