@@ -1,58 +1,58 @@
 // src/components/PaidInvoicesTabView.tsx
 'use client';
 
- import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
- import { Input } from '@/components/ui/input';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
- import {
-   Table,
-   TableBody,
-   TableCell,
-   TableHead,
-   TableHeader,
-   TableRow,
- } from '@/components/ui/table';
- import {
-   DropdownMenu,
-   DropdownMenuCheckboxItem,
-   DropdownMenuContent,
-   DropdownMenuLabel,
-   DropdownMenuSeparator,
-   DropdownMenuTrigger,
- } from '@/components/ui/dropdown-menu';
- import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, ImageIcon as ImageIconLucide } from 'lucide-react';
- import { useRouter } from 'next/navigation';
- import { useToast } from '@/hooks/use-toast';
- import type { DateRange } from 'react-day-picker';
- import { Calendar } from '@/components/ui/calendar';
- import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { format, parseISO, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
- import { enUS, he } from 'date-fns/locale';
- import { cn } from '@/lib/utils';
- import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService, } from '@/services/backend';
- import { Badge } from '@/components/ui/badge';
- import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-    SheetFooter,
-    SheetClose,
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, ImageIcon as ImageIconLucide } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
+import type { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format, parseISO, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
+import { enUS, he } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService, } from '@/services/backend';
+import { Badge } from '@/components/ui/badge';
+import {
+   Sheet,
+   SheetContent,
+   SheetHeader,
+   SheetTitle,
+   SheetDescription,
+   SheetFooter,
+   SheetClose,
 } from '@/components/ui/sheet';
 import NextImage from 'next/image';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent as AlertDialogContentComponent,
-  AlertDialogDescription as AlertDialogDescriptionComponent,
-  AlertDialogFooter as AlertDialogFooterComponent,
-  AlertDialogHeader as AlertDialogHeaderComponent,
-  AlertDialogTitle as AlertDialogTitleComponent,
-  AlertDialogTrigger,
+ AlertDialog,
+ AlertDialogAction,
+ AlertDialogCancel,
+ AlertDialogContent as AlertDialogContentComponent,
+ AlertDialogDescription as AlertDialogDescriptionComponent,
+ AlertDialogFooter as AlertDialogFooterComponent,
+ AlertDialogHeader as AlertDialogHeaderComponent,
+ AlertDialogTitle as AlertDialogTitleComponent,
+ AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
@@ -64,43 +64,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Timestamp } from 'firebase/firestore';
+import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
 
-
-const formatNumber = (
-    value: number | undefined | null,
-    t: (key: string, params?: Record<string, string | number>) => string,
-    options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
-): string => {
-    const { decimals = 2, useGrouping = true, currency = false } = options || {};
-
-    if (value === null || value === undefined || isNaN(value)) {
-        const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-            useGrouping: useGrouping,
-        });
-        return currency ? `${t('currency_symbol')}${zeroFormatted}` : zeroFormatted;
-    }
-
-    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-        useGrouping: useGrouping,
-    });
-    return currency ? `${t('currency_symbol')}${formattedValue}` : formattedValue;
-};
+const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
-
-type SortKeyPaid = keyof Pick<InvoiceHistoryItem, 'fileName' | 'uploadTime' | 'supplierName' | 'invoiceDate' | 'totalAmount' | 'paymentMethod'> | '';
+type SortKeyPaid = keyof Pick<InvoiceHistoryItem, 'originalFileName' | 'uploadTime' | 'supplierName' | 'invoiceDate' | 'totalAmount' | 'paymentMethod'> | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
-
-const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
 
 interface PaidInvoicesTabViewProps {
@@ -109,14 +84,16 @@ interface PaidInvoicesTabViewProps {
     dateRange?: DateRange;
     searchTerm: string;
     visibleColumns: Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>;
-    handleSort: (key: SortKeyPaid) => void; // Ensure this matches the sort keys for this tab
+    columnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[];
+    handleSort: (key: SortKeyPaid) => void;
     handleViewDetails: (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => void;
     handleSelectInvoice: (invoiceId: string, checked: boolean) => void;
     selectedInvoiceIds: string[];
     onOpenExportDialog: () => void;
-    onTriggerInvoiceFetch: () => void; // To refresh data when needed
+    onTriggerInvoiceFetch: () => void;
     viewMode: ViewMode;
-    // Remove local state for viewMode, sortKey, sortDirection, currentPage as they are managed by parent
+    currentSortKey: SortKeyPaid;
+    currentSortDirection: SortDirection;
 }
 
 
@@ -126,22 +103,22 @@ export default function PaidInvoicesTabView({
     dateRange,
     searchTerm,
     visibleColumns,
-    handleSort: parentHandleSort, // Renamed to avoid conflict if we had local sort state
+    columnDefinitions,
+    handleSort: parentHandleSort,
     handleViewDetails,
     handleSelectInvoice,
     selectedInvoiceIds,
     onOpenExportDialog,
     onTriggerInvoiceFetch,
     viewMode,
+    currentSortKey,
+    currentSortDirection,
 }: PaidInvoicesTabViewProps) {
   const { user, loading: authLoading } = useAuth();
   const { t, locale } = useTranslation();
   const [paidInvoices, setPaidInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Local state for sorting, specific to this tab if needed, or use parent's
-  const [sortKey, setSortKey] = useState<SortKeyPaid>('uploadTime');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   
   const [isDeleting, setIsDeleting] = useState(false);
@@ -201,10 +178,8 @@ export default function PaidInvoicesTabView({
       setIsLoading(true);
       try {
         let fetchedData = await getInvoicesService(user.id);
-        // Filter for paid invoices
         fetchedData = fetchedData.filter(inv => inv.paymentStatus === 'paid');
 
-        // Apply parent filters
         if (filterDocumentType) {
            fetchedData = fetchedData.filter(inv => inv.documentType === filterDocumentType);
         }
@@ -219,9 +194,11 @@ export default function PaidInvoicesTabView({
                 if(inv.invoiceDate){
                     if(inv.invoiceDate instanceof Timestamp) invDate = inv.invoiceDate.toDate();
                     else if (typeof inv.invoiceDate === 'string' && isValid(parseISO(inv.invoiceDate))) invDate = parseISO(inv.invoiceDate);
+                    else if (inv.invoiceDate instanceof Date && isValid(inv.invoiceDate)) invDate = inv.invoiceDate;
                 } else if (inv.uploadTime) {
                     if(inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
                     else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+                     else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
                 }
                 return invDate ? isAfter(invDate, startDate) || isSameDay(invDate, startDate) : false;
             });
@@ -234,9 +211,11 @@ export default function PaidInvoicesTabView({
                  if(inv.invoiceDate){
                     if(inv.invoiceDate instanceof Timestamp) invDate = inv.invoiceDate.toDate();
                     else if (typeof inv.invoiceDate === 'string' && isValid(parseISO(inv.invoiceDate))) invDate = parseISO(inv.invoiceDate);
+                    else if (inv.invoiceDate instanceof Date && isValid(inv.invoiceDate)) invDate = inv.invoiceDate;
                 } else if (inv.uploadTime) {
                      if(inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
                     else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+                    else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
                 }
                 return invDate ? isBefore(invDate, endDate) || isSameDay(invDate, endDate) : false;
             });
@@ -250,14 +229,13 @@ export default function PaidInvoicesTabView({
           );
         }
 
-        // Apply local sorting for this tab
-        if (sortKey) {
+        if (currentSortKey) {
              fetchedData.sort((a, b) => {
-                 const valA = a[sortKey as keyof InvoiceHistoryItem];
-                 const valB = b[sortKey as keyof InvoiceHistoryItem];
+                 const valA = a[currentSortKey as keyof InvoiceHistoryItem];
+                 const valB = b[currentSortKey as keyof InvoiceHistoryItem];
                  let comparison = 0;
 
-                if (sortKey === 'uploadTime' || sortKey === 'invoiceDate' || sortKey === 'paymentDueDate') {
+                if (currentSortKey === 'uploadTime' || currentSortKey === 'invoiceDate') {
                     let dateA = 0; let dateB = 0;
                     const aDateVal = valA; const bDateVal = valB;
                     if (aDateVal) { if (aDateVal instanceof Timestamp) dateA = aDateVal.toDate().getTime(); else if (typeof aDateVal === 'string' && isValid(parseISO(aDateVal))) dateA = parseISO(aDateVal).getTime(); else if (aDateVal instanceof Date && isValid(aDateVal)) dateA = aDateVal.getTime(); }
@@ -272,7 +250,7 @@ export default function PaidInvoicesTabView({
                     else if ((valA !== undefined && valA !== null) && (valB === undefined || valB === null)) comparison = -1;
                     else comparison = 0;
                  }
-                 return sortDirection === 'asc' ? comparison : comparison * -1;
+                 return currentSortDirection === 'asc' ? comparison : comparison * -1;
              });
          }
         setPaidInvoices(fetchedData);
@@ -287,7 +265,7 @@ export default function PaidInvoicesTabView({
       } finally {
         setIsLoading(false);
       }
-    }, [user, filterDocumentType, filterSupplier, dateRange, searchTerm, sortKey, sortDirection, toast, t, locale]);
+    }, [user, filterDocumentType, filterSupplier, dateRange, searchTerm, currentSortKey, currentSortDirection, toast, t, locale]);
 
   useEffect(() => {
     if (user?.id) {
@@ -296,18 +274,7 @@ export default function PaidInvoicesTabView({
         setPaidInvoices([]);
         setIsLoading(false);
     }
-  }, [user, authLoading, fetchPaidInvoices]);
-
-  const handleLocalSort = (key: SortKeyPaid) => {
-     if (!key) return;
-     if (sortKey === key) {
-       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-     } else {
-       setSortKey(key);
-       setSortDirection('desc'); // Default to desc for new sort key, or 'asc' if preferred
-     }
-     setCurrentPage(1);
-  };
+  }, [user, authLoading, fetchPaidInvoices, onTriggerInvoiceFetch]); // Added onTriggerInvoiceFetch
 
   const totalPaidInvoicesPages = useMemo(() => {
       return Math.ceil(paidInvoices.length / ITEMS_PER_PAGE_PAID_INVOICES);
@@ -330,34 +297,22 @@ export default function PaidInvoicesTabView({
     setInvoiceForReceiptUpload(null);
     
     try {
-        await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptUri); // Ensure status is 'paid'
+        await updateInvoicePaymentStatusService(invoiceId, 'paid', user.id, receiptUri);
         toast({ title: t('paid_invoices_toast_receipt_uploaded_title'), description: t('paid_invoices_toast_receipt_uploaded_desc', { fileName: paidInvoices.find(inv => inv.id === invoiceId)?.originalFileName || 'Invoice' }) });
-        fetchPaidInvoices(); // Refetch to update list
-        onTriggerInvoiceFetch(); // Also trigger parent fetch if needed
+        fetchPaidInvoices(); 
+        onTriggerInvoiceFetch(); 
     } catch (error) {
         console.error("Error updating invoice with new receipt:", error);
         toast({ title: t('error_title'), description: t('toast_invoice_payment_status_update_fail_desc'), variant: "destructive" });
     }
   };
 
-  const paidInvoicesColumnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = useMemo(() => [
-    { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-    { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
-    { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
-    { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
-    { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true},
-    { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
-    { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
-    { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-  ], [t]);
+  const visibleColumnHeadersPaid = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
 
-  const visibleColumnHeadersPaid = paidInvoicesColumnDefinitions.filter(h => visibleColumns[h.key]);
-
+  const [isExporting, setIsExporting] = useState(false); // Local state for PaidInvoicesTabView specific export if needed
 
   return (
     <>
-        {/* Removed local search and filter controls. They are now handled by the parent DocumentsPage. */}
-        
         {viewMode === 'list' ? (
           <div className="overflow-x-auto relative">
             <Table className="min-w-[600px]">
@@ -367,15 +322,15 @@ export default function PaidInvoicesTabView({
                     <TableHead
                       key={header.key}
                       className={cn(
-                          "text-center", // Default to center for headers
+                          "text-center", 
                           header.className,
                           header.sortable && "cursor-pointer hover:bg-muted/50",
                           header.mobileHidden && "hidden sm:table-cell", 
                           'px-2 sm:px-4 py-2',
                            header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                       )}
-                      onClick={() => header.sortable && handleLocalSort(header.key as SortKeyPaid)}
-                      aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+                      onClick={() => header.sortable && parentHandleSort(header.key as SortKeyPaid)}
+                      aria-sort={header.sortable ? (currentSortKey === header.key ? (currentSortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                     >
                       <div className="flex items-center gap-1 whitespace-nowrap justify-center">
                          {header.key === 'selection' ? (
@@ -388,9 +343,9 @@ export default function PaidInvoicesTabView({
                          ) : (
                           t(header.labelKey as any, { currency_symbol: t('currency_symbol') })
                          )}
-                         {header.sortable && sortKey === header.key && (
+                         {header.sortable && currentSortKey === header.key && (
                             <span className="text-xs" aria-hidden="true">
-                               {sortDirection === 'asc' ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                               {currentSortDirection === 'asc' ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
                             </span>
                          )}
                       </div>
@@ -418,7 +373,7 @@ export default function PaidInvoicesTabView({
                   displayedPaidInvoices.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`paid-invoice-item-${item.id}`}>
                         {visibleColumns.selection && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", paidInvoicesColumnDefinitions.find(h => h.key === 'selection')?.className)}>
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
                               <Checkbox
                                 checked={selectedInvoiceIds.includes(item.id)}
                                 onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)}
@@ -427,7 +382,7 @@ export default function PaidInvoicesTabView({
                            </TableCell>
                         )}
                         {visibleColumns.actions && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", paidInvoicesColumnDefinitions.find(h => h.key === 'actions')?.className)}>
+                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
                                <Button
                                    variant="ghost"
                                    size="icon"
@@ -449,7 +404,7 @@ export default function PaidInvoicesTabView({
                            </TableCell>
                        )}
                        {visibleColumns.originalFileName && (
-                          <TableCell className={cn("font-medium px-2 sm:px-4 py-2", paidInvoicesColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}>
+                          <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'originalFileName')?.className)}>
                              <Button
                                 variant="link"
                                 className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
@@ -460,15 +415,15 @@ export default function PaidInvoicesTabView({
                             </Button>
                           </TableCell>
                        )}
-                       {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', paidInvoicesColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime)}</TableCell>}
-                       {visibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', paidInvoicesColumnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate as string, 'PP') : t('invoices_na')}</TableCell>}
-                       {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', paidInvoicesColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
+                       {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime)}</TableCell>}
+                       {visibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate) : t('invoices_na')}</TableCell>}
+                       {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
                             {item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, {decimals:0}) : t('invoices_na')}
                          </TableCell>
                        )}
-                       {visibleColumns.paymentMethod && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', paidInvoicesColumnDefinitions.find(h => h.key === 'paymentMethod')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentMethod ? t(`payment_method_${item.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: item.paymentMethod}) : t('invoices_na')}</TableCell>}
+                       {visibleColumns.paymentMethod && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'paymentMethod')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentMethod ? t(`payment_method_${item.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: item.paymentMethod}) : t('invoices_na')}</TableCell>}
                     </TableRow>
                   ))
                 )}
@@ -505,11 +460,11 @@ export default function PaidInvoicesTabView({
             {isLoading ? (
                Array.from({ length: ITEMS_PER_PAGE_PAID_INVOICES }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
-                      <CardHeader className="h-32 bg-muted rounded-t-lg" />
-                      <CardContent className="p-4 space-y-2">
-                          <div className="h-4 bg-muted rounded w-3/4" />
-                          <div className="h-3 bg-muted rounded w-1/2" />
-                          <div className="h-3 bg-muted rounded w-1/4" />
+                      <CardHeader className="p-0 relative aspect-[4/3] bg-muted rounded-t-lg" />
+                      <CardContent className="p-3 space-y-1">
+                          <Skeleton className="h-4 w-3/4" />
+                          <Skeleton className="h-3 w-1/2" />
+                          <Skeleton className="h-3 w-1/4" />
                       </CardContent>
                        <CardFooter className="p-3 border-t flex gap-1">
                             <Skeleton className="h-8 w-1/2" />
@@ -533,7 +488,7 @@ export default function PaidInvoicesTabView({
                   <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item, 'image_only')}>
                     {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (
                       <NextImage
-                        src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} // Fallback to original if receipt missing
+                        src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} 
                         alt={t('paid_invoices_receipt_image_alt', { fileName: item.originalFileName || item.generatedFileName || '' })}
                         layout="fill"
                         objectFit="cover"
@@ -618,7 +573,7 @@ export default function PaidInvoicesTabView({
                                         toast({ title: t('invoices_toast_bulk_deleted_title'), description: t('invoices_toast_bulk_deleted_desc', { count: selectedInvoiceIds.length }) });
                                         fetchPaidInvoices();
                                         onTriggerInvoiceFetch();
-                                        setSelectedInvoiceIds([]);
+                                        handleSelectInvoice('all-paid', false); // Clear selection
                                     } catch (error) {
                                         toast({ title: t('invoices_toast_delete_fail_title'), description: t('invoices_toast_delete_fail_desc'), variant: "destructive" });
                                     } finally {
@@ -658,4 +613,3 @@ export default function PaidInvoicesTabView({
     </>
   );
 }
-
