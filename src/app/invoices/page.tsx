@@ -25,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -274,13 +274,17 @@ function ScannedDocsView({
                                         {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (<NextImage src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!} alt={t('invoices_preview_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="invoice document" />)
                                             : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">{item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}</div>)}
                                         <div className="absolute top-2 right-2 flex flex-col gap-1">{renderScanStatusBadge(item.status, t)}{renderPaymentStatusBadge(item.paymentStatus, t)}</div>
+                                        {item.status === 'error' && item.errorMessage && (
+                                            <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-destructive/80 text-destructive-foreground text-[9px] text-center truncate" title={item.errorMessage}>
+                                                {t('invoice_status_error')}: {item.errorMessage.substring(0,35)}{item.errorMessage.length > 35 ? '...' : ''}
+                                            </div>
+                                        )}
                                     </CardHeader>
                                     <CardContent className="p-3 flex-grow" onClick={() => onViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>{item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" />}{item.generatedFileName || item.originalFileName}</CardTitle>
                                         <p className="text-xs text-muted-foreground">{formatDateForDisplay(item.uploadTime, locale, t)}</p>
                                         {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
                                         {item.invoiceNumber && <p className="text-xs text-muted-foreground">{t('invoice_details_invoice_number_label')}: {item.invoiceNumber}</p>}
                                         {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
-                                        {item.status === 'error' && item.errorMessage && (<p className="text-xs text-destructive truncate" title={item.errorMessage}>{t('invoice_status_error')}: {item.errorMessage.substring(0, 30)}...</p>)}
                                     </CardContent>
                                     <CardFooter className="p-3 border-t flex justify-between items-center">
                                         <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs" onClick={(e) => { e.stopPropagation(); onViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5" /> {t('invoices_view_details_button')}</Button>
@@ -348,10 +352,10 @@ export default function DocumentsPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const defaultScannedColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, uploadTime: true, status: true, invoiceNumber: true, supplierName: true, totalAmount: true, paymentStatus: true, paymentDueDate: true, errorMessage: false,
+    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, status: true, invoiceNumber: !isMobile, supplierName: !isMobile, totalAmount: true, paymentStatus: true, paymentDueDate: !isMobile, errorMessage: false,
   };
   const defaultPaidColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, invoiceDate: true, supplierName: true, totalAmount: true, paymentMethod: true, paymentReceiptImageUri: true,
+    selection: true, actions: true, originalFileName: true, invoiceDate: !isMobile, supplierName: !isMobile, totalAmount: true, paymentMethod: !isMobile, paymentReceiptImageUri: true,
   };
 
   const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
@@ -453,7 +457,7 @@ export default function DocumentsPage() {
      if (tabQuery) setActiveTab(tabQuery);
 
      const viewInvoiceId = searchParamsHook.get('viewInvoiceId');
-     if (viewInvoiceId) {
+     if (viewInvoiceId && allUserInvoices.length > 0) { // Ensure invoices are loaded
         const invoiceToView = allUserInvoices.find(inv => inv.id === viewInvoiceId);
         if (invoiceToView) {
             handleViewDetails(invoiceToView);
@@ -813,7 +817,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     }
  };
 
-   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
 
    if (authLoading || (isLoading && !user)) {
      return (
@@ -836,19 +839,25 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIconLucide className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
-            <div className="flex items-center gap-2">
-                 <Button variant="ghost" size="icon" onClick={() => setShowAdvancedFilters(prev => !prev)} className="h-9 w-9 sm:h-10 sm:w-10" aria-label={t('invoices_toggle_advanced_filters_aria')} title={t('invoices_toggle_advanced_filters_aria')}>
-                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                </Button>
+             <div className="flex items-center gap-2">
                 <Button
                     variant="outline"
+                    size="icon"
                     onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
-                    className="h-9 w-auto px-3 sm:h-10 sm:px-4"
+                    className={cn("h-9 w-9 sm:h-10 sm:w-10", isMobile && "hidden")} 
                     aria-label={t('invoices_toggle_view_mode_aria')}
                 >
-                    {viewMode === 'list' ? <Grid className="mr-0 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="mr-0 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />}
-                    <span className="hidden sm:inline">{viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}</span>
+                    {viewMode === 'list' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
                 </Button>
+                 <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowAdvancedFilters(prev => !prev)}
+                    className="h-9 w-9 sm:h-10 sm:w-10"
+                    aria-label={t('invoices_filter_button_label')}
+                 >
+                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                 </Button>
             </div>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
@@ -906,7 +915,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         </DropdownMenu>
                      </>
                  )}
-                  <DropdownMenu>
+                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
                             <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {t('inventory_view_button')}
@@ -973,25 +982,12 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                      </AlertDialog>
-                     <Button onClick={handleOpenExportDialog} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
-                        <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
-                     </Button>
                  </div>
                 )}
             </TabsContent>
             <TabsContent value="paid-invoices">
               <PaidInvoicesTabView 
-                invoices={filteredInvoices.filter(inv => inv.paymentStatus === 'paid')} 
-                isLoading={isLoading}
-                visibleColumns={visibleColumnsPaid}
-                sortKey={sortKey}
-                sortDirection={sortDirection}
-                onSort={handleSortInternal}
-                onViewDetails={handleViewDetails}
-                onSelectInvoice={handleSelectInvoiceForBulkAction}
-                selectedInvoiceIds={selectedForBulkAction}
-                viewMode={viewMode}
-                onBulkExport={handleOpenExportDialog}
+                filterDocumentType={filterDocumentType} // Pass the filter down
               />
             </TabsContent>
           </Tabs>
@@ -1112,5 +1108,3 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     </div>
   );
 }
-
-    
