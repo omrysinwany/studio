@@ -25,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon, Briefcase } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon, Briefcase, CreditCard } from 'lucide-react'; // Added CreditCard
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -71,7 +71,6 @@ import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 import { Skeleton } from "@/components/ui/skeleton";
 
 
@@ -189,13 +188,15 @@ function ScannedDocsView({
     onPageChange,
     parentVisibleColumns,
     parentColumnDefinitions,
+    onMarkAsPaid,
+    onEdit,
 }: {
     invoices: InvoiceHistoryItem[];
     isLoading: boolean;
     sortKey: string;
     sortDirection: string;
     onSort: (key: string) => void;
-    onViewDetails: (invoice: InvoiceHistoryItem) => void;
+    onViewDetails: (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => void;
     onSelectInvoice: (id: string, checked: boolean) => void;
     selectedInvoiceIds: string[];
     viewMode: ViewMode;
@@ -204,6 +205,8 @@ function ScannedDocsView({
     onPageChange: (page: number) => void;
     parentVisibleColumns: Record<string, boolean>;
     parentColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[];
+    onMarkAsPaid: (invoice: InvoiceHistoryItem) => void;
+    onEdit: (invoiceId: string, docType: 'deliveryNote' | 'invoice', fileName: string) => void;
 }) {
     const { t, locale } = useTranslation();
     const router = useRouter();
@@ -237,7 +240,7 @@ function ScannedDocsView({
                                         <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                                             {parentVisibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", parentColumnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => onSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || '' })} /></TableCell>)}
                                             {parentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", parentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => onViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
-                                            {parentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", parentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => onViewDetails({...item, _displayContext: 'image_only'})} title={t('upload_history_view_image_title', { fileName: item.originalFileName || item.generatedFileName || '' })}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
+                                            {parentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", parentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => onViewDetails(item, 'image_only')} title={t('upload_history_view_image_title', { fileName: item.originalFileName || item.generatedFileName || '' })}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
                                             {parentVisibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
                                             {parentVisibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderScanStatusBadge(item.status, t)}</TableCell>)}
                                             {parentVisibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderPaymentStatusBadge(item.paymentStatus, t)}</TableCell>)}
@@ -258,7 +261,7 @@ function ScannedDocsView({
                             : (invoices.map((item: InvoiceHistoryItem) => (
                                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
                                     <div className="p-2 absolute top-0 left-0 z-10"><Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => onSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || '' })} className="bg-background/70 hover:bg-background border-primary" /></div>
-                                    <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => onViewDetails({...item, _displayContext: 'image_only'})}>
+                                    <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => onViewDetails(item, 'image_only')}>
                                         {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (<NextImage src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!} alt={t('invoices_preview_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="invoice document" />)
                                             : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">{item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}</div>)}
                                         <div className="absolute top-2 right-2 flex flex-col gap-1">{renderScanStatusBadge(item.status, t)}{renderPaymentStatusBadge(item.paymentStatus, t)}</div>
@@ -268,15 +271,20 @@ function ScannedDocsView({
                                             </div>
                                         )}
                                     </CardHeader>
-                                    <CardContent className="p-3 flex-grow" onClick={() => onViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>{item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" />}{item.generatedFileName || item.originalFileName}</CardTitle>
-                                        <p className="text-xs text-muted-foreground">{formatDateForDisplay(item.uploadTime, locale, t)}</p>
+                                    <CardContent className="p-3 flex-grow" onClick={() => onViewDetails(item)}>
+                                        <CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>
+                                         {item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" />}
+                                         {item.generatedFileName || item.originalFileName}
+                                        </CardTitle>
+                                        <p className="text-xs text-muted-foreground">{t('invoice_details_upload_time_label')}: {formatDateForDisplay(item.uploadTime, locale, t)}</p>
                                         {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
                                         {item.invoiceNumber && <p className="text-xs text-muted-foreground">{t('invoice_details_invoice_number_label')}: {item.invoiceNumber}</p>}
                                         {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
                                     </CardContent>
-                                    <CardFooter className="p-3 border-t flex justify-between items-center">
-                                        <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs" onClick={(e) => { e.stopPropagation(); onViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5" /> {t('invoices_view_details_button')}</Button>
-                                        {(item.status === 'pending' || item.status === 'error') && item.id && (<Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-amber-600 hover:text-amber-700" onClick={(e) => { e.stopPropagation(); const queryParams = new URLSearchParams({ tempInvoiceId: item.id, docType: item.documentType, originalFileName: encodeURIComponent(item.originalFileName || 'unknown_doc') }); router.push(`/edit-invoice?${queryParams.toString()}`); }}><Edit className="mr-1.5 h-3.5 w-3.5" /> {t('edit_button')}</Button>)}
+                                    <CardFooter className="p-3 border-t flex-wrap gap-1">
+                                        <Button variant="ghost" size="sm" className="flex-1 min-w-[calc(50%-0.25rem)] justify-start text-xs h-8" onClick={(e) => { e.stopPropagation(); onViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5" /> {t('invoices_view_details_button')}</Button>
+                                        {(item.status === 'pending' || item.status === 'error') && item.id && (<Button variant="ghost" size="sm" className="flex-1 min-w-[calc(50%-0.25rem)] justify-start text-xs h-8 text-amber-600 hover:text-amber-700" onClick={(e) => { e.stopPropagation(); onEdit(item.id, item.documentType, item.originalFileName || item.generatedFileName || 'unknown_doc'); }}><Edit className="mr-1.5 h-3.5 w-3.5" /> {t('edit_button')}</Button>)}
+                                        {item.paymentStatus !== 'paid' && ( <Button variant="ghost" size="sm" className="flex-1 min-w-[calc(50%-0.25rem)] justify-start text-xs h-8 text-green-600 hover:text-green-700" onClick={(e) => { e.stopPropagation(); onMarkAsPaid(item);}}><Receipt className="mr-1.5 h-3.5 w-3.5" /> {t('paid_invoices_mark_as_paid_button')}</Button>)}
                                     </CardFooter>
                                 </Card>
                             )))}
@@ -568,9 +576,9 @@ export default function DocumentsPage() {
     }
   };
 
-   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
+   const handleViewDetails = (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => {
     if (invoice) {
-        const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: invoice._displayContext || 'full_details'};
+        const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: context || 'full_details'};
         setSelectedInvoiceDetails(detailsToSet);
         setEditedInvoiceData({ ...invoice });
         setIsEditingDetails(false);
@@ -579,6 +587,19 @@ export default function DocumentsPage() {
         setSelectedInvoiceDetails(null);
         setShowDetailsSheet(false);
     }
+  };
+
+  const handleEditScannedDoc = (invoiceId: string, docType: 'deliveryNote' | 'invoice', fileName: string) => {
+    if (!invoiceId) {
+        toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"});
+        return;
+    }
+    const queryParams = new URLSearchParams({
+        tempInvoiceId: invoiceId, // Use tempInvoiceId to indicate it's an existing pending/error doc from Firestore
+        docType: docType,
+        originalFileName: encodeURIComponent(fileName || 'unknown_doc'),
+    });
+    router.push(`/edit-invoice?${queryParams.toString()}`);
   };
 
   const handleDeleteInvoice = async (invoiceId: string | string[]) => {
@@ -729,19 +750,43 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
 
 
   const handleSelectInvoiceForBulkAction = (invoiceId: string, checked: boolean) => {
-    setSelectedForBulkAction(prev =>
-      checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
-    );
+     if (invoiceId === 'all') {
+       if (checked) {
+         const currentTabInvoices = activeTab === 'scanned-docs' ? paginatedScannedDocs : filteredInvoices.filter(inv => inv.paymentStatus === 'paid');
+         setSelectedForBulkAction(currentTabInvoices.map(inv => inv.id));
+       } else {
+         setSelectedForBulkAction([]);
+       }
+     } else {
+        setSelectedForBulkAction(prev =>
+          checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
+        );
+     }
   };
 
-  const handleSelectAllForBulkAction = (checked: boolean) => {
-    if (checked) {
-      const currentTabInvoices = activeTab === 'scanned-docs' ? paginatedScannedDocs : filteredInvoices.filter(inv => inv.paymentStatus === 'paid');
-      setSelectedForBulkAction(currentTabInvoices.map(inv => inv.id));
-    } else {
-      setSelectedForBulkAction([]);
-    }
+  const handleSelectAllLastMonth = async () => {
+    if(!user?.id) return;
+    const allUserInvoicesData = await getInvoicesService(user.id); // Fetch fresh data
+    const paidUserInvoices = allUserInvoicesData.filter(inv => inv.paymentStatus === 'paid');
+    const today = new Date();
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); // Start of the previous month
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));   // End of the previous month
+
+    const lastMonthInvoices = paidUserInvoices.filter(invoice => {
+      let invoiceDate: Date | null = null;
+      if (invoice.invoiceDate instanceof Timestamp) invoiceDate = invoice.invoiceDate.toDate();
+      else if (typeof invoice.invoiceDate === 'string' && isValid(parseISO(invoice.invoiceDate))) invoiceDate = parseISO(invoice.invoiceDate);
+      
+      return invoiceDate ? (invoiceDate >= lastMonthStart && invoiceDate <= lastMonthEnd) : false;
+    });
+
+    setSelectedForBulkAction(lastMonthInvoices.map(invoice => invoice.id));
+    toast({
+      title: t('invoice_export_selected_last_month_title'),
+      description: t('invoice_export_selected_last_month_desc', { count: lastMonthInvoices.length }),
+    });
   };
+
 
   const handleOpenExportDialog = async () => {
     if (selectedForBulkAction.length === 0) {
@@ -761,7 +806,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             toast({
                 title: t('settings_accountant_toast_email_required_title'),
                 description: t('settings_accountant_toast_email_required_desc_export'),
-                variant: "warning"
+                variant: "destructive"
             })
         }
     }
@@ -872,10 +917,15 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
                 </SelectContent>
              </Select>
-             
-            <div className="ml-auto flex items-center gap-2">
-                {/* Placeholder for main filter/view button if needed in the future */}
-            </div>
+             <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowAdvancedFilters(prev => !prev)}
+                className={cn("h-9 w-9 sm:h-10 sm:w-10 md:hidden", showAdvancedFilters && "bg-accent text-accent-foreground")}
+                aria-label={t('invoices_filter_button_label')}
+             >
+                <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+             </Button>
           </div>
 
           {showAdvancedFilters && (
@@ -954,6 +1004,11 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 onPageChange={handleScannedDocsPageChange}
                 parentVisibleColumns={visibleColumnsScanned}
                 parentColumnDefinitions={scannedDocsColumnDefinitions}
+                onMarkAsPaid={(invoice) => {
+                   setInvoiceForReceiptUpload(invoice);
+                   setShowReceiptUploadDialog(true);
+                }}
+                onEdit={handleEditScannedDoc}
               />
                  {activeTab === 'scanned-docs' && selectedForBulkAction.length > 0 && (
                  <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
@@ -977,6 +1032,9 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </AlertDialogFooterComponent>
                         </AlertDialogContentComponent>
                      </AlertDialog>
+                      <Button onClick={handleOpenExportDialog} disabled={selectedForBulkAction.length === 0} className="bg-primary hover:bg-primary/90 w-full sm:w-auto">
+                         <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
+                      </Button>
                  </div>
                 )}
             </TabsContent>
@@ -990,6 +1048,16 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 parentColumnDefinitions={paidInvoicesColumnDefinitions}
                 onToggleColumnVisibility={toggleColumnVisibility}
                 onViewDetails={handleViewDetails}
+                onDeleteInvoice={(invoiceId) => handleDeleteInvoice(invoiceId)}
+                onEditInvoice={handleSaveInvoiceDetails} // This might need to open a specific edit mode in the sheet
+                onUpdateReceipt={(invoice) => {
+                    setInvoiceForReceiptUpload(invoice);
+                    setShowReceiptUploadDialog(true);
+                }}
+                selectedInvoiceIds={selectedForBulkAction}
+                onSelectInvoice={handleSelectInvoiceForBulkAction}
+                onExportSelected={handleOpenExportDialog}
+                onSelectAllLastMonth={handleSelectAllLastMonth}
               />
             </TabsContent>
           </Tabs>
