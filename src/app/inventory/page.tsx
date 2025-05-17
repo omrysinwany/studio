@@ -1,3 +1,4 @@
+
 // src/app/inventory/page.tsx
 'use client';
 
@@ -125,7 +126,7 @@ export default function InventoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const [mobileViewMode, setMobileViewMode] = useState<'cards' | 'table'>(isMobileViewHook ? 'cards' : 'table');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [updatingQuantityProductId, setUpdatingQuantityProductId] = useState<string | null>(null);
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
@@ -186,13 +187,11 @@ export default function InventoryPage() {
       fetchInventory();
     }
 
-    const currentMobileViewParam = searchParams.get('mobileView');
-    if (currentMobileViewParam === 'table' || currentMobileViewParam === 'cards') {
-        setMobileViewMode(currentMobileViewParam);
-    } else if (isMobileViewHook) {
-        setMobileViewMode('cards');
+    const currentViewParam = searchParams.get('viewMode');
+    if (currentViewParam === 'table' || currentViewParam === 'cards') {
+        setViewMode(currentViewParam);
     } else {
-        setMobileViewMode('table');
+        setViewMode('table'); // Default to table view
     }
 
     const initialFilter = searchParams.get('filter');
@@ -206,9 +205,9 @@ export default function InventoryPage() {
         current.delete('refresh');
         const searchString = current.toString();
         const query = searchString ? `?${searchString}` : "";
-        router.replace(`${router.pathname}${query}`, { scroll: false });
+        router.replace(`/inventory${query}`, { scroll: false });
      }
-   }, [authLoading, user, fetchInventory, filterStockLevel, router, searchParams, isMobileViewHook]);
+   }, [authLoading, user, fetchInventory, filterStockLevel, router, searchParams]);
 
 
   const handleSort = (key: SortKey) => {
@@ -474,46 +473,40 @@ export default function InventoryPage() {
                />
              </div>
              <div className="flex items-center gap-2">
-                <Button
+                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
                     className={cn("h-10 w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-                    aria-label={t('filter_options_button_aria')}
+                    aria-label={t('inventory_filter_button_aria')}
                     >
                     <Filter className="h-5 w-5" />
                 </Button>
-                {!isMobileViewHook && (
-                    <Button
-                        variant="outline"
-                        onClick={() => {
-                            const newMode = mobileViewMode === 'table' ? 'cards' : 'table';
-                            setMobileViewMode(newMode);
-                            const params = new URLSearchParams(searchParams.toString());
-                            params.set('mobileView', newMode);
-                            router.replace(`/inventory?${params.toString()}`, {scroll: false});
-                        }}
-                        className="h-10 px-3"
-                        aria-label={t('inventory_toggle_view_mode_aria')}
-                        >
-                        {mobileViewMode === 'table' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
-                    </Button>
-                )}
+                <Button
+                    variant="outline"
+                    onClick={() => {
+                        const newMode = viewMode === 'table' ? 'cards' : 'table';
+                        setViewMode(newMode);
+                        const params = new URLSearchParams(searchParams.toString());
+                        params.set('viewMode', newMode);
+                        router.replace(`/inventory?${params.toString()}`, {scroll: false});
+                    }}
+                    className="h-10 px-3"
+                    aria-label={t('inventory_toggle_view_mode_aria')}
+                    >
+                    {viewMode === 'table' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
+                </Button>
             </div>
             </div>
 
             {showAdvancedInventoryFilters && (
                 <div className="mb-6 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
-                    <div className="flex gap-2"> {/* Wrapper to keep these two dropdowns together */}
+                    <div className="flex gap-2">
                         <DropdownMenu>
                            <DropdownMenuTrigger asChild>
                              <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
                                <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                               {filterStockLevel === 'low' ? t('inventory_filter_low') :
-                                 filterStockLevel === 'inStock' ? t('inventory_filter_in_stock') :
-                                 filterStockLevel === 'out' ? t('inventory_filter_out_of_stock') :
-                                 filterStockLevel === 'over' ? t('inventory_filter_over_stock') :
-                                 t('inventory_filter_pill_stock')}
+                               {t('inventory_filter_pill_stock')}
                                <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
                              </Button>
                            </DropdownMenuTrigger>
@@ -555,9 +548,8 @@ export default function InventoryPage() {
                 </div>
             )}
 
-
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <Card className="bg-muted/30">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <Card className="bg-card/30 backdrop-blur-sm border-border/50 shadow">
                     <CardHeader className="pb-2 pt-3 px-4">
                         <CardTitle className="text-base font-medium text-muted-foreground">{t('inventory_total_value_title')}</CardTitle>
                     </CardHeader>
@@ -567,7 +559,7 @@ export default function InventoryPage() {
                         </p>
                     </CardContent>
                 </Card>
-                <Card className="bg-muted/30">
+                <Card className="bg-card/30 backdrop-blur-sm border-border/50 shadow">
                     <CardHeader className="pb-2 pt-3 px-4">
                         <CardTitle className="text-base font-medium text-muted-foreground">{t('inventory_stock_alerts_title')}</CardTitle>
                     </CardHeader>
@@ -584,11 +576,11 @@ export default function InventoryPage() {
            </div>
 
 
-           {(mobileViewMode === 'cards') ? (
+           {(viewMode === 'cards') ? (
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                {isLoading ? (
                  Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
-                   <Card key={index} className="animate-pulse">
+                   <Card key={index} className="animate-pulse bg-card/30 backdrop-blur-sm border-border/50 shadow">
                      <CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader>
                      <CardContent className="space-y-2">
                        <Skeleton className="h-4 w-1/2" />
@@ -607,7 +599,7 @@ export default function InventoryPage() {
                  </div>
                ) : (
                  paginatedInventory.map((item) => (
-                   <Card key={item.id || item.catalogNumber} className="hover:shadow-lg transition-shadow flex flex-col bg-card/90">
+                   <Card key={item.id || item.catalogNumber} className="hover:shadow-lg transition-shadow flex flex-col bg-card/70 backdrop-blur-sm border-border/50 shadow">
                      <CardHeader className="pb-2">
                          <div className="flex justify-between items-start">
                             <div className="flex items-center gap-2 flex-grow min-w-0">
@@ -665,7 +657,7 @@ export default function InventoryPage() {
                          {(Number(item.quantity) || 0) > 0 && item.minStockLevel !== undefined && (Number(item.quantity) || 0) <= item.minStockLevel && <Badge variant="secondary" className="mt-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
                          {item.maxStockLevel !== undefined && (Number(item.quantity) || 0) > item.maxStockLevel && <Badge variant="default" className="mt-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
 
-                         {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true, decimals:0 }) : '-'}</p>}
+                         {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</p>}
 
                      </CardContent>
                    </Card>
