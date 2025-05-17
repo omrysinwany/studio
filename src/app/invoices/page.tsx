@@ -25,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon, Briefcase, CreditCard } from 'lucide-react'; // Added CreditCard
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, Mail as MailIcon, Briefcase, CreditCard } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -72,6 +72,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from "@/components/ui/skeleton";
+import PaidInvoicesTabView from '@/components/PaidInvoicesTabView'; // Added import
 
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
@@ -133,46 +134,8 @@ const formatCurrencyDisplay = (
     return `${t('currency_symbol')}${formattedValue}`;
 };
 
- const renderScanStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
-    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
-    let className = '';
-    let icon = null;
-    let labelKey = '';
 
-   switch (status as InvoiceHistoryItem['status']) {
-       case 'completed': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CheckCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_completed'; break;
-       case 'processing': variant = 'secondary'; className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80'; icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />; labelKey = 'invoice_status_processing'; break;
-       case 'pending': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_pending'; break;
-       case 'error': variant = 'destructive'; icon = <XCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_error'; break;
-       default: variant = 'outline'; icon = null; labelKey = String(status); break;
-   }
-    return (
-       <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
-           {icon}
-           {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
-       </Badge>
-    );
- };
- const renderPaymentStatusBadge = (status: InvoiceHistoryItem['paymentStatus'], t: (key: string, params?: any) => string) => {
-    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
-    let className = '';
-    let icon = null;
-    let labelKey = '';
-    switch (status as InvoiceHistoryItem['paymentStatus']) {
-       case 'paid': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_paid'; break;
-       case 'unpaid': variant = 'secondary'; className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_unpaid'; break;
-       case 'pending_payment': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_pending_payment'; break;
-       default: variant = 'outline'; icon = null; labelKey = String(status);
-    }
-    return (
-       <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
-           {icon}
-           {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
-       </Badge>
-    );
- };
-
-// --- ScannedDocsView Component ---
+// --- ScannedDocsView Component (Integrated into DocumentsPage) ---
 function ScannedDocsView({
     invoices,
     isLoading,
@@ -211,6 +174,44 @@ function ScannedDocsView({
     const { t, locale } = useTranslation();
     const router = useRouter();
     const visibleColumnHeaders = parentColumnDefinitions.filter(h => parentVisibleColumns[h.key]);
+
+     const renderScanStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
+        let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+        let className = '';
+        let icon = null;
+
+       switch (status as InvoiceHistoryItem['status']) {
+           case 'completed': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CheckCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_completed'; break;
+           case 'processing': variant = 'secondary'; className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80'; icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />; labelKey = 'invoice_status_processing'; break;
+           case 'pending': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_pending'; break;
+           case 'error': variant = 'destructive'; icon = <XCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_error'; break;
+           default: variant = 'outline'; icon = null; labelKey = String(status); break;
+       }
+        return (
+           <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
+               {icon}
+               {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
+           </Badge>
+        );
+     };
+     const renderPaymentStatusBadge = (status: InvoiceHistoryItem['paymentStatus'], t: (key: string, params?: any) => string) => {
+        let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+        let className = '';
+        let icon = null;
+        let labelKey = '';
+        switch (status as InvoiceHistoryItem['paymentStatus']) {
+           case 'paid': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_paid'; break;
+           case 'unpaid': variant = 'secondary'; className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_unpaid'; break;
+           case 'pending_payment': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_pending_payment'; break;
+           default: variant = 'outline'; icon = null; labelKey = String(status);
+        }
+        return (
+           <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
+               {icon}
+               {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
+           </Badge>
+        );
+     };
 
 
     return (
@@ -476,10 +477,8 @@ export default function DocumentsPage() {
   };
 
   const filteredInvoices = useMemo(() => {
-    let result = allUserInvoices.filter(inv => 
-        (activeTab === 'scanned-docs' && inv.paymentStatus !== 'paid') ||
-        (activeTab === 'paid-invoices' && inv.paymentStatus === 'paid')
-    );
+    let result = allUserInvoices;
+    // No filter by activeTab here, it's done by the view components
 
     if (filterDocumentType) {
         result = result.filter(inv => inv.documentType === filterDocumentType);
@@ -487,10 +486,10 @@ export default function DocumentsPage() {
     if (filterSupplier) {
         result = result.filter(inv => inv.supplierName === filterSupplier);
     }
-    if (filterScanStatus && activeTab === 'scanned-docs') {
+    if (filterScanStatus && activeTab === 'scanned-docs') { // Apply scan status filter only for scanned docs tab
         result = result.filter(inv => inv.status === filterScanStatus);
     }
-    if (filterPaymentStatus && activeTab === 'scanned-docs') {
+    if (filterPaymentStatus && activeTab === 'scanned-docs') { // Apply payment status filter only for scanned docs tab
         result = result.filter(inv => inv.paymentStatus === filterPaymentStatus);
     }
     if (dateRange?.from) {
@@ -563,12 +562,15 @@ export default function DocumentsPage() {
     return result;
   }, [allUserInvoices, activeTab, filterDocumentType, filterSupplier, filterScanStatus, filterPaymentStatus, dateRange, searchTerm, sortKey, sortDirection, locale]);
 
-  const totalScannedDocs = useMemo(() => filteredInvoices.filter(inv => activeTab === 'scanned-docs').length, [filteredInvoices, activeTab]);
-  const totalScannedDocsPages = Math.ceil(totalScannedDocs / ITEMS_PER_PAGE_SCANNED_DOCS);
   const paginatedScannedDocs = useMemo(() => {
+    const scanned = filteredInvoices.filter(inv => inv.paymentStatus !== 'paid');
     const startIndex = (currentScannedDocsPage - 1) * ITEMS_PER_PAGE_SCANNED_DOCS;
-    return filteredInvoices.filter(inv => activeTab === 'scanned-docs').slice(startIndex, startIndex + ITEMS_PER_PAGE_SCANNED_DOCS);
-  }, [filteredInvoices, currentScannedDocsPage, activeTab]);
+    return scanned.slice(startIndex, startIndex + ITEMS_PER_PAGE_SCANNED_DOCS);
+  }, [filteredInvoices, currentScannedDocsPage]);
+  
+  const totalScannedDocsPages = useMemo(() => {
+      return Math.ceil(filteredInvoices.filter(inv => inv.paymentStatus !== 'paid').length / ITEMS_PER_PAGE_SCANNED_DOCS);
+  }, [filteredInvoices]);
 
   const handleScannedDocsPageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalScannedDocsPages) {
@@ -595,7 +597,7 @@ export default function DocumentsPage() {
         return;
     }
     const queryParams = new URLSearchParams({
-        tempInvoiceId: invoiceId, // Use tempInvoiceId to indicate it's an existing pending/error doc from Firestore
+        tempInvoiceId: invoiceId, 
         docType: docType,
         originalFileName: encodeURIComponent(fileName || 'unknown_doc'),
     });
@@ -766,11 +768,11 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
 
   const handleSelectAllLastMonth = async () => {
     if(!user?.id) return;
-    const allUserInvoicesData = await getInvoicesService(user.id); // Fetch fresh data
+    const allUserInvoicesData = await getInvoicesService(user.id); 
     const paidUserInvoices = allUserInvoicesData.filter(inv => inv.paymentStatus === 'paid');
     const today = new Date();
-    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); // Start of the previous month
-    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));   // End of the previous month
+    const lastMonthStart = startOfMonth(subDays(today, today.getDate())); 
+    const lastMonthEnd = endOfMonth(subDays(today, today.getDate()));   
 
     const lastMonthInvoices = paidUserInvoices.filter(invoice => {
       let invoiceDate: Date | null = null;
@@ -873,7 +875,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <FileTextIconLucide className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
              <div className="flex items-center gap-2">
-                 <Button
+                <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setShowAdvancedFilters(prev => !prev)}
@@ -917,14 +919,16 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
                 </SelectContent>
              </Select>
+            
+             {/* Main Filter Button that controls visibility of advanced filter pills */}
              <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 onClick={() => setShowAdvancedFilters(prev => !prev)}
-                className={cn("h-9 w-9 sm:h-10 sm:w-10 md:hidden", showAdvancedFilters && "bg-accent text-accent-foreground")}
+                className={cn("h-10 w-10", showAdvancedFilters && "bg-accent text-accent-foreground")}
                 aria-label={t('invoices_filter_button_label')}
              >
-                <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                <Filter className="h-5 w-5" />
              </Button>
           </div>
 
@@ -965,7 +969,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                         <DropdownMenuLabel>
-                            {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')}
+                            {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')} - {t('inventory_toggle_columns_label')}
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
@@ -1049,7 +1053,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 onToggleColumnVisibility={toggleColumnVisibility}
                 onViewDetails={handleViewDetails}
                 onDeleteInvoice={(invoiceId) => handleDeleteInvoice(invoiceId)}
-                onEditInvoice={handleSaveInvoiceDetails} // This might need to open a specific edit mode in the sheet
+                onEditInvoice={handleSaveInvoiceDetails} 
                 onUpdateReceipt={(invoice) => {
                     setInvoiceForReceiptUpload(invoice);
                     setShowReceiptUploadDialog(true);
@@ -1081,7 +1085,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
              )}
           </SheetHeader>
           {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow">
+            <ScrollArea className="flex-grow p-0"> 
               <div className="p-4 sm:p-6 space-y-4">
               {isEditingDetails && selectedInvoiceDetails._displayContext !== 'image_only' ? (
                 <div className="space-y-3">
@@ -1124,7 +1128,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount, t) : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDateForDisplay(selectedInvoiceDetails.invoiceDate, locale, t) : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod ? t(`payment_method_${selectedInvoiceDetails.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: selectedInvoiceDetails.paymentMethod}) : t('invoices_na')}</p>
-                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderPaymentStatusBadge(selectedInvoiceDetails.paymentStatus, t)}</div>
+                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {activeTab === 'scanned-docs' ? renderScanStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment') : renderScanStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}</div>
                       {selectedInvoiceDetails.paymentDueDate && (<p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.paymentDueDate, locale, t)}</p>)}
                    </div>
                   {selectedInvoiceDetails.errorMessage && selectedInvoiceDetails.status === 'error' && (<><Separator className="my-3"/><div className="space-y-1"><h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3><p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p></div></>)}
@@ -1178,4 +1182,3 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     </div>
   );
 }
-
