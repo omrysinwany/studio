@@ -25,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -84,7 +84,7 @@ type ViewMode = 'grid' | 'list';
 const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
 
 
-const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string) => string): string => {
+const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string, params?: any) => string): string => {
   if (!dateInput) return t('invoices_na');
   try {
       let dateObj: Date | null = null;
@@ -116,7 +116,7 @@ const formatCurrencyDisplay = (
   t: (key: string, params?: Record<string, string | number>) => string,
   options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 0, useGrouping = true } = options || {}; // Default decimals to 0 for currency
+    const { decimals = 0, useGrouping = true } = options || {};
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
             minimumFractionDigits: decimals,
@@ -204,11 +204,10 @@ function ScannedDocsView({
 }) {
     const { t, locale } = useTranslation();
     const router = useRouter();
-    const { toast } = useToast();
 
     const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
@@ -230,7 +229,7 @@ function ScannedDocsView({
                         <TableHeader>
                             <TableRow>
                                 {visibleColumnHeaders.map((header) => (
-                                    <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))}
+                                    <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(3%+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))} // Adjusted left offset for actions
                                         onClick={() => header.sortable && onSort(header.key as string)}
                                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
                                         <div className="flex items-center gap-1 whitespace-nowrap">
@@ -248,7 +247,7 @@ function ScannedDocsView({
                                     : (invoices.map((item: InvoiceHistoryItem) => (
                                         <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
                                             {visibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => onSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || '' })} /></TableCell>)}
-                                            {visibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => onViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
+                                            {visibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(3%+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => onViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
                                             {visibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => onViewDetails({...item, _displayContext: 'image_only'})} title={t('upload_history_view_image_title', { fileName: item.originalFileName || item.generatedFileName || '' })}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
                                             {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
                                             {visibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderScanStatusBadge(item.status, t)}</TableCell>)}
@@ -265,7 +264,7 @@ function ScannedDocsView({
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
-                    {isLoading ? (Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="h-32 bg-muted rounded-t-lg" /><CardContent className="p-4 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /><div className="h-3 bg-muted rounded w-1/4" /></CardContent></Card>)))
+                    {isLoading ? (Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="p-0 relative aspect-[4/3] bg-muted rounded-t-lg" /><CardContent className="p-3 space-y-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /><Skeleton className="h-3 w-1/4" /></CardContent><CardFooter className="p-3 border-t"><Skeleton className="h-7 w-full" /></CardFooter></Card>)))
                         : invoices.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>)
                             : (invoices.map((item: InvoiceHistoryItem) => (
                                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
@@ -363,7 +362,7 @@ export default function DocumentsPage() {
 
   const scannedDocsColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
@@ -376,7 +375,7 @@ export default function DocumentsPage() {
    ];
   const paidInvoicesColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
@@ -457,14 +456,14 @@ export default function DocumentsPage() {
      if (tabQuery) setActiveTab(tabQuery);
 
      const viewInvoiceId = searchParamsHook.get('viewInvoiceId');
-     if (viewInvoiceId && allUserInvoices.length > 0) { // Ensure invoices are loaded
+     if (viewInvoiceId && allUserInvoices.length > 0) {
         const invoiceToView = allUserInvoices.find(inv => inv.id === viewInvoiceId);
         if (invoiceToView) {
             handleViewDetails(invoiceToView);
         }
      }
 
-  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices]); // Added allUserInvoices dependency for viewInvoiceId
+  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices]);
 
 
   const handleSortInternal = (key: string) => {
@@ -474,7 +473,7 @@ export default function DocumentsPage() {
         setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
         setSortKey(sortableKey);
-        setSortDirection('desc'); // Default to descending for new sort key
+        setSortDirection('desc');
     }
     setCurrentScannedDocsPage(1);
   };
@@ -582,7 +581,7 @@ export default function DocumentsPage() {
 
    const handleViewDetails = (invoice: InvoiceHistoryItem) => {
     if (invoice) {
-        const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: 'full_details'};
+        const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: invoice._displayContext || 'full_details'};
         setSelectedInvoiceDetails(detailsToSet);
         setEditedInvoiceData({ ...invoice });
         setIsEditingDetails(false);
@@ -725,7 +724,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchUserData();
+        fetchUserData(); // Refetch all data to update both tabs
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
              setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri: receiptImageUriParam } : null);
         }
@@ -841,6 +840,15 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             </CardTitle>
              <div className="flex items-center gap-2">
                 <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowAdvancedFilters(prev => !prev)}
+                    className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedFilters && "bg-accent text-accent-foreground")}
+                    aria-label={t('invoices_filter_button_label')}
+                 >
+                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                 </Button>
+                <Button
                     variant="outline"
                     size="icon"
                     onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
@@ -849,15 +857,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 >
                     {viewMode === 'list' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
                 </Button>
-                 <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowAdvancedFilters(prev => !prev)}
-                    className="h-9 w-9 sm:h-10 sm:w-10"
-                    aria-label={t('invoices_filter_button_label')}
-                 >
-                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                 </Button>
             </div>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
@@ -987,7 +986,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             </TabsContent>
             <TabsContent value="paid-invoices">
               <PaidInvoicesTabView 
-                filterDocumentType={filterDocumentType} // Pass the filter down
+                filterDocumentType={filterDocumentType}
               />
             </TabsContent>
           </Tabs>
