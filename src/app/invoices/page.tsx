@@ -72,6 +72,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
+import { Skeleton } from "@/components/ui/skeleton";
 
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
@@ -176,7 +177,8 @@ const formatCurrencyDisplay = (
 function ScannedDocsView({
     invoices,
     isLoading,
-    visibleColumns,
+    // visibleColumns, // Passed from parent DocumentsPage
+    // columnDefinitions, // Passed from parent DocumentsPage
     sortKey,
     sortDirection,
     onSort,
@@ -187,10 +189,13 @@ function ScannedDocsView({
     currentPage,
     totalPages,
     onPageChange,
+    parentVisibleColumns,
+    parentColumnDefinitions,
 }: {
     invoices: InvoiceHistoryItem[];
     isLoading: boolean;
-    visibleColumns: Record<string, boolean>;
+    // visibleColumns: Record<string, boolean>; // Passed from parent
+    // columnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[]; // Passed from parent
     sortKey: string;
     sortDirection: string;
     onSort: (key: string) => void;
@@ -201,24 +206,12 @@ function ScannedDocsView({
     currentPage: number;
     totalPages: number;
     onPageChange: (page: number) => void;
+    parentVisibleColumns: Record<string, boolean>;
+    parentColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[];
 }) {
     const { t, locale } = useTranslation();
     const router = useRouter();
-
-    const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
-      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
-      { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
-      { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
-      { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
-      { key: 'paymentStatus', labelKey: 'invoice_payment_status_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
-      { key: 'paymentDueDate', labelKey: 'payment_due_date_dialog_title', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true},
-      { key: 'invoiceNumber', labelKey: 'invoices_col_inv_number', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-      { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
-      { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
-      { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-   ];
-   const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key]);
+    const visibleColumnHeaders = parentColumnDefinitions.filter(h => parentVisibleColumns[h.key]);
 
 
     return (
@@ -229,7 +222,7 @@ function ScannedDocsView({
                         <TableHeader>
                             <TableRow>
                                 {visibleColumnHeaders.map((header) => (
-                                    <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(3%+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))} // Adjusted left offset for actions
+                                    <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))} // Adjusted left offset for actions
                                         onClick={() => header.sortable && onSort(header.key as string)}
                                         aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
                                         <div className="flex items-center gap-1 whitespace-nowrap">
@@ -246,17 +239,17 @@ function ScannedDocsView({
                                 : invoices.length === 0 ? (<TableRow><TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">{t('invoices_no_invoices_found')}</TableCell></TableRow>)
                                     : (invoices.map((item: InvoiceHistoryItem) => (
                                         <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                                            {visibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => onSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || '' })} /></TableCell>)}
-                                            {visibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(3%+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => onViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
-                                            {visibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => onViewDetails({...item, _displayContext: 'image_only'})} title={t('upload_history_view_image_title', { fileName: item.originalFileName || item.generatedFileName || '' })}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
-                                            {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
-                                            {visibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderScanStatusBadge(item.status, t)}</TableCell>)}
-                                            {visibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderPaymentStatusBadge(item.paymentStatus, t)}</TableCell>)}
-                                            {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, locale, t) : t('invoices_na')}</TableCell>}
-                                            {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
-                                            {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
-                                            {visibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}</TableCell>)}
-                                            {visibleColumns.errorMessage && (<TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>{item.status === 'error' ? item.errorMessage : t('invoices_na')}</TableCell>)}
+                                            {parentVisibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", parentColumnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => onSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || '' })} /></TableCell>)}
+                                            {parentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", parentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => onViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
+                                            {parentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", parentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => onViewDetails({...item, _displayContext: 'image_only'})} title={t('upload_history_view_image_title', { fileName: item.originalFileName || item.generatedFileName || '' })}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
+                                            {parentVisibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
+                                            {parentVisibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderScanStatusBadge(item.status, t)}</TableCell>)}
+                                            {parentVisibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderPaymentStatusBadge(item.paymentStatus, t)}</TableCell>)}
+                                            {parentVisibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, locale, t) : t('invoices_na')}</TableCell>}
+                                            {parentVisibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
+                                            {parentVisibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
+                                            {parentVisibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}</TableCell>)}
+                                            {parentVisibleColumns.errorMessage && (<TableCell className={cn('px-2 sm:px-4 py-2', parentColumnDefinitions.find(h => h.key === 'errorMessage')?.className)}>{item.status === 'error' ? item.errorMessage : t('invoices_na')}</TableCell>)}
                                         </TableRow>
                                     )))}
                         </TableBody>
@@ -323,7 +316,7 @@ export default function DocumentsPage() {
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<InvoiceHistoryItem['paymentStatus'] | ''>('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   
-  const [sortKey, setSortKey] = useState<keyof InvoiceHistoryItem | 'actions' | 'selection'>('uploadTime');
+  const [sortKey, setSortKey] = useState<string>('uploadTime');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const [showDetailsSheet, setShowDetailsSheet] = useState(false);
@@ -350,19 +343,9 @@ export default function DocumentsPage() {
   const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>('scanned-docs');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-  const defaultScannedColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, status: true, invoiceNumber: !isMobile, supplierName: !isMobile, totalAmount: true, paymentStatus: true, paymentDueDate: !isMobile, errorMessage: false,
-  };
-  const defaultPaidColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, invoiceDate: !isMobile, supplierName: !isMobile, totalAmount: true, paymentMethod: !isMobile, paymentReceiptImageUri: true,
-  };
-
-  const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
-  const [visibleColumnsPaid, setVisibleColumnsPaid] = useState(defaultPaidColumns);
-
-  const scannedDocsColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+  const scannedDocsColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = useMemo(() => [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
@@ -372,17 +355,27 @@ export default function DocumentsPage() {
       { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-   ];
-  const paidInvoicesColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+   ], []);
+  const paidInvoicesColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = useMemo(() => [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
-      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(3%+0.25rem)] bg-card z-10' }, // Adjusted left offset
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, mobileHidden: true },
-  ];
+  ], []);
+
+  const defaultScannedColumns: Record<string, boolean> = useMemo(() => ({
+    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, status: true, invoiceNumber: !isMobile, supplierName: !isMobile, totalAmount: true, paymentStatus: true, paymentDueDate: !isMobile, errorMessage: false,
+  }), [isMobile]);
+  const defaultPaidColumns: Record<string, boolean> = useMemo(() => ({
+    selection: true, actions: true, originalFileName: true, invoiceDate: !isMobile, supplierName: !isMobile, totalAmount: true, paymentMethod: !isMobile, paymentReceiptImageUri: true,
+  }), [isMobile]);
+
+  const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
+  const [visibleColumnsPaid, setVisibleColumnsPaid] = useState(defaultPaidColumns);
 
   const currentVisibleColumns = useMemo(() => activeTab === 'scanned-docs' ? visibleColumnsScanned : visibleColumnsPaid, [activeTab, visibleColumnsScanned, visibleColumnsPaid]);
   const currentColumnDefinitions = useMemo(() => activeTab === 'scanned-docs' ? scannedDocsColumnDefinitions : paidInvoicesColumnDefinitions, [activeTab, scannedDocsColumnDefinitions, paidInvoicesColumnDefinitions]);
@@ -724,7 +717,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchUserData(); // Refetch all data to update both tabs
+        fetchUserData(); 
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
              setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri: receiptImageUriParam } : null);
         }
@@ -839,7 +832,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 <FileTextIconLucide className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
              <div className="flex items-center gap-2">
-                <Button
+                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setShowAdvancedFilters(prev => !prev)}
@@ -883,6 +876,51 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
                 </SelectContent>
              </Select>
+             
+            <div className="ml-auto flex items-center gap-2">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-10 sm:w-10">
+                            <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                            <span className="sr-only">{"Filter Options"}</span>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                        <DropdownMenuLabel>{"Filter Options"}</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem
+                            checked={showAdvancedFilters}
+                            onCheckedChange={setShowAdvancedFilters}
+                        >
+                            {"Show Advanced Filters"}
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                                <Eye className="mr-2 h-4 w-4" /> {"View Columns"}
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuPortal>
+                                <DropdownMenuSubContent>
+                                    <DropdownMenuLabel>
+                                        {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')}
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                                        <DropdownMenuCheckboxItem
+                                            key={header.key}
+                                            className="capitalize"
+                                            checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
+                                            onCheckedChange={() => toggleColumnVisibility(header.key)}
+                                        >
+                                            {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuSubContent>
+                            </DropdownMenuPortal>
+                        </DropdownMenuSub>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
           </div>
 
           {showAdvancedFilters && (
@@ -916,12 +954,14 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                  )}
                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {t('inventory_view_button')}
-                        </Button>
+                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                             <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {"View Columns"}
+                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
+                    <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuLabel>
+                            {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')}
+                        </DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
                             <DropdownMenuCheckboxItem
@@ -934,7 +974,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             </DropdownMenuCheckboxItem>
                         ))}
                     </DropdownMenuContent>
-                </DropdownMenu>
+                 </DropdownMenu>
              </div>
           )}
 
@@ -947,7 +987,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               <ScannedDocsView
                 invoices={paginatedScannedDocs}
                 isLoading={isLoading}
-                visibleColumns={visibleColumnsScanned}
+                // visibleColumns={visibleColumnsScanned} // Now passed as parentVisibleColumns
+                // columnDefinitions={scannedDocsColumnDefinitions} // Now passed as parentColumnDefinitions
                 sortKey={sortKey}
                 sortDirection={sortDirection}
                 onSort={handleSortInternal}
@@ -958,6 +999,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 currentPage={currentScannedDocsPage}
                 totalPages={totalScannedDocsPages}
                 onPageChange={handleScannedDocsPageChange}
+                parentVisibleColumns={visibleColumnsScanned}
+                parentColumnDefinitions={scannedDocsColumnDefinitions}
               />
                  {activeTab === 'scanned-docs' && selectedForBulkAction.length > 0 && (
                  <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
@@ -986,7 +1029,15 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             </TabsContent>
             <TabsContent value="paid-invoices">
               <PaidInvoicesTabView 
-                filterDocumentType={filterDocumentType}
+                filterDocumentType={filterDocumentType} 
+                filterSupplier={filterSupplier}
+                dateRange={dateRange}
+                searchTerm={searchTerm}
+                // Pass column visibility and definitions for PaidInvoices tab
+                parentVisibleColumns={visibleColumnsPaid}
+                parentColumnDefinitions={paidInvoicesColumnDefinitions}
+                onToggleColumnVisibility={toggleColumnVisibility}
+                onViewDetails={handleViewDetails}
               />
             </TabsContent>
           </Tabs>
