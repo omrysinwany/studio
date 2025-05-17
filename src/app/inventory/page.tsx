@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Plus, Minus, Columns } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Columns } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -109,15 +109,15 @@ export default function InventoryPage() {
     imageUrl: true,
     id: false,
     shortName: true,
-    description: false,
+    description: false, // Default to hidden
     catalogNumber: true,
-    barcode: false,
+    barcode: false, // Default to hidden
     quantity: true,
-    unitPrice: false,
+    unitPrice: false, // Default to hidden (Cost Price)
     salePrice: true,
-    lineTotal: false,
-    minStockLevel: false,
-    maxStockLevel: false,
+    lineTotal: false, // Default to hidden (Total Cost)
+    minStockLevel: false, // Default to hidden
+    maxStockLevel: false, // Default to hidden
     lastUpdated: false,
     userId: false,
     _originalId: false,
@@ -303,12 +303,12 @@ export default function InventoryPage() {
         { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'imageUrl', labelKey: 'inventory_col_image', sortable: false, className: 'w-12 text-center px-1 sm:px-2 py-1', headerClassName: 'text-center px-1 sm:px-2 py-1'},
         { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
-        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', mobileHidden: true },
         { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -451,7 +451,7 @@ export default function InventoryPage() {
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
          <CardHeader>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div>
                     <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                         <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
@@ -473,9 +473,6 @@ export default function InventoryPage() {
                         onClick={() => {
                             const newMode = viewMode === 'table' ? 'cards' : 'table';
                             setViewMode(newMode);
-                            const params = new URLSearchParams(searchParams.toString());
-                            params.set('viewMode', newMode);
-                            router.replace(`/inventory?${params.toString()}`, {scroll: false});
                         }}
                         className="h-9 sm:h-10 px-3"
                         aria-label={t('inventory_toggle_view_mode_aria')}
@@ -483,10 +480,10 @@ export default function InventoryPage() {
                         {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
                     </Button>
                 </div>
-            </div>
+           </div>
          </CardHeader>
          <CardContent>
-           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
+           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6">
             <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                <Input
@@ -500,25 +497,25 @@ export default function InventoryPage() {
             </div>
             {showAdvancedInventoryFilters && (
                 <div className="mb-6 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
-                    <DropdownMenu>
-                       <DropdownMenuTrigger asChild>
-                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                           <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                           {t('inventory_filter_pill_stock')}
-                           <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
-                         </Button>
-                       </DropdownMenuTrigger>
-                       <DropdownMenuContent align="start">
-                         <DropdownMenuLabel>{t('inventory_filter_by_stock_level')}</DropdownMenuLabel>
-                         <DropdownMenuSeparator />
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'all'} onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}>{t('inventory_filter_all')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'inStock'} onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}>{t('inventory_filter_in_stock')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'low'} onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}>{t('inventory_filter_low')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'out'} onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}>{t('inventory_filter_out_of_stock')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'over'} onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}>{t('inventory_filter_over_stock')}</DropdownMenuCheckboxItem>
-                       </DropdownMenuContent>
-                    </DropdownMenu>
                     <div className="flex gap-2"> {/* This div will keep these two DropdownMenus together */}
+                        <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                             <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                               <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                               {t('inventory_filter_pill_stock')}
+                               <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
+                             </Button>
+                           </DropdownMenuTrigger>
+                           <DropdownMenuContent align="start">
+                             <DropdownMenuLabel>{t('inventory_filter_by_stock_level')}</DropdownMenuLabel>
+                             <DropdownMenuSeparator />
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'all'} onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}>{t('inventory_filter_all')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'inStock'} onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}>{t('inventory_filter_in_stock')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'low'} onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}>{t('inventory_filter_low')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'out'} onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}>{t('inventory_filter_out_of_stock')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'over'} onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}>{t('inventory_filter_over_stock')}</DropdownMenuCheckboxItem>
+                           </DropdownMenuContent>
+                        </DropdownMenu>
                         <DropdownMenu>
                            <DropdownMenuTrigger asChild>
                              <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
@@ -571,7 +568,7 @@ export default function InventoryPage() {
 
 
            {(viewMode === 'cards') ? (
-             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-6">
                {isLoading ? (
                  Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
                    <Card key={index} className="animate-pulse bg-card/30 backdrop-blur-sm border-border/50 shadow">
@@ -611,7 +608,7 @@ export default function InventoryPage() {
                                         {item.description && <p><strong className="font-medium">{t('inventory_popover_description')}:</strong> {item.description}</p>}
                                         {item.catalogNumber && item.catalogNumber !== "N/A" && <p><strong className="font-medium">{t('inventory_popover_catalog')}:</strong> {item.catalogNumber}</p>}
                                         {item.barcode && <p><strong className="font-medium">{t('inventory_popover_barcode')}:</strong> {item.barcode}</p>}
-                                        {item.unitPrice !== undefined && <p><strong className="font-medium">{t('inventory_popover_unit_price')}:</strong> {formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 0 })}</p>}
+                                        {item.unitPrice !== undefined && <p><strong className="font-medium">{t('inventory_col_unit_price')}:</strong> {formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 0 })}</p>}
                                     </PopoverContent>
                                 </Popover>
                             </div>
@@ -627,7 +624,7 @@ export default function InventoryPage() {
                          ) : null}
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3 flex-grow">
-                         <p className="flex items-center">
+                         <div>
                            <strong className="mr-1">{t('inventory_col_qty')}:</strong>
                            <Button variant="outline" size="icon" className="h-6 w-6 mx-1" onClick={() => item.id && handleQuantityChange(item.id, -1)} disabled={updatingQuantityProductId === item.id || !item.id}>
                                <Minus className="h-3 w-3" />
@@ -636,7 +633,7 @@ export default function InventoryPage() {
                            <Button variant="outline" size="icon" className="h-6 w-6 mx-1" onClick={() => item.id && handleQuantityChange(item.id, 1)} disabled={updatingQuantityProductId === item.id || !item.id}>
                                <Plus className="h-3 w-3" />
                            </Button>
-                         </p>
+                         </div>
                          {item.quantity === 0 && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{t('inventory_badge_out_of_stock')}</Badge>}
                          {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="ml-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
                          {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && <Badge variant="default" className="ml-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
@@ -742,12 +739,11 @@ export default function InventoryPage() {
                                   {item.description && <p><strong className="font-medium">{t('inventory_popover_description')}:</strong> {item.description}</p>}
                                   {item.catalogNumber && item.catalogNumber !== "N/A" && <p><strong className="font-medium">{t('inventory_popover_catalog')}:</strong> {item.catalogNumber}</p>}
                                   {item.barcode && <p><strong className="font-medium">{t('inventory_popover_barcode')}:</strong> {item.barcode}</p>}
-                                  {item.unitPrice !== undefined && <p><strong className="font-medium">{t('inventory_popover_unit_price')}:</strong> {formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 0 })}</p>}
+                                  {item.unitPrice !== undefined && <p><strong className="font-medium">{t('inventory_col_unit_price')}:</strong> {formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 0 })}</p>}
                                </PopoverContent>
                              </Popover>
                            </TableCell>
                          )}
-                         {/* {visibleColumns.description && <TableCell className={cn('font-medium px-2 sm:px-4 py-2 truncate max-w-[150px] sm:max-w-none', columnDefinitions.find(h => h.key === 'description')?.mobileHidden && 'hidden sm:table-cell')}>{item.description || t('invoices_na')}</TableCell>} */}
                          {visibleColumns.catalogNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'catalogNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.catalogNumber || t('invoices_na')}</TableCell>}
                          {visibleColumns.barcode && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'barcode')?.mobileHidden && 'hidden sm:table-cell')}>{item.barcode || t('invoices_na')}</TableCell>}
                          {visibleColumns.quantity && (
