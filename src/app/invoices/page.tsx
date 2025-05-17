@@ -1,30 +1,30 @@
 // src/app/invoices/page.tsx
 'use client';
 
- import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
- import { Input } from '@/components/ui/input';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
- import {
-   Table,
-   TableBody,
-   TableCell,
-   TableHead,
-   TableHeader,
-   TableRow,
- } from '@/components/ui/table';
- import {
-   DropdownMenu,
-   DropdownMenuCheckboxItem,
-   DropdownMenuContent,
-   DropdownMenuLabel,
-   DropdownMenuSeparator,
-   DropdownMenuTrigger,
-   DropdownMenuSub,
-   DropdownMenuSubTrigger,
-   DropdownMenuSubContent,
- } from '@/components/ui/dropdown-menu';
- import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import {
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+} from '@/components/ui/dropdown-menu';
+import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+import {
     Search,
     Filter,
     ChevronDown,
@@ -43,38 +43,37 @@ import { Button, buttonVariants } from '@/components/ui/button';
     ListFilter,
     Columns,
     CreditCard,
-    Mail as MailIcon, // Alias Mail to avoid conflict if Mail component exists
+    Mail as MailIcon,
     CheckSquare,
+    CheckCircle,
     ChevronLeft,
     ChevronRight,
-    Grid, // Added Grid icon
+    Grid,
     ListChecks,
-    CheckCircle, // Added CheckCircle
     Briefcase, // Added Briefcase
-    Receipt, // Added Receipt for paid invoices
  } from 'lucide-react';
- import { useRouter, useSearchParams } from 'next/navigation';
- import { useToast } from '@/hooks/use-toast';
- import type { DateRange } from 'react-day-picker';
- import { Calendar } from '@/components/ui/calendar';
- import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
- import { Timestamp } from 'firebase/firestore'; // Correct import for Timestamp
- import { format, parseISO, subDays, startOfMonth, endOfMonth, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
- import { enUS, he } from 'date-fns/locale';
- import { cn } from '@/lib/utils';
- import { Calendar as CalendarIcon } from 'lucide-react'; // Alias if needed
- import {
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
+import type { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Timestamp } from 'firebase/firestore';
+import { format, parseISO, subDays, startOfMonth, endOfMonth, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
+import { enUS, he } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import {
     InvoiceHistoryItem,
     getInvoicesService,
     deleteInvoiceService,
     updateInvoiceService,
     SupplierSummary,
     getSupplierSummariesService,
-    getUserSettingsService, // For accountant email
+    getUserSettingsService,
     updateInvoicePaymentStatusService,
 } from '@/services/backend';
- import { Badge } from '@/components/ui/badge';
- import {
+import { Badge } from '@/components/ui/badge';
+import {
     Sheet,
     SheetContent,
     SheetHeader,
@@ -99,7 +98,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSmartTouch } from '@/hooks/useSmartTouch'; // Corrected import path
+import { useSmartTouch } from '@/hooks/useSmartTouch';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
@@ -108,7 +107,6 @@ import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from "@/components/ui/skeleton";
 import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 
@@ -120,53 +118,73 @@ const isValidImageSrc = (src: string | undefined | null): src is string => {
 
 type ViewMode = 'grid' | 'list';
 
-const ITEMS_PER_PAGE_SCANNED_DOCS = 8; // Example for scanned docs, can be different for paid
+const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
 
-function ScannedDocsView({ // This is now a sub-component or part of DocumentsPage logic
-    invoices,
-    isLoading,
-    visibleColumns,
-    sortKey,
-    sortDirection,
-    handleSort,
-    handleViewDetails,
-    handleEditScannedDoc,
-    handleSelectInvoice,
-    selectedInvoiceIds,
-    viewMode,
-    currentPage,
-    totalPages,
-    handlePageChange,
-    t,
-    locale,
-    columnDefinitions,
-    handleDeleteInvoice,
-    isDeleting,
-    setInvoiceForReceiptUpload,
-    setShowReceiptUploadDialog,
-}: {
-    invoices: InvoiceHistoryItem[];
-    isLoading: boolean;
-    visibleColumns: Record<string, boolean>;
-    sortKey: string;
-    sortDirection: 'asc' | 'desc';
-    handleSort: (key: string) => void;
-    handleViewDetails: (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => void;
-    handleEditScannedDoc: (invoiceId: string, docType: 'deliveryNote' | 'invoice', fileName: string) => void;
-    handleSelectInvoice: (invoiceId: string, checked: boolean) => void;
-    selectedInvoiceIds: string[];
-    viewMode: ViewMode;
-    currentPage: number;
-    totalPages: number;
-    handlePageChange: (page: number) => void;
-    t: (key: string, params?: any) => string;
-    locale: string;
-    columnDefinitions: Array<{ key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }>;
-    handleDeleteInvoice: (invoiceId: string | string[]) => Promise<void>;
-    isDeleting: boolean;
-    setInvoiceForReceiptUpload: React.Dispatch<React.SetStateAction<InvoiceHistoryItem | null>>;
-    setShowReceiptUploadDialog: React.Dispatch<React.SetStateAction<boolean>>;
-}) {
+// This component now acts as the main container for both tabs
+export default function DocumentsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const { t, locale } = useTranslation();
+  const router = useRouter();
+  const searchParamsHook = useSearchParams();
+  const { toast } = useToast();
+  const isMobile = useIsMobile();
+
+  const [allUserInvoices, setAllUserInvoices] = useState<InvoiceHistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | 'paymentReceipt' | ''>('');
+  const [filterSupplier, setFilterSupplier] = useState<string>('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
+  const [sortKeyScanned, setSortKeyScanned] = useState<string>('uploadTime');
+  const [sortDirectionScanned, setSortDirectionScanned] = useState<'asc' | 'desc'>('desc');
+  
+  const [sortKeyPaid, setSortKeyPaid] = useState<keyof InvoiceHistoryItem | 'paymentReceiptImageUri' | ''>('uploadTime');
+  const [sortDirectionPaid, setSortDirectionPaid] = useState<'asc' | 'desc'>('desc');
+
+  const [showDetailsSheet, setShowDetailsSheet] = useState(false);
+  const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
+  const defaultViewMode = isMobile ? 'grid' : 'list';
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
+  
+  const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
+  const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
+  const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
+
+  const [currentScannedDocsPage, setCurrentScannedDocsPage] = useState(1);
+
+  const [selectedForBulkActionScanned, setSelectedForBulkActionScanned] = useState<string[]>([]);
+  const [selectedForBulkActionPaid, setSelectedForBulkActionPaid] = useState<string[]>([]);
+
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [accountantEmail, setAccountantEmail] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>(
+    searchParamsHook.get('tab') as 'scanned-docs' | 'paid-invoices' || 'scanned-docs'
+  );
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); 
+  const [fetchInvoicesTrigger, setFetchInvoicesTrigger] = useState(0);
+
+  const defaultScannedColumns: Record<string, boolean> = useMemo(() => ({
+    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, 
+    paymentStatus: true, paymentDueDate: !isMobile, invoiceNumber: !isMobile, supplierName: !isMobile, totalAmount: true,
+  }), [isMobile]);
+
+  const defaultPaidColumns: Record<string, boolean> = useMemo(() => ({
+    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, invoiceDate: !isMobile, supplierName: !isMobile, totalAmount: true, paymentMethod: !isMobile, paymentReceiptImageUri: true,
+  }), [isMobile]);
+
+  const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
+  const [visibleColumnsPaid, setVisibleColumnsPaid] = useState(defaultPaidColumns);
+
 
   const formatDateForDisplay = useCallback((dateInput: string | Date | Timestamp | undefined, formatStr: string = 'PPp') => {
     if (!dateInput) return t('invoices_na');
@@ -211,7 +229,6 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
       return `${t('currency_symbol')}${formattedValue}`;
   }, [t]);
 
-
   const renderScanStatusBadge = (status: InvoiceHistoryItem['status']) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
@@ -243,10 +260,11 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
     return (<Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>{icon}{t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}</Badge>);
   };
 
+  // Sub-component for "Scanned Docs" tab content
+  const ScannedDocsView = () => {
     const visibleColumnHeaders = useMemo(() => {
-      if (!columnDefinitions) return [];
-      return columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
-    }, [columnDefinitions, visibleColumns]);
+      return scannedDocsColumnDefinitions.filter(h => visibleColumnsScanned[h.key as keyof typeof visibleColumnsScanned]);
+    }, [visibleColumnsScanned]);
 
     return (
         <>
@@ -263,26 +281,26 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
                                             header.className,
                                             header.sortable && "cursor-pointer hover:bg-muted/50",
                                             header.mobileHidden && "hidden sm:table-cell", 
-                                            header.headerClassName,
-                                            'px-2 sm:px-4 py-2'
+                                            'px-2 sm:px-4 py-2',
+                                            header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
                                         )}
-                                        onClick={() => header.sortable && handleSort(header.key)}
-                                        aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+                                        onClick={() => header.sortable && handleSortInternal(header.key)}
+                                        aria-sort={header.sortable ? (sortKeyScanned === header.key ? (sortDirectionScanned === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
                                     >
                                         <div className="flex items-center gap-1 whitespace-nowrap justify-center">
                                             {header.key === 'selection' ? (
                                                 <Checkbox
-                                                    checked={selectedInvoiceIds.length > 0 && selectedInvoiceIds.length === invoices.length && invoices.length > 0}
-                                                    onCheckedChange={(checked) => handleSelectInvoice('all-scanned', !!checked)}
+                                                    checked={selectedForBulkActionScanned.length > 0 && selectedForBulkActionScanned.length === paginatedScannedDocs.length && paginatedScannedDocs.length > 0}
+                                                    onCheckedChange={(checked) => handleSelectInvoiceForBulkAction('all-scanned', !!checked)}
                                                     aria-label={t('invoice_export_select_all_aria')}
                                                     className="mx-auto"
                                                 />
                                             ) : (
                                                 t(header.labelKey as any, { currency_symbol: t('currency_symbol') })
                                             )}
-                                            {header.sortable && sortKey === header.key && (
+                                            {header.sortable && sortKeyScanned === header.key && (
                                                 <span className="text-xs" aria-hidden="true">
-                                                    {sortDirection === 'asc' ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                                                    {sortDirectionScanned === 'asc' ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
                                                 </span>
                                             )}
                                         </div>
@@ -293,18 +311,18 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
                         <TableBody>
                             {isLoading ? (
                                 <TableRow><TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center"><div className="flex justify-center items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">{t('invoices_loading')}</span></div></TableCell></TableRow>
-                            ) : invoices.length === 0 ? (
+                            ) : paginatedScannedDocs.length === 0 ? (
                                 <TableRow><TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">{t('invoices_no_invoices_found')}</TableCell></TableRow>
                             ) : (
-                                invoices.map((item) => (
+                                paginatedScannedDocs.map((item) => (
                                     <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                                        {visibleColumns.selection && (
-                                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
-                                                <Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} />
+                                        {visibleColumnsScanned.selection && (
+                                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", scannedDocsColumnDefinitions.find(h => h.key === 'selection')?.className)}>
+                                                <Checkbox checked={selectedForBulkActionScanned.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} />
                                             </TableCell>
                                         )}
-                                        {visibleColumns.actions && (
-                                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
+                                        {visibleColumnsScanned.actions && (
+                                            <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", scannedDocsColumnDefinitions.find(h => h.key === 'actions')?.className)}>
                                                 <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => handleViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Info className="h-4 w-4" /></Button>
                                                 {(item.status === 'pending' || item.status === 'error') && item.id && (<Button variant="ghost" size="icon" className="text-amber-600 hover:text-amber-500 h-7 w-7" onClick={() => handleEditScannedDoc(item.id!, item.documentType, item.originalFileName || item.generatedFileName || '')} title={t('upload_history_retry_upload_title')} aria-label={t('upload_history_retry_upload_aria', { fileName: item.originalFileName || item.generatedFileName || '' })}><Edit className="h-4 w-4" /></Button>)}
                                                 {(item.paymentStatus === 'unpaid' || item.paymentStatus === 'pending_payment') && item.status === 'completed' && (
@@ -323,13 +341,13 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
                                                 </AlertDialog>
                                             </TableCell>
                                         )}
-                                        {visibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate" onClick={() => handleViewDetails(item, 'image_only')} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })}>{item.originalFileName || item.generatedFileName}</Button></TableCell>)}
-                                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime)}</TableCell>}
-                                        {visibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2 text-center">{renderPaymentStatusBadge(item.paymentStatus)}</TableCell>)}
-                                        {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, 'PP') : t('invoices_na')}</TableCell>}
-                                        {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
-                                        {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
-                                        {visibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, {decimals:0}) : t('invoices_na')}</TableCell>)}
+                                        {visibleColumnsScanned.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", scannedDocsColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate" onClick={() => handleViewDetails(item, 'image_only')} title={t('invoices_view_details_title', { fileName: item.originalFileName || item.generatedFileName || '' })}>{item.originalFileName || item.generatedFileName}</Button></TableCell>)}
+                                        {visibleColumnsScanned.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', scannedDocsColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime)}</TableCell>}
+                                        {visibleColumnsScanned.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2 text-center">{renderPaymentStatusBadge(item.paymentStatus)}</TableCell>)}
+                                        {visibleColumnsScanned.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', scannedDocsColumnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, 'PP') : t('invoices_na')}</TableCell>}
+                                        {visibleColumnsScanned.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', scannedDocsColumnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
+                                        {visibleColumnsScanned.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', scannedDocsColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
+                                        {visibleColumnsScanned.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, {decimals:0}) : t('invoices_na')}</TableCell>)}
                                     </TableRow>
                                 ))
                             )}
@@ -339,11 +357,11 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
             ) : (
                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
                     {isLoading ? (Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="p-0 relative aspect-[4/3] bg-muted rounded-t-lg" /><CardContent className="p-3 space-y-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /><Skeleton className="h-3 w-1/4" /></CardContent><CardFooter className="p-3 border-t"><Skeleton className="h-7 w-full" /></CardFooter></Card>)))
-                        : invoices.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>)
-                            : (invoices.map((item: InvoiceHistoryItem) => (
+                        : paginatedScannedDocs.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>)
+                            : (paginatedScannedDocs.map((item: InvoiceHistoryItem) => (
                                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
                                     <div className="p-2 absolute top-0 left-0 z-10">
-                                         <Checkbox checked={selectedInvoiceIds.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoice(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} className="bg-background/70 hover:bg-background border-primary" />
+                                         <Checkbox checked={selectedForBulkActionScanned.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} className="bg-background/70 hover:bg-background border-primary" />
                                      </div>
                                     <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item, 'image_only')}>
                                         {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (
@@ -354,7 +372,7 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
                                             </div>
                                         )}
                                         <div className="absolute top-2 right-2 flex flex-col gap-1">
-                                            {/* Scan status is always completed for this view */}
+                                            {renderScanStatusBadge(item.status)}
                                             {renderPaymentStatusBadge(item.paymentStatus)}
                                         </div>
                                     </CardHeader>
@@ -378,78 +396,45 @@ function ScannedDocsView({ // This is now a sub-component or part of DocumentsPa
                         )}
                 </div>
             )}
-            {totalPages > 1 && (
+            {totalScannedDocsPages > 1 && (
                 <div className="flex items-center justify-end space-x-2 py-4 mt-4">
-                    <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}><ChevronLeft className="h-4 w-4" /><span className="sr-only">{t('inventory_pagination_previous')}</span></Button>
-                    <span className="text-sm text-muted-foreground">{t('inventory_pagination_page_info_simple', { currentPage: currentPage, totalPages: totalPages })}</span>
-                    <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}><span className="sr-only">{t('inventory_pagination_next')}</span><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="sm" onClick={() => handleScannedDocsPageChange(currentScannedDocsPage - 1)} disabled={currentScannedDocsPage === 1}><ChevronLeft className="h-4 w-4" /><span className="sr-only">{t('inventory_pagination_previous')}</span></Button>
+                    <span className="text-sm text-muted-foreground">{t('inventory_pagination_page_info_simple', { currentPage: currentScannedDocsPage, totalPages: totalScannedDocsPages })}</span>
+                    <Button variant="outline" size="sm" onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)} disabled={currentScannedDocsPage === totalScannedDocsPages}><span className="sr-only">{t('inventory_pagination_next')}</span><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+            )}
+             {selectedForBulkActionScanned.length > 0 && (
+                <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" className="w-full sm:w-auto">
+                                <Trash2 className="mr-2 h-4 w-4"/>
+                                {t('invoices_bulk_delete_button', {count: selectedForBulkActionScanned.length})}
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContentComponent>
+                            <AlertDialogHeaderComponent>
+                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
+                                <AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', {fileName: `${selectedForBulkActionScanned.length} ${t('documents_plural_for_delete_message')}`})}</AlertDialogDescriptionComponent>
+                            </AlertDialogHeaderComponent>
+                            <AlertDialogFooterComponent><AlertDialogCancel>{t('cancel_button')}</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInvoice(selectedForBulkActionScanned)} className={buttonVariants({variant: "destructive"})}>{t('invoices_delete_confirm_action')}</AlertDialogAction></AlertDialogFooterComponent>
+                        </AlertDialogContentComponent>
+                    </AlertDialog>
                 </div>
             )}
         </>
     );
-}
-
-
-export default function DocumentsPage() {
-  const { user, loading: authLoading } = useAuth();
-  const { t, locale } = useTranslation();
-  const router = useRouter();
-  const searchParamsHook = useSearchParams();
-  const { toast } = useToast();
-  const isMobile = useIsMobile();
-
-  const [allUserInvoices, setAllUserInvoices] = useState<InvoiceHistoryItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | ''>('');
-  const [filterSupplier, setFilterSupplier] = useState<string>('');
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState<InvoiceHistoryItem['paymentStatus'] | ''>('');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-
-  const [sortKeyScanned, setSortKeyScanned] = useState<string>('uploadTime');
-  const [sortDirectionScanned, setSortDirectionScanned] = useState<'asc' | 'desc'>('desc');
-  
-  const [sortKeyPaid, setSortKeyPaid] = useState<SortKeyPaid>('uploadTime');
-  const [sortDirectionPaid, setSortDirectionPaid] = useState<SortDirection>('desc');
-
-
-  const [showDetailsSheet, setShowDetailsSheet] = useState(false);
-  const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
-  const [isSavingDetails, setIsSavingDetails] = useState(false);
-
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'grid' : 'list');
-  const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
-  const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
-  const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
-
-  const [currentScannedDocsPage, setCurrentScannedDocsPage] = useState(1);
-
-  const [selectedForBulkActionScanned, setSelectedForBulkActionScanned] = useState<string[]>([]);
-  const [selectedForBulkActionPaid, setSelectedForBulkActionPaid] = useState<string[]>([]);
-
-
-  const [showExportDialog, setShowExportDialog] = useState(false);
-  const [accountantEmail, setAccountantEmail] = useState('');
-  const [emailNote, setEmailNote] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
-
-  const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>(
-    searchParamsHook.get('tab') as 'scanned-docs' | 'paid-invoices' || 'scanned-docs'
-  );
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); 
-  const [fetchInvoicesTrigger, setFetchInvoicesTrigger] = useState(0);
+  };
 
   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
   const { onTouchStart, onTouchMove, onClick: smartOnClick } = useSmartTouch({
     onTap: (e) => {
       if (dropdownTriggerRef.current && dropdownTriggerRef.current.contains(e.target as Node)) {
+        // Potentially do nothing if it's a tap on the trigger itself, Radix might handle it
       }
     }
   });
+
 
   const triggerInvoiceFetch = useCallback(() => {
     console.log("[InvoicesPage] Triggering invoice fetch.");
@@ -470,7 +455,6 @@ export default function DocumentsPage() {
         setShowDetailsSheet(false);
     }
   }, []);
-
 
   const fetchUserData = useCallback(async () => {
     if (!user?.id) {
@@ -548,7 +532,7 @@ export default function DocumentsPage() {
      } else if (viewInvoiceId && allUserInvoices.length === 0 && !isLoading) {
          console.warn("[InvoicesPage] viewInvoiceId in URL, but allUserInvoices is empty and not loading. Might be stale data.");
      }
-  }, [searchParamsHook, isMobile, allUserInvoices, showDetailsSheet, activeTab, handleViewDetails, isLoading]); 
+  }, [searchParamsHook, isMobile, allUserInvoices, showDetailsSheet, handleViewDetails, isLoading, activeTab]); 
 
   useEffect(() => {
     const currentRefreshParam = searchParamsHook.get('refresh');
@@ -569,7 +553,7 @@ export default function DocumentsPage() {
             setSortDirectionScanned(prev => prev === 'asc' ? 'desc' : 'asc');
         } else {
             setSortKeyScanned(sortableKey);
-            setSortDirectionScanned('desc'); // Default to desc for time fields typically
+            setSortDirectionScanned('desc'); 
         }
         setCurrentScannedDocsPage(1);
     } else if (activeTab === 'paid-invoices') {
@@ -580,7 +564,6 @@ export default function DocumentsPage() {
             setSortKeyPaid(sortableKeyPaid);
             setSortDirectionPaid('desc');
         }
-        // Assuming PaidInvoicesTabView handles its own pagination internally or via props
     }
   }, [activeTab, sortKeyScanned, sortKeyPaid]);
 
@@ -589,7 +572,6 @@ export default function DocumentsPage() {
     
     if (filterDocumentType) result = result.filter(inv => inv.documentType === filterDocumentType);
     if (filterSupplier) result = result.filter(inv => inv.supplierName === filterSupplier);
-    if (filterPaymentStatus) result = result.filter(inv => inv.paymentStatus === filterPaymentStatus);
     if (dateRange?.from) {
         const startDate = new Date(dateRange.from); startDate.setHours(0,0,0,0);
         result = result.filter(inv => {
@@ -648,7 +630,7 @@ export default function DocumentsPage() {
          });
      }
     return result;
-  }, [allUserInvoices, filterDocumentType, filterSupplier, filterPaymentStatus, dateRange, searchTerm, sortKeyScanned, sortDirectionScanned, locale]);
+  }, [allUserInvoices, filterDocumentType, filterSupplier, dateRange, searchTerm, sortKeyScanned, sortDirectionScanned, locale]);
 
   const paginatedScannedDocs = useMemo(() => {
     const startIndex = (currentScannedDocsPage - 1) * ITEMS_PER_PAGE_SCANNED_DOCS;
@@ -665,18 +647,16 @@ export default function DocumentsPage() {
     }
   };
 
-
   const handleEditScannedDoc = (invoiceId: string, docType: 'deliveryNote' | 'invoice', fileName: string) => {
     if (!invoiceId) {
         toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"});
         return;
     }
     const queryParams = new URLSearchParams({
-        tempInvoiceId: invoiceId, // Use the actual doc ID from Firestore
+        tempInvoiceId: invoiceId, 
         docType: docType,
         originalFileName: encodeURIComponent(fileName || 'unknown_doc'),
     });
-    // Remove the 'key' parameter as we are loading from Firestore via tempInvoiceId
     router.push(`/edit-invoice?${queryParams.toString()}`);
   };
 
@@ -714,9 +694,8 @@ export default function DocumentsPage() {
     }
   };
 
-
   const handleEditDetailsInputChange = (field: keyof InvoiceHistoryItem, value: string | number | Date | undefined | null | Timestamp ) => {
-     if (field === 'uploadTime' || field === 'status') return; // Prevent editing these fields
+     if (field === 'uploadTime' || field === 'status') return; 
     setEditedInvoiceData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -736,7 +715,6 @@ export default function DocumentsPage() {
             documentType: editedInvoiceData.documentType || selectedInvoiceDetails.documentType,
             invoiceDate: editedInvoiceData.invoiceDate,
             paymentMethod: editedInvoiceData.paymentMethod || null,
-            // URIs for images are not editable here; they are set during upload/receipt attachment
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
@@ -769,29 +747,25 @@ export default function DocumentsPage() {
  const handlePaymentStatusChange = async (invoiceId: string, newStatus: InvoiceHistoryItem['paymentStatus'], receiptImageUri?: string | null) => {
     if (!user?.id || !selectedInvoiceDetails) return;
 
-    if (newStatus === 'paid' && receiptImageUri === undefined) { // If marking as paid AND no receipt URI is immediately provided
+    if (newStatus === 'paid' && receiptImageUri === undefined) { 
         setInvoiceForReceiptUpload(selectedInvoiceDetails);
-        setShowReceiptUploadDialog(true); // Open dialog to upload/confirm receipt
-        return; // Don't update status yet
+        setShowReceiptUploadDialog(true); 
+        return; 
     }
-        // If status is not 'paid', or if it is 'paid' AND a receipt URI IS provided (e.g. from dialog confirm)
         const originalInvoice = allUserInvoices.find(inv => inv.id === invoiceId);
         if (!originalInvoice) return;
 
-        // Optimistically update UI
         setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus, paymentReceiptImageUri: receiptImageUri === undefined ? prev.paymentReceiptImageUri : receiptImageUri } : null);
-        // If dialog is open, this will reflect the change when it closes too.
-
+        
         try {
             await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, receiptImageUri);
             toast({
                 title: t('toast_invoice_payment_status_updated_title'),
                 description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.originalFileName || originalInvoice.generatedFileName || '', status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
             });
-            triggerInvoiceFetch(); // Re-fetch to update lists
+            triggerInvoiceFetch(); 
         } catch (error) {
             console.error("[InvoicesPage] Failed to update payment status:", error);
-            // Revert optimistic UI update
             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : null);
             toast({
                 title: t('toast_invoice_payment_status_update_fail_title'),
@@ -805,10 +779,8 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
     if (!invoiceForReceiptUpload || !user?.id || invoiceForReceiptUpload.id !== invoiceId) return;
     setShowReceiptUploadDialog(false);
     setInvoiceForReceiptUpload(null);
-    // Now call handlePaymentStatusChange with the receipt URI to finalize
     await handlePaymentStatusChange(invoiceId, 'paid', receiptUri);
 };
-
 
   const handleSelectInvoiceForBulkAction = (invoiceId: string, checked: boolean) => {
      if (activeTab === 'scanned-docs') {
@@ -821,7 +793,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
          }
      } else if (activeTab === 'paid-invoices') {
         if (invoiceId === 'all-paid') {
-           const allFilteredPaid = allUserInvoices.filter(inv => inv.paymentStatus === 'paid'); // Re-filter here or get paginated paid invoices
+           const allFilteredPaid = allUserInvoices.filter(inv => inv.paymentStatus === 'paid'); 
            setSelectedForBulkActionPaid(checked ? allFilteredPaid.map(inv => inv.id) : []);
         } else {
            setSelectedForBulkActionPaid(prev =>
@@ -846,14 +818,12 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
         if (settings && settings.accountantSettings?.email) {
             setAccountantEmail(settings.accountantSettings.email);
         } else {
-            setAccountantEmail(''); // Clear it if not set in settings
+            setAccountantEmail(''); 
             toast({
                 title: t('settings_accountant_toast_email_required_title'),
                 description: t('settings_accountant_toast_email_required_desc_export'),
                 variant: "destructive"
             })
-            // Optionally, prevent dialog from opening if email isn't set:
-            // return; 
         }
     }
     setShowExportDialog(true);
@@ -903,28 +873,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
     }
  };
 
-
-   const defaultScannedColumns: Record<string, boolean> = useMemo(() => ({
-    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, 
-    paymentStatus: true, paymentDueDate: !isMobile, invoiceNumber: !isMobile, supplierName: !isMobile, totalAmount: true,
-   }), [isMobile]);
-
-   const defaultPaidColumns: Record<string, boolean> = useMemo(() => ({
-    selection: true, actions: true, originalFileName: true, uploadTime: !isMobile, invoiceDate: !isMobile, supplierName: !isMobile, totalAmount: true, paymentMethod: !isMobile, paymentReceiptImageUri: true,
-  }), [isMobile]);
-
-  const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
-  const [visibleColumnsPaid, setVisibleColumnsPaid] = useState(defaultPaidColumns);
-
-  const toggleColumnVisibilityScanned = useCallback((key: string) => {
-    setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  const toggleColumnVisibilityPaid = useCallback((key: string) => {
-    setVisibleColumnsPaid(prev => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  const scannedDocsColumnDefinitions: Array<{ key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }> = useMemo(() => [
+   const scannedDocsColumnDefinitions: Array<{ key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }> = useMemo(() => [
     { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20', headerClassName: 'sticky left-0 bg-card z-20'},
     { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[10%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10', headerClassName: 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10'},
     { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
@@ -945,7 +894,16 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
       { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'text-center', mobileHidden: true },
   ], []);
+
+  const toggleColumnVisibilityScanned = useCallback((key: string) => {
+    setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const toggleColumnVisibilityPaid = useCallback((key: string) => {
+    setVisibleColumnsPaid(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
 
    if (authLoading || (isLoading && !user)) {
@@ -957,7 +915,6 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
      );
    }
    if (!user && !authLoading) return null;
-
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -982,9 +939,6 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
                     onClick={() => {
                         const newMode = viewMode === 'list' ? 'grid' : 'list';
                         setViewMode(newMode);
-                        const params = new URLSearchParams(searchParamsHook.toString());
-                        params.set('viewMode', newMode);
-                        router.replace(`?${params.toString()}`, {scroll: false});
                     }}
                     className="h-9 sm:h-10 px-3"
                     aria-label={t('invoices_toggle_view_mode_aria')}
@@ -996,27 +950,24 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
         <CardContent>
-         <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap">
-            <div className="relative w-full sm:flex-grow sm:max-w-xs">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                 <Input
-                    placeholder={t('inventory_search_placeholder')}
-                    value={searchTerm}
-                    onChange={(e) => {setSearchTerm(e.target.value); setCurrentScannedDocsPage(1);}}
-                    className="pl-10 h-10 w-full"
-                    aria-label={t('invoices_search_aria')}
-                 />
-            </div>
-             <Select value={filterDocumentType} onValueChange={(value) => setFilterDocumentType(value === "all" ? "" : value as any)}>
-                <SelectTrigger className="w-full sm:w-auto h-10">
-                    <SelectValue placeholder={t('invoices_filter_doc_type_all')} />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">{t('invoices_filter_doc_type_all')}</SelectItem>
-                    <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
-                    <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
-                </SelectContent>
-            </Select>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4 flex-wrap">
+                {/* Document Type Buttons */}
+                <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                    <Button size="sm" variant={filterDocumentType === '' ? 'default' : 'outline'} onClick={() => setFilterDocumentType('')} className="text-xs h-8 px-3">{t('invoices_filter_doc_type_all_button')}</Button>
+                    <Button size="sm" variant={filterDocumentType === 'deliveryNote' ? 'default' : 'outline'} onClick={() => setFilterDocumentType('deliveryNote')} className="text-xs h-8 px-3">{t('upload_doc_type_delivery_note')}</Button>
+                    <Button size="sm" variant={filterDocumentType === 'invoice' ? 'default' : 'outline'} onClick={() => setFilterDocumentType('invoice')} className="text-xs h-8 px-3">{t('upload_doc_type_invoice')}</Button>
+                    <Button size="sm" variant={filterDocumentType === 'paymentReceipt' ? 'default' : 'outline'} onClick={() => setFilterDocumentType('paymentReceipt')} className="text-xs h-8 px-3">{t('invoices_filter_doc_type_receipt_button')}</Button>
+                </div>
+                 <div className="relative w-full sm:flex-grow sm:max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder={t('inventory_search_placeholder')}
+                        value={searchTerm}
+                        onChange={(e) => {setSearchTerm(e.target.value); setCurrentScannedDocsPage(1);}}
+                        className="pl-10 h-10 w-full"
+                        aria-label={t('invoices_search_aria')}
+                    />
+                </div>
             </div>
 
             {showAdvancedFilters && (
@@ -1052,7 +1003,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
                                      <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_payment_status')}>
                                          <CreditCard className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
                                          <span className="text-[10px] sm:text-xs">{t('filter_label_payment_status')}</span>
-                                         {filterPaymentStatus && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterPaymentStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                                          {/* Removed filterScanStatus and filterPaymentStatus from here */}
                                      </Button>
                                  </DropdownMenuTrigger>
                                  <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>{(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (<DropdownMenuCheckboxItem key={pStatus} checked={filterPaymentStatus === pStatus} onCheckedChange={() => setFilterPaymentStatus(pStatus)}>{t(`invoice_payment_status_${pStatus}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
@@ -1105,56 +1056,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
               <TabsTrigger value="paid-invoices">{t('invoices_tab_paid_invoices')}</TabsTrigger>
             </TabsList>
             <TabsContent value="scanned-docs">
-              <ScannedDocsView
-                invoices={paginatedScannedDocs}
-                isLoading={isLoading}
-                visibleColumns={visibleColumnsScanned}
-                sortKey={sortKeyScanned}
-                sortDirection={sortDirectionScanned}
-                handleSort={handleSortInternal}
-                handleViewDetails={handleViewDetails}
-                handleEditScannedDoc={handleEditScannedDoc}
-                handleSelectInvoice={handleSelectInvoiceForBulkAction}
-                selectedInvoiceIds={selectedForBulkActionScanned}
-                viewMode={viewMode}
-                currentPage={currentScannedDocsPage}
-                totalPages={totalScannedDocsPages}
-                handlePageChange={handleScannedDocsPageChange}
-                t={t}
-                locale={locale}
-                columnDefinitions={scannedDocsColumnDefinitions}
-                handleDeleteInvoice={handleDeleteInvoice}
-                isDeleting={isDeleting}
-                setInvoiceForReceiptUpload={setInvoiceForReceiptUpload}
-                setShowReceiptUploadDialog={setShowReceiptUploadDialog}
-              />
-                 {selectedForBulkActionScanned.length > 0 && (
-                    <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
-                         <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="destructive" className="w-full sm:w-auto">
-                                    <Trash2 className="mr-2 h-4 w-4"/>
-                                    {t('invoices_bulk_delete_button', {count: selectedForBulkActionScanned.length})}
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContentComponent>
-                                <AlertDialogHeaderComponent>
-                                    <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
-                                    <AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', {fileName: `${selectedForBulkActionScanned.length} ${t('documents_plural_for_delete_message')}`})}</AlertDialogDescriptionComponent>
-                                </AlertDialogHeaderComponent>
-                                <AlertDialogFooterComponent><AlertDialogCancel>{t('cancel_button')}</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteInvoice(selectedForBulkActionScanned)} className={buttonVariants({variant: "destructive"})}>{t('invoices_delete_confirm_action')}</AlertDialogAction></AlertDialogFooterComponent>
-                            </AlertDialogContentComponent>
-                         </AlertDialog>
-                           <Button
-                              onClick={handleOpenExportDialog}
-                              disabled={isExporting}
-                              className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
-                          >
-                              {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailIcon className="mr-2 h-4 w-4" />}
-                              {t('invoice_export_selected_button')}
-                          </Button>
-                     </div>
-                )}
+              <ScannedDocsView />
             </TabsContent>
             <TabsContent value="paid-invoices">
               <PaidInvoicesTabView 
@@ -1171,7 +1073,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
                 onOpenExportDialog={handleOpenExportDialog}
                 onTriggerInvoiceFetch={triggerInvoiceFetch}
                 viewMode={viewMode} 
-                currentSortKey={sortKeyPaid} 
+                currentSortKey={sortKeyPaid as any}
                 currentSortDirection={sortDirectionPaid}
               />
             </TabsContent>
@@ -1199,12 +1101,21 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
              )}
           </SheetHeader>
           {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow p-0">
+            <ScrollArea className="flex-grow">
               <div className="p-4 sm:p-6 space-y-4">
               {isEditingDetails && selectedInvoiceDetails._displayContext !== 'image_only' ? (
                 <div className="space-y-3">
                     <div><Label htmlFor="editOriginalFileName">{t('invoice_details_file_name_label')}</Label><Input id="editOriginalFileName" value={editedInvoiceData.originalFileName || ''} onChange={(e) => handleEditDetailsInputChange('originalFileName', e.target.value)} disabled={isSavingDetails}/></div>
-                    <div><Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label><Select value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType} onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice')} disabled={isSavingDetails}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem><SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem></SelectContent></Select></div>
+                    <div><Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label>
+                        <Select value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType} onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice' | 'paymentReceipt')} disabled={isSavingDetails}>
+                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
+                                <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
+                                <SelectItem value="paymentReceipt">{t('invoices_filter_doc_type_receipt_button')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div><Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label><Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/></div>
                     <div><Label htmlFor="editSupplierName">{t('invoice_details_supplier_label')}</Label><Input id="editSupplierName" value={editedInvoiceData.supplierName || ''} onChange={(e) => handleEditDetailsInputChange('supplierName', e.target.value)} disabled={isSavingDetails}/></div>
                     <div><Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label><Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/></div>
@@ -1234,7 +1145,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime)}</p>
                       <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
                       {activeTab === 'scanned-docs' && (
-                         <div className="flex items-center"><strong className="mr-1">{t('invoice_details_status_label')}:</strong> {ScannedDocsView({} as any).renderScanStatusBadge(selectedInvoiceDetails.status, t)}</div>
+                         <div className="flex items-center"><strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderScanStatusBadge(selectedInvoiceDetails.status)}</div>
                       )}
                   </div>
                   <Separator className="my-3"/>
@@ -1244,7 +1155,7 @@ const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: strin
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount, {decimals:0}) : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDateForDisplay(selectedInvoiceDetails.invoiceDate, 'PP') : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod ? t(`payment_method_${selectedInvoiceDetails.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: selectedInvoiceDetails.paymentMethod}) : t('invoices_na')}</p>
-                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {ScannedDocsView({} as any).renderPaymentStatusBadge(selectedInvoiceDetails.paymentStatus, t)}</div>
+                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderPaymentStatusBadge(selectedInvoiceDetails.paymentStatus)}</div>
                       {selectedInvoiceDetails.paymentDueDate && (<p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.paymentDueDate, 'PP')}</p>)}
                    </div>
                   {selectedInvoiceDetails.errorMessage && selectedInvoiceDetails.status === 'error' && (<><Separator className="my-3"/><div className="space-y-1"><h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3><p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p></div></>)}
