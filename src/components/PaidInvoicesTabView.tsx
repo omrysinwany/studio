@@ -12,15 +12,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Loader2, Info, CheckSquare, ChevronLeft, ChevronRight, Receipt, Trash2, ImageIcon as ImageIconLucide, ChevronUp, ChevronDown } from 'lucide-react'; // Added ChevronUp, ChevronDown
+import { Loader2, Info, CheckSquare, ChevronLeft, ChevronRight, Receipt, Trash2, ImageIcon as ImageIconLucide, ChevronUp, ChevronDown, CreditCard, MailIcon } from 'lucide-react'; // Added MailIcon
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
 import { format, parseISO, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
 import { enUS, he } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoicePaymentStatusService } from '@/services/backend';
-import { Badge } from '@/components/ui/badge';
+import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, getUserSettingsService, updateInvoicePaymentStatusService } from '@/services/backend';
 import NextImage from 'next/image';
 import {
  AlertDialog,
@@ -38,7 +37,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Timestamp } from 'firebase/firestore';
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
 
 const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
@@ -47,13 +46,13 @@ const isValidImageSrc = (src: string | undefined | null): src is string => {
   return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
-type SortKeyPaid = keyof Pick<InvoiceHistoryItem, 'originalFileName' | 'uploadTime' | 'supplierName' | 'invoiceDate' | 'totalAmount' | 'paymentMethod'> | '';
+type SortKeyPaid = keyof Pick<InvoiceHistoryItem, 'originalFileName' | 'uploadTime' | 'supplierName' | 'invoiceDate' | 'totalAmount' | 'paymentMethod'> | 'paymentReceiptImageUri' | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
 
 interface PaidInvoicesTabViewProps {
-    filterDocumentType: 'deliveryNote' | 'invoice' | '';
+    filterDocumentType: 'deliveryNote' | 'invoice' | 'paymentReceipt' | '';
     filterSupplier: string;
     dateRange?: DateRange;
     searchTerm: string;
@@ -155,7 +154,7 @@ export default function PaidInvoicesTabView({
       setIsLoading(true);
       try {
         let fetchedData = await getInvoicesService(user.id);
-        fetchedData = fetchedData.filter(inv => inv.paymentStatus === 'paid');
+        fetchedData = fetchedData.filter(inv => inv.paymentStatus === 'paid' && inv.status === 'completed');
 
         if (filterDocumentType) {
            fetchedData = fetchedData.filter(inv => inv.documentType === filterDocumentType);
@@ -269,7 +268,7 @@ export default function PaidInvoicesTabView({
   };
 
   const handlePaymentReceiptUploaded = async (invoiceId: string, receiptUri: string) => {
-    if (!user?.id) return;
+    if (!invoiceForReceiptUpload || !user?.id || invoiceForReceiptUpload.id !== invoiceId) return;
     setShowReceiptUploadDialog(false);
     setInvoiceForReceiptUpload(null);
     
@@ -289,8 +288,6 @@ export default function PaidInvoicesTabView({
     return columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
   }, [columnDefinitions, visibleColumns]);
 
-
-  const [isExporting, setIsExporting] = useState(false); 
 
   return (
     <>
@@ -376,7 +373,7 @@ export default function PaidInvoicesTabView({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="text-green-600 hover:text-green-500 h-7 w-7"
+                                    className="text-blue-600 hover:text-blue-500 h-7 w-7"
                                     onClick={() => { setInvoiceForReceiptUpload(item); setShowReceiptUploadDialog(true); }}
                                     title={t('paid_invoices_update_receipt_button')}
                                 >
@@ -397,7 +394,7 @@ export default function PaidInvoicesTabView({
                           </TableCell>
                        )}
                        {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime)}</TableCell>}
-                       {visibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate) : t('invoices_na')}</TableCell>}
+                       {visibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, 'PP') : t('invoices_na')}</TableCell>}
                        {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
                        {visibleColumns.totalAmount && (
                          <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
@@ -405,6 +402,7 @@ export default function PaidInvoicesTabView({
                          </TableCell>
                        )}
                        {visibleColumns.paymentMethod && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'paymentMethod')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentMethod ? t(`payment_method_${item.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: item.paymentMethod}) : t('invoices_na')}</TableCell>}
+                       {visibleColumns.paymentReceiptImageUri && <TableCell className={cn('px-2 sm:px-4 py-2 text-center', columnDefinitions.find(h => h.key === 'paymentReceiptImageUri')?.mobileHidden && 'hidden sm:table-cell')}>{ item.paymentReceiptImageUri ? <Button variant="link" size="sm" onClick={() => handleViewDetails(item, 'image_only')} className="p-0 h-auto text-xs">{t('paid_invoices_view_receipt_link')}</Button> : t('invoices_na')}</TableCell>}
                     </TableRow>
                   ))
                 )}
@@ -437,7 +435,7 @@ export default function PaidInvoicesTabView({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
             {isLoading ? (
                Array.from({ length: ITEMS_PER_PAGE_PAID_INVOICES }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
@@ -495,7 +493,7 @@ export default function PaidInvoicesTabView({
                   </CardContent>
                    <CardFooter className="p-3 border-t flex gap-1">
                       <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item, 'full_details'); }}><Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}</Button>
-                       <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-green-600 hover:text-green-500" onClick={(e) => { e.stopPropagation(); setInvoiceForReceiptUpload(item); setShowReceiptUploadDialog(true);}}><Receipt className="mr-1.5 h-3.5 w-3.5"/> {t('paid_invoices_update_receipt_button')}</Button>
+                       <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-blue-600 hover:text-blue-500" onClick={(e) => { e.stopPropagation(); setInvoiceForReceiptUpload(item); setShowReceiptUploadDialog(true);}}><Receipt className="mr-1.5 h-3.5 w-3.5"/> {t('paid_invoices_update_receipt_button')}</Button>
                    </CardFooter>
                 </Card>
               ))
@@ -554,7 +552,7 @@ export default function PaidInvoicesTabView({
                                         toast({ title: t('invoices_toast_bulk_deleted_title'), description: t('invoices_toast_bulk_deleted_desc', { count: selectedInvoiceIds.length }) });
                                         fetchPaidInvoices();
                                         onTriggerInvoiceFetch();
-                                        handleSelectInvoice('all-paid', false); 
+                                        handleSelectInvoice('all-paid', false); // Deselect all
                                     } catch (error) {
                                         toast({ title: t('invoices_toast_delete_fail_title'), description: t('invoices_toast_delete_fail_desc'), variant: "destructive" });
                                     } finally {
@@ -571,11 +569,11 @@ export default function PaidInvoicesTabView({
                     </AlertDialogContentComponent>
                 </AlertDialog>
                  <Button
-                      onClick={onOpenExportDialog}
-                      disabled={isExporting}
+                      onClick={onOpenExportDialog} // Changed to call parent's handler
+                      disabled={false} // Parent will handle isExporting state
                       className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
                   >
-                      {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />} {/* Changed icon to CreditCard */}
+                      <MailIcon className="mr-2 h-4 w-4" /> {/* Changed icon to MailIcon */}
                       {t('invoice_export_selected_button')}
                   </Button>
             </div>
