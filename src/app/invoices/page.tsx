@@ -24,7 +24,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuSubContent,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, XCircle, Clock, Info, Download, Trash2, Edit, Eye, FileText as FileTextIcon, ImageIcon as ImageIconLucide, CalendarDays, ListFilter, Columns, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, Grid, ListChecks, CheckCircle } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, XCircle, Clock, Info, Download, Trash2, Edit, Eye, FileText as FileTextIconLucide, ImageIcon as ImageIconLucide, CalendarDays, ListFilter, Columns, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, Grid, ListChecks, CheckCircle } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -35,7 +35,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  import { enUS, he } from 'date-fns/locale';
  import { cn } from '@/lib/utils';
  import { Calendar as CalendarIcon } from 'lucide-react';
- import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService, DOCUMENTS_COLLECTION } from '@/services/backend';
+ import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService } from '@/services/backend';
  import { Badge } from '@/components/ui/badge';
  import {
     Sheet,
@@ -71,7 +71,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from "@/components/ui/skeleton";
-import { db } from '@/lib/firebase';
+import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
 
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
@@ -82,6 +82,7 @@ const isValidImageSrc = (src: string | undefined | null): src is string => {
 type ViewMode = 'grid' | 'list';
 
 const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
+const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
 
 const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string, params?: any) => string): string => {
@@ -177,7 +178,7 @@ export default function DocumentsPage() {
   const [isExporting, setIsExporting] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>('scanned-docs');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); // To toggle advanced filter pills
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); 
 
   const scannedDocsColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[] = useMemo(() => [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20', headerClassName: 'sticky left-0 bg-card z-20'},
@@ -198,17 +199,9 @@ export default function DocumentsPage() {
 
   const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
   
-  const toggleColumnVisibility = useCallback((key: string) => {
-    if (activeTab === 'scanned-docs') {
-        setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
-    } 
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
+  const toggleColumnVisibilityScanned = useCallback((key: string) => {
+    setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const fetchUserData = useCallback(async () => {
     if (!user?.id) {
@@ -271,8 +264,7 @@ export default function DocumentsPage() {
         }
      }
 
-  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices, showDetailsSheet]);
-
+  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices, showDetailsSheet]); // Removed handleViewDetails from deps as it's defined below
 
   const handleSortInternal = (key: string) => {
     if (!key) return;
@@ -300,7 +292,7 @@ export default function DocumentsPage() {
     if (filterScanStatus) {
         result = result.filter(inv => inv.status === filterScanStatus);
     }
-    if (filterPaymentStatus && activeTab === 'scanned-docs') { 
+    if (filterPaymentStatus) { 
         result = result.filter(inv => inv.paymentStatus === filterPaymentStatus);
     }
     if (dateRange?.from) {
@@ -336,7 +328,7 @@ export default function DocumentsPage() {
       );
     }
 
-    if (sortKeyScanned && activeTab === 'scanned-docs') {
+    if (sortKeyScanned) {
          result.sort((a, b) => {
              const valA = a[sortKeyScanned as keyof InvoiceHistoryItem];
              const valB = b[sortKeyScanned as keyof InvoiceHistoryItem];
@@ -371,7 +363,7 @@ export default function DocumentsPage() {
          });
      }
     return result;
-  }, [allUserInvoices, filterDocumentType, filterSupplier, filterScanStatus, filterPaymentStatus, dateRange, searchTerm, sortKeyScanned, sortDirectionScanned, locale, activeTab]);
+  }, [allUserInvoices, filterDocumentType, filterSupplier, filterScanStatus, filterPaymentStatus, dateRange, searchTerm, sortKeyScanned, sortDirectionScanned, locale]);
 
   const paginatedScannedDocs = useMemo(() => {
     const startIndex = (currentScannedDocsPage - 1) * ITEMS_PER_PAGE_SCANNED_DOCS;
@@ -388,7 +380,7 @@ export default function DocumentsPage() {
     }
   };
 
-   const handleViewDetails = (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => {
+   const handleViewDetails = useCallback((invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => {
     if (invoice) {
         const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: context || 'full_details'};
         setSelectedInvoiceDetails(detailsToSet);
@@ -399,7 +391,7 @@ export default function DocumentsPage() {
         setSelectedInvoiceDetails(null);
         setShowDetailsSheet(false);
     }
-  };
+  }, []); // Removed selectedInvoiceDetails from dependencies as it's set inside
 
   const handleEditScannedDoc = (invoiceId: string, docType: 'deliveryNote' | 'invoice', fileName: string) => {
     if (!invoiceId) {
@@ -659,6 +651,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     return (<Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>{icon}{tFunc(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}</Badge>);
   };
 
+
    const renderPaymentStatusBadge = (status: InvoiceHistoryItem['paymentStatus'], tFunc: (key: string, params?: any) => string) => {
       let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
       let className = '';
@@ -688,7 +681,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
    }
 
   const ScannedDocsView = () => {
-        const { t } = useTranslation();
+        const { t } = useTranslation(); // Ensure t is available in this scope
         const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
 
         return (
@@ -774,26 +767,26 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     )}
                 </div>
             ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
                     {isLoading ? (Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="p-0 relative aspect-[4/3] bg-muted rounded-t-lg" /><CardContent className="p-3 space-y-1"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /><Skeleton className="h-3 w-1/4" /></CardContent><CardFooter className="p-3 border-t"><Skeleton className="h-7 w-full" /></CardFooter></Card>)))
                         : paginatedScannedDocs.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>)
                             : (paginatedScannedDocs.map((item) => (
                                 <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
+                                    <div className="p-2 absolute top-0 left-0 z-10">
+                                         <Checkbox checked={selectedForBulkActionScanned.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} className="bg-background/70 hover:bg-background border-primary" />
+                                     </div>
                                     <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewDetails(item, 'image_only')}>
                                         {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (
                                             <NextImage src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!} alt={t('invoices_preview_alt', { fileName: item.originalFileName || item.generatedFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="invoice document" />
                                         ) : (
                                             <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                                                {item.documentType === 'invoice' ? <FileTextIcon className="h-12 w-12 text-blue-500/50" /> : <FileTextIcon className="h-12 w-12 text-green-500/50" />}
+                                                {item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}
                                             </div>
                                         )}
                                         <div className="absolute top-2 right-2 flex flex-col gap-1">
                                             {renderScanStatusBadge(item.status, t)}
                                             {renderPaymentStatusBadge(item.paymentStatus, t)}
                                         </div>
-                                         <div className="absolute top-2 left-2">
-                                             <Checkbox checked={selectedForBulkActionScanned.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || item.generatedFileName || '' })} className="bg-background/70 hover:bg-background border-primary" />
-                                         </div>
                                     </CardHeader>
                                     <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}>
                                         <CardTitle className="text-sm font-semibold truncate" title={item.originalFileName || item.generatedFileName}>{item.originalFileName || item.generatedFileName}</CardTitle>
@@ -819,7 +812,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <Button variant="outline" size="sm" onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)} disabled={currentScannedDocsPage === totalScannedDocsPages}><span className="sr-only">{t('inventory_pagination_next')}</span><ChevronRight className="h-4 w-4" /></Button>
                 </div>
             )}
-             {selectedForBulkActionScanned.length > 0 && activeTab === 'scanned-docs' && (
+             {selectedForBulkActionScanned.length > 0 && (
                 <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -847,16 +840,17 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     );
   }
 
+  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
         <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div className="flex justify-between items-center">
              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIcon className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
-             <div className="flex gap-2 items-center">
+            <div className="flex items-center gap-2">
                  <Button 
                     variant="ghost" 
                     size="icon" 
@@ -892,7 +886,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                  />
             </div>
             
-            <Select value={filterDocumentType} onValueChange={(value) => {setFilterDocumentType(value === "all" ? "" : value as any); setCurrentScannedDocsPage(1);}}>
+             <Select value={filterDocumentType} onValueChange={(value) => setFilterDocumentType(value === "all" ? "" : value as any)}>
                 <SelectTrigger className="w-full sm:w-auto h-10">
                     <SelectValue placeholder={t('invoices_filter_doc_type_all')} />
                 </SelectTrigger>
@@ -905,99 +899,106 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             
             {activeTab === 'paid-invoices' && (
                 <>
-                    <Button variant="outline" onClick={handleSelectInvoiceForBulkAction.bind(null, 'all-paid-last-month', true)} className="h-10 text-xs sm:text-sm">
+                    <Button variant="outline" onClick={() => {/* Logic for selecting last month for PaidInvoices to be added */}} className="h-10 text-xs sm:text-sm">
                         <CheckSquare className="mr-2 h-4 w-4" /> {t('invoice_export_select_all_last_month_button')}
                     </Button>
                     <Button 
                         onClick={handleOpenExportDialog} 
-                        disabled={activeTab === 'paid-invoices' && selectedInvoiceIds.length === 0}
+                        disabled={false /* Logic for selected paid invoices to be added */}
                         className="bg-primary hover:bg-primary/90 h-10 text-xs sm:text-sm"
                     >
                         <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
                     </Button>
                 </>
             )}
+             {activeTab === 'scanned-docs' && (
+                <Button 
+                    onClick={handleOpenExportDialog} 
+                    disabled={selectedForBulkActionScanned.length === 0}
+                    className="bg-primary hover:bg-primary/90 h-10 text-xs sm:text-sm"
+                >
+                    <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')}
+                </Button>
+            )}
             </div>
 
              {showAdvancedFilters && (
                  <div className="mb-4 flex flex-wrap items-stretch justify-center sm:justify-start gap-2 sm:gap-3 p-3 border rounded-md bg-muted/50 animate-in fade-in-0 duration-300">
-                    {/* Date Range Filter */}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_dates')}>
-                                <CalendarDays className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
-                                <span className="text-[10px] sm:text-xs">{t('filter_label_dates')}</span>
-                                {dateRange && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setDateRange(undefined)}}><XCircle className="h-3.5 w-3.5"/></Button>}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar initialFocus mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={isMobile ? 1 : 2} />
-                             {dateRange && (<div className="p-2 border-t flex justify-end"><Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button></div>)}
-                        </PopoverContent>
-                    </Popover>
-                    {/* Supplier Filter */}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_supplier')}>
-                                <Briefcase className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
-                                <span className="text-[10px] sm:text-xs">{t('filter_label_supplier')}</span>
-                                {filterSupplier && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterSupplier('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>{t('invoices_filter_supplier_all')}</DropdownMenuCheckboxItem>{existingSuppliers.map((supplier) => (<DropdownMenuCheckboxItem key={supplier.id} checked={filterSupplier === supplier.name} onCheckedChange={() => setFilterSupplier(supplier.name)}>{supplier.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
-                    </DropdownMenu>
+                     <Popover>
+                         <PopoverTrigger asChild>
+                             <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_dates')}>
+                                 <CalendarDays className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
+                                 <span className="text-[10px] sm:text-xs">{t('filter_label_dates')}</span>
+                                 {dateRange && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setDateRange(undefined)}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                             </Button>
+                         </PopoverTrigger>
+                         <PopoverContent className="w-auto p-0" align="start">
+                             <Calendar initialFocus mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={isMobile ? 1 : 2} />
+                              {dateRange && (<div className="p-2 border-t flex justify-end"><Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button></div>)}
+                         </PopoverContent>
+                     </Popover>
+                     <DropdownMenu>
+                         <DropdownMenuTrigger asChild>
+                             <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_supplier')}>
+                                 <Briefcase className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
+                                 <span className="text-[10px] sm:text-xs">{t('filter_label_supplier')}</span>
+                                 {filterSupplier && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterSupplier('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                             </Button>
+                         </DropdownMenuTrigger>
+                         <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>{t('invoices_filter_supplier_all')}</DropdownMenuCheckboxItem>{existingSuppliers.map((supplier) => (<DropdownMenuCheckboxItem key={supplier.id} checked={filterSupplier === supplier.name} onCheckedChange={() => setFilterSupplier(supplier.name)}>{supplier.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                     </DropdownMenu>
                     
-                    {/* Scan Status Filter (Only for Scanned Docs Tab) */}
-                    {activeTab === 'scanned-docs' && (
-                         <>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_scan_status')}>
-                                        <ListFilter className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
-                                        <span className="text-[10px] sm:text-xs">{t('filter_label_scan_status')}</span>
-                                        {filterScanStatus && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterScanStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterScanStatus} onCheckedChange={() => setFilterScanStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>{(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (<DropdownMenuCheckboxItem key={status} checked={filterScanStatus === status} onCheckedChange={() => setFilterScanStatus(status)}>{t(`invoice_status_${status}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
-                            </DropdownMenu>
-                            {/* Payment Status Filter (Only for Scanned Docs Tab) */}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_payment_status')}>
-                                        <CreditCard className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
-                                        <span className="text-[10px] sm:text-xs">{t('filter_label_payment_status')}</span>
-                                        {filterPaymentStatus && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterPaymentStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>{(['unpaid', 'pending_payment'] as Exclude<InvoiceHistoryItem['paymentStatus'], 'paid'>[]).map((pStatus) => (<DropdownMenuCheckboxItem key={pStatus} checked={filterPaymentStatus === pStatus} onCheckedChange={() => setFilterPaymentStatus(pStatus)}>{t(`invoice_payment_status_${pStatus}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
-                            </DropdownMenu>
-                         </>
-                    )}
-                    {/* View Columns Filter */}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10" aria-label={t('filter_label_columns')}>
-                                <Columns className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
-                                <span className="text-[10px] sm:text-xs">{t('filter_label_columns')}</span>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuLabel>
-                                {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')} - {t('inventory_toggle_columns_label')}
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {scannedDocsColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
-                                <DropdownMenuCheckboxItem
-                                    key={header.key}
-                                    className="capitalize"
-                                    checked={!!visibleColumnsScanned[header.key as keyof typeof visibleColumnsScanned]}
-                                    onCheckedChange={() => toggleColumnVisibility(header.key)}
-                                >
-                                    {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
-                                </DropdownMenuCheckboxItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                     {activeTab === 'scanned-docs' && (
+                          <>
+                             <DropdownMenu>
+                                 <DropdownMenuTrigger asChild>
+                                     <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_scan_status')}>
+                                         <ListFilter className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
+                                         <span className="text-[10px] sm:text-xs">{t('filter_label_scan_status')}</span>
+                                         {filterScanStatus && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterScanStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                                     </Button>
+                                 </DropdownMenuTrigger>
+                                 <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterScanStatus} onCheckedChange={() => setFilterScanStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>{(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (<DropdownMenuCheckboxItem key={status} checked={filterScanStatus === status} onCheckedChange={() => setFilterScanStatus(status)}>{t(`invoice_status_${status}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                             </DropdownMenu>
+                             <DropdownMenu>
+                                 <DropdownMenuTrigger asChild>
+                                     <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10 relative" aria-label={t('filter_label_payment_status')}>
+                                         <CreditCard className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
+                                         <span className="text-[10px] sm:text-xs">{t('filter_label_payment_status')}</span>
+                                         {filterPaymentStatus && <Button variant="ghost" size="icon" className="absolute -top-1 -right-1 h-5 w-5 text-muted-foreground hover:text-destructive p-0.5 bg-background rounded-full shadow" onClick={(e)=>{e.stopPropagation();setFilterPaymentStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                                     </Button>
+                                 </DropdownMenuTrigger>
+                                 <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>{(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).filter(s => s !== 'paid').map((pStatus) => (<DropdownMenuCheckboxItem key={pStatus} checked={filterPaymentStatus === pStatus} onCheckedChange={() => setFilterPaymentStatus(pStatus)}>{t(`invoice_payment_status_${pStatus}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                             </DropdownMenu>
+                          </>
+                     )}
+                     <DropdownMenu>
+                         <DropdownMenuTrigger asChild>
+                             <Button variant="outline" className="rounded-full flex flex-col items-center justify-center h-16 w-16 sm:h-20 sm:w-20 p-1 text-center hover:bg-accent/10" aria-label={t('filter_label_columns')}>
+                                 <Columns className="h-5 w-5 sm:h-6 sm:w-6 mb-1" />
+                                 <span className="text-[10px] sm:text-xs">{t('filter_label_columns')}</span>
+                             </Button>
+                         </DropdownMenuTrigger>
+                         <DropdownMenuContent align="end" className="w-56">
+                             <DropdownMenuLabel>
+                                 {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')} - {t('inventory_toggle_columns_label')}
+                             </DropdownMenuLabel>
+                             <DropdownMenuSeparator />
+                             {scannedDocsColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                                 <DropdownMenuCheckboxItem
+                                     key={header.key}
+                                     className="capitalize"
+                                     checked={!!(activeTab === 'scanned-docs' ? visibleColumnsScanned[header.key as keyof typeof visibleColumnsScanned] : /* visibleColumnsPaid[header.key] */ false)}
+                                     onCheckedChange={() => {
+                                        if (activeTab === 'scanned-docs') toggleColumnVisibilityScanned(header.key)
+                                        // else toggleColumnVisibilityPaid(header.key)
+                                     }}
+                                 >
+                                     {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                                 </DropdownMenuCheckboxItem>
+                             ))}
+                         </DropdownMenuContent>
+                     </DropdownMenu>
                  </div>
             )}
 
@@ -1119,7 +1120,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             <AlertDialogHeaderComponent>
                 <AlertDialogTitleComponent>{t('invoice_export_dialog_title')}</AlertDialogTitleComponent>
                 <AlertDialogDescriptionComponent>
-                    {t('invoice_export_dialog_desc', { count: activeTab === 'scanned-docs' ? selectedForBulkActionScanned.length : selectedInvoiceIds.length })}
+                    {t('invoice_export_dialog_desc', { count: activeTab === 'scanned-docs' ? selectedForBulkActionScanned.length : (selectedInvoiceDetails ? 1: 0) /* Placeholder for paid invoices selection count */})}
                 </AlertDialogDescriptionComponent>
             </AlertDialogHeaderComponent>
             <form onSubmit={handleExportSubmit} className="space-y-4">
