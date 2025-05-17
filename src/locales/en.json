@@ -562,6 +562,17 @@
   "product_detail_back_to_inventory_button": "Back to Inventory",
   "go_back_button": "Back",
   "product_not_found": "Product not found.",
+  "product_capture_image_button_aria": "Capture image with camera",
+  "product_add_capture_image_aria": "Add or capture product image",
+  "product_add_capture_image_text": "Add/Capture Product Image",
+  "product_image_preview_alt": "Preview of product image",
+  "product_capture_image_dialog_title": "Capture Product Image",
+  "product_capture_image_dialog_desc": "Position the product in front of the camera and click 'Capture'.",
+  "product_image_captured_title": "Image Captured",
+  "product_image_captured_desc": "The product image has been captured and will be saved with the product details.",
+  "product_image_capture_fail_desc_context": "Failed to get image capture context from canvas.",
+  "product_image_capture_fail_desc_refs": "Camera or canvas reference is missing for image capture.",
+  "product_capture_image_button": "Capture Image",
   "barcode_scanner_dialog_title": "Scan Barcode",
   "barcode_scanner_dialog_description_position": "Position the barcode within the frame.",
   "barcode_scanner_dialog_description_click_start": "Click 'Start Scan' to activate the camera.",
@@ -898,7 +909,7 @@
   "accounts_other_expenses_last_recorded_on": "Last recorded on",
   "accounts_other_expenses_no_record_yet": "No payment recorded yet.",
   "accounts_toast_amount_updated_desc": "amount updated.",
-  "accounts_fixed_expense_amount_placeholder": "Enter amount (₪)",
+  "accounts_fixed_expense_amount_placeholder": "Enter amount ({{currency_symbol}})",
   "accounts_add_category_dialog_title": "Add New Expense Category",
   "accounts_add_category_dialog_desc": "Create a new category to track additional business expenses.",
   "accounts_add_category_name_label": "Category Name",
@@ -1116,7 +1127,7 @@
   "filter_label_payment_status": "Payment",
   "filter_label_columns": "Columns",
   "filter_options_button_aria": "Filter Options",
-  "filter_options_button_label": "Filter Options",
+  "filter_options_button_label": "Filter & View Options",
   "inventory_filter_pill_stock": "Stock",
   "inventory_filter_pill_columns": "Columns",
   "upload_toast_pdf_too_large_firestore_error": "PDF file is too large ({{size}}MB) to be saved directly in Firestore. Please try a smaller file.",
@@ -1126,3 +1137,4 @@
   "filter_options_button_aria_open_close": "Toggle advanced filter options"
 }
 
+    

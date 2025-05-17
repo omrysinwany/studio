@@ -1,11 +1,12 @@
+
 // src/app/inventory/[productId]/page.tsx
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIcon, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIconLucide, Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend';
@@ -22,12 +23,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle as DialogTitleComponent, DialogDescription as DialogDescriptionComponent, DialogFooter as DialogFooterComponent } from "@/components/ui/dialog"; // Renamed DialogTitle etc. to avoid conflict
 import { cn } from '@/lib/utils';
-import BarcodeScanner from '@/components/barcode-scanner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import NextImage from 'next/image';
-
 
 // Helper to format numbers for display
 const formatDisplayNumber = (
@@ -95,6 +95,10 @@ export default function ProductDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingQuantityDetail, setIsUpdatingQuantityDetail] = useState(false);
 
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null); // For capturing image from video
 
   const productId = params.productId as string;
 
@@ -174,12 +178,14 @@ export default function ProductDetailPage() {
     if (!product || !product.id || !user || !user.id) return;
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
-        toast({
-            title: t('product_detail_toast_invalid_sale_price_title'),
-            description: t('product_detail_toast_invalid_sale_price_desc'),
-            variant: "destructive"
-        });
-        return;
+        // This check might be too strict if salePrice is truly optional. Adjust if needed.
+        // For now, assuming salePrice is desired if editing starts.
+        // toast({
+        //     title: t('product_detail_toast_invalid_sale_price_title'),
+        //     description: t('product_detail_toast_invalid_sale_price_desc'),
+        //     variant: "destructive"
+        // });
+        // return;
     }
     if (editedProduct.minStockLevel !== undefined && editedProduct.minStockLevel !== null && (isNaN(Number(editedProduct.minStockLevel)) || Number(editedProduct.minStockLevel) < 0)) {
       toast({ title: t('product_detail_toast_invalid_min_stock_title'), description: t('product_detail_toast_invalid_min_stock_desc'), variant: "destructive" });
@@ -204,7 +210,7 @@ export default function ProductDetailPage() {
         barcode: editedProduct.barcode || undefined,
         quantity: Number(editedProduct.quantity) ?? product.quantity,
         unitPrice: Number(editedProduct.unitPrice) ?? product.unitPrice,
-        salePrice: Number(editedProduct.salePrice),
+        salePrice: editedProduct.salePrice === undefined ? null : (Number(editedProduct.salePrice) ?? null),
         lineTotal: parseFloat(((Number(editedProduct.quantity) ?? product.quantity) * (Number(editedProduct.unitPrice) ?? product.unitPrice)).toFixed(2)),
         minStockLevel: editedProduct.minStockLevel === undefined || editedProduct.minStockLevel === null ? undefined : Number(editedProduct.minStockLevel),
         maxStockLevel: editedProduct.maxStockLevel === undefined || editedProduct.maxStockLevel === null ? undefined : Number(editedProduct.maxStockLevel),
@@ -288,19 +294,112 @@ export default function ProductDetailPage() {
        });
    };
 
+   const enableCamera = async () => {
+    console.log("[ProductDetail] enableCamera called");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setErrorMessage(t('barcode_scanner_error_not_supported_browser'));
+      setHasCameraPermission(false);
+      setShowCameraModal(false);
+      return;
+    }
+    try {
+      console.log("[ProductDetail] Requesting camera permission...");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      console.log("[ProductDetail] Camera permission granted, stream obtained.");
+      setHasCameraPermission(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        console.log("[ProductDetail] Stream assigned to videoRef.");
+      }
+    } catch (error: any) {
+      console.error('[ProductDetail] Error accessing camera:', error);
+      setHasCameraPermission(false);
+      let userMsg = t('barcode_scanner_toast_camera_error_desc', { message: error.name || error.message });
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        userMsg = t('barcode_scanner_error_permission_denied_settings');
+      }
+      toast({
+        variant: 'destructive',
+        title: t('barcode_scanner_toast_camera_error_title'),
+        description: userMsg,
+      });
+      setShowCameraModal(false); // Close modal if permission is denied
+    }
+  };
+
+  const handleOpenCameraModal = () => {
+    console.log("[ProductDetail] handleOpenCameraModal called");
+    setIsEditing(true); // Switch to edit mode if not already
+    setShowCameraModal(true);
+    if (hasCameraPermission === null || !hasCameraPermission) { // Only call enableCamera if permission not yet granted or denied
+        enableCamera();
+    } else if (hasCameraPermission && videoRef.current && !videoRef.current.srcObject) {
+        // If permission granted but stream lost (e.g. dialog closed and reopened)
+        enableCamera();
+    }
+  };
+
+  const captureImage = () => {
+    console.log("[ProductDetail] captureImage called");
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // Compress to JPEG
+        setEditedProduct(prev => ({ ...prev, imageUrl: dataUrl }));
+        console.log("[ProductDetail] Image captured, imageUrl in editedProduct set.");
+        toast({ title: t('product_image_captured_title'), description: t('product_image_captured_desc') });
+      } else {
+        console.error("[ProductDetail] Failed to get 2D context from canvas.");
+        toast({ title: t('error_title'), description: t('product_image_capture_fail_desc_context'), variant: "destructive" });
+      }
+    } else {
+        console.error("[ProductDetail] videoRef or canvasRef is null.");
+        toast({ title: t('error_title'), description: t('product_image_capture_fail_desc_refs'), variant: "destructive" });
+    }
+    stopCameraStream();
+    setShowCameraModal(false);
+  };
+
+  const stopCameraStream = useCallback(() => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+      console.log("[ProductDetail] Camera stream stopped.");
+    }
+  }, []);
+
+  useEffect(() => {
+    // Cleanup stream when component unmounts or dialog closes
+    return () => {
+      stopCameraStream();
+    };
+  }, [stopCameraStream, showCameraModal]);
+
+
    const handleQuantityUpdateOnDetailPage = async (change: number) => {
      if (!product || !product.id || !user || !user.id) return;
      setIsUpdatingQuantityDetail(true);
-     const newQuantity = (product.quantity || 0) + change;
+     const newQuantity = (editedProduct.quantity ?? product.quantity ?? 0) + change;
      if (newQuantity < 0) {
        toast({ title: t('inventory_toast_invalid_quantity_title'), description: t('inventory_toast_invalid_quantity_desc_negative'), variant: "destructive" });
        setIsUpdatingQuantityDetail(false);
        return;
      }
      try {
-       await updateProductService(product.id, { quantity: newQuantity }, user.id);
-       setProduct(prev => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (prev.unitPrice || 0)).toFixed(2)) } : null);
+       const productDataToUpdate = { quantity: newQuantity };
+       await updateProductService(product.id, productDataToUpdate, user.id);
+       
+       // Update local state for both product and editedProduct
+       const updatedProductState = (prev: Product | null) => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (prev.unitPrice || 0)).toFixed(2)) } : null;
+       setProduct(updatedProductState);
        setEditedProduct(prev => ({ ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
+
        toast({
          title: t('inventory_toast_quantity_updated_title'),
          description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || "", quantity: newQuantity })
@@ -375,7 +474,7 @@ export default function ProductDetailPage() {
                     min={inputType === 'number' ? (isSalePriceField ? '0.01' : (isStockLevel ? "0" : "0")) : undefined}
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
                     placeholder={isStockLevel ? t('optional_placeholder') : (isSalePriceField ? t('required_placeholder') : "")}
-                    required={isSalePriceField}
+                    // required={isSalePriceField} // Sale price is optional in the backend
                   />
                   {isBarcode && (
                     <Button
@@ -433,16 +532,15 @@ export default function ProductDetailPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-         <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting}>
+       <div className="mb-4">
+         <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting} size="sm">
            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
          </Button>
-         {/* Buttons moved to CardHeader */}
        </div>
 
       <Card className="shadow-lg scale-fade-in">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div className="flex-1 min-w-0">
            {isEditing ? (
              <>
                 <Label htmlFor="shortName" className="text-sm font-medium text-muted-foreground">{t('product_detail_label_product_name')}</Label>
@@ -453,7 +551,7 @@ export default function ProductDetailPage() {
                     className="text-2xl sm:text-3xl font-bold h-auto p-0 border-0 shadow-none focus-visible:ring-0"
                     disabled={isSaving || isDeleting}
                     />
-                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_full_description')}</Label>
+                <Label htmlFor="description" className="text-sm font-medium text-muted-foreground pt-2 block">{t('product_detail_label_full_description')}</Label>
                 <Input
                     id="description"
                     value={editedProduct.description || ''}
@@ -461,7 +559,7 @@ export default function ProductDetailPage() {
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
                   />
-                 <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_catalog_number')}</Label>
+                 <Label htmlFor="catalogNumber" className="text-sm font-medium text-muted-foreground pt-2 block">{t('product_detail_label_catalog_number')}</Label>
                  <Input
                     id="catalogNumber"
                     value={editedProduct.catalogNumber || ''}
@@ -469,11 +567,10 @@ export default function ProductDetailPage() {
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
                   />
-                   {/* Image URL input is now at the bottom when editing */}
               </>
            ) : (
                <>
-                 <CardTitle className="text-2xl sm:text-3xl font-bold text-primary">{product.shortName || product.description}</CardTitle>
+                 <CardTitle className="text-2xl sm:text-3xl font-bold text-primary truncate" title={product.shortName || product.description}>{product.shortName || product.description}</CardTitle>
                  <CardDescription className="flex items-center gap-2">
                     <Hash className="h-4 w-4 text-muted-foreground"/>
                     {product.catalogNumber}
@@ -484,7 +581,7 @@ export default function ProductDetailPage() {
                </>
            )}
           </div>
-           <div className="flex gap-1 sm:gap-2">
+           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
              {isEditing ? (
                  <>
                      <Button variant="outline" size="icon" onClick={handleCancelEdit} disabled={isSaving || isDeleting} aria-label={t('cancel_button')}>
@@ -545,7 +642,7 @@ export default function ProductDetailPage() {
                     {t('product_detail_over_stock_badge')}
                 </span>
             )}
-             {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.quantity <= product.maxStockLevel))) && !isEditing && (
+             {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.minStockLevel !== null && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.maxStockLevel === null || product.quantity <= product.maxStockLevel))) && !isEditing && (
                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>
                  <Package className="mr-1 h-4 w-4" />
                  {t('inventory_filter_in_stock')}
@@ -577,7 +674,7 @@ export default function ProductDetailPage() {
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() => handleQuantityUpdateOnDetailPage(-1)}
-                                    disabled={isUpdatingQuantityDetail}
+                                    disabled={isUpdatingQuantityDetail || isEditing}
                                     aria-label={t('decrease_quantity_aria_label', { productName: product.shortName || product.description || "" })}
                                 >
                                     <Minus className="h-3.5 w-3.5" />
@@ -590,7 +687,7 @@ export default function ProductDetailPage() {
                                     size="icon"
                                     className="h-7 w-7"
                                     onClick={() => handleQuantityUpdateOnDetailPage(1)}
-                                    disabled={isUpdatingQuantityDetail}
+                                    disabled={isUpdatingQuantityDetail || isEditing}
                                     aria-label={t('increase_quantity_aria_label', { productName: product.shortName || product.description || "" })}
                                 >
                                     <Plus className="h-3.5 w-3.5" />
@@ -607,20 +704,58 @@ export default function ProductDetailPage() {
              )}
           </div>
             <Separator className="my-3 sm:my-4" />
-             {isEditing ? (
-                 renderEditItem(ImageIcon, "product_detail_label_image_url", editedProduct.imageUrl, 'imageUrl')
-             ) : (
-                product.imageUrl && (
-                    <div className="mt-4 relative h-48 w-full sm:h-60 md:h-72 rounded overflow-hidden border bg-muted/20" data-ai-hint="product photo">
+            {/* Image section at the bottom */}
+            <div className="mt-4">
+                <Label className="text-sm font-medium text-muted-foreground">{t('product_detail_label_image_url')}</Label>
+                {isEditing ? (
+                    <div className="flex items-center gap-2 mt-1">
+                        <Input
+                            id="imageUrl"
+                            value={editedProduct.imageUrl || ''}
+                            onChange={(e) => handleInputChange('imageUrl', e.target.value)}
+                            placeholder={t('product_detail_image_url_placeholder')}
+                            className="h-9 flex-grow"
+                            disabled={isSaving || isDeleting}
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            onClick={handleOpenCameraModal}
+                            disabled={isSaving || isDeleting}
+                            aria-label={t('product_capture_image_button_aria')}
+                        >
+                            <Camera className="h-4 w-4" />
+                        </Button>
+                    </div>
+                ) : null}
+
+                {(!isEditing && (!product.imageUrl || product.imageUrl.trim() === '')) ? (
+                     <div 
+                        className="mt-2 h-48 w-full sm:h-60 md:h-72 rounded border-2 border-dashed border-muted-foreground/50 bg-muted/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary cursor-pointer transition-colors"
+                        onClick={handleOpenCameraModal}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpenCameraModal();}}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t('product_add_capture_image_aria')}
+                        data-ai-hint="product photography"
+                    >
+                        <Camera className="h-10 w-10 sm:h-12 sm:w-12 mb-2" />
+                        <p className="text-xs sm:text-sm font-medium">{t('product_add_capture_image_text')}</p>
+                    </div>
+                ) : (!isEditing && product.imageUrl) ? (
+                     <div className="mt-2 relative h-48 w-full sm:h-60 md:h-72 rounded overflow-hidden border bg-muted/20" data-ai-hint="product photo">
                         <NextImage src={product.imageUrl} alt={product.shortName || product.description || ''} layout="fill" objectFit="contain" />
                     </div>
-                )
-            )}
-            {!isEditing && !product.imageUrl && (
-                 <div className="mt-4 h-48 w-full sm:h-60 md:h-72 rounded border bg-muted flex items-center justify-center">
-                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
-                </div>
-            )}
+                ): null }
+                 {/* Preview of captured/entered image in edit mode */}
+                 {isEditing && editedProduct.imageUrl && (
+                     <div className="mt-2 relative h-32 w-32 rounded overflow-hidden border bg-muted/20">
+                        <NextImage src={editedProduct.imageUrl} alt={t('product_image_preview_alt')} layout="fill" objectFit="contain" />
+                    </div>
+                 )}
+            </div>
         </CardContent>
       </Card>
 
@@ -630,6 +765,41 @@ export default function ProductDetailPage() {
           onClose={() => setIsScanning(false)}
         />
       )}
+
+      <Dialog open={showCameraModal} onOpenChange={(open) => {
+            setShowCameraModal(open);
+            if (!open) stopCameraStream();
+        }}>
+            <DialogContent className="sm:max-w-lg p-0">
+                <DialogHeader className="p-4 border-b">
+                    <DialogTitleComponent>{t('product_capture_image_dialog_title')}</DialogTitleComponent>
+                    <DialogDescriptionComponent>{t('product_capture_image_dialog_desc')}</DialogDescriptionComponent>
+                </DialogHeader>
+                <div className="p-4">
+                    {hasCameraPermission === false && (
+                        <Alert variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>{t('barcode_scanner_toast_camera_error_title')}</AlertTitle>
+                            <AlertDescription>
+                                {t('barcode_scanner_error_permission_denied_settings')}
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    <video ref={videoRef} className={cn("w-full aspect-video rounded-md bg-gray-900", hasCameraPermission === false && "hidden")} playsInline muted autoPlay />
+                    {/* Hidden canvas for capturing */}
+                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+                </div>
+                <DialogFooterComponent className="p-4 border-t">
+                    <Button variant="outline" onClick={() => { stopCameraStream(); setShowCameraModal(false); }}>{t('cancel_button')}</Button>
+                    <Button onClick={captureImage} disabled={!hasCameraPermission || !videoRef.current?.srcObject}>
+                        <Camera className="mr-2 h-4 w-4" /> {t('product_capture_image_button')}
+                    </Button>
+                </DialogFooterComponent>
+            </DialogContent>
+        </Dialog>
     </div>
   );
 }
+
+
+    
