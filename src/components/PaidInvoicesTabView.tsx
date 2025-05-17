@@ -1,4 +1,3 @@
-
 // src/components/PaidInvoicesTabView.tsx
 'use client';
 
@@ -13,7 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Loader2, Info, CheckSquare, ChevronLeft, ChevronRight, Receipt, Trash2 } from 'lucide-react';
+import { Loader2, Info, CheckSquare, ChevronLeft, ChevronRight, Receipt, Trash2, ImageIcon as ImageIconLucide, ChevronUp, ChevronDown } from 'lucide-react'; // Added ChevronUp, ChevronDown
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
@@ -58,7 +57,7 @@ interface PaidInvoicesTabViewProps {
     filterSupplier: string;
     dateRange?: DateRange;
     searchTerm: string;
-    visibleColumns: Record<string, boolean>; // Changed from Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean> for flexibility
+    visibleColumns: Record<string, boolean>;
     columnDefinitions: Array<{ key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }>;
     handleSort: (key: SortKeyPaid) => void;
     handleViewDetails: (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => void;
@@ -78,7 +77,7 @@ export default function PaidInvoicesTabView({
     dateRange,
     searchTerm,
     visibleColumns,
-    columnDefinitions = [], // Default to empty array
+    columnDefinitions = [],
     handleSort: parentHandleSort,
     handleViewDetails,
     handleSelectInvoice,
@@ -111,7 +110,10 @@ export default function PaidInvoicesTabView({
         else if (typeof dateInput === 'string' && isValid(parseISO(dateInput))) dateObj = parseISO(dateInput);
         else if (dateInput instanceof Date && isValid(dateInput)) dateObj = dateInput;
 
-        if (!dateObj || !isValid(dateObj)) return t('invoices_invalid_date');
+        if (!dateObj || !isValid(dateObj)) {
+            console.warn("[PaidInvoicesTabView] Invalid date object for input:", dateInput);
+            return t('invoices_invalid_date');
+        }
         const dateLocale = locale === 'he' ? he : enUS;
         return window.innerWidth < 640 
             ? format(dateObj, 'dd/MM/yy HH:mm', { locale: dateLocale })
@@ -126,7 +128,7 @@ export default function PaidInvoicesTabView({
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
   ): string => {
-      const { decimals = 0, useGrouping = true } = options || {}; // Default decimals to 0 for paid invoices summary
+      const { decimals = 0, useGrouping = true } = options || {};
       if (value === null || value === undefined || isNaN(value)) {
           const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
               minimumFractionDigits: decimals,
@@ -573,7 +575,7 @@ export default function PaidInvoicesTabView({
                       disabled={isExporting}
                       className="bg-primary hover:bg-primary/90 w-full sm:w-auto"
                   >
-                      {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailIcon className="mr-2 h-4 w-4" />}
+                      {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />} {/* Changed icon to CreditCard */}
                       {t('invoice_export_selected_button')}
                   </Button>
             </div>
@@ -592,5 +594,3 @@ export default function PaidInvoicesTabView({
     </>
   );
 }
-
-    
