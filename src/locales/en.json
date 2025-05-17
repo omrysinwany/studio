@@ -47,7 +47,7 @@
   "home_kpi_gross_profit_desc": "Estimated profit from current stock sales.",
   "home_kpi_current_month_expenses_title": "This Month's Expenses",
   "home_kpi_current_month_expenses_desc": "Total recorded expenses this month.",
-  "home_kpi_low_stock_title": "Low Stock",
+  "home_kpi_low_stock_title": "Low Stock Items",
   "home_kpi_low_stock_desc": "Items needing reorder soon.",
   "home_kpi_amount_to_pay_title": "Amount to Pay",
   "home_kpi_amount_to_pay_desc": "Total outstanding on unpaid documents.",
@@ -452,7 +452,7 @@
   "inventory_filter_over_stock": "Over Stocked",
   "inventory_view_button": "View Columns",
   "inventory_toggle_columns_label": "Toggle Columns",
-  "inventory_col_actions": "Details",
+  "inventory_col_actions": "Actions",
   "inventory_col_image": "Image",
   "inventory_col_product": "Product",
   "inventory_col_description": "Full Description",
@@ -614,7 +614,7 @@
   "barcode_scanner_first_available": "Using first available camera",
   "documents_page_title": "Documents",
   "documents_page_description": "Manage and review your scanned delivery notes and tax invoices.",
-  "invoices_tab_scanned_docs": "Scanned Documents",
+  "invoices_tab_scanned_docs": "Scanned Docs",
   "invoices_tab_paid_invoices": "Paid Invoices",
   "invoices_search_aria": "Search documents by file name, invoice number, or supplier",
   "invoices_date_range_aria": "Filter documents by date range",
@@ -1127,14 +1127,13 @@
   "filter_label_payment_status": "Payment",
   "filter_label_columns": "Columns",
   "filter_options_button_aria": "Filter Options",
-  "filter_options_button_label": "Filter & View Options",
+  "filter_options_button_label": "Filter Options",
   "inventory_filter_pill_stock": "Stock",
   "inventory_filter_pill_columns": "Columns",
   "upload_toast_pdf_too_large_firestore_error": "PDF file is too large ({{size}}MB) to be saved directly in Firestore. Please try a smaller file.",
   "documents_plural_for_delete_message": "documents",
   "decrease_quantity_aria_label": "Decrease quantity for {{productName}}",
   "increase_quantity_aria_label": "Increase quantity for {{productName}}",
-  "filter_options_button_aria_open_close": "Toggle advanced filter options"
+  "filter_options_button_aria_open_close": "Toggle advanced filter options",
+  "filter_options_button_title": "Filter & View Options"
 }
-
-    

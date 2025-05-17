@@ -49,6 +49,7 @@ export default function Navigation() {
     { href: '/accounts', labelKey: 'nav_accounts', icon: CreditCard, animationDelay: '0.5s', protected: true },
     { href: '/suppliers', labelKey: 'nav_suppliers', icon: Briefcase, animationDelay: '0.6s', protected: true },
     { href: '/reports', labelKey: 'nav_reports', icon: BarChart2, animationDelay: '0.7s', protected: true },
+    // { href: '/settings', labelKey: 'nav_settings', icon: SettingsIcon, animationDelay: '0.8s', protected: true },
   ];
 
   const navItemsLoggedOut = [
@@ -78,14 +79,17 @@ export default function Navigation() {
         }
     }
     
+    // If user is not logged in and tries to access a protected page (that isn't an auth page itself)
     if (!user && isActuallyProtectedPage && !isAuthPage) {
         console.log(`[Navigation] User not authenticated and on protected page ${pathname}. Redirecting to login.`);
         router.push('/login');
-    } else if (user && isAuthPage) {
+    } 
+    // If user is logged in and tries to access an auth page (login/register)
+    else if (user && isAuthPage) {
         console.log(`[Navigation] User authenticated and on auth page ${pathname}. Redirecting to home.`);
         router.push('/');
     }
-  }, [user, authLoading, pathname, router, navItemsBase]);
+  }, [user, authLoading, pathname, router, navItemsBase]); // Added navItemsBase to dependencies
 
 
   const handleLogout = () => {
@@ -115,14 +119,17 @@ export default function Navigation() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm" style={{ '--header-height': '4rem' } as React.CSSProperties}>
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
+        {/* Logo/Brand */}
         <Link href="/" className="flex items-center gap-2 font-bold text-primary text-lg hover:opacity-80 transition-opacity">
           <Package className="h-6 w-6 text-primary" />
           <span className="text-primary">InvoTrack</span> {/* Always English */}
         </Link>
 
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {currentNavItems.map((item) => {
-            if (!user && item.protected) return null;
+            // Skip rendering protected routes if user is not logged in
+            if (item.protected && !user) return null;
 
             const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
             return (
@@ -146,8 +153,10 @@ export default function Navigation() {
           })}
         </nav>
 
+        {/* Right-side controls */}
         <div className="flex items-center gap-1 sm:gap-2 scale-fade-in" style={{ animationDelay: '0.8s' }}>
-           <div className="hidden md:flex">
+           {/* Appearance settings button for desktop */}
+           <div className="hidden md:flex"> {/* Hide on mobile, show on medium screens and up */}
              <DropdownMenu>
                <DropdownMenuTrigger asChild>
                  <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9 transition-transform hover:scale-110">
@@ -180,6 +189,7 @@ export default function Navigation() {
              </DropdownMenu>
             </div>
 
+          {/* User avatar/login/register buttons for desktop */}
           <div className="hidden md:flex items-center gap-2">
               {authLoading ? (
                 <div className="h-9 w-24 animate-pulse rounded-md bg-muted"></div>
@@ -213,25 +223,18 @@ export default function Navigation() {
                 </DropdownMenu>
               ) : (
                 <>
-                   <Button variant="ghost" size="sm" asChild>
-                     <Link href="/login" className="flex items-center">
-                       <span className="flex items-center">
-                         <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
-                       </span>
-                     </Link>
-                   </Button>
-                  <Button size="sm" className="transition-transform hover:scale-105" asChild>
-                    <Link href="/register" className="flex items-center">
-                       <span className="flex items-center">
-                         <UserPlus className="mr-1 h-4 w-4" />
+                   <Link href="/login" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "flex items-center transition-transform hover:scale-105")}>
+                       <LogIn className="mr-1 h-4 w-4" /> {t('nav_login')}
+                   </Link>
+                  <Link href="/register" className={cn(buttonVariants({ size: "sm" }), "transition-transform hover:scale-105")}>
+                       <UserPlus className="mr-1 h-4 w-4" />
                          {t('nav_register')}
-                       </span>
-                    </Link>
-                  </Button>
+                  </Link>
                 </>
               )}
           </div>
 
+            {/* Mobile Menu Trigger */}
             <div className="md:hidden">
               <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
                 <SheetTrigger asChild>
@@ -250,7 +253,8 @@ export default function Navigation() {
                     </SheetHeader>
                     <nav className="flex-grow overflow-y-auto p-4 space-y-1">
                         {currentNavItems.map((item) => {
-                          if (!user && item.protected) return null;
+                          // Skip rendering protected routes if user is not logged in
+                          if (item.protected && !user) return null;
 
                           const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
                           return (
@@ -268,47 +272,9 @@ export default function Navigation() {
                             </Button>
                           );
                         })}
-
-                        {(pathname.startsWith('/inventory') || pathname.startsWith('/invoices')) && (
-                          <>
-                            <Separator className="my-2"/>
-                            <DropdownMenuLabel className="px-2 text-xs text-muted-foreground">{t('nav_view_options_label')}</DropdownMenuLabel>
-                          </>
-                        )}
-                        {pathname.startsWith('/inventory') && (
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
-                            onClick={() => {
-                              const currentSearchParams = new URLSearchParams(window.location.search);
-                              const currentView = currentSearchParams.get('mobileView') || (isMobile ? 'cards' : 'table');
-                              const nextView = currentView === 'cards' ? 'table' : 'cards';
-                              currentSearchParams.set('mobileView', nextView);
-                              handleMobileNavClick(`/inventory?${currentSearchParams.toString()}`);
-                            }}
-                          >
-                            {new URLSearchParams(window.location.search).get('mobileView') === 'table' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
-                            {t(new URLSearchParams(window.location.search).get('mobileView') === 'table' ? 'nav_view_cards_inventory' : 'nav_view_table_inventory')}
-                          </Button>
-                        )}
-                        {pathname.startsWith('/invoices') && (
-                           <Button
-                            variant="ghost"
-                            className="w-full justify-start gap-2 text-base py-3 h-auto text-foreground hover:text-primary dark:hover:text-accent-foreground"
-                            onClick={() => {
-                              const currentSearchParams = new URLSearchParams(window.location.search);
-                              const currentView = currentSearchParams.get('mobileView') || (isMobile ? 'grid' : 'list');
-                              const nextView = currentView === 'grid' ? 'list' : 'grid';
-                              currentSearchParams.set('mobileView', nextView);
-                              handleMobileNavClick(`/invoices?${currentSearchParams.toString()}`);
-                            }}
-                          >
-                             {new URLSearchParams(window.location.search).get('mobileView') === 'list' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
-                             {t(new URLSearchParams(window.location.search).get('mobileView') === 'list' ? 'nav_view_grid_invoices' : 'nav_view_list_invoices')}
-                          </Button>
-                        )}
                       </nav>
 
+                    {/* User section at the bottom of the mobile sheet */}
                     <div className="mt-auto border-t p-4 space-y-2 bg-muted/30">
                          <div>
                            {authLoading ? (
@@ -397,5 +363,3 @@ export default function Navigation() {
     </header>
   );
 }
-
-    

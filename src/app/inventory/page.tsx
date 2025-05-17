@@ -1,3 +1,4 @@
+
 // src/app/inventory/page.tsx
 'use client';
 
@@ -21,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Columns, Minus, Plus } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Columns, Phone, Mail } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -127,7 +128,7 @@ export default function InventoryPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table'); // Default to table view
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [updatingQuantityProductId, setUpdatingQuantityProductId] = useState<string | null>(null);
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
@@ -181,20 +182,16 @@ export default function InventoryPage() {
     const urlViewMode = searchParams.get('mobileView') as 'cards' | 'table' | null;
 
     if (typeof window !== 'undefined') {
-        const storedViewMode = localStorage.getItem('inventoryViewModeGlobal') as 'cards' | 'table' | null;
         if (urlViewMode) {
             setViewMode(urlViewMode);
-            localStorage.setItem('inventoryViewModeGlobal', urlViewMode);
-            // Clean URL
+            // Clean URL - remove mobileView after applying it
             const current = new URLSearchParams(Array.from(searchParams.entries()));
             current.delete('mobileView');
             const search = current.toString();
             const query = search ? `?${search}` : "";
             router.replace(`${pathname}${query}`, { scroll: false });
-        } else if (storedViewMode) {
-            setViewMode(storedViewMode);
         } else {
-            setViewMode(isMobileViewHook ? 'cards' : 'table'); // Default based on device if nothing stored
+           setViewMode(isMobileViewHook ? 'cards' : 'table'); // Default based on device if nothing in URL
         }
     }
 
@@ -217,7 +214,7 @@ export default function InventoryPage() {
         router.replace(`${pathname}${query}`, { scroll: false }); 
      }
    // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [authLoading, user, fetchInventory, router, searchParams]);
+   }, [authLoading, user, fetchInventory, router, searchParams, isMobileViewHook, pathname]); // Added isMobileViewHook and pathname
 
 
   const handleSort = (key: SortKey) => {
@@ -426,20 +423,20 @@ export default function InventoryPage() {
        </div>
      );
    }
-    if (!user && !authLoading) return null; 
+   if (!user && !authLoading) return null; 
 
 
   return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
-           <div>
-             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-               <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
-             </CardTitle>
-             <CardDescription>{t('inventory_description')}</CardDescription>
-           </div>
-           <div className="flex items-center gap-2 self-start sm:self-center">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+      <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+            <div>
+              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
+              </CardTitle>
+              <CardDescription>{t('inventory_description')}</CardDescription>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-center">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -454,7 +451,6 @@ export default function InventoryPage() {
                     onClick={() => {
                         const newMode = viewMode === 'table' ? 'cards' : 'table';
                         setViewMode(newMode);
-                        localStorage.setItem('inventoryViewModeGlobal', newMode);
                     }}
                     className="h-9 sm:h-10 px-3"
                     aria-label={t('inventory_toggle_view_mode_aria')}
@@ -462,8 +458,8 @@ export default function InventoryPage() {
                     {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
                 </Button>
             </div>
-         </CardHeader>
-         <CardContent>
+        </CardHeader>
+        <CardContent>
            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-4">
              <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -475,7 +471,7 @@ export default function InventoryPage() {
                  aria-label={t('inventory_search_aria')}
                />
              </div>
-             {showAdvancedInventoryFilters && (
+            {showAdvancedInventoryFilters && (
                 <div className="flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
                     <DropdownMenu>
                        <DropdownMenuTrigger asChild>
@@ -602,7 +598,7 @@ export default function InventoryPage() {
                          ) : null}
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3 flex-grow">
-                         <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1">
                            <strong className="mr-1">{t('inventory_col_qty')}:</strong>
                            <span className="min-w-[20px] text-center font-medium">{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
                          </div>
@@ -810,4 +806,3 @@ export default function InventoryPage() {
      </div>
    );
 }
-

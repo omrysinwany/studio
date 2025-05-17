@@ -47,7 +47,7 @@
   "home_kpi_gross_profit_desc": "רווח משוער ממכירת המלאי הנוכחי.",
   "home_kpi_current_month_expenses_title": "הוצאות החודש",
   "home_kpi_current_month_expenses_desc": "סה\"כ הוצאות מתועדות החודש.",
-  "home_kpi_low_stock_title": "מלאי נמוך",
+  "home_kpi_low_stock_title": "פריטים במלאי נמוך",
   "home_kpi_low_stock_desc": "פריטים שצריך להזמין בקרוב.",
   "home_kpi_amount_to_pay_title": "סכום לתשלום",
   "home_kpi_amount_to_pay_desc": "סה\"כ חוב בחשבוניות פתוחות.",
@@ -452,7 +452,7 @@
   "inventory_filter_over_stock": "עודף מלאי",
   "inventory_view_button": "הצג עמודות",
   "inventory_toggle_columns_label": "שנה עמודות",
-  "inventory_col_actions": "פרטים",
+  "inventory_col_actions": "פעולות",
   "inventory_col_image": "תמונה",
   "inventory_col_product": "מוצר",
   "inventory_col_description": "תיאור מלא",
@@ -867,7 +867,7 @@
   "accounts_open_invoices_desc_period": "חשבוניות הממתינות לתשלום בתקופה שנבחרה, ממוינות לפי תאריך יעד.",
   "accounts_no_open_invoices_period": "אין חשבוניות פתוחות בתקופה שנבחרה.",
   "accounts_due_date_alert_column": "התראת תאריך יעד",
-  "accounts_current_month_expenses_title": "הוצאות החודש הנוכחי",
+  "accounts_current_month_expenses_title": "הוצאות החודש",
   "accounts_current_month_expenses_desc": "סה\"כ הוצאות מתועדות לחודש הקלנדרי הנוכחי.",
   "accounts_current_month_expenses_title_with_budget": "הוצאות ותקציב החודש",
   "accounts_current_month_expenses_desc_with_budget": "סה\"כ הוצאות מתועדות החודש והתקדמות מול התקציב שלך.",
@@ -1134,7 +1134,6 @@
   "documents_plural_for_delete_message": "מסמכים",
   "decrease_quantity_aria_label": "הפחת כמות עבור {{productName}}",
   "increase_quantity_aria_label": "הגדל כמות עבור {{productName}}",
-  "filter_options_button_aria_open_close": "פתח/סגור אפשרויות סינון מתקדמות"
+  "filter_options_button_aria_open_close": "פתח/סגור אפשרויות סינון מתקדמות",
+  "filter_options_button_title": "אפשרויות סינון ותצוגה"
 }
-
-    
