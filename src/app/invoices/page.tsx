@@ -70,9 +70,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-// import PaidInvoicesTabView from '@/components/PaidInvoicesTabView'; // Integrated into this component
 import { Timestamp } from 'firebase/firestore';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
@@ -139,7 +139,6 @@ const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistory
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
-    let labelKey = '';
 
     if (type === 'scan') {
        switch (status as InvoiceHistoryItem['status']) {
@@ -170,7 +169,7 @@ export default function DocumentsPage() {
   const { user, loading: authLoading } = useAuth();
   const { t, locale } = useTranslation();
   const router = useRouter();
-  const searchParamsHook = useSearchParams(); // Use different name
+  const searchParamsHook = useSearchParams();
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
@@ -246,6 +245,9 @@ export default function DocumentsPage() {
       { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, mobileHidden: true },
   ];
 
+  const currentVisibleColumns = useMemo(() => activeTab === 'scanned-docs' ? visibleColumnsScanned : visibleColumnsPaid, [activeTab, visibleColumnsScanned, visibleColumnsPaid]);
+  const currentColumnDefinitions = useMemo(() => activeTab === 'scanned-docs' ? scannedDocsColumnDefinitions : paidInvoicesColumnDefinitions, [activeTab, scannedDocsColumnDefinitions, paidInvoicesColumnDefinitions]);
+  
   const toggleColumnVisibility = (key: string) => {
     if (activeTab === 'scanned-docs') {
         setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
@@ -253,9 +255,6 @@ export default function DocumentsPage() {
         setVisibleColumnsPaid(prev => ({ ...prev, [key]: !prev[key] }));
     }
   };
-
-  const currentVisibleColumns = useMemo(() => activeTab === 'scanned-docs' ? visibleColumnsScanned : visibleColumnsPaid, [activeTab, visibleColumnsScanned, visibleColumnsPaid]);
-  const currentColumnDefinitions = useMemo(() => activeTab === 'scanned-docs' ? scannedDocsColumnDefinitions : paidInvoicesColumnDefinitions, [activeTab, scannedDocsColumnDefinitions, paidInvoicesColumnDefinitions]);
 
 
   useEffect(() => {
@@ -305,6 +304,17 @@ export default function DocumentsPage() {
     } else if (isMobile) {
         setViewMode('grid');
     }
+
+    // Check for query params to pre-filter
+    const supplierQuery = searchParamsHook.get('supplier');
+    if (supplierQuery) setFilterSupplier(decodeURIComponent(supplierQuery));
+
+    const paymentStatusQuery = searchParamsHook.get('filterPaymentStatus') as InvoiceHistoryItem['paymentStatus'] | null;
+     if (paymentStatusQuery) setFilterPaymentStatus(paymentStatusQuery);
+
+     const tabQuery = searchParamsHook.get('tab') as 'scanned-docs' | 'paid-invoices' | null;
+     if (tabQuery) setActiveTab(tabQuery);
+
   }, [user, fetchUserData, searchParamsHook, isMobile]);
 
 
@@ -649,6 +659,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     setShowDetailsSheet(true);
   };
 
+   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
+
 
    if (authLoading || (isLoading && !user)) {
      return (
@@ -675,76 +687,45 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
         <CardContent>
-         <div className="mb-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-             <Input
-                placeholder={t('inventory_search_placeholder')}
-                value={searchTerm}
-                onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
-                className="pl-10 h-10 w-full sm:max-w-xs"
-                aria-label={t('invoices_search_aria')}
-             />
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground sm:relative sm:left-auto sm:top-auto sm:translate-y-0 sm:-ml-8" />
+         <div className="mb-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap">
+            <div className="relative w-full sm:flex-grow sm:max-w-xs">
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                 <Input
+                    placeholder={t('inventory_search_placeholder')}
+                    value={searchTerm}
+                    onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
+                    className="pl-10 h-10 w-full"
+                    aria-label={t('invoices_search_aria')}
+                 />
+            </div>
+             <Select value={filterDocumentType} onValueChange={(value) => setFilterDocumentType(value as any)}>
+                <SelectTrigger className="w-full sm:w-auto h-10">
+                    <SelectValue placeholder={t('invoices_filter_doc_type_all')} />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="">{t('invoices_filter_doc_type_all')}</SelectItem>
+                    <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
+                    <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
+                </SelectContent>
+             </Select>
             
              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="w-full sm:w-auto h-10">
-                        <ListChecks className="mr-2 h-4 w-4" />
-                        {filterDocumentType === 'deliveryNote' ? t('upload_doc_type_delivery_note') :
-                         filterDocumentType === 'invoice' ? t('upload_doc_type_invoice') :
-                         t('invoices_filter_doc_type_all')}
-                        <ChevronDown className="ml-auto h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                    <DropdownMenuLabel>{t('invoices_filter_doc_type_label')}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuCheckboxItem checked={filterDocumentType === ''} onCheckedChange={() => setFilterDocumentType('')}>{t('invoices_filter_doc_type_all')}</DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem checked={filterDocumentType === 'deliveryNote'} onCheckedChange={() => setFilterDocumentType('deliveryNote')}>{t('upload_doc_type_delivery_note')}</DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem checked={filterDocumentType === 'invoice'} onCheckedChange={() => setFilterDocumentType('invoice')}>{t('upload_doc_type_invoice')}</DropdownMenuCheckboxItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-auto h-10">
                         <Filter className="mr-2 h-4 w-4" />
-                        {t('invoices_filter_button_label_combined')}
+                        {t('invoices_filter_button_label_combined_short')} 
                         <ChevronDown className="ml-auto h-4 w-4" />
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
-                    <DropdownMenuLabel>{t('invoices_filter_sheet_title')}</DropdownMenuLabel>
                     <DropdownMenuCheckboxItem
                         checked={showAdvancedFilters}
                         onCheckedChange={setShowAdvancedFilters}
                     >
                         {showAdvancedFilters ? t('invoices_hide_advanced_filters_label') : t('invoices_show_advanced_filters_label')}
                     </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                            <Eye className="mr-2 h-4 w-4" />
-                            {t('inventory_toggle_columns_label')}
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                            <DropdownMenuSubContent>
-                                <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={header.key}
-                                        className="capitalize"
-                                        checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
-                                        onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
-                                    >
-                                        {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                    </DropdownMenuSub>
                 </DropdownMenuContent>
-            </DropdownMenu>
+             </DropdownMenu>
              <Button
                 variant="outline"
                 onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
@@ -772,6 +753,28 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      <DropdownMenuTrigger asChild><Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"><Briefcase className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{existingSuppliers.find(s => s.name === filterSupplier)?.name || t('invoices_filter_supplier_all')}{filterSupplier && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e)=>{e.stopPropagation();setFilterSupplier('')}}><XCircle className="h-3.5 w-3.5"/></Button>}</Button></DropdownMenuTrigger>
                      <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>{t('invoices_filter_supplier_all')}</DropdownMenuCheckboxItem>{existingSuppliers.map((supplier) => (<DropdownMenuCheckboxItem key={supplier.id} checked={filterSupplier === supplier.name} onCheckedChange={() => setFilterSupplier(supplier.name)}>{supplier.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
                  </DropdownMenu>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                            <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                            {t('inventory_view_button')}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                            <DropdownMenuCheckboxItem
+                                key={header.key}
+                                className="capitalize"
+                                checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
+                                onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
+                            >
+                                {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                            </DropdownMenuCheckboxItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
                  {activeTab === 'scanned-docs' && (
                      <>
                         <DropdownMenu>
@@ -976,15 +979,17 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
       }}>
         <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
           <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
-             <SheetTitle className="flex items-center text-lg sm:text-xl">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
-             <SheetDescription className="text-xs sm:text-sm">
-                {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || selectedInvoiceDetails?.generatedFileName || '' })}
-             </SheetDescription>
+             <SheetTitle className="flex items-center text-lg sm:text-xl">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : (selectedInvoiceDetails?._displayContext === 'image_only' ? t('upload_history_image_preview_title') : t('invoice_details_title'))}</SheetTitle>
+             {selectedInvoiceDetails?._displayContext !== 'image_only' && (
+                <SheetDescription className="text-xs sm:text-sm">
+                    {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || selectedInvoiceDetails?.generatedFileName || '' })}
+                </SheetDescription>
+             )}
           </SheetHeader>
           {selectedInvoiceDetails && (
             <ScrollArea className="flex-grow">
               <div className="p-4 sm:p-6 space-y-4">
-              {isEditingDetails ? (
+              {isEditingDetails && selectedInvoiceDetails._displayContext !== 'image_only' ? (
                 <div className="space-y-3">
                     <div><Label htmlFor="editOriginalFileName">{t('invoice_details_file_name_label')}</Label><Input id="editOriginalFileName" value={editedInvoiceData.originalFileName || ''} onChange={(e) => handleEditDetailsInputChange('originalFileName', e.target.value)} disabled={isSavingDetails}/></div>
                     <div><Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label><Select value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType} onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice')} disabled={isSavingDetails}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem><SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem></SelectContent></Select></div>
@@ -1032,8 +1037,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                   <Separator className="my-3"/>
                   <div className="space-y-2">
                      <h3 className="text-md font-semibold text-primary border-b pb-1">{selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}</h3>
-                      {isValidImageSrc(selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)) ? (
-                        <NextImage src={selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!} alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })} width={800} height={1100} className="rounded-md object-contain mx-auto" data-ai-hint="invoice document" />
+                      {isValidImageSrc(selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) : (selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri))) ? (
+                        <NextImage src={selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)! : (selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!)} alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })} width={800} height={1100} className="rounded-md object-contain mx-auto" data-ai-hint="invoice document" />
                         ) : (<div className="text-muted-foreground text-center py-4 flex flex-col items-center"><ImageIconLucide className="h-10 w-10 mb-2"/><p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p></div>)}
                   </div>
                 </>
@@ -1042,11 +1047,11 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             </ScrollArea>
           )}
           <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
-            {selectedInvoiceDetails && (<>
+            {selectedInvoiceDetails && selectedInvoiceDetails._displayContext !== 'image_only' && (<>
                 {isEditingDetails ? (<><Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button><Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>{isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{isSavingDetails ? t('saving_button') : t('save_changes_button')}</Button></>)
                 : (<Button variant="outline" onClick={() => setIsEditingDetails(true)}><Edit className="mr-2 h-4 w-4" /> {t('invoices_edit_details_button')}</Button>)}
                 <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" disabled={isDeleting || isSavingDetails}><Trash2 className="mr-2 h-4 w-4" /> {t('invoices_delete_button')}</Button></AlertDialogTrigger>
-                    <AlertDialogContentComponent><AlertDialogHeaderComponent><AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent><AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' })}</AlertDialogDescriptionComponent></AlertDialogHeaderComponent>
+                    <AlertDialogContentComponent><AlertDialogHeaderComponent><AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent><AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', {fileName: selectedInvoiceDetails?.originalFileName || '' })}</AlertDialogDescriptionComponent></AlertDialogHeaderComponent>
                         <AlertDialogFooterComponent><AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel><AlertDialogAction onClick={() => selectedInvoiceDetails && handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>{isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t('invoices_delete_confirm_action')}</AlertDialogAction></AlertDialogFooterComponent>
                     </AlertDialogContentComponent>
                 </AlertDialog>
@@ -1080,4 +1085,3 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
   );
 }
 
-    
