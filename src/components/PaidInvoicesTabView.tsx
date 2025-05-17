@@ -1,8 +1,8 @@
+
 // src/components/PaidInvoicesTabView.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Table,
@@ -12,36 +12,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, CheckCircle, XCircle, Clock, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, ImageIcon as ImageIconLucide } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+import { Loader2, Info, CheckSquare, ChevronLeft, ChevronRight, Receipt, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import type { DateRange } from 'react-day-picker';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, parseISO, isValid, isSameDay, isAfter, isBefore } from 'date-fns';
 import { enUS, he } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoiceService, SupplierSummary, getSupplierSummariesService, getUserSettingsService, updateInvoicePaymentStatusService, } from '@/services/backend';
+import { InvoiceHistoryItem, getInvoicesService, deleteInvoiceService, updateInvoicePaymentStatusService } from '@/services/backend';
 import { Badge } from '@/components/ui/badge';
-import {
-   Sheet,
-   SheetContent,
-   SheetHeader,
-   SheetTitle,
-   SheetDescription,
-   SheetFooter,
-   SheetClose,
-} from '@/components/ui/sheet';
 import NextImage from 'next/image';
 import {
  AlertDialog,
@@ -54,17 +34,12 @@ import {
  AlertDialogTitle as AlertDialogTitleComponent,
  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Separator } from '@/components/ui/separator';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
-import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Timestamp } from 'firebase/firestore';
-import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 
@@ -83,8 +58,8 @@ interface PaidInvoicesTabViewProps {
     filterSupplier: string;
     dateRange?: DateRange;
     searchTerm: string;
-    visibleColumns: Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>;
-    columnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }[];
+    visibleColumns: Record<string, boolean>; // Changed from Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean> for flexibility
+    columnDefinitions: Array<{ key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string }>;
     handleSort: (key: SortKeyPaid) => void;
     handleViewDetails: (invoice: InvoiceHistoryItem, context?: 'image_only' | 'full_details') => void;
     handleSelectInvoice: (invoiceId: string, checked: boolean) => void;
@@ -103,7 +78,7 @@ export default function PaidInvoicesTabView({
     dateRange,
     searchTerm,
     visibleColumns,
-    columnDefinitions,
+    columnDefinitions = [], // Default to empty array
     handleSort: parentHandleSort,
     handleViewDetails,
     handleSelectInvoice,
@@ -151,7 +126,7 @@ export default function PaidInvoicesTabView({
     value: number | undefined | null,
     options?: { decimals?: number, useGrouping?: boolean }
   ): string => {
-      const { decimals = 2, useGrouping = true } = options || {};
+      const { decimals = 0, useGrouping = true } = options || {}; // Default decimals to 0 for paid invoices summary
       if (value === null || value === undefined || isNaN(value)) {
           const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
               minimumFractionDigits: decimals,
@@ -274,7 +249,7 @@ export default function PaidInvoicesTabView({
         setPaidInvoices([]);
         setIsLoading(false);
     }
-  }, [user, authLoading, fetchPaidInvoices, onTriggerInvoiceFetch]); // Added onTriggerInvoiceFetch
+  }, [user, authLoading, fetchPaidInvoices, onTriggerInvoiceFetch]);
 
   const totalPaidInvoicesPages = useMemo(() => {
       return Math.ceil(paidInvoices.length / ITEMS_PER_PAGE_PAID_INVOICES);
@@ -307,9 +282,13 @@ export default function PaidInvoicesTabView({
     }
   };
 
-  const visibleColumnHeadersPaid = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
+  const visibleColumnHeadersPaid = useMemo(() => {
+    if (!columnDefinitions) return [];
+    return columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
+  }, [columnDefinitions, visibleColumns]);
 
-  const [isExporting, setIsExporting] = useState(false); // Local state for PaidInvoicesTabView specific export if needed
+
+  const [isExporting, setIsExporting] = useState(false); 
 
   return (
     <>
@@ -573,7 +552,7 @@ export default function PaidInvoicesTabView({
                                         toast({ title: t('invoices_toast_bulk_deleted_title'), description: t('invoices_toast_bulk_deleted_desc', { count: selectedInvoiceIds.length }) });
                                         fetchPaidInvoices();
                                         onTriggerInvoiceFetch();
-                                        handleSelectInvoice('all-paid', false); // Clear selection
+                                        handleSelectInvoice('all-paid', false); 
                                     } catch (error) {
                                         toast({ title: t('invoices_toast_delete_fail_title'), description: t('invoices_toast_delete_fail_desc'), variant: "destructive" });
                                     } finally {
@@ -613,3 +592,5 @@ export default function PaidInvoicesTabView({
     </>
   );
 }
+
+    
