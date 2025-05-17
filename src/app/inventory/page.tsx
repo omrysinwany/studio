@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Columns, Minus, Plus } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Columns, Minus, Plus, Phone, Mail } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -104,7 +104,8 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof Product | 'actions' | 'imageUrl' , boolean>>({
+  
+  const defaultVisibleColumns: Record<keyof Product | 'actions' | 'imageUrl' , boolean> = {
     actions: true,
     imageUrl: true,
     id: false,
@@ -113,20 +114,22 @@ export default function InventoryPage() {
     catalogNumber: false,
     barcode: false,
     quantity: true,
-    unitPrice: false,
+    unitPrice: false, 
     salePrice: true,
     lineTotal: false,
-    minStockLevel: false,
-    maxStockLevel: false,
+    minStockLevel: false, // Hidden by default
+    maxStockLevel: false, // Hidden by default
     lastUpdated: false,
     userId: false,
     _originalId: false,
-  });
+  };
+
+  const [visibleColumns, setVisibleColumns] = useState(defaultVisibleColumns);
   const [filterStockLevel, setFilterStockLevel] = useState<'all' | 'low' | 'inStock' | 'out' | 'over'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('shortName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>( isMobileViewHook ? 'cards' : 'table');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(isMobileViewHook ? 'cards' : 'table');
   const [updatingQuantityProductId, setUpdatingQuantityProductId] = useState<string | null>(null);
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
@@ -136,7 +139,7 @@ export default function InventoryPage() {
   }, [inventory]);
 
   const stockAlerts = useMemo(() => {
-    return inventory.filter(item => (Number(item.quantity) || 0) <= (item.minStockLevel ?? 10) || (Number(item.quantity) || 0) === 0 || (item.maxStockLevel !== undefined && (Number(item.quantity) || 0) > item.maxStockLevel));
+    return inventory.filter(item => (Number(item.quantity) || 0) === 0 || (item.minStockLevel !== undefined && item.minStockLevel !== null && (Number(item.quantity) || 0) <= item.minStockLevel) || (item.maxStockLevel !== undefined && item.maxStockLevel !== null && (Number(item.quantity) || 0) > item.maxStockLevel));
   }, [inventory]);
 
 
@@ -175,36 +178,27 @@ export default function InventoryPage() {
     }, [toast, t, user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-        router.push('/login');
-        return;
-    }
-    if(user && user.id) {
-        fetchInventory();
-    }
-
-    const viewParam = searchParams.get('viewMode'); // Simplified, as mobileView is part of general viewMode
-     if (viewParam === 'table' || viewParam === 'cards') {
-        setViewMode(viewParam as 'table' | 'cards');
-    } else {
-        setViewMode(isMobileViewHook ? 'cards' : 'table');
-    }
-
-    const initialFilter = searchParams.get('filter');
-    if (initialFilter === 'low' && filterStockLevel === 'all') {
-        setFilterStockLevel('low');
-    }
-
+    const initialFilter = searchParams.get('filter') as 'all' | 'low' | 'inStock' | 'out' | 'over' | null;
     const shouldRefresh = searchParams.get('refresh');
+
+    if (user && user.id && (inventory.length === 0 || shouldRefresh === 'true')) {
+        fetchInventory();
+    } else if (!user && !authLoading) {
+        router.push('/login');
+    }
+
+    if (initialFilter && ['all', 'low', 'inStock', 'out', 'over'].includes(initialFilter)) {
+        setFilterStockLevel(initialFilter);
+    }
+
     if (shouldRefresh === 'true') {
         const current = new URLSearchParams(Array.from(searchParams.entries()));
         current.delete('refresh');
-        const searchString = current.toString();
-        const query = searchString ? `?${searchString}` : "";
-        router.replace(`/inventory${query}`, { scroll: false });
+        const search = current.toString();
+        const query = search ? `?${search}` : "";
+        router.replace(`${window.location.pathname}${query}`, { scroll: false }); // Use window.location.pathname
      }
-   }, [authLoading, user, fetchInventory, router, searchParams, filterStockLevel, isMobileViewHook]);
+   }, [authLoading, user, fetchInventory, router, searchParams, inventory.length]);
 
 
   const handleSort = (key: SortKey) => {
@@ -232,13 +226,13 @@ export default function InventoryPage() {
        );
      }
       if (filterStockLevel === 'low') {
-        result = result.filter(item => (Number(item.quantity) || 0) > 0 && (Number(item.quantity) || 0) <= (item.minStockLevel ?? 10));
+        result = result.filter(item => (Number(item.quantity) || 0) > 0 && (item.minStockLevel !== undefined && item.minStockLevel !== null && (Number(item.quantity) || 0) <= item.minStockLevel));
       } else if (filterStockLevel === 'inStock') {
         result = result.filter(item => (Number(item.quantity) || 0) > 0);
       } else if (filterStockLevel === 'out') {
         result = result.filter(item => (Number(item.quantity) || 0) === 0);
       } else if (filterStockLevel === 'over') {
-        result = result.filter(item => item.maxStockLevel !== undefined && (Number(item.quantity) || 0) > item.maxStockLevel);
+        result = result.filter(item => item.maxStockLevel !== undefined && item.maxStockLevel !== null && (Number(item.quantity) || 0) > item.maxStockLevel);
       }
 
 
@@ -302,13 +296,15 @@ export default function InventoryPage() {
     const columnDefinitions: { key: keyof Product | 'actions' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string, isNumeric?: boolean }[] = [
         { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center sticky left-0 bg-card z-10' },
         { key: 'imageUrl', labelKey: 'inventory_col_image', sortable: false, className: 'w-12 text-center px-1 sm:px-2 py-1', headerClassName: 'text-center px-1 sm:px-2 py-1'},
-        { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2', headerClassName: 'px-2 sm:px-4 py-2 text-center' },
-        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
-        { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
+        { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2 text-center', headerClassName: 'px-2 sm:px-4 py-2 text-center' },
+        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
+        { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -423,12 +419,12 @@ export default function InventoryPage() {
 
     const getStockLevelIndicator = (item: Product) => {
         const quantity = Number(item.quantity) || 0;
-        const minStock = item.minStockLevel ?? 10;
+        const minStock = item.minStockLevel;
         const maxStock = item.maxStockLevel;
 
         if (quantity === 0) return "bg-red-500";
-        if (maxStock !== undefined && quantity > maxStock) return "bg-orange-400";
-        if (quantity <= minStock) return "bg-yellow-400";
+        if (maxStock !== undefined && maxStock !== null && quantity > maxStock) return "bg-orange-400";
+        if (minStock !== undefined && minStock !== null && quantity <= minStock) return "bg-yellow-400";
         return "bg-green-500";
     };
 
@@ -437,7 +433,7 @@ export default function InventoryPage() {
      return null;
    }
 
-   if (isLoading && !paginatedInventory.length) { // Show main loader only if no items yet
+   if (isLoading && !paginatedInventory.length) { 
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -565,7 +561,7 @@ export default function InventoryPage() {
 
            {(viewMode === 'cards') ? (
              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-6">
-               {isLoading && paginatedInventory.length === 0 ? ( // Show skeletons only if loading AND no items yet
+               {isLoading && paginatedInventory.length === 0 ? ( 
                  Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
                    <Card key={index} className="animate-pulse bg-card/30 backdrop-blur-sm border-border/50 shadow">
                      <CardHeader className="pb-2 pt-3 px-3"><Skeleton className="h-5 w-3/4" /></CardHeader>
@@ -631,8 +627,8 @@ export default function InventoryPage() {
                            </Button>
                          </div>
                          {item.quantity === 0 && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{t('inventory_badge_out_of_stock')}</Badge>}
-                         {item.quantity > 0 && item.minStockLevel !== undefined && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="ml-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
-                         {item.maxStockLevel !== undefined && item.quantity > item.maxStockLevel && <Badge variant="default" className="ml-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
+                         {item.quantity > 0 && item.minStockLevel !== undefined && item.minStockLevel !== null && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="ml-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
+                         {item.maxStockLevel !== undefined && item.maxStockLevel !== null && item.quantity > item.maxStockLevel && <Badge variant="default" className="ml-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
 
                          {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</p>}
                      </CardContent>
@@ -661,8 +657,8 @@ export default function InventoryPage() {
                        <TableHead
                          key={header.key}
                          className={cn(
-                           "px-2 sm:px-4 py-2 text-center", // Default to center for all headers
-                           header.headerClassName, // Allow specific overrides
+                           "px-2 sm:px-4 py-2 text-center", 
+                           header.headerClassName, 
                            header.sortable && "cursor-pointer hover:bg-muted/50",
                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                          )}
@@ -724,10 +720,10 @@ export default function InventoryPage() {
                              </TableCell>
                          )}
                          {visibleColumns.shortName && (
-                           <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px]">
+                           <TableCell className="font-medium px-2 sm:px-4 py-2 truncate max-w-[100px] sm:max-w-[150px] text-center">
                              <Popover>
                                <PopoverTrigger asChild>
-                                 <Button variant="link" className="p-0 h-auto text-left font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
+                                 <Button variant="link" className="p-0 h-auto text-center font-medium cursor-pointer hover:underline decoration-dashed decoration-muted-foreground/50 underline-offset-2 text-foreground">
                                    {item.shortName || item.description?.split(' ').slice(0,3).join(' ') || t('invoices_na')}
                                  </Button>
                                </PopoverTrigger>
@@ -759,6 +755,8 @@ export default function InventoryPage() {
                          {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true })}</TableCell>}
                          {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
                          {visibleColumns.lineTotal && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'lineTotal')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true })}</TableCell>}
+                         {visibleColumns.minStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined && item.minStockLevel !== null ? formatIntegerQuantityWithTranslation(item.minStockLevel, t) : '-'}</TableCell>}
+                         {visibleColumns.maxStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined && item.maxStockLevel !== null ? formatIntegerQuantityWithTranslation(item.maxStockLevel, t) : '-'}</TableCell>}
                        </TableRow>
                      ))
                    )}
@@ -837,3 +835,4 @@ export default function InventoryPage() {
      </div>
    );
 }
+
