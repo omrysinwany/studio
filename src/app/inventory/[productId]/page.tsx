@@ -1,4 +1,3 @@
-
 // src/app/inventory/[productId]/page.tsx
 'use client';
 
@@ -6,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIcon, Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { getProductByIdService, updateProductService, deleteProductService, Product } from '@/services/backend';
@@ -27,7 +26,7 @@ import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
-import NextImage from 'next/image'; // For displaying product images
+import NextImage from 'next/image'; 
 
 
 // Helper to format numbers for display
@@ -36,7 +35,7 @@ const formatDisplayNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 0, useGrouping = true } = options || {}; // Default decimals to 0
+    const { decimals = 0, useGrouping = true } = options || {}; 
     const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
@@ -66,7 +65,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return String(Math.round(value)); // Ensure integer for quantity and stock levels
+    return String(Math.round(value)); 
 };
 
 
@@ -94,6 +93,8 @@ export default function ProductDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUpdatingQuantityDetail, setIsUpdatingQuantityDetail] = useState(false);
+
 
   const productId = params.productId as string;
 
@@ -104,12 +105,12 @@ export default function ProductDetailPage() {
   }, [user, authLoading, router]);
 
    const loadProduct = useCallback(async () => {
-    if (!productId || !user || !user.id) return; // Ensure user.id exists
+    if (!productId || !user || !user.id) return; 
 
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getProductByIdService(productId, user.id); // Pass userId
+      const data = await getProductByIdService(productId, user.id); 
       if (data) {
         setProduct(data);
         setEditedProduct({ ...data });
@@ -136,7 +137,7 @@ export default function ProductDetailPage() {
 
 
   useEffect(() => {
-    if(user && user.id){ // Ensure user.id exists
+    if(user && user.id){ 
         loadProduct();
     }
   }, [loadProduct, user]);
@@ -170,7 +171,7 @@ export default function ProductDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!product || !product.id || !user || !user.id) return; // Ensure user.id exists
+    if (!product || !product.id || !user || !user.id) return; 
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
@@ -210,7 +211,7 @@ export default function ProductDetailPage() {
         imageUrl: editedProduct.imageUrl || product.imageUrl,
       };
 
-      await updateProductService(product.id, productToSave, user.id); // Pass userId
+      await updateProductService(product.id, productToSave, user.id); 
       toast({
         title: t('product_detail_toast_updated_title'),
         description: t('product_detail_toast_updated_desc'),
@@ -230,10 +231,10 @@ export default function ProductDetailPage() {
   };
 
    const handleDelete = async () => {
-    if (!product || !product.id || !user || !user.id) return; // Ensure user.id exists
+    if (!product || !product.id || !user || !user.id) return; 
     setIsDeleting(true);
     try {
-      await deleteProductService(product.id, user.id); // Pass userId
+      await deleteProductService(product.id, user.id); 
       toast({
         title: t('product_detail_toast_deleted_title'),
         description: t('product_detail_toast_deleted_desc', { productName: product.shortName || product.description }),
@@ -287,6 +288,31 @@ export default function ProductDetailPage() {
        });
    };
 
+   const handleQuantityUpdateOnDetailPage = async (change: number) => {
+     if (!product || !product.id || !user || !user.id) return;
+     setIsUpdatingQuantityDetail(true);
+     const newQuantity = (product.quantity || 0) + change;
+     if (newQuantity < 0) {
+       toast({ title: t('inventory_toast_invalid_quantity_title'), description: t('inventory_toast_invalid_quantity_desc_negative'), variant: "destructive" });
+       setIsUpdatingQuantityDetail(false);
+       return;
+     }
+     try {
+       await updateProductService(product.id, { quantity: newQuantity }, user.id);
+       setProduct(prev => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (prev.unitPrice || 0)).toFixed(2)) } : null);
+       setEditedProduct(prev => ({ ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
+       toast({
+         title: t('inventory_toast_quantity_updated_title'),
+         description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || '', quantity: newQuantity })
+       });
+     } catch (error) {
+       console.error("Failed to update quantity on detail page:", error);
+       toast({ title: t('inventory_toast_quantity_update_fail_title'), description: t('inventory_toast_quantity_update_fail_desc'), variant: "destructive" });
+     } finally {
+       setIsUpdatingQuantityDetail(false);
+     }
+   };
+
 
    const renderViewItem = (icon: React.ElementType, labelKey: string, value: string | number | undefined | null, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
      const IconComponent = icon;
@@ -294,9 +320,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); // No decimals for currency
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); 
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); // Default to no decimals
+            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); 
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -371,7 +397,7 @@ export default function ProductDetailPage() {
       };
 
 
-  if (authLoading || isLoading || !user) { // Check for user as well
+  if (authLoading || isLoading || !user) { 
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -519,7 +545,7 @@ export default function ProductDetailPage() {
                     {t('product_detail_out_of_stock_badge')}
                 </span>
             )}
-             {product.maxStockLevel !== undefined && product.quantity > product.maxStockLevel && !isEditing && (
+             {product.maxStockLevel !== undefined && product.maxStockLevel !== null && product.quantity > product.maxStockLevel && !isEditing && (
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
                     {t('product_detail_over_stock_badge')}
@@ -564,7 +590,37 @@ export default function ProductDetailPage() {
              ) : (
                  <>
                     {renderViewItem(Barcode, "product_detail_label_barcode", product.barcode, false, false, true)}
-                    {renderViewItem(Layers, "product_detail_label_quantity", product.quantity, false, true)}
+                    <div className="flex items-start space-x-3 py-2">
+                        <Layers className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
+                        <div className="flex-grow">
+                            <p className="text-sm font-medium text-muted-foreground">{t("product_detail_label_quantity")}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <Button 
+                                    variant="outline" 
+                                    size="icon" 
+                                    className="h-7 w-7" 
+                                    onClick={() => handleQuantityUpdateOnDetailPage(-1)} 
+                                    disabled={isUpdatingQuantityDetail}
+                                    aria-label={t('decrease_quantity_aria_label', { productName: product.shortName || product.description || "" })}
+                                >
+                                    <Minus className="h-3.5 w-3.5" />
+                                </Button>
+                                <p className="text-base font-semibold min-w-[30px] text-center">
+                                    {isUpdatingQuantityDetail ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : formatIntegerQuantity(product.quantity, t)}
+                                </p>
+                                <Button 
+                                    variant="outline" 
+                                    size="icon" 
+                                    className="h-7 w-7" 
+                                    onClick={() => handleQuantityUpdateOnDetailPage(1)} 
+                                    disabled={isUpdatingQuantityDetail}
+                                    aria-label={t('increase_quantity_aria_label', { productName: product.shortName || product.description || "" })}
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                     {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, true)}
                     {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, true)}
                     {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, true)}
@@ -585,3 +641,4 @@ export default function ProductDetailPage() {
     </div>
   );
 }
+
