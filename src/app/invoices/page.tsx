@@ -1,3 +1,4 @@
+
 // src/app/invoices/page.tsx
 'use client';
 
@@ -19,10 +20,14 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuLabel,
    DropdownMenuSeparator,
    DropdownMenuTrigger,
+   DropdownMenuSub,
+   DropdownMenuSubTrigger,
+   DropdownMenuSubContent,
+   DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
  import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, CheckCircle, Clock } from 'lucide-react';
- import { useRouter } from 'next/navigation';
+ import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
  import { Calendar } from '@/components/ui/calendar';
@@ -58,14 +63,16 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+// import { useSmartTouch } from '@/hooks/useSmartTouch'; // Temporarily removed
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import { generateAndEmailInvoicesAction } from '@/actions/invoice-export-actions';
 import PaymentReceiptUploadDialog from '@/components/PaymentReceiptUploadDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import PaidInvoicesTabView from '@/components/PaidInvoicesTabView';
+// import PaidInvoicesTabView from '@/components/PaidInvoicesTabView'; // Integrated into this component
 import { Timestamp } from 'firebase/firestore';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
@@ -77,9 +84,9 @@ type SortKey = keyof InvoiceHistoryItem | '';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
-const ITEMS_PER_PAGE_SCANNED_DOCS = 8;
+const ITEMS_PER_PAGE = 8;
 
-const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, locale: string, t: (key: string) => string) => {
+const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string) => string) => {
   if (!dateInput) return t('invoices_na');
   try {
       let dateObj: Date | null = null;
@@ -93,15 +100,15 @@ const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, 
       }
 
       if (!dateObj || !isValid(dateObj)) {
-          console.warn(`[InvoicesPage formatDate] Invalid date object for input:`, dateInput);
+          console.warn(`[DocumentsPage formatDate] Invalid date object for input:`, dateInput);
           return t('invoices_invalid_date');
       }
-      const dateLocale = locale === 'he' ? he : enUS;
+      const dateFnsLocale = currentLocale === 'he' ? he : enUS;
       return window.innerWidth < 640
-           ? format(dateObj, 'dd/MM/yy HH:mm', { locale: dateLocale })
-           : format(dateObj, 'PPp', { locale: dateLocale });
+           ? format(dateObj, 'dd/MM/yy HH:mm', { locale: dateFnsLocale })
+           : format(dateObj, 'PPp', { locale: dateFnsLocale });
   } catch (e) {
-    console.error("[InvoicesPage formatDate] Error formatting date:", e, "Input:", dateInput);
+    console.error("[DocumentsPage formatDate] Error formatting date:", e, "Input:", dateInput);
     return t('invoices_invalid_date');
   }
 };
@@ -128,232 +135,96 @@ const formatCurrencyDisplay = (
     return `${t('currency_symbol')}${formattedValue}`;
 };
 
-// Scanned Documents View Component
-const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'deliveryNote' | 'invoice' | '' }) => {
+const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment', t: (key: string, params?: any) => string) => {
+    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+    let className = '';
+    let icon = null;
+    let labelKey = '';
+
+    if (type === 'scan') {
+       switch (status as InvoiceHistoryItem['status']) {
+           case 'completed': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CheckCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_completed'; break;
+           case 'processing': variant = 'secondary'; className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80'; icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />; labelKey = 'invoice_status_processing'; break;
+           case 'pending': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_pending'; break;
+           case 'error': variant = 'destructive'; icon = <XCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_error'; break;
+           default: variant = 'outline'; icon = null; labelKey = String(status); break;
+       }
+    } else if (type === 'payment') {
+        switch (status as InvoiceHistoryItem['paymentStatus']) {
+           case 'paid': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_paid'; break;
+           case 'unpaid': variant = 'secondary'; className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_unpaid'; break;
+           case 'pending_payment': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_pending_payment'; break;
+           default: variant = 'outline'; icon = null; labelKey = String(status);
+        }
+    }
+    return (
+       <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
+           {icon}
+           {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
+       </Badge>
+    );
+ };
+
+
+export default function DocumentsPage() {
   const { user, loading: authLoading } = useAuth();
   const { t, locale } = useTranslation();
   const router = useRouter();
+  const searchParamsHook = useSearchParams(); // Use different name
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
-  const [invoices, setInvoices] = useState<InvoiceHistoryItem[]>([]);
+
+  const [allUserInvoices, setAllUserInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Record<keyof InvoiceHistoryItem | 'actions' | 'selection', boolean>>({
-    selection: true,
-    actions: true,
-    id: false,
-    originalFileName: true,
-    generatedFileName: false,
-    uploadTime: true,
-    status: true,
-    invoiceNumber: false,
-    supplierName: true,
-    totalAmount: true,
-    errorMessage: false,
-    originalImagePreviewUri: true,
-    compressedImageForFinalRecordUri: false,
-    paymentReceiptImageUri: false,
-    paymentStatus: true,
-    paymentDueDate: false,
-    documentType: false,
-    invoiceDate: false,
-    paymentMethod: false,
-    linkedDeliveryNoteId: false,
-    rawScanResultJson: false,
-    _displayContext: false,
-  });
+  
+  const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | ''>('');
   const [filterSupplier, setFilterSupplier] = useState<string>('');
   const [filterScanStatus, setFilterScanStatus] = useState<InvoiceHistoryItem['status'] | ''>('');
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<InvoiceHistoryItem['paymentStatus'] | ''>('');
-
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  
   const [sortKey, setSortKey] = useState<SortKey>('uploadTime');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
   const [showDetailsSheet, setShowDetailsSheet] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<InvoiceHistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<InvoiceHistoryItem>>({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? 'grid' : 'list');
   const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] = useState<InvoiceHistoryItem | null>(null);
-  const [currentScannedDocsPage, setCurrentScannedDocsPage] = useState(1);
-  const [selectedForBulkDelete, setSelectedForBulkDelete] = useState<string[]>([]);
+  
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  const [selectedForBulkAction, setSelectedForBulkAction] = useState<string[]>([]);
+  
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [accountantEmail, setAccountantEmail] = useState('');
+  const [emailNote, setEmailNote] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>('scanned-docs');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-
-  const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-
-
-  const fetchSuppliers = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const managedSuppliers = await getSupplierSummariesService(user.id);
-      setExistingSuppliers(managedSuppliers);
-    } catch (error) {
-      console.error("Failed to fetch suppliers for filter:", error);
-      toast({
-        title: t('invoices_toast_error_fetch_suppliers_title'),
-        description: t('invoices_toast_error_fetch_suppliers_desc'),
-        variant: "destructive",
-      });
-    }
-  }, [toast, t, user]);
-
-  const fetchInvoices = useCallback(async () => {
-      if(!user?.id) return;
-      setIsLoading(true);
-      try {
-        let fetchedData = await getInvoicesService(user.id);
-        let uniqueInvoicesMap = new Map<string, InvoiceHistoryItem>();
-        
-        fetchedData.forEach(invoice => {
-            const existing = uniqueInvoicesMap.get(invoice.id);
-            if (existing) {
-                if ((invoice.originalImagePreviewUri && !existing.originalImagePreviewUri) ||
-                    (invoice.originalImagePreviewUri && isValid(parseISO(invoice.uploadTime as string)) && isValid(parseISO(existing.uploadTime as string)) && new Date(invoice.uploadTime as string).getTime() > new Date(existing.uploadTime as string).getTime())) {
-                    uniqueInvoicesMap.set(invoice.id, invoice);
-                } else if (!invoice.originalImagePreviewUri && existing.originalImagePreviewUri) {
-                   // Keep existing if it has image and new one doesn't (unless new one is more recent)
-                } else if (isValid(parseISO(invoice.uploadTime as string)) && isValid(parseISO(existing.uploadTime as string)) && new Date(invoice.uploadTime as string).getTime() > new Date(existing.uploadTime as string).getTime()){
-                     uniqueInvoicesMap.set(invoice.id, invoice);
-                }
-            } else {
-                uniqueInvoicesMap.set(invoice.id, invoice);
-            }
-        });
-
-        let filteredData = Array.from(uniqueInvoicesMap.values());
-        filteredData = filteredData.filter(inv => inv.paymentStatus !== 'paid');
-
-
-        if (filterSupplier) {
-           filteredData = filteredData.filter(inv => inv.supplierName === filterSupplier);
-        }
-        if (filterScanStatus) {
-           filteredData = filteredData.filter(inv => inv.status === filterScanStatus);
-        }
-        if (filterPaymentStatus) {
-            filteredData = filteredData.filter(inv => inv.paymentStatus === filterPaymentStatus);
-        }
-         if (dateRange?.from) {
-            const startDate = new Date(dateRange.from);
-            startDate.setHours(0, 0, 0, 0);
-            filteredData = filteredData.filter(inv => {
-                if (!inv.uploadTime) return false;
-                let invDate: Date | null = null;
-                if (inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
-                else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
-                else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime; // Added for Date type
-                return invDate ? invDate >= startDate : false;
-            });
-         }
-         if (dateRange?.to) {
-            const endDate = new Date(dateRange.to);
-            endDate.setHours(23, 59, 59, 999);
-            filteredData = filteredData.filter(inv => {
-                 if (!inv.uploadTime) return false;
-                let invDate: Date | null = null;
-                if (inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
-                else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
-                else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime; // Added for Date type
-                return invDate ? invDate <= endDate : false;
-            });
-         }
-         if (filterDocumentType) {
-            filteredData = filteredData.filter(inv => inv.documentType === filterDocumentType);
-         }
-
-
-         if (sortKey) {
-             filteredData.sort((a, b) => {
-                 const valA = a[sortKey as keyof InvoiceHistoryItem];
-                 const valB = b[sortKey as keyof InvoiceHistoryItem];
-                 let comparison = 0;
-                 if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate' || sortKey === 'invoiceDate') {
-                    let dateA = 0;
-                    let dateB = 0;
-                    if (valA) dateA = (valA instanceof Timestamp ? valA.toDate() : new Date(valA as string)).getTime();
-                    if (valB) dateB = (valB instanceof Timestamp ? valB.toDate() : new Date(valB as string)).getTime();
-                    comparison = dateA - dateB;
-                 } else if (typeof valA === 'number' && typeof valB === 'number') {
-                     comparison = valA - valB;
-                 } else if (typeof valA === 'string' && typeof valB === 'string') {
-                     comparison = (valA || "").localeCompare(valB || "", locale);
-                 } else {
-                    if (valA == null && valB != null) comparison = 1;
-                    else if (valA != null && valB == null) comparison = -1;
-                    else comparison = 0;
-                 }
-                 return sortDirection === 'asc' ? comparison : comparison * -1;
-             });
-         }
-        setInvoices(filteredData);
-      } catch (error) {
-        console.error("Failed to fetch invoices:", error);
-        toast({
-          title: t('invoices_toast_error_fetch_invoices_title'),
-          description: t('invoices_toast_error_fetch_invoices_desc'),
-          variant: "destructive",
-        });
-        setInvoices([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }, [filterSupplier, filterScanStatus, filterPaymentStatus, dateRange, toast, sortKey, sortDirection, t, user, filterDocumentType, locale]);
-
-  useEffect(() => {
-    if(user?.id) {
-     fetchInvoices();
-     fetchSuppliers();
-    }
-   }, [fetchInvoices, fetchSuppliers, user]);
-
-
-  const handleSort = (key: SortKey) => {
-    if (!key) return;
-    if (sortKey === key) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDirection('asc');
-    }
-    setCurrentScannedDocsPage(1);
+  const defaultScannedColumns: Record<string, boolean> = {
+    selection: true, actions: true, originalFileName: true, uploadTime: true, status: true, invoiceNumber: true, supplierName: true, totalAmount: true, paymentStatus: true, paymentDueDate: true,
+  };
+  const defaultPaidColumns: Record<string, boolean> = {
+    selection: true, actions: true, originalFileName: true, invoiceDate: true, supplierName: true, totalAmount: true, paymentMethod: true,
   };
 
-   const filteredAndSortedInvoices = useMemo(() => {
-    let result = [...invoices];
-    if (searchTerm) {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      result = result.filter(item =>
-        (item.originalFileName || '').toLowerCase().includes(lowerSearchTerm) ||
-        (item.invoiceNumber && item.invoiceNumber.toLowerCase().includes(lowerSearchTerm)) ||
-        (item.supplierName && item.supplierName.toLowerCase().includes(lowerSearchTerm))
-      );
-    }
-    return result;
-  }, [invoices, searchTerm]);
+  const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
+  const [visibleColumnsPaid, setVisibleColumnsPaid] = useState(defaultPaidColumns);
 
-  const totalScannedDocs = filteredAndSortedInvoices.length;
-  const totalScannedDocsPages = Math.ceil(totalScannedDocs / ITEMS_PER_PAGE_SCANNED_DOCS);
-  const displayedScannedInvoices = useMemo(() => {
-    const startIndex = (currentScannedDocsPage - 1) * ITEMS_PER_PAGE_SCANNED_DOCS;
-    return filteredAndSortedInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE_SCANNED_DOCS);
-  }, [filteredAndSortedInvoices, currentScannedDocsPage]);
-
-  const handleScannedDocsPageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalScannedDocsPages) {
-        setCurrentScannedDocsPage(newPage);
-    }
-  };
-
-
-   const columnDefinitions: { key: keyof InvoiceHistoryItem | 'actions' | 'selection'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+  const scannedDocsColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
       { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
       { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
-      { key: 'id', labelKey: 'inventory_col_id', sortable: true, className: "hidden" },
       { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
       { key: 'uploadTime', labelKey: 'upload_history_col_upload_time', sortable: true, className: 'min-w-[130px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'status', labelKey: 'upload_history_col_status', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]' },
@@ -363,24 +234,183 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
       { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
       { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
       { key: 'errorMessage', labelKey: 'invoice_details_error_message_label', sortable: false, className: 'text-xs text-destructive max-w-xs truncate hidden' },
-      { key: 'originalImagePreviewUri', labelKey: 'invoices_col_preview_uri', sortable: false, className: 'hidden' },
-      { key: 'compressedImageForFinalRecordUri', labelKey: 'invoices_col_compressed_uri', sortable: false, className: 'hidden' },
-      { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, className: 'hidden' },
-      { key: 'documentType', labelKey: 'invoices_document_type_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-      { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-      { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
-      { key: 'linkedDeliveryNoteId', labelKey: 'invoices_linked_delivery_note_id_label', sortable: false, className: 'hidden' },
-      { key: 'rawScanResultJson', labelKey: 'invoices_raw_scan_result_label', sortable: false, className: 'hidden' },
-      { key: '_displayContext', labelKey: 'invoices_display_context_label', sortable: false, className: 'hidden' },
    ];
+  const paidInvoicesColumnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[] = [
+      { key: 'selection', labelKey: 'invoice_export_select_column_header', sortable: false, className: 'w-[3%] sm:w-[3%] text-center px-1 sticky left-0 bg-card z-20' },
+      { key: 'actions', labelKey: 'edit_invoice_th_actions', sortable: false, className: 'w-[5%] sm:w-[5%] text-center px-1 sm:px-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' },
+      { key: 'originalFileName', labelKey: 'upload_history_col_file_name', sortable: true, className: 'w-[20%] sm:w-[25%] min-w-[80px] sm:min-w-[100px] truncate' },
+      { key: 'invoiceDate', labelKey: 'invoice_details_invoice_date_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'supplierName', labelKey: 'invoice_details_supplier_label', sortable: true, className: 'min-w-[120px] sm:min-w-[150px]', mobileHidden: true },
+      { key: 'totalAmount', labelKey: 'invoices_col_total_currency', sortable: true, className: 'text-right min-w-[100px] sm:min-w-[120px]' },
+      { key: 'paymentMethod', labelKey: 'invoice_details_payment_method_label', sortable: true, className: 'min-w-[100px] sm:min-w-[120px]', mobileHidden: true },
+      { key: 'paymentReceiptImageUri', labelKey: 'paid_invoices_receipt_image_label', sortable: false, mobileHidden: true },
+  ];
 
-    const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns] && h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentStatus' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod' && h.key !== 'selection' && h.key !== 'linkedDeliveryNoteId' && h.key !== 'rawScanResultJson' && h.key !== '_displayContext');
+  const toggleColumnVisibility = (key: string) => {
+    if (activeTab === 'scanned-docs') {
+        setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
+    } else {
+        setVisibleColumnsPaid(prev => ({ ...prev, [key]: !prev[key] }));
+    }
+  };
 
-   const toggleColumnVisibility = (key: keyof InvoiceHistoryItem | 'actions' | 'selection') => {
-       setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
-   };
+  const currentVisibleColumns = useMemo(() => activeTab === 'scanned-docs' ? visibleColumnsScanned : visibleColumnsPaid, [activeTab, visibleColumnsScanned, visibleColumnsPaid]);
+  const currentColumnDefinitions = useMemo(() => activeTab === 'scanned-docs' ? scannedDocsColumnDefinitions : paidInvoicesColumnDefinitions, [activeTab, scannedDocsColumnDefinitions, paidInvoicesColumnDefinitions]);
 
-   const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  const fetchUserData = useCallback(async () => {
+    if (!user?.id) {
+        setIsLoading(false);
+        setAllUserInvoices([]);
+        setExistingSuppliers([]);
+        return;
+    }
+    setIsLoading(true);
+    try {
+      const [invoicesData, suppliersData, settingsData] = await Promise.all([
+        getInvoicesService(user.id),
+        getSupplierSummariesService(user.id),
+        getUserSettingsService(user.id)
+      ]);
+      setAllUserInvoices(invoicesData);
+      setExistingSuppliers(suppliersData);
+      if (settingsData?.accountantSettings?.email) {
+        setAccountantEmail(settingsData.accountantSettings.email);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user data for invoices page:", error);
+      toast({
+        title: t('invoices_toast_error_fetch_invoices_title'),
+        description: `${t('invoices_toast_error_fetch_invoices_desc')} (${(error as Error).message})`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, toast, t]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchUserData();
+    }
+    const view = searchParamsHook.get('mobileView') as ViewMode | null;
+    if (view && ['grid', 'list'].includes(view)) {
+        setViewMode(view);
+    } else if (isMobile) {
+        setViewMode('grid');
+    }
+  }, [user, fetchUserData, searchParamsHook, isMobile]);
+
+
+  const handleSortInternal = (key: SortKey) => {
+    if (!key) return;
+    if (sortKey === key) {
+        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+        setSortKey(key);
+        setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const filteredInvoices = useMemo(() => {
+    let result = allUserInvoices.filter(inv => 
+        (activeTab === 'scanned-docs' && inv.paymentStatus !== 'paid') ||
+        (activeTab === 'paid-invoices' && inv.paymentStatus === 'paid')
+    );
+
+    if (filterDocumentType) {
+        result = result.filter(inv => inv.documentType === filterDocumentType);
+    }
+    if (filterSupplier) {
+        result = result.filter(inv => inv.supplierName === filterSupplier);
+    }
+    if (filterScanStatus && activeTab === 'scanned-docs') {
+        result = result.filter(inv => inv.status === filterScanStatus);
+    }
+    if (filterPaymentStatus && activeTab === 'scanned-docs') {
+        result = result.filter(inv => inv.paymentStatus === filterPaymentStatus);
+    }
+    if (dateRange?.from) {
+        const startDate = new Date(dateRange.from);
+        startDate.setHours(0, 0, 0, 0);
+        result = result.filter(inv => {
+            if (!inv.uploadTime) return false;
+            let invDate: Date | null = null;
+            if (inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
+            else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+            else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
+            return invDate ? invDate >= startDate : false;
+        });
+    }
+    if (dateRange?.to) {
+        const endDate = new Date(dateRange.to);
+        endDate.setHours(23, 59, 59, 999);
+        result = result.filter(inv => {
+            if (!inv.uploadTime) return false;
+            let invDate: Date | null = null;
+            if (inv.uploadTime instanceof Timestamp) invDate = inv.uploadTime.toDate();
+            else if (typeof inv.uploadTime === 'string' && isValid(parseISO(inv.uploadTime))) invDate = parseISO(inv.uploadTime);
+            else if (inv.uploadTime instanceof Date && isValid(inv.uploadTime)) invDate = inv.uploadTime;
+            return invDate ? invDate <= endDate : false;
+        });
+    }
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      result = result.filter(item =>
+        (item.originalFileName || '').toLowerCase().includes(lowerSearchTerm) ||
+        (item.invoiceNumber && item.invoiceNumber.toLowerCase().includes(lowerSearchTerm)) ||
+        (item.supplierName && item.supplierName.toLowerCase().includes(lowerSearchTerm))
+      );
+    }
+
+    if (sortKey) {
+         result.sort((a, b) => {
+             const valA = a[sortKey as keyof InvoiceHistoryItem];
+             const valB = b[sortKey as keyof InvoiceHistoryItem];
+             let comparison = 0;
+             if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate' || sortKey === 'invoiceDate') {
+                let dateA = 0;
+                let dateB = 0;
+                if (valA) dateA = (valA instanceof Timestamp ? valA.toDate() : (typeof valA === 'string' ? parseISO(valA) : valA as Date)).getTime();
+                if (valB) dateB = (valB instanceof Timestamp ? valB.toDate() : (typeof valB === 'string' ? parseISO(valB) : valB as Date)).getTime();
+                comparison = dateA - dateB;
+             } else if (typeof valA === 'number' && typeof valB === 'number') {
+                 comparison = valA - valB;
+             } else if (typeof valA === 'string' && typeof valB === 'string') {
+                 comparison = (valA || "").localeCompare(valB || "", locale);
+             } else {
+                if (valA == null && valB != null) comparison = 1;
+                else if (valA != null && valB == null) comparison = -1;
+                else comparison = 0;
+             }
+             return sortDirection === 'asc' ? comparison : comparison * -1;
+         });
+     }
+    return result;
+  }, [allUserInvoices, activeTab, filterDocumentType, filterSupplier, filterScanStatus, filterPaymentStatus, dateRange, searchTerm, sortKey, sortDirection, locale]);
+
+  const totalItems = filteredInvoices.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+
+  const paginatedInvoices = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredInvoices, currentPage]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
+    }
+  };
+
+   const handleViewDetails = (invoice: InvoiceHistoryItem) => {
     if (invoice) {
         const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: 'full_details'};
         setSelectedInvoiceDetails(detailsToSet);
@@ -410,10 +440,10 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
           title: idsToDelete.length > 1 ? t('invoices_toast_bulk_deleted_title') : t('invoices_toast_deleted_title'),
           description: idsToDelete.length > 1 ? t('invoices_toast_bulk_deleted_desc', { count: idsToDelete.length }) : t('invoices_toast_deleted_desc'),
       });
-      fetchInvoices();
+      fetchUserData();
       setShowDetailsSheet(false);
       setSelectedInvoiceDetails(null);
-      setSelectedForBulkDelete([]);
+      setSelectedForBulkAction([]);
     } catch (error) {
       console.error("Failed to delete invoice(s):", error);
       toast({
@@ -458,10 +488,10 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
         const refreshedInvoice = await getInvoicesService(user.id).then(all => all.find(inv => inv.id === selectedInvoiceDetails!.id));
         if (refreshedInvoice) {
             setSelectedInvoiceDetails(refreshedInvoice);
-             fetchInvoices();
+            fetchUserData();
         } else {
            setShowDetailsSheet(false);
-           fetchInvoices();
+           fetchUserData();
         }
 
     } catch (error) {
@@ -484,11 +514,11 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
         setInvoiceForReceiptUpload(selectedInvoiceDetails);
         setShowReceiptUploadDialog(true);
     } else {
-        const originalInvoice = invoices.find(inv => inv.id === invoiceId);
+        const originalInvoice = allUserInvoices.find(inv => inv.id === invoiceId);
         if (!originalInvoice) return;
 
         setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : null);
-        setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : inv));
+        setAllUserInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: newStatus, paymentReceiptImageUri: undefined } : inv));
 
         try {
             await updateInvoicePaymentStatusService(invoiceId, newStatus, user.id, undefined);
@@ -496,11 +526,11 @@ const ScannedDocsView = ({ filterDocumentType }: { filterDocumentType: 'delivery
                 title: t('toast_invoice_payment_status_updated_title'),
                 description: t('toast_invoice_payment_status_updated_desc', { fileName: originalInvoice.originalFileName || '', status: t(`invoice_payment_status_${newStatus}` as any) || newStatus }),
             });
-            fetchInvoices();
+            fetchUserData();
         } catch (error) {
             console.error("Failed to update payment status:", error);
             setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : null);
-            setInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : inv));
+            setAllUserInvoices(prevInvoices => prevInvoices.map(inv => inv.id === invoiceId ? {...inv, paymentStatus: originalInvoice.paymentStatus, paymentReceiptImageUri: originalInvoice.paymentReceiptImageUri } : inv));
             toast({
                 title: t('toast_invoice_payment_status_update_fail_title'),
                 description: t('toast_invoice_payment_status_update_fail_desc'),
@@ -522,7 +552,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
         });
         setShowReceiptUploadDialog(false);
         setInvoiceForReceiptUpload(null);
-        fetchInvoices();
+        fetchUserData();
         if (selectedInvoiceDetails && selectedInvoiceDetails.id === invoiceId) {
              setSelectedInvoiceDetails(prev => prev ? {...prev, paymentStatus: 'paid', paymentReceiptImageUri: receiptImageUriParam } : null);
         }
@@ -536,19 +566,82 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     }
 };
 
-  const handleSelectInvoiceForBulkDelete = (invoiceId: string, checked: boolean) => {
-    setSelectedForBulkDelete(prev =>
+
+  const handleSelectInvoiceForBulkAction = (invoiceId: string, checked: boolean) => {
+    setSelectedForBulkAction(prev =>
       checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
     );
   };
 
-  const handleSelectAllForBulkDelete = (checked: boolean) => {
+  const handleSelectAllForBulkAction = (checked: boolean) => {
     if (checked) {
-      setSelectedForBulkDelete(displayedScannedInvoices.map(inv => inv.id));
+      setSelectedForBulkAction(paginatedInvoices.map(inv => inv.id));
     } else {
-      setSelectedForBulkDelete([]);
+      setSelectedForBulkAction([]);
     }
   };
+
+  const handleOpenExportDialog = async () => {
+    if (selectedForBulkAction.length === 0) {
+      toast({
+        title: t('invoice_export_error_no_selection_title'),
+        description: t('invoice_export_error_no_selection_desc'),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (user?.id) {
+        const settings = await getUserSettingsService(user.id);
+        if (settings && settings.accountantSettings?.email) {
+            setAccountantEmail(settings.accountantSettings.email);
+        } else {
+            setAccountantEmail('');
+            toast({
+                title: t('settings_accountant_toast_email_required_title'),
+                description: t('settings_accountant_toast_email_required_desc_export'),
+                variant: "warning"
+            })
+        }
+    }
+    setShowExportDialog(true);
+  };
+
+ const handleExportSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user?.id) {
+        toast({ title: t("settings_login_required"), variant: "destructive" });
+        return;
+    }
+    if (!accountantEmail.trim()) {
+        toast({ title: t('invoice_export_error_invalid_email_title'), description: t('invoice_export_error_invalid_email_desc'), variant: "destructive" });
+        return;
+    }
+     if (accountantEmail.trim() && !/\S+@\S+\.\S+/.test(accountantEmail)) {
+        toast({
+            title: t('error_title'),
+            description: t('settings_accountant_toast_invalid_email_desc'),
+            variant: "destructive",
+        });
+        return;
+    }
+
+    setIsExporting(true);
+    try {
+        const result = await generateAndEmailInvoicesAction(selectedForBulkAction, accountantEmail, emailNote, user.id);
+        if (result.success) {
+            toast({ title: t('invoice_export_success_title'), description: result.message });
+            setShowExportDialog(false);
+            setSelectedForBulkAction([]);
+            setEmailNote('');
+        } else {
+            toast({ title: t('invoice_export_error_title'), description: result.message, variant: "destructive" });
+        }
+    } catch (error: any) {
+        toast({ title: t('invoice_export_error_unexpected_title'), description: t('invoice_export_error_unexpected_desc', { message: error.message }), variant: "destructive"});
+    } finally {
+        setIsExporting(false);
+    }
+ };
 
   const handleViewImage = (invoice: InvoiceHistoryItem) => {
     const detailsToSet: InvoiceHistoryItem = {...invoice, _displayContext: 'image_only'};
@@ -556,7 +649,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     setShowDetailsSheet(true);
   };
 
-  if (authLoading || (isLoading && !user)) {
+
+   if (authLoading || (isLoading && !user)) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -568,787 +662,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     return null;
    }
 
-   const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment') => {
-     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
-     let className = '';
-     let icon = null;
-     let labelKey = '';
-
-     if (type === 'scan') {
-        switch (status as InvoiceHistoryItem['status']) {
-            case 'completed':
-                variant = 'secondary';
-                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-                icon = <CheckCircle className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_status_completed';
-                break;
-            case 'processing':
-                variant = 'secondary';
-                className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80';
-                icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />;
-                labelKey = 'invoice_status_processing';
-                break;
-            case 'pending':
-                variant = 'secondary';
-                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
-                icon = <Clock className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_status_pending';
-                break;
-            case 'error':
-                variant = 'destructive';
-                icon = <XCircle className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_status_error';
-                break;
-            default:
-                variant = 'outline';
-                icon = null;
-                labelKey = String(status);
-                break;
-        }
-     } else if (type === 'payment') {
-         switch (status as InvoiceHistoryItem['paymentStatus']) {
-            case 'paid':
-                variant = 'secondary';
-                className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80';
-                icon = <CreditCard className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_payment_status_paid';
-                break;
-            case 'unpaid':
-                variant = 'secondary';
-                className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80';
-                icon = <CreditCard className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_payment_status_unpaid';
-                break;
-            case 'pending_payment':
-                variant = 'secondary';
-                className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80';
-                icon = <Clock className="mr-1 h-3 w-3" />;
-                labelKey = 'invoice_payment_status_pending_payment';
-                break;
-            default:
-                variant = 'outline';
-                icon = null;
-                labelKey = String(status);
-         }
-     }
-     return (
-        <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
-            {icon}
-            {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
-        </Badge>
-     );
-  };
-
-
-   return (
-     <>
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6 flex-wrap">
-            <div className="relative w-full md:max-w-xs lg:max-w-sm">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                 <Input
-                   placeholder={t('inventory_search_placeholder')}
-                   value={searchTerm}
-                   onChange={(e) => {setSearchTerm(e.target.value); setCurrentScannedDocsPage(1);}}
-                   className="pl-10"
-                   aria-label={t('invoices_search_aria')}
-                 />
-            </div>
-            <Button variant="outline" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className="flex-1 md:flex-initial">
-                 <Filter className="mr-2 h-4 w-4" />
-                 {t('invoices_filter_button_label')}
-                 <ChevronDown className={cn("ml-auto md:ml-2 h-4 w-4 transition-transform", showAdvancedFilters && "rotate-180")} />
-            </Button>
-            <div className="flex gap-2 flex-wrap justify-start md:justify-end">
-                {viewMode === 'list' && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                        <Button ref={dropdownTriggerRef} variant="outline" className="flex-1 md:flex-initial touch-manipulation" aria-label={t('invoices_view_aria')} >
-                            <Eye className="mr-2 h-4 w-4" /> {t('inventory_view_button')}
-                            <ChevronDown className="ml-auto md:ml-2 h-4 w-4" />
-                        </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {columnDefinitions.filter(h => h.key !== 'id' && h.key !== 'errorMessage' && h.key !== 'originalImagePreviewUri' && h.key !== 'actions' && h.key !== 'compressedImageForFinalRecordUri' && h.key !== 'paymentReceiptImageUri' && h.key !== 'paymentStatus' && h.key !== 'selection' && h.key !== 'documentType' && h.key !== 'invoiceDate' && h.key !== 'paymentMethod').map((header) => (
-                            <DropdownMenuCheckboxItem
-                            key={header.key}
-                            className="capitalize"
-                            checked={visibleColumns[header.key as keyof typeof visibleColumns]}
-                            onCheckedChange={() => toggleColumnVisibility(header.key as keyof typeof visibleColumns)}
-                            >
-                            {t(header.labelKey as any)}
-                            </DropdownMenuCheckboxItem>
-                        ))}
-                        <DropdownMenuCheckboxItem
-                            key="errorMessage"
-                            className="capitalize"
-                            checked={visibleColumns.errorMessage}
-                            onCheckedChange={() => toggleColumnVisibility('errorMessage')}
-                            >
-                            {t(columnDefinitions.find(h => h.key === 'errorMessage')?.labelKey as any) || 'Error Message'}
-                        </DropdownMenuCheckboxItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-                <Button
-                    variant="outline"
-                    onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
-                    className="flex-1 md:flex-initial"
-                    aria-label={t('invoices_toggle_view_mode_aria')}
-                    >
-                    {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
-                    {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
-                </Button>
-                 {selectedForBulkDelete.length > 0 && (
-                     <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" className="flex-1 md:flex-initial">
-                                <Trash2 className="mr-2 h-4 w-4"/>
-                                {t('invoices_bulk_delete_button', {count: selectedForBulkDelete.length})}
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContentComponent>
-                            <AlertDialogHeaderComponent>
-                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
-                                <AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', {fileName: `${selectedForBulkDelete.length} documents`})}</AlertDialogDescriptionComponent>
-                            </AlertDialogHeaderComponent>
-                            <AlertDialogFooterComponent>
-                                <AlertDialogCancel>{t('cancel_button')}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteInvoice(selectedForBulkDelete)} className={buttonVariants({variant: "destructive"})}>
-                                    {t('invoices_delete_confirm_action')}
-                                </AlertDialogAction>
-                            </AlertDialogFooterComponent>
-                        </AlertDialogContentComponent>
-                     </AlertDialog>
-                 )}
-            </div>
-        </div>
-
-        {showAdvancedFilters && (
-            <div className="mb-4 flex flex-wrap items-center gap-2 p-3 border rounded-md bg-muted/50 animate-in fade-in-0 duration-300">
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button
-                            variant="outline"
-                            className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"
-                        >
-                            <CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {dateRange?.from ? (
-                                dateRange.to ? `${format(dateRange.from, "PP")} - ${format(dateRange.to, "PP")}` : format(dateRange.from, "PP")
-                            ) : (
-                                t('reports_date_range_placeholder')
-                            )}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar initialFocus mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={1} />
-                        {dateRange && (
-                            <div className="p-2 border-t flex justify-end">
-                                <Button variant="ghost" size="sm" onClick={() => setDateRange(undefined)}>{t('reports_date_range_clear')}</Button>
-                            </div>
-                        )}
-                    </PopoverContent>
-                </Popover>
-
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <Briefcase className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {existingSuppliers.find(s => s.id === filterSupplier)?.name || t('invoices_filter_supplier_all')}
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>
-                            {t('invoices_filter_supplier_all')}
-                        </DropdownMenuCheckboxItem>
-                        {existingSuppliers.map((supplier) => (
-                            <DropdownMenuCheckboxItem
-                                key={supplier.id}
-                                checked={filterSupplier === supplier.id}
-                                onCheckedChange={() => setFilterSupplier(supplier.id)}
-                            >
-                                {supplier.name}
-                            </DropdownMenuCheckboxItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <ListChecks className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {filterScanStatus ? t(`invoice_status_${filterScanStatus}` as any) : t('invoices_filter_status_all')}
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem checked={!filterScanStatus} onCheckedChange={() => setFilterScanStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>
-                        {(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (
-                            <DropdownMenuCheckboxItem
-                                key={status}
-                                checked={filterScanStatus === status}
-                                onCheckedChange={() => setFilterScanStatus(status)}
-                            >
-                                {t(`invoice_status_${status}` as any)}
-                            </DropdownMenuCheckboxItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <CreditCard className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {filterPaymentStatus ? t(`invoice_payment_status_${filterPaymentStatus}` as any) : t('invoices_filter_payment_status_all')}
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>
-                        {(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (
-                            <DropdownMenuCheckboxItem
-                                key={pStatus}
-                                checked={filterPaymentStatus === pStatus}
-                                onCheckedChange={() => setFilterPaymentStatus(pStatus)}
-                            >
-                                {t(`invoice_payment_status_${pStatus}` as any)}
-                            </DropdownMenuCheckboxItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-        )}
-
-
-        {viewMode === 'list' ? (
-          <div className="overflow-x-auto relative">
-            <Table className="min-w-[600px]">
-              <TableHeader>
-                <TableRow>
-                  {visibleColumnHeaders.map((header) => (
-                    <TableHead
-                      key={header.key}
-                      className={cn(
-                          header.className,
-                          header.sortable && "cursor-pointer hover:bg-muted/50",
-                          header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell',
-                          'px-2 sm:px-4 py-2',
-                           header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : '')
-                      )}
-                      onClick={() => header.sortable && handleSort(header.key as SortKey)}
-                      aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
-                    >
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                         {header.key === 'selection' ? (
-                              <Checkbox
-                                  checked={selectedForBulkDelete.length > 0 && selectedForBulkDelete.length === displayedScannedInvoices.length && displayedScannedInvoices.length > 0}
-                                  onCheckedChange={(checked) => handleSelectAllForBulkDelete(!!checked)}
-                                  aria-label={t('invoice_export_select_all_aria')}
-                                  className="mx-auto"
-                              />
-                         ) : (
-                          t(header.labelKey as any, { currency_symbol: t('currency_symbol') })
-                         )}
-                         {header.sortable && sortKey === header.key && (
-                            <span className="text-xs" aria-hidden="true">
-                               {sortDirection === 'asc' ? '▲' : '▼'}
-                            </span>
-                         )}
-                      </div>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                      <div className="flex justify-center items-center">
-                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                         <span className="ml-2">{t('invoices_loading')}</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : displayedScannedInvoices.length === 0 ? (
-                  <TableRow>
-                     <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center px-2 sm:px-4 py-2">
-                       {t('invoices_no_invoices_found')}
-                     </TableCell>
-                  </TableRow>
-                ) : (
-                  displayedScannedInvoices.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                        {visibleColumns.selection && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", columnDefinitions.find(h => h.key === 'selection')?.className)}>
-                              <Checkbox
-                                checked={selectedForBulkDelete.includes(item.id)}
-                                onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
-                                aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})}
-                              />
-                           </TableCell>
-                        )}
-                        {visibleColumns.actions && (
-                           <TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", columnDefinitions.find(h => h.key === 'actions')?.className)}>
-                               <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   className="text-primary hover:text-primary/80 h-7 w-7"
-                                   onClick={() => handleViewDetails(item)}
-                                   title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })}
-                                   aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}
-                               >
-                                   <Info className="h-4 w-4" />
-                               </Button>
-                           </TableCell>
-                       )}
-                       {visibleColumns.originalFileName && (
-                          <TableCell className={cn("font-medium px-2 sm:px-4 py-2", columnDefinitions.find(h => h.key === 'originalFileName')?.className)}>
-                             <Button
-                                variant="link"
-                                className="p-0 h-auto text-left font-medium cursor-pointer hover:underline truncate"
-                                onClick={() => handleViewImage(item)}
-                                title={t('upload_history_view_image_title', {fileName: item.originalFileName || item.generatedFileName || ''})}
-                              >
-                                {(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) && <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
-                                {item.generatedFileName || item.originalFileName}
-                            </Button>
-                          </TableCell>
-                       )}
-                       {visibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
-                       {visibleColumns.status && (
-                         <TableCell className="px-2 sm:px-4 py-2">
-                            {renderStatusBadge(item.status, 'scan')}
-                         </TableCell>
-                       )}
-                       {visibleColumns.paymentStatus && (
-                         <TableCell className="px-2 sm:px-4 py-2">
-                            {renderStatusBadge(item.paymentStatus, 'payment')}
-                         </TableCell>
-                       )}
-                       {visibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, locale, t) : t('invoices_na')}</TableCell>}
-                       {visibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
-                       {visibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
-                       {visibleColumns.totalAmount && (
-                         <TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">
-                            {item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}
-                         </TableCell>
-                       )}
-                       {visibleColumns.errorMessage && (
-                         <TableCell className={cn('px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'errorMessage')?.className)}>
-                             {item.status === 'error' ? item.errorMessage : t('invoices_na')}
-                         </TableCell>
-                       )}
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-             {totalScannedDocsPages > 1 && (
-                <div className="flex items-center justify-end space-x-2 py-4">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleScannedDocsPageChange(currentScannedDocsPage - 1)}
-                        disabled={currentScannedDocsPage === 1}
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                        <span className="sr-only">{t('inventory_pagination_previous')}</span>
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                        {t('inventory_pagination_page_info_simple', { currentPage: currentScannedDocsPage, totalPages: totalScannedDocsPages})}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)}
-                        disabled={currentScannedDocsPage === totalScannedDocsPages}
-                    >
-                         <span className="sr-only">{t('inventory_pagination_next')}</span>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
-            {isLoading ? (
-               Array.from({ length: ITEMS_PER_PAGE_SCANNED_DOCS }).map((_, index) => (
-                  <Card key={index} className="animate-pulse">
-                      <CardHeader className="h-32 bg-muted rounded-t-lg" />
-                      <CardContent className="p-4 space-y-2">
-                          <div className="h-4 bg-muted rounded w-3/4" />
-                          <div className="h-3 bg-muted rounded w-1/2" />
-                          <div className="h-3 bg-muted rounded w-1/4" />
-                      </CardContent>
-                  </Card>
-               ))
-            ) : displayedScannedInvoices.length === 0 ? (
-              <p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>
-            ) : (
-              displayedScannedInvoices.map((item) => (
-                <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
-                   <div className="p-2 absolute top-0 left-0 z-10">
-                       <Checkbox
-                          checked={selectedForBulkDelete.includes(item.id)}
-                          onCheckedChange={(checked) => handleSelectInvoiceForBulkDelete(item.id, !!checked)}
-                          aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})}
-                          className="bg-background/70 hover:bg-background border-primary"
-                      />
-                  </div>
-                  <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
-                    {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (
-                      <NextImage
-                        src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!}
-                        alt={t('invoices_preview_alt', { fileName: item.originalFileName || '' })}
-                        layout="fill"
-                        objectFit="cover"
-                        className="rounded-t-lg"
-                        data-ai-hint="invoice document"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">
-                        {item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}
-                      </div>
-                    )}
-                     <div className="absolute top-2 right-2 flex flex-col gap-1">
-                        {renderStatusBadge(item.status, 'scan')}
-                        {renderStatusBadge(item.paymentStatus, 'payment')}
-                     </div>
-                  </CardHeader>
-                  <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}>
-                    <CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>
-                       {item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }
-                      {item.generatedFileName || item.originalFileName}
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">{formatDateForDisplay(item.uploadTime, locale, t)}</p>
-                     {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
-                     {item.invoiceNumber && <p className="text-xs text-muted-foreground">{t('invoice_details_invoice_number_label')}: {item.invoiceNumber}</p>}
-                     {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
-                     {item.status === 'error' && item.errorMessage && (
-                         <p className="text-xs text-destructive truncate" title={item.errorMessage}>{t('invoice_status_error')}: {item.errorMessage.substring(0,30)}...</p>
-                     )}
-                  </CardContent>
-                   <CardFooter className="p-3 border-t">
-                      <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}>
-                          <Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}
-                      </Button>
-                      {(item.status === 'pending' || item.status === 'error') && user && user.id && item.id && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start text-xs text-amber-600 hover:text-amber-700"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!item.id) {
-                                toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"});
-                                return;
-                            }
-                            const queryParams = new URLSearchParams({
-                                tempInvoiceId: item.id,
-                                docType: item.documentType,
-                                originalFileName: encodeURIComponent(item.originalFileName || 'unknown_doc'),
-                            });
-                            router.push(`/edit-invoice?${queryParams.toString()}`);
-                          }}
-                        >
-                          <Edit className="mr-1.5 h-3.5 w-3.5" /> {t('edit_button')}
-                        </Button>
-                      )}
-                   </CardFooter>
-                </Card>
-              ))
-            )}
-          </div>
-        )}
-         {viewMode === 'grid' && totalScannedDocsPages > 1 && (
-            <div className="flex items-center justify-end space-x-2 py-4 mt-4">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleScannedDocsPageChange(currentScannedDocsPage - 1)}
-                    disabled={currentScannedDocsPage === 1}
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                    <span className="sr-only">{t('inventory_pagination_previous')}</span>
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                    {t('inventory_pagination_page_info_simple', { currentPage: currentScannedDocsPage, totalPages: totalScannedDocsPages})}
-                </span>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleScannedDocsPageChange(currentScannedDocsPage + 1)}
-                    disabled={currentScannedDocsPage === totalScannedDocsPages}
-                >
-                     <span className="sr-only">{t('inventory_pagination_next')}</span>
-                    <ChevronRight className="h-4 w-4" />
-                </Button>
-            </div>
-        )}
-      <Sheet open={showDetailsSheet} onOpenChange={(open) => {
-          setShowDetailsSheet(open);
-          if (!open) {
-            setIsEditingDetails(false);
-            setSelectedInvoiceDetails(null);
-          }
-      }}>
-        <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
-          <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
-             <SheetTitle className="flex items-center text-lg sm:text-xl">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
-             <SheetDescription className="text-xs sm:text-sm">
-                {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || '' })}
-             </SheetDescription>
-          </SheetHeader>
-          {selectedInvoiceDetails && (
-            <ScrollArea className="flex-grow p-0">
-              <div className="p-4 sm:p-6 space-y-4">
-              {isEditingDetails ? (
-                <div className="space-y-3">
-                    <div>
-                        <Label htmlFor="editFileName">{t('invoice_details_file_name_label')}</Label>
-                        <Input id="editFileName" value={editedInvoiceData.originalFileName || ''} onChange={(e) => handleEditDetailsInputChange('originalFileName', e.target.value)} disabled={isSavingDetails}/>
-                    </div>
-                     <div>
-                        <Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label>
-                         <Select
-                            value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType}
-                            onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice')}
-                            disabled={isSavingDetails}
-                         >
-                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
-                                <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
-                            </SelectContent>
-                         </Select>
-                    </div>
-                    <div>
-                        <Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label>
-                        <Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/>
-                    </div>
-                    <div>
-                        <Label htmlFor="editSupplier">{t('invoice_details_supplier_label')}</Label>
-                        <Input id="editSupplier" value={editedInvoiceData.supplierName || ''} onChange={(e) => handleEditDetailsInputChange('supplierName', e.target.value)} disabled={isSavingDetails}/>
-                    </div>
-                    <div>
-                        <Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label>
-                        <Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/>
-                    </div>
-                    <div>
-                        <Label htmlFor="editInvoiceDate">{t('invoice_details_invoice_date_label')}</Label>
-                        <Input id="editInvoiceDate" type="date" value={editedInvoiceData.invoiceDate ? (editedInvoiceData.invoiceDate instanceof Timestamp ? format(editedInvoiceData.invoiceDate.toDate(), 'yyyy-MM-dd') : format(parseISO(editedInvoiceData.invoiceDate as string), 'yyyy-MM-dd')) : ''} onChange={(e) => handleEditDetailsInputChange('invoiceDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} disabled={isSavingDetails}/>
-                    </div>
-                     <div>
-                        <Label htmlFor="editPaymentMethod">{t('invoice_details_payment_method_label')}</Label>
-                        <Input id="editPaymentMethod" value={editedInvoiceData.paymentMethod || ''} onChange={(e) => handleEditDetailsInputChange('paymentMethod', e.target.value)} disabled={isSavingDetails}/>
-                    </div>
-                    <div>
-                        <Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label>
-                        <Input id="editPaymentDueDate" type="date" value={editedInvoiceData.paymentDueDate ? (editedInvoiceData.paymentDueDate instanceof Timestamp ? format(editedInvoiceData.paymentDueDate.toDate(), 'yyyy-MM-dd') : format(parseISO(editedInvoiceData.paymentDueDate as string), 'yyyy-MM-dd')) : ''} onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? parseISO(e.target.value).toISOString() : undefined)} disabled={isSavingDetails}/>
-                    </div>
-                    {selectedInvoiceDetails.status === 'error' && (
-                        <div>
-                            <Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label>
-                            <Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value as string)} disabled={isSavingDetails}/>
-                        </div>
-                    )}
-                     <div>
-                        <Label>{t('invoice_payment_status_label')}</Label>
-                            <div className="flex gap-2 mt-1">
-                                {(['unpaid', 'pending_payment', 'paid'] as InvoiceHistoryItem['paymentStatus'][]).map(pStatus => (
-                                    <Button
-                                        key={pStatus}
-                                        variant={editedInvoiceData.paymentStatus === pStatus ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => {
-                                             if (pStatus === 'paid' && selectedInvoiceDetails) {
-                                                setInvoiceForReceiptUpload(selectedInvoiceDetails);
-                                                setEditedInvoiceData(prev => ({...prev, paymentStatus: pStatus })); 
-                                                setShowReceiptUploadDialog(true); 
-                                            } else {
-                                               handleEditDetailsInputChange('paymentStatus', pStatus);
-                                            }
-                                        }}
-                                        disabled={isSavingDetails}
-                                    >
-                                      {t(`invoice_payment_status_${pStatus}` as any)}
-                                    </Button>
-                                ))}
-                            </div>
-                     </div>
-
-                </div>
-              ) : (
-                <>
-                 <div className="space-y-2">
-                     <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_document_section_title')}</h3>
-                      <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.generatedFileName || selectedInvoiceDetails.originalFileName}</p>
-                      <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime, locale, t)}</p>
-                      <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
-                       <div className="flex items-center">
-                        <strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan')}
-                      </div>
-                  </div>
-                  <Separator className="my-3"/>
-                   <div className="space-y-2">
-                     <h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_financial_section_title')}</h3>
-                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplierName || t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount, t) : t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDateForDisplay(selectedInvoiceDetails.invoiceDate, locale, t) : t('invoices_na')}</p>
-                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod || t('invoices_na')}</p>
-                      <div className="flex items-center mt-1">
-                        <strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment')}
-                       </div>
-                       {selectedInvoiceDetails.paymentDueDate && (
-                         <p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.paymentDueDate, locale, t)}</p>
-                       )}
-                   </div>
-
-                  {selectedInvoiceDetails.errorMessage && selectedInvoiceDetails.status === 'error' && (
-                    <>
-                    <Separator className="my-3"/>
-                    <div className="space-y-1">
-                      <h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3>
-                      <p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p>
-                    </div>
-                    </>
-                  )}
-                  <Separator className="my-3"/>
-                  <div className="space-y-2">
-                     <h3 className="text-md font-semibold text-primary border-b pb-1">
-                        {selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}
-                     </h3>
-                      {isValidImageSrc(selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)) ? (
-                        <NextImage
-                            src={selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!}
-                            alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })}
-                            width={800}
-                            height={1100}
-                            className="rounded-md object-contain mx-auto"
-                            data-ai-hint="invoice document"
-                        />
-                        ) : (
-                        <div className="text-muted-foreground text-center py-4 flex flex-col items-center">
-                            <ImageIconLucide className="h-10 w-10 mb-2"/>
-                            <p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p>
-                        </div>
-                        )}
-                  </div>
-                </>
-              )}
-              </div>
-            </ScrollArea>
-          )}
-          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
-            {selectedInvoiceDetails && (
-                <>
-                    {isEditingDetails ? (
-                        <>
-                            <Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button>
-                            <Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>
-                                {isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                {isSavingDetails ? t('saving_button') : t('save_changes_button')}
-                            </Button>
-                        </>
-                    ) : (
-                        <Button variant="outline" onClick={() => setIsEditingDetails(true)}>
-                            <Edit className="mr-2 h-4 w-4" /> {t('invoices_edit_details_button')}
-                        </Button>
-                    )}
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isDeleting || isSavingDetails}>
-                                <Trash2 className="mr-2 h-4 w-4" /> {t('invoices_delete_button')}
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContentComponent>
-                            <AlertDialogHeaderComponent>
-                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
-                                <AlertDialogDescriptionComponent>
-                                    {t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails.originalFileName || '' })}
-                                </AlertDialogDescriptionComponent>
-                            </AlertDialogHeaderComponent>
-                            <AlertDialogFooterComponent>
-                                <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => selectedInvoiceDetails && handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    {t('invoices_delete_confirm_action')}
-                                </AlertDialogAction>
-                            </AlertDialogFooterComponent>
-                        </AlertDialogContentComponent>
-                    </AlertDialog>
-                     {selectedInvoiceDetails.paymentStatus !== 'paid' && ( 
-                         <Button
-                            variant="outline"
-                            onClick={() => {
-                                if(selectedInvoiceDetails) {
-                                    setInvoiceForReceiptUpload(selectedInvoiceDetails);
-                                    setShowReceiptUploadDialog(true);
-                                }
-                            }}
-                         >
-                           <Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_mark_as_paid_button')}
-                         </Button>
-                     )}
-                </>
-            )}
-            <SheetClose asChild>
-                 <Button variant="outline" className="sm:ml-auto">{t('invoices_close_button')}</Button>
-            </SheetClose>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-        {showReceiptUploadDialog && invoiceForReceiptUpload && (
-            <PaymentReceiptUploadDialog
-                isOpen={showReceiptUploadDialog}
-                onOpenChange={(isOpen) => {
-                    setShowReceiptUploadDialog(isOpen);
-                    if (!isOpen) setInvoiceForReceiptUpload(null);
-                }}
-                invoiceFileName={invoiceForReceiptUpload.originalFileName || ''}
-                onConfirmUpload={async (receiptUri) => {
-                    if(selectedInvoiceDetails && editedInvoiceData.paymentStatus === 'paid' && isEditingDetails){
-                        await handleConfirmReceiptUpload(receiptUri); 
-                        setEditedInvoiceData(prev => ({...prev, paymentReceiptImageUri: receiptUri })); 
-                    } else if (selectedInvoiceDetails){
-                        await handleConfirmReceiptUpload(receiptUri);
-                    }
-                }}
-            />
-        )}
-    </>
-   );
-};
-
-
-export default function DocumentsPage() {
-  const { t } = useTranslation();
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const [filterDocumentType, setFilterDocumentType] = useState<'deliveryNote' | 'invoice' | ''>('');
-
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
-
-  if (authLoading || !user) {
-    return (
-      <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
@@ -1362,11 +675,20 @@ export default function DocumentsPage() {
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
         <CardContent>
-         <div className="mb-4">
-            <DropdownMenu>
+         <div className="mb-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+             <Input
+                placeholder={t('inventory_search_placeholder')}
+                value={searchTerm}
+                onChange={(e) => {setSearchTerm(e.target.value); setCurrentPage(1);}}
+                className="pl-10 h-10 w-full sm:max-w-xs"
+                aria-label={t('invoices_search_aria')}
+             />
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground sm:relative sm:left-auto sm:top-auto sm:translate-y-0 sm:-ml-8" />
+            
+             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-auto">
-                        <Filter className="mr-2 h-4 w-4" />
+                    <Button variant="outline" className="w-full sm:w-auto h-10">
+                        <ListChecks className="mr-2 h-4 w-4" />
                         {filterDocumentType === 'deliveryNote' ? t('upload_doc_type_delivery_note') :
                          filterDocumentType === 'invoice' ? t('upload_doc_type_invoice') :
                          t('invoices_filter_doc_type_all')}
@@ -1376,41 +698,386 @@ export default function DocumentsPage() {
                 <DropdownMenuContent align="start">
                     <DropdownMenuLabel>{t('invoices_filter_doc_type_label')}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuCheckboxItem
-                        checked={filterDocumentType === ''}
-                        onCheckedChange={() => setFilterDocumentType('')}
-                    >
-                        {t('invoices_filter_doc_type_all')}
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem
-                        checked={filterDocumentType === 'deliveryNote'}
-                        onCheckedChange={() => setFilterDocumentType('deliveryNote')}
-                    >
-                        {t('upload_doc_type_delivery_note')}
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem
-                        checked={filterDocumentType === 'invoice'}
-                        onCheckedChange={() => setFilterDocumentType('invoice')}
-                    >
-                        {t('upload_doc_type_invoice')}
-                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={filterDocumentType === ''} onCheckedChange={() => setFilterDocumentType('')}>{t('invoices_filter_doc_type_all')}</DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={filterDocumentType === 'deliveryNote'} onCheckedChange={() => setFilterDocumentType('deliveryNote')}>{t('upload_doc_type_delivery_note')}</DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={filterDocumentType === 'invoice'} onCheckedChange={() => setFilterDocumentType('invoice')}>{t('upload_doc_type_invoice')}</DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full sm:w-auto h-10">
+                        <Filter className="mr-2 h-4 w-4" />
+                        {t('invoices_filter_button_label_combined')}
+                        <ChevronDown className="ml-auto h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>{t('invoices_filter_sheet_title')}</DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem
+                        checked={showAdvancedFilters}
+                        onCheckedChange={setShowAdvancedFilters}
+                    >
+                        {showAdvancedFilters ? t('invoices_hide_advanced_filters_label') : t('invoices_show_advanced_filters_label')}
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                            <Eye className="mr-2 h-4 w-4" />
+                            {t('inventory_toggle_columns_label')}
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                            <DropdownMenuSubContent>
+                                <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={header.key}
+                                        className="capitalize"
+                                        checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
+                                        onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
+                                    >
+                                        {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                            </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuSub>
+                </DropdownMenuContent>
+            </DropdownMenu>
+             <Button
+                variant="outline"
+                onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
+                className="w-full sm:w-auto h-10"
+                aria-label={t('invoices_toggle_view_mode_aria')}
+            >
+                {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
+                {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
+            </Button>
           </div>
-          <Tabs defaultValue="scanned-docs" className="w-full">
+
+          {showAdvancedFilters && (
+             <div className="mb-4 flex flex-wrap items-center gap-2 p-3 border rounded-md bg-muted/50 animate-in fade-in-0 duration-300">
+                 <Popover>
+                     <PopoverTrigger asChild>
+                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                             <CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                             {dateRange?.from ? (dateRange.to ? `${format(dateRange.from, "PP", {locale: locale === 'he' ? he : enUS})} - ${format(dateRange.to, "PP", {locale: locale === 'he' ? he : enUS})}` : format(dateRange.from, "PP", {locale: locale === 'he' ? he : enUS})) : (t('reports_date_range_placeholder'))}
+                             {dateRange?.from && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e) => {e.stopPropagation(); setDateRange(undefined);}}><XCircle className="h-3.5 w-3.5"/></Button>}
+                         </Button>
+                     </PopoverTrigger>
+                     <PopoverContent className="w-auto p-0" align="start"><Calendar initialFocus mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={1} /></PopoverContent>
+                 </Popover>
+                 <DropdownMenu>
+                     <DropdownMenuTrigger asChild><Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"><Briefcase className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{existingSuppliers.find(s => s.name === filterSupplier)?.name || t('invoices_filter_supplier_all')}{filterSupplier && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e)=>{e.stopPropagation();setFilterSupplier('')}}><XCircle className="h-3.5 w-3.5"/></Button>}</Button></DropdownMenuTrigger>
+                     <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>{t('invoices_filter_supplier_all')}</DropdownMenuCheckboxItem>{existingSuppliers.map((supplier) => (<DropdownMenuCheckboxItem key={supplier.id} checked={filterSupplier === supplier.name} onCheckedChange={() => setFilterSupplier(supplier.name)}>{supplier.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                 </DropdownMenu>
+                 {activeTab === 'scanned-docs' && (
+                     <>
+                        <DropdownMenu>
+                             <DropdownMenuTrigger asChild><Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"><ListChecks className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{filterScanStatus ? t(`invoice_status_${filterScanStatus}` as any) : t('invoices_filter_status_all')}{filterScanStatus && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e)=>{e.stopPropagation();setFilterScanStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}</Button></DropdownMenuTrigger>
+                             <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterScanStatus} onCheckedChange={() => setFilterScanStatus('')}>{t('invoices_filter_status_all')}</DropdownMenuCheckboxItem>{(['completed', 'processing', 'pending', 'error'] as InvoiceHistoryItem['status'][]).map((status) => (<DropdownMenuCheckboxItem key={status} checked={filterScanStatus === status} onCheckedChange={() => setFilterScanStatus(status)}>{t(`invoice_status_${status}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                        </DropdownMenu>
+                        <DropdownMenu>
+                             <DropdownMenuTrigger asChild><Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"><CreditCard className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{filterPaymentStatus ? t(`invoice_payment_status_${filterPaymentStatus}` as any) : t('invoices_filter_payment_status_all')}{filterPaymentStatus && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e)=>{e.stopPropagation();setFilterPaymentStatus('')}}><XCircle className="h-3.5 w-3.5"/></Button>}</Button></DropdownMenuTrigger>
+                             <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_payment_status_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterPaymentStatus} onCheckedChange={() => setFilterPaymentStatus('')}>{t('invoices_filter_payment_status_all')}</DropdownMenuCheckboxItem>{(['unpaid', 'pending_payment'] as InvoiceHistoryItem['paymentStatus'][]).map((pStatus) => (<DropdownMenuCheckboxItem key={pStatus} checked={filterPaymentStatus === pStatus} onCheckedChange={() => setFilterPaymentStatus(pStatus)}>{t(`invoice_payment_status_${pStatus}` as any)}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+                        </DropdownMenu>
+                     </>
+                 )}
+             </div>
+          )}
+
+          <Tabs value={activeTab} onValueChange={(value) => {setActiveTab(value as any); setCurrentPage(1); setSelectedForBulkAction([]);}} className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-4">
               <TabsTrigger value="scanned-docs">{t('invoices_tab_scanned_docs')}</TabsTrigger>
               <TabsTrigger value="paid-invoices">{t('invoices_tab_paid_invoices')}</TabsTrigger>
             </TabsList>
             <TabsContent value="scanned-docs">
-              <ScannedDocsView filterDocumentType={filterDocumentType} />
+              { /* Scanned Documents Tab Content */ }
+              {viewMode === 'list' ? (
+                <div className="overflow-x-auto relative">
+                    <Table className="min-w-[600px]">
+                    <TableHeader>
+                        <TableRow>
+                        {currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).map((header) => (
+                            <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))}
+                            onClick={() => header.sortable && handleSortInternal(header.key as SortKey)}
+                            aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
+                            <div className="flex items-center gap-1 whitespace-nowrap">
+                                {header.key === 'selection' ? (<Checkbox checked={selectedForBulkAction.length > 0 && selectedForBulkAction.length === paginatedInvoices.length && paginatedInvoices.length > 0} onCheckedChange={(checked) => handleSelectAllForBulkAction(!!checked)} aria-label={t('invoice_export_select_all_aria')} className="mx-auto"/>)
+                                : (t(header.labelKey as any, { currency_symbol: t('currency_symbol') }))}
+                                {header.sortable && sortKey === header.key && (<span className="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>)}
+                            </div>
+                            </TableHead>
+                        ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {isLoading ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2"><div className="flex justify-center items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">{t('invoices_loading')}</span></div></TableCell></TableRow>)
+                        : paginatedInvoices.length === 0 ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2">{t('invoices_no_invoices_found')}</TableCell></TableRow>)
+                        : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
+                            <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                                {currentVisibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", currentColumnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})}/></TableCell>)}
+                                {currentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", currentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => handleViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
+                                {currentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", currentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => handleViewImage(item)} title={t('upload_history_view_image_title', {fileName: item.originalFileName || item.generatedFileName || ''})}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
+                                {currentVisibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
+                                {currentVisibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.status, 'scan', t)}</TableCell>)}
+                                {currentVisibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.paymentStatus, 'payment', t)}</TableCell>)}
+                                {currentVisibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, locale, t) : t('invoices_na')}</TableCell>}
+                                {currentVisibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
+                                {currentVisibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
+                                {currentVisibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}</TableCell>)}
+                                {currentVisibleColumns.errorMessage && (<TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'errorMessage')?.className)}>{item.status === 'error' ? item.errorMessage : t('invoices_na')}</TableCell>)}
+                            </TableRow>
+                        )))}
+                    </TableBody>
+                    </Table>
+                </div>
+                ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
+                    {isLoading ? (Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="h-32 bg-muted rounded-t-lg" /><CardContent className="p-4 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /><div className="h-3 bg-muted rounded w-1/4" /></CardContent></Card>)))
+                    : paginatedInvoices.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('invoices_no_invoices_found')}</p>)
+                    : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
+                        <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
+                        <div className="p-2 absolute top-0 left-0 z-10"><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})} className="bg-background/70 hover:bg-background border-primary"/></div>
+                        <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
+                            {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (<NextImage src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!} alt={t('invoices_preview_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="invoice document"/>)
+                            : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">{item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}</div>)}
+                            <div className="absolute top-2 right-2 flex flex-col gap-1">{renderStatusBadge(item.status, 'scan', t)}{renderStatusBadge(item.paymentStatus, 'payment', t)}</div>
+                        </CardHeader>
+                        <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>{item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }{item.generatedFileName || item.originalFileName}</CardTitle>
+                            <p className="text-xs text-muted-foreground">{formatDateForDisplay(item.uploadTime, locale, t)}</p>
+                            {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
+                            {item.invoiceNumber && <p className="text-xs text-muted-foreground">{t('invoice_details_invoice_number_label')}: {item.invoiceNumber}</p>}
+                            {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
+                            {item.status === 'error' && item.errorMessage && (<p className="text-xs text-destructive truncate" title={item.errorMessage}>{t('invoice_status_error')}: {item.errorMessage.substring(0,30)}...</p>)}
+                        </CardContent>
+                        <CardFooter className="p-3 border-t">
+                            <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}</Button>
+                            {(item.status === 'pending' || item.status === 'error') && user && user.id && item.id && (<Button variant="ghost" size="sm" className="w-full justify-start text-xs text-amber-600 hover:text-amber-700" onClick={(e) => {e.stopPropagation(); if (!item.id) {toast({title: t('upload_retry_unavailable_title'), description: t('upload_retry_unavailable_desc'), variant: "destructive"}); return;} const queryParams = new URLSearchParams({tempInvoiceId: item.id, docType: item.documentType, originalFileName: encodeURIComponent(item.originalFileName || 'unknown_doc'),}); router.push(`/edit-invoice?${queryParams.toString()}`);}}><Edit className="mr-1.5 h-3.5 w-3.5" /> {t('edit_button')}</Button>)}
+                        </CardFooter>
+                        </Card>
+                    )))}
+                </div>
+                )}
+                 {activeTab === 'scanned-docs' && selectedForBulkAction.length > 0 && (
+                 <div className="mt-4 flex justify-end">
+                     <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive">
+                                <Trash2 className="mr-2 h-4 w-4"/>
+                                {t('invoices_bulk_delete_button', {count: selectedForBulkAction.length})}
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContentComponent>
+                            <AlertDialogHeaderComponent>
+                                <AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent>
+                                <AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', {fileName: `${selectedForBulkAction.length} ${t('documents_plural_for_delete_message')}`})}</AlertDialogDescriptionComponent>
+                            </AlertDialogHeaderComponent>
+                            <AlertDialogFooterComponent>
+                                <AlertDialogCancel>{t('cancel_button')}</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteInvoice(selectedForBulkAction)} className={buttonVariants({variant: "destructive"})}>
+                                    {t('invoices_delete_confirm_action')}
+                                </AlertDialogAction>
+                            </AlertDialogFooterComponent>
+                        </AlertDialogContentComponent>
+                     </AlertDialog>
+                 </div>
+                )}
             </TabsContent>
             <TabsContent value="paid-invoices">
-              <PaidInvoicesTabView filterDocumentType={filterDocumentType} />
+              { /* Paid Invoices Tab Content */ }
+                {viewMode === 'list' ? (
+                    <div className="overflow-x-auto relative">
+                        <Table className="min-w-[600px]">
+                        <TableHeader>
+                            <TableRow>
+                            {currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).map((header) => (
+                                <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))}
+                                onClick={() => header.sortable && handleSortInternal(header.key as SortKey)}
+                                aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
+                                <div className="flex items-center gap-1 whitespace-nowrap">
+                                    {header.key === 'selection' ? (<Checkbox checked={selectedForBulkAction.length > 0 && selectedForBulkAction.length === paginatedInvoices.length && paginatedInvoices.length > 0} onCheckedChange={(checked) => handleSelectAllForBulkAction(!!checked)} aria-label={t('invoice_export_select_all_aria')} className="mx-auto"/>)
+                                    : (t(header.labelKey as any, { currency_symbol: t('currency_symbol') }))}
+                                    {header.sortable && sortKey === header.key && (<span className="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>)}
+                                </div>
+                                </TableHead>
+                            ))}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2"><div className="flex justify-center items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">{t('invoices_loading')}</span></div></TableCell></TableRow>)
+                            : paginatedInvoices.length === 0 ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2">{t('paid_invoices_no_paid_invoices_found')}</TableCell></TableRow>)
+                            : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
+                                <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
+                                    {currentVisibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", currentColumnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})}/></TableCell>)}
+                                    {currentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", currentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => handleViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
+                                    {currentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", currentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => handleViewImage(item)} title={t('paid_invoices_receipt_image_label')}><Receipt className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
+                                    {currentVisibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, locale, t) : t('invoices_na')}</TableCell>}
+                                    {currentVisibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
+                                    {currentVisibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}</TableCell>)}
+                                    {currentVisibleColumns.paymentMethod && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'paymentMethod')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentMethod ? t(`payment_method_${item.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: item.paymentMethod}) : t('invoices_na')}</TableCell>}
+                                </TableRow>
+                            )))}
+                        </TableBody>
+                        </Table>
+                    </div>
+                    ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
+                        {isLoading ? (Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="h-32 bg-muted rounded-t-lg" /><CardContent className="p-4 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /><div className="h-3 bg-muted rounded w-1/4" /></CardContent></Card>)))
+                        : paginatedInvoices.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('paid_invoices_no_paid_invoices_found')}</p>)
+                        : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
+                            <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
+                            <div className="p-2 absolute top-0 left-0 z-10"><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})} className="bg-background/70 hover:bg-background border-primary"/></div>
+                            <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
+                                {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (<NextImage src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} alt={t('paid_invoices_receipt_image_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="payment receipt document"/>)
+                                : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center"><Receipt className="h-12 w-12 text-muted-foreground" /></div>)}
+                                <div className="absolute top-2 right-2 flex flex-col gap-1">{renderStatusBadge('paid', 'payment', t)}</div>
+                            </CardHeader>
+                            <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}><Receipt className="inline-block mr-1.5 h-3.5 w-3.5 text-green-600" />{item.generatedFileName || item.originalFileName}</CardTitle>
+                                <p className="text-xs text-muted-foreground">{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, locale, t) : formatDateForDisplay(item.uploadTime, locale, t)}</p>
+                                {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
+                                {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
+                            </CardContent>
+                            <CardFooter className="p-3 border-t">
+                                <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}</Button>
+                            </CardFooter>
+                            </Card>
+                        )))}
+                    </div>
+                    )}
+                 {activeTab === 'paid-invoices' && selectedForBulkAction.length > 0 && (
+                 <div className="mt-4 flex justify-end">
+                    <Button onClick={handleOpenExportDialog} disabled={isExporting} className="bg-primary hover:bg-primary/90">
+                        <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')} ({selectedForBulkAction.length})
+                    </Button>
+                 </div>
+                )}
             </TabsContent>
           </Tabs>
+
+            {totalPages > 1 && (
+                <div className="flex items-center justify-end space-x-2 py-4 mt-4">
+                    <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}><ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">{t('inventory_pagination_previous')}</span></Button>
+                    <span className="text-sm text-muted-foreground">{t('inventory_pagination_page_info_simple', { currentPage: currentPage, totalPages: totalPages})}</span>
+                    <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages}><span className="hidden sm:inline">{t('inventory_pagination_next')}</span> <ChevronRight className="h-4 w-4" /></Button>
+                </div>
+            )}
+
         </CardContent>
       </Card>
+
+      <Sheet open={showDetailsSheet} onOpenChange={(open) => {
+          setShowDetailsSheet(open);
+          if (!open) {
+            setIsEditingDetails(false);
+            setSelectedInvoiceDetails(null);
+          }
+      }}>
+        <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
+          <SheetHeader className="p-4 sm:p-6 border-b shrink-0 sticky top-0 bg-background z-10">
+             <SheetTitle className="flex items-center text-lg sm:text-xl">{isEditingDetails ? <Edit className="mr-2 h-5 w-5"/> : <Info className="mr-2 h-5 w-5"/>}{isEditingDetails ? t('invoices_edit_details_title') : t('invoice_details_title')}</SheetTitle>
+             <SheetDescription className="text-xs sm:text-sm">
+                {isEditingDetails ? t('invoices_edit_details_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' }) : t('invoice_details_description', { fileName: selectedInvoiceDetails?.originalFileName || selectedInvoiceDetails?.generatedFileName || '' })}
+             </SheetDescription>
+          </SheetHeader>
+          {selectedInvoiceDetails && (
+            <ScrollArea className="flex-grow">
+              <div className="p-4 sm:p-6 space-y-4">
+              {isEditingDetails ? (
+                <div className="space-y-3">
+                    <div><Label htmlFor="editOriginalFileName">{t('invoice_details_file_name_label')}</Label><Input id="editOriginalFileName" value={editedInvoiceData.originalFileName || ''} onChange={(e) => handleEditDetailsInputChange('originalFileName', e.target.value)} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editDocumentType">{t('invoices_document_type_label')}</Label><Select value={editedInvoiceData.documentType || selectedInvoiceDetails.documentType} onValueChange={(value) => handleEditDetailsInputChange('documentType', value as 'deliveryNote' | 'invoice')} disabled={isSavingDetails}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem><SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem></SelectContent></Select></div>
+                    <div><Label htmlFor="editInvoiceNumber">{t('invoice_details_invoice_number_label')}</Label><Input id="editInvoiceNumber" value={editedInvoiceData.invoiceNumber || ''} onChange={(e) => handleEditDetailsInputChange('invoiceNumber', e.target.value)} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editSupplierName">{t('invoice_details_supplier_label')}</Label><Input id="editSupplierName" value={editedInvoiceData.supplierName || ''} onChange={(e) => handleEditDetailsInputChange('supplierName', e.target.value)} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editTotalAmount">{t('invoices_col_total_currency', { currency_symbol: t('currency_symbol') })}</Label><Input id="editTotalAmount" type="number" value={editedInvoiceData.totalAmount ?? ''} onChange={(e) => handleEditDetailsInputChange('totalAmount', parseFloat(e.target.value))} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editInvoiceDate">{t('invoice_details_invoice_date_label')}</Label><Input id="editInvoiceDate" type="date" value={editedInvoiceData.invoiceDate ? (editedInvoiceData.invoiceDate instanceof Timestamp ? format(editedInvoiceData.invoiceDate.toDate(), 'yyyy-MM-dd') : (typeof editedInvoiceData.invoiceDate === 'string' && isValid(parseISO(editedInvoiceData.invoiceDate)) ? format(parseISO(editedInvoiceData.invoiceDate), 'yyyy-MM-dd') : (editedInvoiceData.invoiceDate instanceof Date && isValid(editedInvoiceData.invoiceDate) ? format(editedInvoiceData.invoiceDate, 'yyyy-MM-dd') : ''))) : ''} onChange={(e) => handleEditDetailsInputChange('invoiceDate', e.target.value ? parseISO(e.target.value) : undefined)} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editPaymentMethod">{t('invoice_details_payment_method_label')}</Label><Input id="editPaymentMethod" value={editedInvoiceData.paymentMethod || ''} onChange={(e) => handleEditDetailsInputChange('paymentMethod', e.target.value)} disabled={isSavingDetails}/></div>
+                    <div><Label htmlFor="editPaymentDueDate">{t('payment_due_date_dialog_title')}</Label><Input id="editPaymentDueDate" type="date" value={editedInvoiceData.paymentDueDate ? (editedInvoiceData.paymentDueDate instanceof Timestamp ? format(editedInvoiceData.paymentDueDate.toDate(), 'yyyy-MM-dd') : (typeof editedInvoiceData.paymentDueDate === 'string' && isValid(parseISO(editedInvoiceData.paymentDueDate)) ? format(parseISO(editedInvoiceData.paymentDueDate), 'yyyy-MM-dd') : (editedInvoiceData.paymentDueDate instanceof Date && isValid(editedInvoiceData.paymentDueDate) ? format(editedInvoiceData.paymentDueDate, 'yyyy-MM-dd') : ''))) : ''} onChange={(e) => handleEditDetailsInputChange('paymentDueDate', e.target.value ? parseISO(e.target.value) : undefined)} disabled={isSavingDetails}/></div>
+                    {selectedInvoiceDetails.status === 'error' && (<div><Label htmlFor="editErrorMessage">{t('invoice_details_error_message_label')}</Label><Textarea id="editErrorMessage" value={editedInvoiceData.errorMessage || ''} onChange={(e) => handleEditDetailsInputChange('errorMessage', e.target.value as string)} disabled={isSavingDetails}/></div>)}
+                     {activeTab === 'scanned-docs' && selectedInvoiceDetails.paymentStatus !== 'paid' && (
+                         <div>
+                            <Label>{t('invoice_payment_status_label')}</Label>
+                                <div className="flex gap-2 mt-1">
+                                    {(['unpaid', 'pending_payment', 'paid'] as InvoiceHistoryItem['paymentStatus'][]).map(pStatus => (
+                                        <Button key={pStatus} variant={editedInvoiceData.paymentStatus === pStatus ? 'default' : 'outline'} size="sm"
+                                            onClick={() => handlePaymentStatusChange(selectedInvoiceDetails!.id, pStatus)}
+                                            disabled={isSavingDetails}>
+                                          {t(`invoice_payment_status_${pStatus}` as any)}
+                                        </Button>
+                                    ))}
+                                </div>
+                         </div>
+                     )}
+                </div>
+              ) : (
+                <>
+                 <div className="space-y-2"><h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_document_section_title')}</h3>
+                      <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.generatedFileName || selectedInvoiceDetails.originalFileName}</p>
+                      <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime, locale, t)}</p>
+                      <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
+                      <div className="flex items-center"><strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan', t)}</div>
+                  </div>
+                  <Separator className="my-3"/>
+                   <div className="space-y-2"><h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_financial_section_title')}</h3>
+                      <p><strong>{t('invoice_details_invoice_number_label')}:</strong> {selectedInvoiceDetails.invoiceNumber || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_supplier_label')}:</strong> {selectedInvoiceDetails.supplierName || t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount, t) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDateForDisplay(selectedInvoiceDetails.invoiceDate, locale, t) : t('invoices_na')}</p>
+                      <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod ? t(`payment_method_${selectedInvoiceDetails.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: selectedInvoiceDetails.paymentMethod}) : t('invoices_na')}</p>
+                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment', t)}</div>
+                      {selectedInvoiceDetails.paymentDueDate && (<p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.paymentDueDate, locale, t)}</p>)}
+                   </div>
+                  {selectedInvoiceDetails.errorMessage && selectedInvoiceDetails.status === 'error' && (<><Separator className="my-3"/><div className="space-y-1"><h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3><p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p></div></>)}
+                  <Separator className="my-3"/>
+                  <div className="space-y-2">
+                     <h3 className="text-md font-semibold text-primary border-b pb-1">{selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}</h3>
+                      {isValidImageSrc(selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)) ? (
+                        <NextImage src={selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!} alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })} width={800} height={1100} className="rounded-md object-contain mx-auto" data-ai-hint="invoice document" />
+                        ) : (<div className="text-muted-foreground text-center py-4 flex flex-col items-center"><ImageIconLucide className="h-10 w-10 mb-2"/><p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p></div>)}
+                  </div>
+                </>
+              )}
+              </div>
+            </ScrollArea>
+          )}
+          <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0 sticky bottom-0 bg-background z-10">
+            {selectedInvoiceDetails && (<>
+                {isEditingDetails ? (<><Button variant="outline" onClick={() => setIsEditingDetails(false)} disabled={isSavingDetails}>{t('cancel_button')}</Button><Button onClick={handleSaveInvoiceDetails} disabled={isSavingDetails}>{isSavingDetails ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{isSavingDetails ? t('saving_button') : t('save_changes_button')}</Button></>)
+                : (<Button variant="outline" onClick={() => setIsEditingDetails(true)}><Edit className="mr-2 h-4 w-4" /> {t('invoices_edit_details_button')}</Button>)}
+                <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" disabled={isDeleting || isSavingDetails}><Trash2 className="mr-2 h-4 w-4" /> {t('invoices_delete_button')}</Button></AlertDialogTrigger>
+                    <AlertDialogContentComponent><AlertDialogHeaderComponent><AlertDialogTitleComponent>{t('invoices_delete_confirm_title')}</AlertDialogTitleComponent><AlertDialogDescriptionComponent>{t('invoices_delete_confirm_desc', { fileName: selectedInvoiceDetails?.originalFileName || '' })}</AlertDialogDescriptionComponent></AlertDialogHeaderComponent>
+                        <AlertDialogFooterComponent><AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel><AlertDialogAction onClick={() => selectedInvoiceDetails && handleDeleteInvoice(selectedInvoiceDetails.id)} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>{isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{t('invoices_delete_confirm_action')}</AlertDialogAction></AlertDialogFooterComponent>
+                    </AlertDialogContentComponent>
+                </AlertDialog>
+                 {activeTab === 'scanned-docs' && selectedInvoiceDetails.paymentStatus !== 'paid' && (<Button variant="outline" onClick={() => {if(selectedInvoiceDetails) { setInvoiceForReceiptUpload(selectedInvoiceDetails); setShowReceiptUploadDialog(true);}}}><Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_mark_as_paid_button')}</Button>)}
+                 {activeTab === 'paid-invoices' && selectedInvoiceDetails.paymentStatus === 'paid' && (<Button variant="outline" onClick={() => {if(selectedInvoiceDetails) { setInvoiceForReceiptUpload(selectedInvoiceDetails); setShowReceiptUploadDialog(true);}}}><Receipt className="mr-2 h-4 w-4" /> {t('paid_invoices_update_receipt_button')}</Button>)}
+            </>)}
+            <SheetClose asChild><Button variant="outline" className="sm:ml-auto">{t('invoices_close_button')}</Button></SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+    <AlertDialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <AlertDialogContentComponent><AlertDialogHeaderComponent><AlertDialogTitleComponent>{t('invoice_export_dialog_title')}</AlertDialogTitleComponent><AlertDialogDescriptionComponent>{t('invoice_export_dialog_desc', { count: selectedForBulkAction.length })}</AlertDialogDescriptionComponent></AlertDialogHeaderComponent>
+            <form onSubmit={handleExportSubmit} className="space-y-4">
+                <div><Label htmlFor="accountantEmail" className="text-sm font-medium">{t('invoice_export_email_label')} <span className="text-destructive">*</span></Label><Input id="accountantEmail" type="email" value={accountantEmail} onChange={(e) => setAccountantEmail(e.target.value)} placeholder={t('invoice_export_email_placeholder')} required className="mt-1"/></div>
+                <div><Label htmlFor="emailNote" className="text-sm font-medium">{t('invoice_export_note_label')}</Label><Textarea id="emailNote" value={emailNote} onChange={(e) => setEmailNote(e.target.value)} placeholder={t('invoice_export_note_placeholder')} className="mt-1"/></div>
+                <AlertDialogFooterComponent><AlertDialogCancel onClick={() => setShowExportDialog(false)} disabled={isExporting}>{t('cancel_button')}</AlertDialogCancel><Button type="submit" disabled={isExporting} className="bg-primary hover:bg-primary/90">{isExporting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t('sending')}</>) : (<><MailIcon className="mr-2 h-4 w-4" />{t('invoice_export_send_email_button')}</>)}</Button></AlertDialogFooterComponent>
+            </form>
+        </AlertDialogContentComponent>
+    </AlertDialog>
+
+    {showReceiptUploadDialog && invoiceForReceiptUpload && (
+        <PaymentReceiptUploadDialog
+            isOpen={showReceiptUploadDialog}
+            onOpenChange={(isOpen) => { setShowReceiptUploadDialog(isOpen); if (!isOpen) setInvoiceForReceiptUpload(null); }}
+            invoiceFileName={invoiceForReceiptUpload.originalFileName || ''}
+            onConfirmUpload={async (receiptUri) => { await handleConfirmReceiptUpload(receiptUri); }}
+        />
+    )}
     </div>
   );
 }
+
+    
