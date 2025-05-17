@@ -25,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock, CheckCircle, Mail as MailIcon, Briefcase } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -177,8 +177,6 @@ const formatCurrencyDisplay = (
 function ScannedDocsView({
     invoices,
     isLoading,
-    // visibleColumns, // Passed from parent DocumentsPage
-    // columnDefinitions, // Passed from parent DocumentsPage
     sortKey,
     sortDirection,
     onSort,
@@ -194,8 +192,6 @@ function ScannedDocsView({
 }: {
     invoices: InvoiceHistoryItem[];
     isLoading: boolean;
-    // visibleColumns: Record<string, boolean>; // Passed from parent
-    // columnDefinitions: { key: string; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean }[]; // Passed from parent
     sortKey: string;
     sortDirection: string;
     onSort: (key: string) => void;
@@ -456,7 +452,7 @@ export default function DocumentsPage() {
         }
      }
 
-  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices]);
+  }, [user, fetchUserData, searchParamsHook, isMobile, allUserInvoices]); // Added allUserInvoices to re-check if it changes for viewInvoiceId
 
 
   const handleSortInternal = (key: string) => {
@@ -878,48 +874,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
              </Select>
              
             <div className="ml-auto flex items-center gap-2">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-10 sm:w-10">
-                            <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                            <span className="sr-only">{"Filter Options"}</span>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64">
-                        <DropdownMenuLabel>{"Filter Options"}</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem
-                            checked={showAdvancedFilters}
-                            onCheckedChange={setShowAdvancedFilters}
-                        >
-                            {"Show Advanced Filters"}
-                        </DropdownMenuCheckboxItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger>
-                                <Eye className="mr-2 h-4 w-4" /> {"View Columns"}
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuPortal>
-                                <DropdownMenuSubContent>
-                                    <DropdownMenuLabel>
-                                        {activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')}
-                                    </DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
-                                        <DropdownMenuCheckboxItem
-                                            key={header.key}
-                                            className="capitalize"
-                                            checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
-                                            onCheckedChange={() => toggleColumnVisibility(header.key)}
-                                        >
-                                            {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
-                                        </DropdownMenuCheckboxItem>
-                                    ))}
-                                </DropdownMenuSubContent>
-                            </DropdownMenuPortal>
-                        </DropdownMenuSub>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {/* Placeholder for main filter/view button if needed in the future */}
             </div>
           </div>
 
@@ -955,7 +910,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                          <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                             <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {"View Columns"}
+                             <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {t('inventory_view_button')}
                          </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
@@ -987,8 +942,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
               <ScannedDocsView
                 invoices={paginatedScannedDocs}
                 isLoading={isLoading}
-                // visibleColumns={visibleColumnsScanned} // Now passed as parentVisibleColumns
-                // columnDefinitions={scannedDocsColumnDefinitions} // Now passed as parentColumnDefinitions
                 sortKey={sortKey}
                 sortDirection={sortDirection}
                 onSort={handleSortInternal}
@@ -1033,7 +986,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 filterSupplier={filterSupplier}
                 dateRange={dateRange}
                 searchTerm={searchTerm}
-                // Pass column visibility and definitions for PaidInvoices tab
                 parentVisibleColumns={visibleColumnsPaid}
                 parentColumnDefinitions={paidInvoicesColumnDefinitions}
                 onToggleColumnVisibility={toggleColumnVisibility}
@@ -1111,8 +1063,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                   <Separator className="my-3"/>
                   <div className="space-y-2">
                      <h3 className="text-md font-semibold text-primary border-b pb-1">{selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? t('paid_invoices_receipt_image_label') : t('invoice_details_image_label')}</h3>
-                      {isValidImageSrc(selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) : (selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri))) ? (
-                        <NextImage src={selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)! : (selectedInvoiceDetails.paymentStatus === 'paid' ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!)} alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })} width={800} height={1100} className="rounded-md object-contain mx-auto" data-ai-hint="invoice document" />
+                      {isValidImageSrc(selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri) : (selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? selectedInvoiceDetails.paymentReceiptImageUri : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri))) ? (
+                        <NextImage src={selectedInvoiceDetails._displayContext === 'image_only' ? (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)! : (selectedInvoiceDetails.paymentStatus === 'paid' && selectedInvoiceDetails.paymentReceiptImageUri ? selectedInvoiceDetails.paymentReceiptImageUri! : (selectedInvoiceDetails.originalImagePreviewUri || selectedInvoiceDetails.compressedImageForFinalRecordUri)!)} alt={t('invoice_details_image_alt', { fileName: selectedInvoiceDetails.originalFileName || '' })} width={800} height={1100} className="rounded-md object-contain mx-auto" data-ai-hint="invoice document" />
                         ) : (<div className="text-muted-foreground text-center py-4 flex flex-col items-center"><ImageIconLucide className="h-10 w-10 mb-2"/><p>{selectedInvoiceDetails.paymentStatus === 'paid' ? t('paid_invoices_no_receipt_image_available') : t('invoice_details_no_image_available')}</p></div>)}
                   </div>
                 </>
@@ -1158,3 +1110,4 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     </div>
   );
 }
+
