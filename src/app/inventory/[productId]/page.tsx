@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import BarcodeScanner from '@/components/barcode-scanner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
-import NextImage from 'next/image'; 
+import NextImage from 'next/image';
 
 
 // Helper to format numbers for display
@@ -35,7 +35,7 @@ const formatDisplayNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean }
 ): string => {
-    const { decimals = 0, useGrouping = true } = options || {}; 
+    const { decimals = 0, useGrouping = true } = options || {};
     const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
@@ -65,7 +65,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
     if (fieldType === 'currency') {
       return parseFloat(String(value)).toFixed(2);
     }
-    return String(Math.round(value)); 
+    return String(Math.round(value));
 };
 
 
@@ -105,12 +105,12 @@ export default function ProductDetailPage() {
   }, [user, authLoading, router]);
 
    const loadProduct = useCallback(async () => {
-    if (!productId || !user || !user.id) return; 
+    if (!productId || !user || !user.id) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getProductByIdService(productId, user.id); 
+      const data = await getProductByIdService(productId, user.id);
       if (data) {
         setProduct(data);
         setEditedProduct({ ...data });
@@ -137,7 +137,7 @@ export default function ProductDetailPage() {
 
 
   useEffect(() => {
-    if(user && user.id){ 
+    if(user && user.id){
         loadProduct();
     }
   }, [loadProduct, user]);
@@ -145,7 +145,7 @@ export default function ProductDetailPage() {
   const handleInputChange = (field: keyof Product, value: string | number) => {
     setEditedProduct(prev => {
       let numericValue: number | string | null | undefined = value;
-      if (field === 'quantity' || field === 'unitPrice' || field === 'salePrice' || field === 'lineTotal' || field === 'minStockLevel' || field === 'maxStockLevel') {
+      if (['quantity', 'unitPrice', 'salePrice', 'lineTotal', 'minStockLevel', 'maxStockLevel'].includes(field)) {
           const stringValue = String(value);
           if (stringValue.trim() === '' && (field === 'minStockLevel' || field === 'maxStockLevel' || field === 'salePrice')) {
               numericValue = undefined;
@@ -171,7 +171,7 @@ export default function ProductDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!product || !product.id || !user || !user.id) return; 
+    if (!product || !product.id || !user || !user.id) return;
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
         toast({
@@ -211,7 +211,7 @@ export default function ProductDetailPage() {
         imageUrl: editedProduct.imageUrl || product.imageUrl,
       };
 
-      await updateProductService(product.id, productToSave, user.id); 
+      await updateProductService(product.id, productToSave, user.id);
       toast({
         title: t('product_detail_toast_updated_title'),
         description: t('product_detail_toast_updated_desc'),
@@ -231,10 +231,10 @@ export default function ProductDetailPage() {
   };
 
    const handleDelete = async () => {
-    if (!product || !product.id || !user || !user.id) return; 
+    if (!product || !product.id || !user || !user.id) return;
     setIsDeleting(true);
     try {
-      await deleteProductService(product.id, user.id); 
+      await deleteProductService(product.id, user.id);
       toast({
         title: t('product_detail_toast_deleted_title'),
         description: t('product_detail_toast_deleted_desc', { productName: product.shortName || product.description }),
@@ -303,7 +303,7 @@ export default function ProductDetailPage() {
        setEditedProduct(prev => ({ ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
        toast({
          title: t('inventory_toast_quantity_updated_title'),
-         description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || '', quantity: newQuantity })
+         description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || "", quantity: newQuantity })
        });
      } catch (error) {
        console.error("Failed to update quantity on detail page:", error);
@@ -320,9 +320,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); 
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true }); 
+            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -397,7 +397,7 @@ export default function ProductDetailPage() {
       };
 
 
-  if (authLoading || isLoading || !user) { 
+  if (authLoading || isLoading || !user) {
     return (
       <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -437,53 +437,12 @@ export default function ProductDetailPage() {
          <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting}>
            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
          </Button>
-         <div className="flex gap-2">
-             {isEditing ? (
-                 <>
-                     <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving || isDeleting}>
-                         <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
-                     </Button>
-                     <Button onClick={handleSave} disabled={isSaving || isDeleting}>
-                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                         {isSaving ? t('saving_button') : t('save_changes_button')}
-                     </Button>
-                 </>
-             ) : (
-                 <>
-                      <AlertDialog>
-                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" disabled={isDeleting}>
-                                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                                {isDeleting ? t('deleting_button') : t('delete_button')}
-                            </Button>
-                         </AlertDialogTrigger>
-                         <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>{t('product_detail_delete_confirm_title')}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                               {t('product_detail_delete_confirm_desc', { productName: product.shortName || product.description })}
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
-                               {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                               {t('product_detail_delete_confirm_action')}
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                         </AlertDialogContent>
-                      </AlertDialog>
-
-                     <Button onClick={handleEdit}>
-                         <Pencil className="mr-2 h-4 w-4" /> {t('edit_button')}
-                     </Button>
-                 </>
-             )}
-        </div>
+         {/* Buttons moved to CardHeader */}
        </div>
 
       <Card className="shadow-lg scale-fade-in">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
            {isEditing ? (
              <>
                 <Label htmlFor="shortName" className="text-sm font-medium text-muted-foreground">{t('product_detail_label_product_name')}</Label>
@@ -510,15 +469,7 @@ export default function ProductDetailPage() {
                     className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
                     disabled={isSaving || isDeleting}
                   />
-                   <Label htmlFor="imageUrl" className="text-sm font-medium text-muted-foreground pt-2">{t('product_detail_label_image_url')}</Label>
-                   <Input
-                      id="imageUrl"
-                      value={editedProduct.imageUrl || ''}
-                      onChange={(e) => handleInputChange('imageUrl', e.target.value)}
-                      className="text-sm h-auto p-0 border-0 shadow-none focus-visible:ring-0 text-muted-foreground"
-                      placeholder={t('product_detail_image_url_placeholder')}
-                      disabled={isSaving || isDeleting}
-                    />
+                   {/* Image URL input is now at the bottom when editing */}
               </>
            ) : (
                <>
@@ -532,8 +483,51 @@ export default function ProductDetailPage() {
                   )}
                </>
            )}
+          </div>
+           <div className="flex gap-1 sm:gap-2">
+             {isEditing ? (
+                 <>
+                     <Button variant="outline" size="icon" onClick={handleCancelEdit} disabled={isSaving || isDeleting} aria-label={t('cancel_button')}>
+                         <X className="h-4 w-4" />
+                     </Button>
+                     <Button size="icon" onClick={handleSave} disabled={isSaving || isDeleting} aria-label={t('save_changes_button')}>
+                         {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                     </Button>
+                 </>
+             ) : (
+                 <>
+                      <AlertDialog>
+                         <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" disabled={isDeleting} aria-label={t('delete_button')}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                         </AlertDialogTrigger>
+                         <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>{t('product_detail_delete_confirm_title')}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                               {t('product_detail_delete_confirm_desc', { productName: product.shortName || product.description })}
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isDeleting}>{t('cancel_button')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className={cn(buttonVariants({ variant: "destructive" }))}>
+                               {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                               {t('product_detail_delete_confirm_action')}
+                            </AlertDialogAction>
+                            </AlertDialogFooter>
+                         </AlertDialogContent>
+                      </AlertDialog>
 
-           {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && !isEditing && (
+                     <Button variant="ghost" size="icon" onClick={handleEdit} aria-label={t('edit_button')}>
+                         <Pencil className="h-4 w-4" />
+                     </Button>
+                 </>
+             )}
+            </div>
+        </CardHeader>
+        <CardContent className="space-y-1 sm:space-y-2">
+            {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && !isEditing && (
                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                     <AlertTriangle className="mr-1 h-4 w-4" />
                     {t('product_detail_low_stock_badge')}
@@ -551,30 +545,13 @@ export default function ProductDetailPage() {
                     {t('product_detail_over_stock_badge')}
                 </span>
             )}
-        </CardHeader>
-        <CardContent className="space-y-1 sm:space-y-2">
-            {isEditing ? (
-                editedProduct.imageUrl && (
-                    <div className="mb-4 relative h-48 w-full rounded overflow-hidden border" data-ai-hint="product photo">
-                        <NextImage src={editedProduct.imageUrl} alt={editedProduct.shortName || editedProduct.description || ''} layout="fill" objectFit="contain" />
-                    </div>
-                )
-            ) : (
-                product.imageUrl && (
-                    <div className="mb-4 relative h-48 w-full rounded overflow-hidden border" data-ai-hint="product photo">
-                        <NextImage src={product.imageUrl} alt={product.shortName || product.description || ''} layout="fill" objectFit="contain" />
-                    </div>
-                )
+             {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.quantity <= product.maxStockLevel))) && !isEditing && (
+               <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>
+                 <Package className="mr-1 h-4 w-4" />
+                 {t('inventory_filter_in_stock')}
+               </span>
             )}
-            {!isEditing && !product.imageUrl && (
-                 <div className="mb-4 h-48 w-full rounded border bg-muted flex items-center justify-center">
-                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
-                </div>
-            )}
-             {!isEditing && product.imageUrl && (
-                <Separator className="my-4" />
-            )}
-
+            <Separator className="my-3 sm:my-4" />
 
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
              {isEditing ? (
@@ -595,11 +572,11 @@ export default function ProductDetailPage() {
                         <div className="flex-grow">
                             <p className="text-sm font-medium text-muted-foreground">{t("product_detail_label_quantity")}</p>
                             <div className="flex items-center gap-2 mt-1">
-                                <Button 
-                                    variant="outline" 
-                                    size="icon" 
-                                    className="h-7 w-7" 
-                                    onClick={() => handleQuantityUpdateOnDetailPage(-1)} 
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => handleQuantityUpdateOnDetailPage(-1)}
                                     disabled={isUpdatingQuantityDetail}
                                     aria-label={t('decrease_quantity_aria_label', { productName: product.shortName || product.description || "" })}
                                 >
@@ -608,11 +585,11 @@ export default function ProductDetailPage() {
                                 <p className="text-base font-semibold min-w-[30px] text-center">
                                     {isUpdatingQuantityDetail ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : formatIntegerQuantity(product.quantity, t)}
                                 </p>
-                                <Button 
-                                    variant="outline" 
-                                    size="icon" 
-                                    className="h-7 w-7" 
-                                    onClick={() => handleQuantityUpdateOnDetailPage(1)} 
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => handleQuantityUpdateOnDetailPage(1)}
                                     disabled={isUpdatingQuantityDetail}
                                     aria-label={t('increase_quantity_aria_label', { productName: product.shortName || product.description || "" })}
                                 >
@@ -629,6 +606,21 @@ export default function ProductDetailPage() {
                  </>
              )}
           </div>
+            <Separator className="my-3 sm:my-4" />
+             {isEditing ? (
+                 renderEditItem(ImageIcon, "product_detail_label_image_url", editedProduct.imageUrl, 'imageUrl')
+             ) : (
+                product.imageUrl && (
+                    <div className="mt-4 relative h-48 w-full sm:h-60 md:h-72 rounded overflow-hidden border bg-muted/20" data-ai-hint="product photo">
+                        <NextImage src={product.imageUrl} alt={product.shortName || product.description || ''} layout="fill" objectFit="contain" />
+                    </div>
+                )
+            )}
+            {!isEditing && !product.imageUrl && (
+                 <div className="mt-4 h-48 w-full sm:h-60 md:h-72 rounded border bg-muted flex items-center justify-center">
+                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                </div>
+            )}
         </CardContent>
       </Card>
 
@@ -641,4 +633,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
