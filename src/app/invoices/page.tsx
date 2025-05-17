@@ -1,4 +1,3 @@
-
 // src/app/invoices/page.tsx
 'use client';
 
@@ -26,7 +25,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, Clock } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -63,7 +62,6 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// import { useSmartTouch } from '@/hooks/useSmartTouch'; // Temporarily removed
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -77,16 +75,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
+  // Allow data URIs, http, https, and relative paths starting with / or blob
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('blob:');
 };
 
-type SortKey = keyof InvoiceHistoryItem | '';
-type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'list';
 
-const ITEMS_PER_PAGE = 8;
+const ITEMS_PER_PAGE = 8; // Number of items per page for pagination
 
-const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string) => string) => {
+
+// Centralized date formatting function
+const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, currentLocale: string, t: (key: string) => string): string => {
   if (!dateInput) return t('invoices_na');
   try {
       let dateObj: Date | null = null;
@@ -100,7 +99,7 @@ const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, 
       }
 
       if (!dateObj || !isValid(dateObj)) {
-          console.warn(`[DocumentsPage formatDate] Invalid date object for input:`, dateInput);
+          console.warn(`[DocumentsPage formatDateForDisplay] Invalid date object for input:`, dateInput);
           return t('invoices_invalid_date');
       }
       const dateFnsLocale = currentLocale === 'he' ? he : enUS;
@@ -108,7 +107,7 @@ const formatDateForDisplay = (dateInput: string | Date | Timestamp | undefined, 
            ? format(dateObj, 'dd/MM/yy HH:mm', { locale: dateFnsLocale })
            : format(dateObj, 'PPp', { locale: dateFnsLocale });
   } catch (e) {
-    console.error("[DocumentsPage formatDate] Error formatting date:", e, "Input:", dateInput);
+    console.error("[DocumentsPage formatDateForDisplay] Error formatting date:", e, "Input:", dateInput);
     return t('invoices_invalid_date');
   }
 };
@@ -135,7 +134,7 @@ const formatCurrencyDisplay = (
     return `${t('currency_symbol')}${formattedValue}`;
 };
 
-const renderScanStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
+const renderStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
@@ -183,7 +182,6 @@ export default function DocumentsPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-
   const [allUserInvoices, setAllUserInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -219,7 +217,7 @@ export default function DocumentsPage() {
   const [isExporting, setIsExporting] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'scanned-docs' | 'paid-invoices'>('scanned-docs');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); // State to toggle advanced filters
 
   const defaultScannedColumns: Record<string, boolean> = {
     selection: true, actions: true, originalFileName: true, uploadTime: true, status: true, invoiceNumber: true, supplierName: true, totalAmount: true, paymentStatus: true, paymentDueDate: true, errorMessage: false,
@@ -258,13 +256,13 @@ export default function DocumentsPage() {
   const currentVisibleColumns = useMemo(() => activeTab === 'scanned-docs' ? visibleColumnsScanned : visibleColumnsPaid, [activeTab, visibleColumnsScanned, visibleColumnsPaid]);
   const currentColumnDefinitions = useMemo(() => activeTab === 'scanned-docs' ? scannedDocsColumnDefinitions : paidInvoicesColumnDefinitions, [activeTab, scannedDocsColumnDefinitions, paidInvoicesColumnDefinitions]);
   
-  const toggleColumnVisibility = (key: string) => {
+  const toggleColumnVisibility = useCallback((key: string) => {
     if (activeTab === 'scanned-docs') {
         setVisibleColumnsScanned(prev => ({ ...prev, [key]: !prev[key] }));
     } else {
         setVisibleColumnsPaid(prev => ({ ...prev, [key]: !prev[key] }));
     }
-  };
+  }, [activeTab]);
 
 
   useEffect(() => {
@@ -308,11 +306,13 @@ export default function DocumentsPage() {
     if (user?.id) {
       fetchUserData();
     }
-    const view = searchParamsHook.get('mobileView') as ViewMode | null;
+    const view = searchParamsHook.get('viewMode') as ViewMode | null; // Changed from mobileView to viewMode
     if (view && ['grid', 'list'].includes(view)) {
         setViewMode(view);
     } else if (isMobile) {
-        setViewMode('grid');
+        setViewMode('grid'); // Default to grid on mobile
+    } else {
+        setViewMode('list'); // Default to list on desktop
     }
 
     const supplierQuery = searchParamsHook.get('supplier');
@@ -397,16 +397,27 @@ export default function DocumentsPage() {
              if (sortKey === 'uploadTime' || sortKey === 'paymentDueDate' || sortKey === 'invoiceDate') {
                 let dateA = 0;
                 let dateB = 0;
-                if (valA) dateA = (valA instanceof Timestamp ? valA.toDate() : (typeof valA === 'string' ? parseISO(valA) : valA as Date)).getTime();
-                if (valB) dateB = (valB instanceof Timestamp ? valB.toDate() : (typeof valB === 'string' ? parseISO(valB) : valB as Date)).getTime();
+                const aDateVal = valA;
+                const bDateVal = valB;
+
+                if (aDateVal) {
+                    if (aDateVal instanceof Timestamp) dateA = aDateVal.toDate().getTime();
+                    else if (typeof aDateVal === 'string' && isValid(parseISO(aDateVal))) dateA = parseISO(aDateVal).getTime();
+                    else if (aDateVal instanceof Date && isValid(aDateVal)) dateA = aDateVal.getTime();
+                }
+                 if (bDateVal) {
+                    if (bDateVal instanceof Timestamp) dateB = bDateVal.toDate().getTime();
+                    else if (typeof bDateVal === 'string' && isValid(parseISO(bDateVal))) dateB = parseISO(bDateVal).getTime();
+                    else if (bDateVal instanceof Date && isValid(bDateVal)) dateB = bDateVal.getTime();
+                }
                 comparison = dateA - dateB;
              } else if (typeof valA === 'number' && typeof valB === 'number') {
                  comparison = valA - valB;
              } else if (typeof valA === 'string' && typeof valB === 'string') {
                  comparison = (valA || "").localeCompare(valB || "", locale);
              } else {
-                if (valA == null && valB != null) comparison = 1;
-                else if (valA != null && valB == null) comparison = -1;
+                if ((valA === undefined || valA === null) && (valB !== undefined && valB !== null)) comparison = 1; // nulls/undefined last
+                else if ((valA !== undefined && valA !== null) && (valB === undefined || valB === null)) comparison = -1; // nulls/undefined last
                 else comparison = 0;
              }
              return sortDirection === 'asc' ? comparison : comparison * -1;
@@ -693,6 +704,27 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <FileTextIconLucide className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('documents_page_title')}
             </CardTitle>
+            <div className="flex items-center gap-2">
+                <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setShowAdvancedFilters(prev => !prev)}
+                    aria-label={t('invoices_toggle_advanced_filters_aria')}
+                    title={t('invoices_toggle_advanced_filters_aria')}
+                    className="h-9 w-9 sm:h-10 sm:w-10"
+                >
+                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+                <Button
+                    variant="outline"
+                    onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
+                    className="h-9 w-auto px-3 sm:h-10 sm:px-4"
+                    aria-label={t('invoices_toggle_view_mode_aria')}
+                >
+                    {viewMode === 'list' ? <Grid className="mr-0 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="mr-0 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" />}
+                    <span className="hidden sm:inline">{viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}</span>
+                </Button>
+            </div>
           </div>
           <CardDescription>{t('documents_page_description')}</CardDescription>
         </CardHeader>
@@ -711,7 +743,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
              <Select
                 value={filterDocumentType}
                 onValueChange={(value) => {
-                    setFilterDocumentType(value === 'all_doc_types' ? '' : value as 'deliveryNote' | 'invoice' | '');
+                    setFilterDocumentType(value === 'all' ? '' : value as 'deliveryNote' | 'invoice' | '');
                     setCurrentPage(1);
                 }}
                 >
@@ -719,63 +751,11 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     <SelectValue placeholder={t('invoices_filter_doc_type_all')} />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="all_doc_types">{t('invoices_filter_doc_type_all')}</SelectItem>
+                    <SelectItem value="all">{t('invoices_filter_doc_type_all')}</SelectItem>
                     <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
                     <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
                 </SelectContent>
              </Select>
-            
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-auto h-10">
-                        <Filter className="mr-2 h-4 w-4" />
-                        {t('invoices_filter_button_label_combined_short')} 
-                        <ChevronDown className="ml-auto h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                 <DropdownMenuContent align="end" className="w-64">
-                     <DropdownMenuCheckboxItem
-                        checked={showAdvancedFilters}
-                        onCheckedChange={setShowAdvancedFilters}
-                    >
-                        {showAdvancedFilters ? t('invoices_hide_advanced_filters_label') : t('invoices_show_advanced_filters_label')}
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                            <Eye className="mr-2 h-4 w-4" />
-                            {t('inventory_toggle_columns_label')}
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                            <DropdownMenuSubContent>
-                                <DropdownMenuLabel>
-                                    {t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})
-                                </DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={header.key}
-                                        className="capitalize"
-                                        checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
-                                        onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
-                                    >
-                                        {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                    </DropdownMenuSub>
-                </DropdownMenuContent>
-             </DropdownMenu>
-             <Button
-                variant="outline"
-                onClick={() => setViewMode(prev => prev === 'list' ? 'grid' : 'list')}
-                className="w-full sm:w-auto h-10"
-                aria-label={t('invoices_toggle_view_mode_aria')}
-            >
-                {viewMode === 'list' ? <Grid className="mr-2 h-4 w-4" /> : <ListChecks className="mr-2 h-4 w-4" />}
-                {viewMode === 'list' ? t('invoices_view_mode_grid') : t('invoices_view_mode_list')}
-            </Button>
           </div>
 
           {showAdvancedFilters && (
@@ -930,73 +910,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                 )}
             </TabsContent>
             <TabsContent value="paid-invoices">
-              { /* Paid Invoices Tab Content */ }
-                {viewMode === 'list' ? (
-                    <div className="overflow-x-auto relative">
-                        <Table className="min-w-[600px]">
-                        <TableHeader>
-                            <TableRow>
-                            {currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).map((header) => (
-                                <TableHead key={header.key} className={cn(header.className, header.sortable && "cursor-pointer hover:bg-muted/50", header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell', 'px-2 sm:px-4 py-2', header.key === 'actions' ? 'sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10' : (header.key === 'selection' ? 'sticky left-0 bg-card z-20' : ''))}
-                                onClick={() => header.sortable && handleSortInternal(header.key as SortKey)}
-                                aria-sort={header.sortable ? (sortKey === header.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
-                                <div className="flex items-center gap-1 whitespace-nowrap">
-                                    {header.key === 'selection' ? (<Checkbox checked={selectedForBulkAction.length > 0 && selectedForBulkAction.length === paginatedInvoices.length && paginatedInvoices.length > 0} onCheckedChange={(checked) => handleSelectAllForBulkAction(!!checked)} aria-label={t('invoice_export_select_all_aria')} className="mx-auto"/>)
-                                    : (t(header.labelKey as any, { currency_symbol: t('currency_symbol') }))}
-                                    {header.sortable && sortKey === header.key && (<span className="text-xs" aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>)}
-                                </div>
-                                </TableHead>
-                            ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2"><div className="flex justify-center items-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /><span className="ml-2">{t('invoices_loading')}</span></div></TableCell></TableRow>)
-                            : paginatedInvoices.length === 0 ? (<TableRow><TableCell colSpan={currentColumnDefinitions.filter((h) => currentVisibleColumns[h.key]).length} className="h-24 text-center px-2 sm:px-4 py-2">{t('paid_invoices_no_paid_invoices_found')}</TableCell></TableRow>)
-                            : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
-                                <TableRow key={item.id} className="hover:bg-muted/50" data-testid={`invoice-item-${item.id}`}>
-                                    {currentVisibleColumns.selection && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-0 bg-card z-20", currentColumnDefinitions.find(h => h.key === 'selection')?.className)}><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})}/></TableCell>)}
-                                    {currentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", currentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => handleViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
-                                    {currentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", currentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => handleViewImage(item)} title={t('paid_invoices_receipt_image_label')}><Receipt className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
-                                    {currentVisibleColumns.invoiceDate && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'invoiceDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, locale, t) : t('invoices_na')}</TableCell>}
-                                    {currentVisibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
-                                    {currentVisibleColumns.totalAmount && (<TableCell className="text-right px-2 sm:px-4 py-2 whitespace-nowrap">{item.totalAmount !== undefined && item.totalAmount !== null ? formatCurrencyDisplay(item.totalAmount, t) : t('invoices_na')}</TableCell>)}
-                                    {currentVisibleColumns.paymentMethod && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'paymentMethod')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentMethod ? t(`payment_method_${item.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: item.paymentMethod}) : t('invoices_na')}</TableCell>}
-                                </TableRow>
-                            )))}
-                        </TableBody>
-                        </Table>
-                    </div>
-                    ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ gridAutoRows: 'minmax(150px, auto)' }}>
-                        {isLoading ? (Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (<Card key={index} className="animate-pulse"><CardHeader className="h-32 bg-muted rounded-t-lg" /><CardContent className="p-4 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /><div className="h-3 bg-muted rounded w-1/4" /></CardContent></Card>)))
-                        : paginatedInvoices.length === 0 ? (<p className="col-span-full text-center text-muted-foreground py-10">{t('paid_invoices_no_paid_invoices_found')}</p>)
-                        : (paginatedInvoices.map((item: InvoiceHistoryItem) => (
-                            <Card key={item.id} className="flex flex-col overflow-hidden cursor-pointer hover:shadow-lg transition-shadow scale-fade-in">
-                            <div className="p-2 absolute top-0 left-0 z-10"><Checkbox checked={selectedForBulkAction.includes(item.id)} onCheckedChange={(checked) => handleSelectInvoiceForBulkAction(item.id, !!checked)} aria-label={t('invoice_export_select_aria', { fileName: item.originalFileName || ''})} className="bg-background/70 hover:bg-background border-primary"/></div>
-                            <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
-                                {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (<NextImage src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} alt={t('paid_invoices_receipt_image_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="payment receipt document"/>)
-                                : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center"><Receipt className="h-12 w-12 text-muted-foreground" /></div>)}
-                                <div className="absolute top-2 right-2 flex flex-col gap-1">{renderPaymentStatusBadge('paid', t)}</div>
-                            </CardHeader>
-                            <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}><Receipt className="inline-block mr-1.5 h-3.5 w-3.5 text-green-600" />{item.generatedFileName || item.originalFileName}</CardTitle>
-                                <p className="text-xs text-muted-foreground">{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, locale, t) : formatDateForDisplay(item.uploadTime, locale, t)}</p>
-                                {item.supplierName && <p className="text-xs text-muted-foreground">{t('invoice_details_supplier_label')}: {item.supplierName}</p>}
-                                {item.totalAmount !== undefined && <p className="text-xs font-medium">{t('invoices_col_total')}: {formatCurrencyDisplay(item.totalAmount, t)}</p>}
-                            </CardContent>
-                            <CardFooter className="p-3 border-t">
-                                <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={(e) => { e.stopPropagation(); handleViewDetails(item); }}><Info className="mr-1.5 h-3.5 w-3.5"/> {t('invoices_view_details_button')}</Button>
-                            </CardFooter>
-                            </Card>
-                        )))}
-                    </div>
-                    )}
-                 {activeTab === 'paid-invoices' && selectedForBulkAction.length > 0 && (
-                 <div className="mt-4 flex justify-end">
-                    <Button onClick={handleOpenExportDialog} disabled={isExporting} className="bg-primary hover:bg-primary/90">
-                        <MailIcon className="mr-2 h-4 w-4" /> {t('invoice_export_selected_button')} ({selectedForBulkAction.length})
-                    </Button>
-                 </div>
-                )}
+              <PaidInvoicesTabView filterDocumentType={filterDocumentType} />
             </TabsContent>
           </Tabs>
 
@@ -1125,4 +1039,3 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     </div>
   );
 }
-
