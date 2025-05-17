@@ -26,7 +26,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
    DropdownMenuPortal,
  } from '@/components/ui/dropdown-menu';
  import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
- import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle, CheckCircle, Clock } from 'lucide-react';
+ import { Search, Filter, ChevronDown, Loader2, Info, Download, Trash2, Edit, Save, ListChecks, Grid, Receipt, Eye, Briefcase, CreditCard, Mail as MailIcon, CheckSquare, ChevronLeft, ChevronRight, FileText as FileTextIconLucide, Image as ImageIconLucide, CalendarDays, XCircle } from 'lucide-react';
  import { useRouter, useSearchParams } from 'next/navigation';
  import { useToast } from '@/hooks/use-toast';
  import type { DateRange } from 'react-day-picker';
@@ -77,7 +77,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== 'string') return false;
-  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('blob:');
+  return src.startsWith('data:image') || src.startsWith('http://') || src.startsWith('https://');
 };
 
 type SortKey = keyof InvoiceHistoryItem | '';
@@ -135,26 +135,36 @@ const formatCurrencyDisplay = (
     return `${t('currency_symbol')}${formattedValue}`;
 };
 
-const renderStatusBadge = (status: InvoiceHistoryItem['status'] | InvoiceHistoryItem['paymentStatus'], type: 'scan' | 'payment', t: (key: string, params?: any) => string) => {
+const renderScanStatusBadge = (status: InvoiceHistoryItem['status'], t: (key: string, params?: any) => string) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
     let className = '';
     let icon = null;
+    let labelKey = '';
 
-    if (type === 'scan') {
-       switch (status as InvoiceHistoryItem['status']) {
-           case 'completed': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CheckCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_completed'; break;
-           case 'processing': variant = 'secondary'; className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80'; icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />; labelKey = 'invoice_status_processing'; break;
-           case 'pending': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_pending'; break;
-           case 'error': variant = 'destructive'; icon = <XCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_error'; break;
-           default: variant = 'outline'; icon = null; labelKey = String(status); break;
-       }
-    } else if (type === 'payment') {
-        switch (status as InvoiceHistoryItem['paymentStatus']) {
-           case 'paid': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_paid'; break;
-           case 'unpaid': variant = 'secondary'; className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_unpaid'; break;
-           case 'pending_payment': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_pending_payment'; break;
-           default: variant = 'outline'; icon = null; labelKey = String(status);
-        }
+   switch (status as InvoiceHistoryItem['status']) {
+       case 'completed': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CheckCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_completed'; break;
+       case 'processing': variant = 'secondary'; className = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 animate-pulse hover:bg-blue-100/80'; icon = <Loader2 className="mr-1 h-3 w-3 animate-spin" />; labelKey = 'invoice_status_processing'; break;
+       case 'pending': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_pending'; break;
+       case 'error': variant = 'destructive'; icon = <XCircle className="mr-1 h-3 w-3" />; labelKey = 'invoice_status_error'; break;
+       default: variant = 'outline'; icon = null; labelKey = String(status); break;
+   }
+    return (
+       <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
+           {icon}
+           {t(labelKey as any) || (typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1) : '')}
+       </Badge>
+    );
+ };
+ const renderPaymentStatusBadge = (status: InvoiceHistoryItem['paymentStatus'], t: (key: string, params?: any) => string) => {
+    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';
+    let className = '';
+    let icon = null;
+    let labelKey = '';
+    switch (status as InvoiceHistoryItem['paymentStatus']) {
+       case 'paid': variant = 'secondary'; className = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 hover:bg-green-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_paid'; break;
+       case 'unpaid': variant = 'secondary'; className = 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-100/80'; icon = <CreditCard className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_unpaid'; break;
+       case 'pending_payment': variant = 'secondary'; className = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80'; icon = <Clock className="mr-1 h-3 w-3" />; labelKey = 'invoice_payment_status_pending_payment'; break;
+       default: variant = 'outline'; icon = null; labelKey = String(status);
     }
     return (
        <Badge variant={variant} className={cn("text-[10px] sm:text-xs font-medium px-1.5 sm:px-2 py-0.5", className)}>
@@ -212,10 +222,10 @@ export default function DocumentsPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const defaultScannedColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, uploadTime: true, status: true, invoiceNumber: true, supplierName: true, totalAmount: true, paymentStatus: true, paymentDueDate: true,
+    selection: true, actions: true, originalFileName: true, uploadTime: true, status: true, invoiceNumber: true, supplierName: true, totalAmount: true, paymentStatus: true, paymentDueDate: true, errorMessage: false,
   };
   const defaultPaidColumns: Record<string, boolean> = {
-    selection: true, actions: true, originalFileName: true, invoiceDate: true, supplierName: true, totalAmount: true, paymentMethod: true,
+    selection: true, actions: true, originalFileName: true, invoiceDate: true, supplierName: true, totalAmount: true, paymentMethod: true, paymentReceiptImageUri: true,
   };
 
   const [visibleColumnsScanned, setVisibleColumnsScanned] = useState(defaultScannedColumns);
@@ -305,7 +315,6 @@ export default function DocumentsPage() {
         setViewMode('grid');
     }
 
-    // Check for query params to pre-filter
     const supplierQuery = searchParamsHook.get('supplier');
     if (supplierQuery) setFilterSupplier(decodeURIComponent(supplierQuery));
 
@@ -487,6 +496,9 @@ export default function DocumentsPage() {
             documentType: editedInvoiceData.documentType || selectedInvoiceDetails.documentType,
             invoiceDate: editedInvoiceData.invoiceDate,
             paymentMethod: editedInvoiceData.paymentMethod,
+            compressedImageForFinalRecordUri: editedInvoiceData.compressedImageForFinalRecordUri,
+            originalImagePreviewUri: editedInvoiceData.originalImagePreviewUri,
+            paymentReceiptImageUri: editedInvoiceData.paymentReceiptImageUri,
         };
 
         await updateInvoiceService(selectedInvoiceDetails.id, updatedInvoiceData, user.id);
@@ -659,8 +671,6 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
     setShowDetailsSheet(true);
   };
 
-   const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
-
 
    if (authLoading || (isLoading && !user)) {
      return (
@@ -698,18 +708,24 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                     aria-label={t('invoices_search_aria')}
                  />
             </div>
-             <Select value={filterDocumentType} onValueChange={(value) => setFilterDocumentType(value as any)}>
+             <Select
+                value={filterDocumentType}
+                onValueChange={(value) => {
+                    setFilterDocumentType(value === 'all_doc_types' ? '' : value as 'deliveryNote' | 'invoice' | '');
+                    setCurrentPage(1);
+                }}
+                >
                 <SelectTrigger className="w-full sm:w-auto h-10">
                     <SelectValue placeholder={t('invoices_filter_doc_type_all')} />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="">{t('invoices_filter_doc_type_all')}</SelectItem>
+                    <SelectItem value="all_doc_types">{t('invoices_filter_doc_type_all')}</SelectItem>
                     <SelectItem value="deliveryNote">{t('upload_doc_type_delivery_note')}</SelectItem>
                     <SelectItem value="invoice">{t('upload_doc_type_invoice')}</SelectItem>
                 </SelectContent>
              </Select>
             
-             <DropdownMenu>
+            <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="w-full sm:w-auto h-10">
                         <Filter className="mr-2 h-4 w-4" />
@@ -717,13 +733,38 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         <ChevronDown className="ml-auto h-4 w-4" />
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                    <DropdownMenuCheckboxItem
+                 <DropdownMenuContent align="end" className="w-64">
+                     <DropdownMenuCheckboxItem
                         checked={showAdvancedFilters}
                         onCheckedChange={setShowAdvancedFilters}
                     >
                         {showAdvancedFilters ? t('invoices_hide_advanced_filters_label') : t('invoices_show_advanced_filters_label')}
                     </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                            <Eye className="mr-2 h-4 w-4" />
+                            {t('inventory_toggle_columns_label')}
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                            <DropdownMenuSubContent>
+                                <DropdownMenuLabel>
+                                    {t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={header.key}
+                                        className="capitalize"
+                                        checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
+                                        onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
+                                    >
+                                        {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                            </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuSub>
                 </DropdownMenuContent>
              </DropdownMenu>
              <Button
@@ -753,28 +794,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                      <DropdownMenuTrigger asChild><Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted"><Briefcase className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{existingSuppliers.find(s => s.name === filterSupplier)?.name || t('invoices_filter_supplier_all')}{filterSupplier && <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 text-muted-foreground hover:text-destructive" onClick={(e)=>{e.stopPropagation();setFilterSupplier('')}}><XCircle className="h-3.5 w-3.5"/></Button>}</Button></DropdownMenuTrigger>
                      <DropdownMenuContent align="start"><DropdownMenuLabel>{t('invoices_filter_supplier_label')}</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuCheckboxItem checked={!filterSupplier} onCheckedChange={() => setFilterSupplier('')}>{t('invoices_filter_supplier_all')}</DropdownMenuCheckboxItem>{existingSuppliers.map((supplier) => (<DropdownMenuCheckboxItem key={supplier.id} checked={filterSupplier === supplier.name} onCheckedChange={() => setFilterSupplier(supplier.name)}>{supplier.name}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
                  </DropdownMenu>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {t('inventory_view_button')}
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
-                            <DropdownMenuCheckboxItem
-                                key={header.key}
-                                className="capitalize"
-                                checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
-                                onCheckedChange={() => toggleColumnVisibility(header.key as keyof InvoiceHistoryItem | 'actions' | 'selection')}
-                            >
-                                {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
-                            </DropdownMenuCheckboxItem>
-                        ))}
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                
                  {activeTab === 'scanned-docs' && (
                      <>
                         <DropdownMenu>
@@ -787,6 +807,27 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         </DropdownMenu>
                      </>
                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                            <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {t('inventory_view_button')}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>{t('inventory_toggle_columns_label')} ({activeTab === 'scanned-docs' ? t('invoices_tab_scanned_docs') : t('invoices_tab_paid_invoices')})</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {currentColumnDefinitions.filter(h => h.key !== 'id' && h.key !== 'actions' && h.key !== 'selection').map((header) => (
+                            <DropdownMenuCheckboxItem
+                                key={header.key}
+                                className="capitalize"
+                                checked={currentVisibleColumns[header.key as keyof typeof currentVisibleColumns]}
+                                onCheckedChange={() => toggleColumnVisibility(header.key)}
+                            >
+                                {t(header.labelKey as any, { currency_symbol: t('currency_symbol') })}
+                            </DropdownMenuCheckboxItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
              </div>
           )}
 
@@ -824,8 +865,8 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                                 {currentVisibleColumns.actions && (<TableCell className={cn("text-center px-1 sm:px-2 py-2 sticky left-[calc(var(--checkbox-width,3%)+0.25rem)] bg-card z-10", currentColumnDefinitions.find(h => h.key === 'actions')?.className)}><Button variant="ghost" size="icon" className="text-primary hover:text-primary/80 h-7 w-7" onClick={() => handleViewDetails(item)} title={t('invoices_view_details_title', { fileName: item.originalFileName || '' })} aria-label={t('invoices_view_details_aria', { fileName: item.originalFileName || '' })}><Info className="h-4 w-4" /></Button></TableCell>)}
                                 {currentVisibleColumns.originalFileName && (<TableCell className={cn("font-medium px-2 sm:px-4 py-2", currentColumnDefinitions.find(h => h.key === 'originalFileName')?.className)}><Button variant="link" className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate" onClick={() => handleViewImage(item)} title={t('upload_history_view_image_title', {fileName: item.originalFileName || item.generatedFileName || ''})}><ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />{item.generatedFileName || item.originalFileName}</Button></TableCell>)}
                                 {currentVisibleColumns.uploadTime && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'uploadTime')?.mobileHidden && 'hidden sm:table-cell')}>{formatDateForDisplay(item.uploadTime, locale, t)}</TableCell>}
-                                {currentVisibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.status, 'scan', t)}</TableCell>)}
-                                {currentVisibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderStatusBadge(item.paymentStatus, 'payment', t)}</TableCell>)}
+                                {currentVisibleColumns.status && (<TableCell className="px-2 sm:px-4 py-2">{renderScanStatusBadge(item.status, t)}</TableCell>)}
+                                {currentVisibleColumns.paymentStatus && (<TableCell className="px-2 sm:px-4 py-2">{renderPaymentStatusBadge(item.paymentStatus, t)}</TableCell>)}
                                 {currentVisibleColumns.paymentDueDate && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'paymentDueDate')?.mobileHidden && 'hidden sm:table-cell')}>{item.paymentDueDate ? formatDateForDisplay(item.paymentDueDate, locale, t) : t('invoices_na')}</TableCell>}
                                 {currentVisibleColumns.invoiceNumber && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'invoiceNumber')?.mobileHidden && 'hidden sm:table-cell')}>{item.invoiceNumber || t('invoices_na')}</TableCell>}
                                 {currentVisibleColumns.supplierName && <TableCell className={cn('px-2 sm:px-4 py-2', currentColumnDefinitions.find(h => h.key === 'supplierName')?.mobileHidden && 'hidden sm:table-cell')}>{item.supplierName || t('invoices_na')}</TableCell>}
@@ -846,7 +887,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                         <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
                             {isValidImageSrc(item.originalImagePreviewUri || item.compressedImageForFinalRecordUri) ? (<NextImage src={item.originalImagePreviewUri || item.compressedImageForFinalRecordUri!} alt={t('invoices_preview_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="invoice document"/>)
                             : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center">{item.documentType === 'invoice' ? <FileTextIconLucide className="h-12 w-12 text-blue-500/50" /> : <FileTextIconLucide className="h-12 w-12 text-green-500/50" />}</div>)}
-                            <div className="absolute top-2 right-2 flex flex-col gap-1">{renderStatusBadge(item.status, 'scan', t)}{renderStatusBadge(item.paymentStatus, 'payment', t)}</div>
+                            <div className="absolute top-2 right-2 flex flex-col gap-1">{renderScanStatusBadge(item.status, t)}{renderPaymentStatusBadge(item.paymentStatus, t)}</div>
                         </CardHeader>
                         <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}>{item.documentType === 'invoice' ? <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-blue-500" /> : <FileTextIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-green-500" /> }{item.generatedFileName || item.originalFileName}</CardTitle>
                             <p className="text-xs text-muted-foreground">{formatDateForDisplay(item.uploadTime, locale, t)}</p>
@@ -935,7 +976,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                             <CardHeader className="p-0 relative aspect-[4/3]" onClick={() => handleViewImage(item)}>
                                 {isValidImageSrc(item.paymentReceiptImageUri || item.originalImagePreviewUri) ? (<NextImage src={item.paymentReceiptImageUri || item.originalImagePreviewUri!} alt={t('paid_invoices_receipt_image_alt', { fileName: item.originalFileName || '' })} layout="fill" objectFit="cover" className="rounded-t-lg" data-ai-hint="payment receipt document"/>)
                                 : (<div className="w-full h-full bg-muted rounded-t-lg flex items-center justify-center"><Receipt className="h-12 w-12 text-muted-foreground" /></div>)}
-                                <div className="absolute top-2 right-2 flex flex-col gap-1">{renderStatusBadge('paid', 'payment', t)}</div>
+                                <div className="absolute top-2 right-2 flex flex-col gap-1">{renderPaymentStatusBadge('paid', t)}</div>
                             </CardHeader>
                             <CardContent className="p-3 flex-grow" onClick={() => handleViewDetails(item)}><CardTitle className="text-sm font-semibold truncate" title={item.generatedFileName || item.originalFileName}><Receipt className="inline-block mr-1.5 h-3.5 w-3.5 text-green-600" />{item.generatedFileName || item.originalFileName}</CardTitle>
                                 <p className="text-xs text-muted-foreground">{item.invoiceDate ? formatDateForDisplay(item.invoiceDate, locale, t) : formatDateForDisplay(item.uploadTime, locale, t)}</p>
@@ -1021,7 +1062,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       <p><strong>{t('invoice_details_file_name_label')}:</strong> {selectedInvoiceDetails.generatedFileName || selectedInvoiceDetails.originalFileName}</p>
                       <p><strong>{t('invoice_details_upload_time_label')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.uploadTime, locale, t)}</p>
                       <p><strong>{t('invoices_document_type_label')}:</strong> {t(`upload_doc_type_${selectedInvoiceDetails.documentType}` as any) || selectedInvoiceDetails.documentType}</p>
-                      <div className="flex items-center"><strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.status, 'scan', t)}</div>
+                      <div className="flex items-center"><strong className="mr-1">{t('invoice_details_status_label')}:</strong> {renderScanStatusBadge(selectedInvoiceDetails.status, t)}</div>
                   </div>
                   <Separator className="my-3"/>
                    <div className="space-y-2"><h3 className="text-md font-semibold text-primary border-b pb-1">{t('invoice_details_financial_section_title')}</h3>
@@ -1030,7 +1071,7 @@ const handleConfirmReceiptUpload = async (receiptImageUriParam: string) => {
                       <p><strong>{t('invoice_details_total_amount_label')}:</strong> {selectedInvoiceDetails.totalAmount !== undefined ? formatCurrencyDisplay(selectedInvoiceDetails.totalAmount, t) : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_invoice_date_label')}:</strong> {selectedInvoiceDetails.invoiceDate ? formatDateForDisplay(selectedInvoiceDetails.invoiceDate, locale, t) : t('invoices_na')}</p>
                       <p><strong>{t('invoice_details_payment_method_label')}:</strong> {selectedInvoiceDetails.paymentMethod ? t(`payment_method_${selectedInvoiceDetails.paymentMethod.toLowerCase().replace(/\s+/g, '_')}` as any, {defaultValue: selectedInvoiceDetails.paymentMethod}) : t('invoices_na')}</p>
-                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderStatusBadge(selectedInvoiceDetails.paymentStatus, 'payment', t)}</div>
+                      <div className="flex items-center mt-1"><strong className="mr-1">{t('invoice_payment_status_label')}:</strong> {renderPaymentStatusBadge(selectedInvoiceDetails.paymentStatus, t)}</div>
                       {selectedInvoiceDetails.paymentDueDate && (<p><strong>{t('payment_due_date_dialog_title')}:</strong> {formatDateForDisplay(selectedInvoiceDetails.paymentDueDate, locale, t)}</p>)}
                    </div>
                   {selectedInvoiceDetails.errorMessage && selectedInvoiceDetails.status === 'error' && (<><Separator className="my-3"/><div className="space-y-1"><h3 className="text-md font-semibold text-destructive border-b pb-1">{t('invoice_details_error_message_label')}</h3><p className="text-destructive text-xs">{selectedInvoiceDetails.errorMessage}</p></div></>)}
