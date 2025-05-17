@@ -109,14 +109,14 @@ export default function InventoryPage() {
     id: false,
     shortName: true,
     description: false,
-    catalogNumber: false,
+    catalogNumber: true,
     barcode: false,
     quantity: true,
     unitPrice: false,
     salePrice: true,
-    lineTotal: false, // Initially hidden as requested
-    minStockLevel: false, // Hidden by default
-    maxStockLevel: false, // Hidden by default
+    lineTotal: false,
+    minStockLevel: false,
+    maxStockLevel: false,
     lastUpdated: false,
     userId: false,
     _originalId: false,
@@ -313,7 +313,7 @@ export default function InventoryPage() {
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -411,7 +411,7 @@ export default function InventoryPage() {
             await updateProductService(productId, { quantity: newQuantity }, user.id);
             setInventory(prev =>
                 prev.map(p =>
-                    p.id === productId ? { ...p, quantity: newQuantity, lineTotal: newQuantity * (Number(p.unitPrice) || 0) } : p
+                    p.id === productId ? { ...p, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(p.unitPrice) || 0)).toFixed(2)) } : p
                 )
             );
              toast({
@@ -438,11 +438,11 @@ export default function InventoryPage() {
     };
 
 
-   if (authLoading || (!user && !isLoading)) { // If not authenticated and not already loading, don't show main loader
-     return null; // Or a specific "please log in" message if preferred
+   if (authLoading || (!user && !isLoading)) {
+     return null;
    }
 
-   if (isLoading) { // This will catch the initial load when user is present or auth is still loading
+   if (isLoading) {
      return (
        <div className="container mx-auto p-4 md:p-8 flex justify-center items-center min-h-[calc(100vh-var(--header-height,4rem))]">
          <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -487,16 +487,16 @@ export default function InventoryPage() {
                     <Button
                         variant="outline"
                         onClick={() => {
-                            const newMode = mobileViewMode === 'list' ? 'cards' : 'list'; // Assuming 'list' is table
+                            const newMode = mobileViewMode === 'table' ? 'cards' : 'table';
                             setMobileViewMode(newMode);
                             const params = new URLSearchParams(searchParams.toString());
                             params.set('mobileView', newMode);
-                            router.replace(`?${params.toString()}`, {scroll: false});
+                            router.replace(`/inventory?${params.toString()}`, {scroll: false});
                         }}
                         className="h-10 px-3"
                         aria-label={t('inventory_toggle_view_mode_aria')}
                         >
-                        {mobileViewMode === 'list' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
+                        {mobileViewMode === 'table' ? <Grid className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
                     </Button>
                 )}
             </div>
@@ -504,52 +504,54 @@ export default function InventoryPage() {
 
             {showAdvancedInventoryFilters && (
                 <div className="mb-6 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
-                    <DropdownMenu>
-                       <DropdownMenuTrigger asChild>
-                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                           <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                           {filterStockLevel === 'low' ? t('inventory_filter_low') :
-                             filterStockLevel === 'inStock' ? t('inventory_filter_in_stock') :
-                             filterStockLevel === 'out' ? t('inventory_filter_out_of_stock') :
-                             filterStockLevel === 'over' ? t('inventory_filter_over_stock') :
-                             t('inventory_filter_pill_stock')}
-                           <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
-                         </Button>
-                       </DropdownMenuTrigger>
-                       <DropdownMenuContent align="start">
-                         <DropdownMenuLabel>{t('inventory_filter_by_stock_level')}</DropdownMenuLabel>
-                         <DropdownMenuSeparator />
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'all'} onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}>{t('inventory_filter_all')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'inStock'} onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}>{t('inventory_filter_in_stock')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'low'} onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}>{t('inventory_filter_low')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'out'} onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}>{t('inventory_filter_out_of_stock')}</DropdownMenuCheckboxItem>
-                         <DropdownMenuCheckboxItem checked={filterStockLevel === 'over'} onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}>{t('inventory_filter_over_stock')}</DropdownMenuCheckboxItem>
-                       </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex gap-2"> {/* Wrapper to keep these two dropdowns together */}
+                        <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                             <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                               <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                               {filterStockLevel === 'low' ? t('inventory_filter_low') :
+                                 filterStockLevel === 'inStock' ? t('inventory_filter_in_stock') :
+                                 filterStockLevel === 'out' ? t('inventory_filter_out_of_stock') :
+                                 filterStockLevel === 'over' ? t('inventory_filter_over_stock') :
+                                 t('inventory_filter_pill_stock')}
+                               <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
+                             </Button>
+                           </DropdownMenuTrigger>
+                           <DropdownMenuContent align="start">
+                             <DropdownMenuLabel>{t('inventory_filter_by_stock_level')}</DropdownMenuLabel>
+                             <DropdownMenuSeparator />
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'all'} onCheckedChange={() => { setFilterStockLevel('all'); setCurrentPage(1); }}>{t('inventory_filter_all')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'inStock'} onCheckedChange={() => { setFilterStockLevel('inStock'); setCurrentPage(1); }}>{t('inventory_filter_in_stock')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'low'} onCheckedChange={() => { setFilterStockLevel('low'); setCurrentPage(1); }}>{t('inventory_filter_low')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'out'} onCheckedChange={() => { setFilterStockLevel('out'); setCurrentPage(1); }}>{t('inventory_filter_out_of_stock')}</DropdownMenuCheckboxItem>
+                             <DropdownMenuCheckboxItem checked={filterStockLevel === 'over'} onCheckedChange={() => { setFilterStockLevel('over'); setCurrentPage(1); }}>{t('inventory_filter_over_stock')}</DropdownMenuCheckboxItem>
+                           </DropdownMenuContent>
+                        </DropdownMenu>
 
-                    <DropdownMenu>
-                       <DropdownMenuTrigger asChild>
-                         <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
-                            <Columns className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                            {t('inventory_filter_pill_columns')}
-                           <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
-                         </Button>
-                       </DropdownMenuTrigger>
-                       <DropdownMenuContent align="end">
-                         <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
-                         <DropdownMenuSeparator />
-                         {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
-                           <DropdownMenuCheckboxItem
-                             key={header.key}
-                             className="capitalize"
-                             checked={visibleColumns[header.key as keyof typeof visibleColumns]}
-                             onCheckedChange={() => toggleColumnVisibility(header.key as keyof typeof visibleColumns)}
-                           >
-                             {t(header.labelKey, { currency_symbol: t('currency_symbol') })}
-                           </DropdownMenuCheckboxItem>
-                         ))}
-                       </DropdownMenuContent>
-                    </DropdownMenu>
+                        <DropdownMenu>
+                           <DropdownMenuTrigger asChild>
+                             <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
+                                <Columns className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                                {t('inventory_filter_pill_columns')}
+                               <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
+                             </Button>
+                           </DropdownMenuTrigger>
+                           <DropdownMenuContent align="end">
+                             <DropdownMenuLabel>{t('inventory_toggle_columns_label')}</DropdownMenuLabel>
+                             <DropdownMenuSeparator />
+                             {columnDefinitions.filter(h => h.key !== 'actions' && h.key !== 'id').map((header) => (
+                               <DropdownMenuCheckboxItem
+                                 key={header.key}
+                                 className="capitalize"
+                                 checked={visibleColumns[header.key as keyof typeof visibleColumns]}
+                                 onCheckedChange={() => toggleColumnVisibility(header.key as keyof typeof visibleColumns)}
+                               >
+                                 {t(header.labelKey, { currency_symbol: t('currency_symbol') })}
+                               </DropdownMenuCheckboxItem>
+                             ))}
+                           </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </div>
             )}
 
@@ -599,7 +601,7 @@ export default function InventoryPage() {
                  <div className="col-span-full text-center py-10 text-muted-foreground">
                    <Package className="mx-auto h-12 w-12 mb-2 opacity-50" />
                    <p>{t('inventory_no_items_found')}</p>
-                   <Button variant="link" onClick={() => router.push('/upload')} className="mt-1 text-primary">
+                   <Button variant="link" onClick={() => router.push('/upload')} className="mt-1 text-primary whitespace-normal h-auto">
                         {t('inventory_try_adjusting_filters_or_upload')}
                    </Button>
                  </div>
@@ -706,7 +708,7 @@ export default function InventoryPage() {
                      <TableRow>
                        <TableCell colSpan={visibleColumnHeaders.length} className="h-24 text-center">
                          <p>{t('inventory_no_items_found')}</p>
-                         <Button variant="link" onClick={() => router.push('/upload')} className="mt-1 text-primary">
+                         <Button variant="link" onClick={() => router.push('/upload')} className="mt-1 text-primary whitespace-normal h-auto">
                             {t('inventory_try_adjusting_filters_or_upload')}
                          </Button>
                        </TableCell>
