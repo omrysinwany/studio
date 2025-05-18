@@ -1,7 +1,7 @@
 // src/app/inventory/page.tsx
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -38,13 +38,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import NextImage from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import Link from 'next/link';
+
 
 const ITEMS_PER_PAGE = 10;
 
@@ -61,7 +64,7 @@ const formatDisplayNumberWithTranslation = (
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: currency ? 0 : decimals, // Show 0 for currency, specified decimals otherwise
+            minimumFractionDigits: currency ? 0 : decimals,
             maximumFractionDigits: currency ? 0 : decimals,
             useGrouping: useGrouping,
         });
@@ -103,7 +106,7 @@ export default function InventoryPage() {
   
   const defaultVisibleColumns: Record<keyof Product | 'actions' | 'imageUrl' , boolean> = useMemo(() => ({
     actions: true,
-    imageUrl: false, // Not visible by default
+    imageUrl: false,
     id: false,
     shortName: true,
     description: false,
@@ -126,7 +129,7 @@ export default function InventoryPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table'); // Default to table view
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [updatingQuantityProductId, setUpdatingQuantityProductId] = useState<string | null>(null);
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
@@ -189,6 +192,7 @@ export default function InventoryPage() {
             router.replace(`${pathname}${query}`, { scroll: false });
         } else {
            // Default to table, which is now the main default
+           setViewMode('table');
         }
     }
 
@@ -209,7 +213,7 @@ export default function InventoryPage() {
         const query = search ? `?${search}` : "";
         router.replace(`${pathname}${query}`, { scroll: false }); 
      }
-   }, [authLoading, user, fetchInventory, router, searchParams, pathname]);
+   }, [authLoading, user, fetchInventory, router, searchParams, pathname, inventory.length]);
 
 
   const handleSort = (key: SortKey) => {
@@ -316,8 +320,8 @@ export default function InventoryPage() {
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
         { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'minStockLevel', labelKey: 'inventory_col_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'maxStockLevel', labelKey: 'inventory_col_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'minStockLevel', labelKey: 'product_detail_label_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'maxStockLevel', labelKey: 'product_detail_label_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -425,34 +429,34 @@ export default function InventoryPage() {
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
          <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
-           <div>
-             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-               <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
-             </CardTitle>
-             <CardDescription>{t('inventory_description')}</CardDescription>
-           </div>
-           <div className="flex items-center gap-2 self-start sm:self-center">
-             <Button
-               variant="ghost"
-               size="icon"
-               onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
-               className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-               aria-label={t('inventory_filter_button_aria')}
-             >
-               <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-             </Button>
-             <Button
-               variant="outline"
-               onClick={() => {
-                 const newMode = viewMode === 'table' ? 'cards' : 'table';
-                 setViewMode(newMode);
-               }}
-               className="h-9 sm:h-10 px-3"
-               aria-label={t('inventory_toggle_view_mode_aria')}
-             >
-               {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
-             </Button>
-           </div>
+            <div>
+              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
+              </CardTitle>
+              <CardDescription>{t('inventory_description')}</CardDescription>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-center">
+                 <Button
+                   variant="ghost"
+                   size="icon"
+                   onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
+                   className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
+                   aria-label={t('inventory_filter_button_aria')}
+                 >
+                   <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                 </Button>
+                 <Button
+                   variant="outline"
+                   onClick={() => {
+                     const newMode = viewMode === 'table' ? 'cards' : 'table';
+                     setViewMode(newMode);
+                   }}
+                   className="h-9 sm:h-10 px-3"
+                   aria-label={t('inventory_toggle_view_mode_aria')}
+                 >
+                   {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
+                 </Button>
+            </div>
          </CardHeader>
         <CardContent>
            <div className="mb-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4">
@@ -513,27 +517,57 @@ export default function InventoryPage() {
             )}
            </div>
             <Card className="shadow-sm bg-muted/30 border-border/50 mb-6">
-                <CardHeader className="pb-2 pt-3 px-4">
-                    <CardTitle className="text-base font-medium text-muted-foreground">{t('inventory_summary_card_title')}</CardTitle>
-                </CardHeader>
-                <CardContent className="pb-3 px-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <p className="text-xs text-muted-foreground">{t('inventory_total_value_title')}</p>
-                        <p className="text-lg font-bold text-primary">
-                            {formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals:0 })}
-                        </p>
-                    </div>
-                    <div>
-                        <p className="text-xs text-muted-foreground">{t('inventory_stock_alerts_title')}</p>
-                        {isLoading ? (
-                            <Skeleton className="h-6 w-10 mt-1" />
-                        ) : (
-                            <p className={cn("text-lg font-bold", stockAlerts.length > 0 ? "text-destructive" : "text-primary")}>
-                                {stockAlerts.length}
-                            </p>
-                        )}
-                    </div>
-                </CardContent>
+              <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-base font-medium text-primary flex items-center">
+                     <Package className="mr-2 h-4 w-4" /> {t('inventory_summary_and_alerts_title')}
+                  </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                  <div>
+                      <h3 className="text-md font-semibold text-muted-foreground mb-1">{t('inventory_total_value_title')}</h3>
+                      <p className="text-2xl font-bold text-primary">
+                          {isLoading ? <Skeleton className="h-8 w-32" /> : formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true })}
+                      </p>
+                  </div>
+                  <div>
+                      <h3 className="text-md font-semibold text-muted-foreground mb-1">{t('inventory_stock_alerts_title')}</h3>
+                      <p className="text-xs text-muted-foreground mb-2">{t('inventory_stock_alerts_desc')}</p>
+                      {isLoading ? (
+                          <div className="space-y-2">
+                              <Skeleton className="h-4 w-full" />
+                              <Skeleton className="h-4 w-5/6" />
+                              <Skeleton className="h-4 w-2/3" />
+                          </div>
+                      ) : stockAlerts.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">{t('inventory_no_stock_alerts')}</p>
+                      ) : (
+                          <ScrollArea className="h-[100px] pr-3"> {/* Adjusted height */}
+                              <ul className="space-y-2">
+                                  {stockAlerts.slice(0, 3).map(alertItem => ( // Show top 3 for compactness
+                                      <li key={alertItem.id} className="text-xs flex justify-between items-center">
+                                          <Link href={`/inventory/${alertItem.id}`} className="hover:underline text-primary truncate pr-2" title={alertItem.name}>
+                                              {alertItem.name} ({t('inventory_stock_level_label')}: {formatIntegerQuantityWithTranslation(alertItem.quantity, t)})
+                                          </Link>
+                                          <Badge
+                                              variant={alertItem.status === 'Out of Stock' ? 'destructive' : (alertItem.status === 'Over Stock' ? 'default' : 'secondary')}
+                                              className={cn(
+                                                  "whitespace-nowrap text-[9px] px-1.5 py-0.5",
+                                                  alertItem.status === 'Low Stock' && 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 hover:bg-yellow-100/80',
+                                                  alertItem.status === 'Over Stock' && 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 hover:bg-orange-100/80'
+                                              )}
+                                          >
+                                              {t(`reports_stock_status_${alertItem.status.toLowerCase().replace(/ /g, '_')}` as any) || alertItem.status}
+                                          </Badge>
+                                      </li>
+                                  ))}
+                                  {stockAlerts.length > 3 && (
+                                      <li className="text-xs text-muted-foreground text-center pt-1">... {t('inventory_and_more_alerts', {count: stockAlerts.length - 3})}</li>
+                                  )}
+                              </ul>
+                          </ScrollArea>
+                      )}
+                  </div>
+              </CardContent>
             </Card>
 
 
@@ -627,7 +661,7 @@ export default function InventoryPage() {
                          key={header.key}
                          className={cn(
                            "px-2 sm:px-4 py-2 text-center", 
-                           header.headerClassName, // Use specific header class if defined
+                           header.headerClassName, 
                            header.sortable && "cursor-pointer hover:bg-muted/50",
                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
                          )}
