@@ -14,12 +14,14 @@ import {
     getInvoicesService,
     updateSupplierContactInfoService,
     deleteSupplierService,
-    createSupplierService
+    createSupplierService,
+    DOCUMENTS_COLLECTION,
 } from '@/services/backend';
-import { Briefcase, Search, DollarSign, FileText as FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock, Trash2 } from 'lucide-react';
+import { Briefcase, Search, DollarSign, FileText as FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays as CalendarIconLucide, BarChartHorizontalBig, Clock, Trash2, Filter, Columns, Grid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import {
   Sheet,
   SheetContent,
@@ -32,7 +34,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useRouter } from 'next/navigation';
-import { BarChart, Bar, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid, Tooltip as RechartsRechartsTooltip, ResponsiveContainer, Legend as RechartsRechartsLegend } from 'recharts';
+import { BarChart, Bar, XAxis as RechartsXAxis, YAxis as RechartsYAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend as RechartsLegend } from 'recharts';
 import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
@@ -52,7 +54,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { useIsMobile } from '@/hooks/use-is-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
@@ -195,8 +197,8 @@ export default function SuppliersPage() {
     setIsLoading(true);
     try {
       const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(user.id), 
-        getInvoicesService(user.id) 
+        getSupplierSummariesService(user.id),
+        getInvoicesService(user.id)
       ]);
       setSuppliers(summaries);
       setAllInvoices(invoicesData);
@@ -299,11 +301,11 @@ export default function SuppliersPage() {
     if (matchingOption) {
         setEditedPaymentTermsOption(matchingOption);
         setCustomPaymentTerm('');
-    } else if (terms) { // If terms exist and don't match predefined, assume custom
+    } else if (terms) {
         setEditedPaymentTermsOption('custom');
         setCustomPaymentTerm(terms);
-    } else { // No terms set
-        setEditedPaymentTermsOption('custom'); // Default to custom input if nothing is set
+    } else {
+        setEditedPaymentTermsOption('custom');
         setCustomPaymentTerm('');
     }
 
@@ -361,7 +363,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); // This might need locale-aware parsing if month names are localized
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime());
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -377,11 +379,11 @@ export default function SuppliersPage() {
     setIsSavingContact(true);
     try {
       await updateSupplierContactInfoService(selectedSupplier.id, {
-        phone: editedContactInfo.phone?.trim() || null, // Send null if empty
-        email: editedContactInfo.email?.trim() || null, // Send null if empty
+        phone: editedContactInfo.phone?.trim() || null,
+        email: editedContactInfo.email?.trim() || null,
       }, user.id);
 
-      await fetchData(); 
+      await fetchData();
       setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone?.trim() || null, email: editedContactInfo.email?.trim() || null } : null);
 
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
@@ -396,7 +398,7 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); // Use the same saving flag
+    setIsSavingContact(true); 
     let finalPaymentTerm: string | null;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
@@ -411,7 +413,7 @@ export default function SuppliersPage() {
 
     try {
         await updateSupplierContactInfoService(selectedSupplier.id, { paymentTerms: finalPaymentTerm }, user.id);
-        await fetchData(); 
+        await fetchData();
         setSelectedSupplier(prev => prev ? {...prev, paymentTerms: finalPaymentTerm } : null);
         toast({ title: t('suppliers_toast_payment_terms_updated_title'), description: t('suppliers_toast_payment_terms_updated_desc', { supplierName: selectedSupplier.name }) });
         setIsEditingPaymentTerms(false);
@@ -507,18 +509,18 @@ export default function SuppliersPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <div>
-              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-                <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('suppliers_title')}
-              </CardTitle>
-              <CardDescription>{t('suppliers_description')}</CardDescription>
+        <CardHeader className="p-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                    <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                        <Briefcase className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('suppliers_title')}
+                    </CardTitle>
+                    <CardDescription>{t('suppliers_description')}</CardDescription>
+                </div>
+                <Button onClick={() => setIsCreateSheetOpen(true)} className="w-full sm:w-auto">
+                    <PlusCircle className="mr-2 h-4 w-4" /> {t('suppliers_add_new_button')}
+                </Button>
             </div>
-            <Button onClick={() => setIsCreateSheetOpen(true)} className="w-full sm:w-auto">
-              <PlusCircle className="mr-2 h-4 w-4" /> {t('suppliers_add_new_button')}
-            </Button>
-          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-6">
@@ -542,7 +544,7 @@ export default function SuppliersPage() {
                         !dateRange && "text-muted-foreground"
                         )}
                     >
-                        <CalendarDays className="mr-2 h-4 w-4" />
+                        <CalendarIconLucide className="mr-2 h-4 w-4" />
                         {dateRange?.from ? (
                         dateRange.to ? (
                             <>
@@ -586,7 +588,7 @@ export default function SuppliersPage() {
                     <div className="grid grid-cols-1 gap-4">
                         {paginatedSuppliers.map((supplier) => (
                             <Card key={supplier.id} className="hover:shadow-md transition-shadow">
-                                <CardHeader className="pb-2">
+                                <CardHeader className="pb-2 pt-3 px-3">
                                     <div className="flex justify-between items-start">
                                         <CardTitle className="text-base font-semibold truncate" title={supplier.name}>
                                             {supplier.name}
@@ -596,7 +598,7 @@ export default function SuppliersPage() {
                                         </Button>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="text-xs space-y-1 pt-1">
+                                <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3">
                                     {supplier.phone && (
                                         <a href={`tel:${supplier.phone}`} className="flex items-center text-muted-foreground hover:text-primary">
                                             <Phone className="mr-1.5 h-3 w-3" /> {supplier.phone}
@@ -654,7 +656,7 @@ export default function SuppliersPage() {
                             <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
                               <Info className="h-4 w-4 text-primary" />
                             </Button>
-                           
+
                           </TableCell>
                         </TableRow>
                       ))
@@ -733,11 +735,11 @@ export default function SuppliersPage() {
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.5)" />
                                     <RechartsXAxis type="number" tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} fontSize={isMobile ? 8 : 10} />
                                     <RechartsYAxis dataKey="name" type="category" width={isMobile ? 60 : 80} tick={{fontSize: isMobile ? 8 : 10, dy: 5, angle: isMobile ? -15 : 0, textAnchor: isMobile ? 'end' : 'end' }} interval={0} />
-                                    <RechartsRechartsTooltip
+                                    <RechartsTooltip
                                         content={<ChartTooltipContent indicator="dot" hideLabel />}
                                         formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals:0}), t(supplierChartConfig.totalAmount.labelKey as any) ]}
                                     />
-                                     <RechartsRechartsLegend verticalAlign="top" content={({ payload }) => (
+                                     <RechartsLegend verticalAlign="top" content={({ payload }) => (
                                         <ul className="flex flex-wrap justify-center gap-x-4 text-xs text-muted-foreground">
                                             {payload?.map((entry, index) => (
                                                 <li key={`item-${index}`} className="flex items-center gap-1.5">
@@ -770,29 +772,31 @@ export default function SuppliersPage() {
               </SheetDescription>
             </div>
              {selectedSupplier && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" title={t('suppliers_delete_title', { supplierName: selectedSupplier.name })} disabled={isDeletingSupplier}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t('suppliers_delete_confirm_desc', { supplierName: selectedSupplier.name })}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleDeleteSupplier(selectedSupplier.id)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
-                      {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {t('suppliers_delete_confirm_action')}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
+                <div className="flex items-center">
+                 <AlertDialog>
+                   <AlertDialogTrigger asChild>
+                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" title={t('suppliers_delete_title', { supplierName: selectedSupplier.name })} disabled={isDeletingSupplier}>
+                       <Trash2 className="h-4 w-4" />
+                     </Button>
+                   </AlertDialogTrigger>
+                   <AlertDialogContent>
+                     <AlertDialogHeader>
+                       <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
+                       <AlertDialogDescription>
+                         {t('suppliers_delete_confirm_desc', { supplierName: selectedSupplier.name })}
+                       </AlertDialogDescription>
+                     </AlertDialogHeader>
+                     <AlertDialogFooter>
+                       <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
+                       <AlertDialogAction onClick={() => handleDeleteSupplier(selectedSupplier.id)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
+                         {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                         {t('suppliers_delete_confirm_action')}
+                       </AlertDialogAction>
+                     </AlertDialogFooter>
+                   </AlertDialogContent>
+                 </AlertDialog>
+                </div>
+             )}
           </SheetHeader>
           {selectedSupplier && (
             <ScrollArea className="flex-grow">
@@ -804,7 +808,7 @@ export default function SuppliersPage() {
                   <CardContent>
                     <p className="text-2xl font-bold text-primary">{formatCurrencyDisplay(selectedSupplier.totalSpent,t)}</p>
                     <p className="text-xs text-muted-foreground">{t('suppliers_across_orders', { count: selectedSupplier.invoiceCount })}</p>
-                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?supplier=${encodeURIComponent(selectedSupplier.name)}`)}>
+                     <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-xs" onClick={() => router.push(`/invoices?tab=scanned-docs&supplier=${encodeURIComponent(selectedSupplier.name)}`)}>
                        {t('suppliers_view_all_documents_button')}
                      </Button>
                   </CardContent>
@@ -918,19 +922,19 @@ export default function SuppliersPage() {
                  </Card>
 
                  <Card className="overflow-hidden">
-                    <CardHeader>
+                    <CardHeader className="pb-2 sm:pb-4">
                         <CardTitle className="text-base flex items-center"><BarChart3 className="mr-2 h-4 w-4 text-primary" /> {t('suppliers_monthly_spending_title')}</CardTitle>
                     </CardHeader>
                     <CardContent className={cn("min-h-[200px] p-0 sm:pb-2", isMobile && "overflow-x-auto")}>
                         {monthlySpendingData.length > 0 && monthlySpendingData.some(d => d.total > 0) ? (
-                        <div className={cn("w-full", isMobile ? "min-w-[320px]" : "sm:w-11/12 mx-auto")}>
+                        <div className={cn("w-full", isMobile ? "min-w-[calc(100vw-8rem)]" : "sm:w-11/12 mx-auto")}>
                             <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={monthlySpendingData} margin={{top: 5, right: isMobile ? 0: 5, left: isMobile ? -30 : -25, bottom: isMobile ? 30 : 20 }}>
+                                <BarChart data={monthlySpendingData} margin={{top: 5, right: isMobile ? 0: 5, left: isMobile ? -30 : -25, bottom: isMobile ? 40 : 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <RechartsXAxis dataKey="month" fontSize={isMobile ? 8 : 10} tickLine={false} axisLine={false} angle={isMobile ? -45 : 0} textAnchor={isMobile ? "end" : "middle"} height={isMobile ? 40 : 20} interval={isMobile ? Math.max(0, Math.floor(monthlySpendingData.length / 3) -1 ) : "preserveStartEnd"} />
                                 <RechartsYAxis fontSize={isMobile ? 8 : 10} tickFormatter={(value) => `${t('currency_symbol')}${value/1000}k`} tickLine={false} axisLine={false} width={isMobile ? 30 : 50}/>
-                                <RechartsRechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals:0}), t('suppliers_tooltip_total_spent')]}/>
-                                <RechartsRechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
+                                <RechartsTooltip formatter={(value: number) => [formatCurrencyDisplay(value, t, {decimals:0}), t('suppliers_tooltip_total_spent')]}/>
+                                <RechartsLegend wrapperStyle={{fontSize: isMobile ? "10px" : "12px"}}/>
                                 <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name={t('suppliers_bar_name_spending')} barSize={isMobile ? 8 : undefined} />
                                 </BarChart>
                             </ResponsiveContainer>
