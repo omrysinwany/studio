@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, ImageIcon as ImageIconLucide, ListChecks, Grid, DollarSign } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -45,6 +45,7 @@ import { useAuth } from '@/context/AuthContext';
 import NextImage from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Separator } from '@/components/ui/separator';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -107,7 +108,7 @@ export default function InventoryPage() {
     imageUrl: false, 
     id: false,
     shortName: true,
-    description: true, 
+    description: false, 
     catalogNumber: true, 
     barcode: false,
     quantity: true,
@@ -127,7 +128,7 @@ export default function InventoryPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table'); // Default to table view
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
   const [isUpdatingQuantity, setIsUpdatingQuantity] = useState<Record<string, boolean>>({});
@@ -424,50 +425,49 @@ export default function InventoryPage() {
   return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+         <CardHeader className="flex flex-row justify-between items-center p-4">
            <div>
              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
              </CardTitle>
              <CardDescription>{t('inventory_description')}</CardDescription>
            </div>
-           <div className="flex items-center gap-2 self-start sm:self-center">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
-                className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-                aria-label={t('inventory_filter_button_aria')}
-              >
-                <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const newMode = viewMode === 'table' ? 'cards' : 'table';
-                  setViewMode(newMode);
-                }}
-                className="h-9 sm:h-10 px-3"
-                aria-label={t('inventory_toggle_view_mode_aria')}
-              >
-                {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
-              </Button>
+           <div className="flex items-center gap-2">
+             <Button
+               variant="ghost"
+               size="icon"
+               onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
+               className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
+               aria-label={t('inventory_filter_button_aria')}
+             >
+               <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+             </Button>
+             <Button
+               variant="outline"
+               onClick={() => {
+                 const newMode = viewMode === 'table' ? 'cards' : 'table';
+                 setViewMode(newMode);
+               }}
+               className="h-9 sm:h-10 px-3"
+               aria-label={t('inventory_toggle_view_mode_aria')}
+             >
+               {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
+             </Button>
            </div>
          </CardHeader>
         <CardContent>
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-foreground mb-2">{t('inventory_summary_and_alerts_title')}</h3>
-                <div className="grid grid-cols-2 gap-3 p-4 bg-muted/20 rounded-lg">
-                    <div className="p-3 bg-card/70 dark:bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
-                        <DollarSign className="h-5 w-5 text-green-500 mb-1" />
-                        <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_total_value_short')}</p>
-                        <p className="text-2xl font-bold text-foreground">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
-                    </div>
-                    <div className="p-3 bg-card/70 dark:bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
-                        <AlertTriangle className="h-5 w-5 text-yellow-500 mb-1" />
-                        <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_stock_alerts_short')}</p>
-                        <p className="text-2xl font-bold text-foreground">{formatIntegerQuantityWithTranslation(stockAlertsCount, t)}</p>
-                    </div>
+             {/* KPIs section removed as per previous request to not have card-in-card */}
+             <h3 className="text-lg font-semibold text-foreground mb-2 px-1 sm:px-0">{t('inventory_summary_and_alerts_title')}</h3>
+             <div className="grid grid-cols-2 gap-3 p-4 mb-6 bg-muted/20 rounded-lg">
+                <div className="p-3 bg-card/70 dark:bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
+                    <DollarSign className="h-5 w-5 text-green-500 mb-1" />
+                    <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_total_value_short')}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
+                </div>
+                <div className="p-3 bg-card/70 dark:bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500 mb-1" />
+                    <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_stock_alerts_short')}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatIntegerQuantityWithTranslation(stockAlertsCount, t)}</p>
                 </div>
             </div>
           
@@ -483,7 +483,7 @@ export default function InventoryPage() {
           </div>
           
           {showAdvancedInventoryFilters && (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="mb-4 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
@@ -709,7 +709,7 @@ export default function InventoryPage() {
                          )}
                          {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 2 })}</TableCell>}
                          {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined && item.salePrice !== null ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
-                         {visibleColumns.lineTotal && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'lineTotal')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true, decimals: 2 })}</TableCell>}
+                         {visibleColumns.lineTotal && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'lineTotal')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true, decimals: 0 })}</TableCell>}
                          {visibleColumns.minStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined && item.minStockLevel !== null ? formatIntegerQuantityWithTranslation(item.minStockLevel, t) : '-'}</TableCell>}
                          {visibleColumns.maxStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined && item.maxStockLevel !== null ? formatIntegerQuantityWithTranslation(item.maxStockLevel, t) : '-'}</TableCell>}
                        </TableRow>
@@ -791,4 +791,3 @@ export default function InventoryPage() {
   );
 }
 
-    
