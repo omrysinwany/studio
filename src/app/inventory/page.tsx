@@ -1,7 +1,7 @@
-// src/app/inventory/page.tsx
+/src/app/inventory/page.tsx
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -63,7 +63,7 @@ const formatDisplayNumberWithTranslation = (
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: currency ? 0 : decimals, // Keep 2 decimals for currency, 0 for others by default
+            minimumFractionDigits: currency ? 0 : decimals,
             maximumFractionDigits: currency ? 0 : decimals,
             useGrouping: useGrouping,
         });
@@ -71,7 +71,7 @@ const formatDisplayNumberWithTranslation = (
     }
 
     const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-        minimumFractionDigits: currency ? 0 : decimals, // Keep 2 decimals for currency
+        minimumFractionDigits: currency ? 0 : decimals,
         maximumFractionDigits: currency ? 0 : decimals,
         useGrouping: useGrouping,
     });
@@ -108,8 +108,8 @@ export default function InventoryPage() {
     imageUrl: false, 
     id: false,
     shortName: true,
-    description: true, 
-    catalogNumber: true, 
+    description: false, 
+    catalogNumber: false, 
     barcode: false,
     quantity: true,
     unitPrice: false, 
@@ -211,7 +211,6 @@ export default function InventoryPage() {
 
    const inventoryValue = useMemo(() => calculateInventoryValue(inventory), [inventory]);
    const stockAlerts = useMemo(() => getLowStockItems(inventory), [inventory]);
-   const stockAlertsCount = stockAlerts.length;
 
 
    const filteredAndSortedInventory = useMemo(() => {
@@ -307,8 +306,6 @@ export default function InventoryPage() {
         { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-        { key: 'minStockLevel', labelKey: 'product_detail_label_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-        { key: 'maxStockLevel', labelKey: 'product_detail_label_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ], [locale]);
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -422,7 +419,7 @@ export default function InventoryPage() {
              </CardTitle>
              <CardDescription>{t('inventory_description')}</CardDescription>
            </div>
-            <div className="flex items-center gap-2 self-start sm:self-center">
+           <div className="flex items-center gap-2 self-start sm:self-center">
                 <Button
                     variant="ghost"
                     size="icon"
@@ -446,19 +443,17 @@ export default function InventoryPage() {
             </div>
          </CardHeader>
         <CardContent>
-            <div className="mb-6">
-                 <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 px-1 sm:px-0">{t('inventory_summary_and_alerts_title')}</h3>
-                 <div className="grid grid-cols-2 gap-3 p-4 bg-muted/20 rounded-lg">
-                    <div className="p-3 bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
-                        <DollarSign className="h-5 w-5 text-green-500 mb-1" />
-                        <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_total_value_short')}</p>
-                        <p className="text-2xl font-bold text-foreground">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
-                    </div>
-                    <div className="p-3 bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
-                        <AlertTriangle className="h-5 w-5 text-yellow-500 mb-1" />
-                        <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_stock_alerts_short')}</p>
-                        <p className="text-2xl font-bold text-foreground">{formatIntegerQuantityWithTranslation(stockAlertsCount, t)}</p>
-                    </div>
+           <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 px-1 sm:px-0">{t('inventory_summary_and_alerts_title')}</h3>
+            <div className="grid grid-cols-2 gap-3 p-4 bg-muted/20 rounded-lg mb-6">
+                <div className="p-3 bg-card/70 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
+                    <DollarSign className="h-5 w-5 text-green-500 mb-1" />
+                    <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_total_value_short')}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
+                </div>
+                <div className="p-3 bg-card/70 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500 mb-1" />
+                    <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_stock_alerts_short')}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatIntegerQuantityWithTranslation(stockAlerts.length, t)}</p>
                 </div>
             </div>
             
@@ -516,6 +511,12 @@ export default function InventoryPage() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+            </div>
+          )}
+
+          {viewMode === 'table' && (
+            <div className="mt-2 text-sm text-muted-foreground">
+                {t('inventory_total_value_display_label')}: <span className="font-semibold text-primary">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</span>
             </div>
           )}
 
@@ -601,9 +602,6 @@ export default function InventoryPage() {
              </div>
            ) : (
              <>
-             <div className="mb-2 text-sm text-muted-foreground">
-                 {t('inventory_total_value_display_label')}: <span className="font-semibold text-primary">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</span>
-             </div>
              <div className="overflow-x-auto relative">
                <Table>
                  <TableHeader>
@@ -705,8 +703,6 @@ export default function InventoryPage() {
                          {visibleColumns.unitPrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'unitPrice')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.unitPrice, t, { currency: true, decimals: 2 })}</TableCell>}
                          {visibleColumns.salePrice && <TableCell className={cn('text-center px-2 sm:px-4 py-2', columnDefinitions.find(h => h.key === 'salePrice')?.mobileHidden && 'hidden sm:table-cell')}>{item.salePrice !== undefined && item.salePrice !== null ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</TableCell>}
                          {visibleColumns.lineTotal && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'lineTotal')?.mobileHidden && 'hidden sm:table-cell')}>{formatDisplayNumberWithTranslation(item.lineTotal, t, { currency: true, decimals: 0 })}</TableCell>}
-                         {visibleColumns.minStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'minStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.minStockLevel !== undefined && item.minStockLevel !== null ? formatIntegerQuantityWithTranslation(item.minStockLevel, t) : '-'}</TableCell>}
-                         {visibleColumns.maxStockLevel && <TableCell className={cn("text-center px-2 sm:px-4 py-2", columnDefinitions.find(h=>h.key === 'maxStockLevel')?.mobileHidden && 'hidden sm:table-cell')}>{item.maxStockLevel !== undefined && item.maxStockLevel !== null ? formatIntegerQuantityWithTranslation(item.maxStockLevel, t) : '-'}</TableCell>}
                        </TableRow>
                      ))
                    )}
@@ -786,4 +782,3 @@ export default function InventoryPage() {
      </div>
   );
 }
-
