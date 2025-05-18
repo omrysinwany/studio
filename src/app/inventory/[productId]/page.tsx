@@ -45,14 +45,15 @@ const formatDisplayNumber = (
             maximumFractionDigits: decimals,
             useGrouping: useGrouping,
         });
-        return `${currencySymbol}${zeroFormatted}`;
+        return currencySymbol ? `${currencySymbol}${zeroFormatted}` : zeroFormatted;
     }
 
-    return `${currencySymbol}${value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
+    const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
         useGrouping: useGrouping,
-    })}`;
+    });
+    return currencySymbol ? `${currencySymbol}${formattedValue}` : formattedValue;
 };
 
 // Helper to format numbers for input fields
@@ -92,7 +93,6 @@ export default function ProductDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingQuantityDetail, setIsUpdatingQuantityDetail] = useState(false);
   const [isUpdatingMinMaxStock, setIsUpdatingMinMaxStock] = useState(false);
@@ -276,23 +276,22 @@ export default function ProductDetailPage() {
    };
 
    const handleScanBarcode = () => {
-       setIsScanning(true);
-   };
-
-   const handleBarcodeDetected = (barcodeValue: string) => {
-       handleInputChange('barcode', barcodeValue);
-       setIsScanning(false);
-       toast({
-           title: t('product_detail_toast_barcode_scanned_title'),
-           description: t('product_detail_toast_barcode_scanned_desc', { barcode: barcodeValue }),
-       });
+       // Currently, this is a placeholder. If you integrate a scanner component:
+       // 1. Open the scanner component/modal.
+       // 2. Get the scanned barcode value via a callback.
+       // 3. Call handleInputChange('barcode', scannedValue);
+       toast({ title: "Scanner Not Implemented", description: "Barcode scanning functionality will be added soon." });
    };
 
    const enableCamera = async () => {
     console.log("[ProductDetail] enableCamera called");
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorMessage(t('barcode_scanner_error_not_supported_browser'));
       setHasCameraPermission(false);
+      toast({
+        variant: 'destructive',
+        title: t('barcode_scanner_toast_not_supported_title'),
+        description: t('barcode_scanner_error_not_supported_browser'),
+      });
       setShowCameraModal(false);
       return;
     }
@@ -323,7 +322,6 @@ export default function ProductDetailPage() {
 
   const handleOpenCameraModal = () => {
     console.log("[ProductDetail] handleOpenCameraModal called");
-    // setIsEditing(true); // No longer needed to set isEditing just to open camera for image
     setShowCameraModal(true);
     if (hasCameraPermission === null || !hasCameraPermission) { 
         enableCamera();
@@ -344,7 +342,7 @@ export default function ProductDetailPage() {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8); 
         setEditedProduct(prev => ({ ...prev, imageUrl: dataUrl }));
-        if (!isEditing) setIsEditing(true); // Switch to edit mode if not already, to enable saving the new image
+        if (!isEditing) setIsEditing(true);
         console.log("[ProductDetail] Image captured, imageUrl in editedProduct set.");
         toast({ title: t('product_image_captured_title'), description: t('product_image_captured_desc') });
       } else {
@@ -372,11 +370,11 @@ export default function ProductDetailPage() {
     return () => {
       stopCameraStream();
     };
-  }, [stopCameraStream, showCameraModal]);
+  }, [stopCameraStream]);
 
 
    const handleQuantityUpdateOnDetailPage = async (change: number) => {
-     if (!product || !product.id || !user || !user.id || isEditing) return; // Prevent update if in full edit mode
+     if (!product || !product.id || !user || !user.id || isEditing) return; 
      setIsUpdatingQuantityDetail(true);
      const currentQty = product.quantity ?? 0;
      const newQuantity = currentQty + change;
@@ -389,7 +387,6 @@ export default function ProductDetailPage() {
      const productDataToUpdate = { quantity: newQuantity };
         try {
            await updateProductService(product.id, productDataToUpdate, user.id);
-           // No need to call loadProduct() if we update the local product state directly
            setProduct(prev => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) } : null);
            setEditedProduct(prev => ({...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
            toast({
@@ -412,7 +409,6 @@ export default function ProductDetailPage() {
 
        let updateData: Partial<Product> = { [field]: newValue };
 
-        // Validation for min/max range
         if (field === 'minStockLevel' && product.maxStockLevel !== null && product.maxStockLevel !== undefined && newValue > product.maxStockLevel) {
             toast({ title: t('product_detail_toast_invalid_min_max_range_title'), description: t('product_detail_toast_invalid_min_max_range_desc_min_gt_max'), variant: "destructive"});
             setIsUpdatingMinMaxStock(false);
@@ -423,7 +419,6 @@ export default function ProductDetailPage() {
              setIsUpdatingMinMaxStock(false);
              return;
         }
-
 
        try {
            await updateProductService(product.id, updateData, user.id);
@@ -447,9 +442,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true, currencySymbol: t('currency_symbol') });
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true, currencySymbol: '' }); // No symbol for non-currency numbers like lineTotal
+            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true, currencySymbol: '' });
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -670,7 +665,7 @@ export default function ProductDetailPage() {
         <CardContent className="space-y-3 sm:space-y-4 pt-4"> 
             {!isEditing && (
                 <div className="flex flex-wrap gap-2 mb-2">
-                    {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && (
+                    {product.quantity <= (product.minStockLevel ?? 0) && product.quantity > 0 && ( // Changed default minStock to 0 for more accurate "low stock"
                         <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                             <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_low_stock_badge')}
                         </span>
@@ -685,7 +680,7 @@ export default function ProductDetailPage() {
                             <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_over_stock_badge')}
                         </span>
                     )}
-                    {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.minStockLevel !== null && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.maxStockLevel === null || product.quantity <= product.maxStockLevel))) && (
+                    {((product.quantity > 0 && (product.minStockLevel === undefined || product.minStockLevel === null || product.quantity > product.minStockLevel)) && (product.maxStockLevel === undefined || product.maxStockLevel === null || product.quantity <= product.maxStockLevel)) && (
                         <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>
                             <Package className="mr-1 h-4 w-4" />{t('inventory_filter_in_stock')}
                         </span>
@@ -704,7 +699,7 @@ export default function ProductDetailPage() {
                         {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
                     </div>
                     {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true, false, false, false)}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
                         {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                         {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                     </div>
@@ -757,7 +752,7 @@ export default function ProductDetailPage() {
             </div>
             <Separator className="my-3 sm:my-4" />
             <div className="mt-4">
-                <Label className="text-sm font-medium text-muted-foreground">{t('product_detail_label_image_url')}</Label>
+                 <Label className="text-sm font-medium text-muted-foreground">{t('product_detail_label_image_url')}</Label>
                 {isEditing ? (
                     <div className="flex items-center gap-2 mt-1">
                         <Input
@@ -822,10 +817,10 @@ export default function ProductDetailPage() {
                     {hasCameraPermission === false && (
                         <Alert variant="destructive">
                             <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>{t('barcode_scanner_toast_camera_error_title')}</AlertTitle>
-                            <AlertDescription>
+                            <DialogTitleComponent>{t('barcode_scanner_toast_camera_error_title')}</DialogTitleComponent>
+                            <DialogDescriptionComponent>
                                 {t('barcode_scanner_error_permission_denied_settings')}
-                            </AlertDescription>
+                            </DialogDescriptionComponent>
                         </Alert>
                     )}
                     <video ref={videoRef} className={cn("w-full aspect-video rounded-md bg-gray-900", hasCameraPermission === false && "hidden")} playsInline muted autoPlay />
