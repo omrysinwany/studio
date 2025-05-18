@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ArrowLeft, Package, Tag, Hash, Layers, Calendar, Loader2, AlertTriangle, Save, X, DollarSign, Trash2, Pencil, Barcode, Camera, TrendingUp, TrendingDown, Image as ImageIconLucide, Minus, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle as DialogTitleComponent, DialogDescription as DialogDescriptionComponent, DialogFooter as DialogFooterComponent } from "@/components/ui/dialog"; // Renamed DialogTitle etc. to avoid conflict
+import { Dialog, DialogContent, DialogHeader, DialogTitle as DialogTitleComponent, DialogDescription as DialogDescriptionComponent, DialogFooter as DialogFooterComponent } from "@/components/ui/dialog";
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
@@ -98,7 +98,7 @@ export default function ProductDetailPage() {
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null); // For capturing image from video
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const productId = params.productId as string;
 
@@ -117,7 +117,7 @@ export default function ProductDetailPage() {
       const data = await getProductByIdService(productId, user.id);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data });
+        setEditedProduct({ ...data }); // Initialize editedProduct with fetched data
       } else {
         setError(t('product_detail_error_not_found'));
          toast({
@@ -163,7 +163,6 @@ export default function ProductDetailPage() {
 
       const updated = { ...prev, [field]: numericValue };
 
-
       if (field === 'quantity' || field === 'unitPrice') {
           const quantity = Number(updated.quantity) || 0;
           const unitPrice = Number(updated.unitPrice) || 0;
@@ -178,8 +177,7 @@ export default function ProductDetailPage() {
     if (!product || !product.id || !user || !user.id) return;
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
-        // This check might be too strict if salePrice is truly optional. Adjust if needed.
-        // For now, assuming salePrice is desired if editing starts.
+        // Sale price is optional. If you want to enforce it, uncomment the toast.
         // toast({
         //     title: t('product_detail_toast_invalid_sale_price_title'),
         //     description: t('product_detail_toast_invalid_sale_price_desc'),
@@ -199,7 +197,6 @@ export default function ProductDetailPage() {
         toast({ title: t('product_detail_toast_invalid_stock_levels_title'), description: t('product_detail_toast_invalid_stock_levels_desc'), variant: "destructive" });
         return;
     }
-
 
     setIsSaving(true);
     try {
@@ -260,14 +257,14 @@ export default function ProductDetailPage() {
 
   const handleEdit = () => {
     if (product) {
-        setEditedProduct({ ...product });
+        setEditedProduct({ ...product }); // Ensure editedProduct is synced with current product state
         setIsEditing(true);
     }
   };
 
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product });
+        setEditedProduct({ ...product }); // Reset changes
         setIsEditing(false);
         toast({
             title: t('product_detail_toast_edit_cancelled_title'),
@@ -323,18 +320,17 @@ export default function ProductDetailPage() {
         title: t('barcode_scanner_toast_camera_error_title'),
         description: userMsg,
       });
-      setShowCameraModal(false); // Close modal if permission is denied
+      setShowCameraModal(false); 
     }
   };
 
   const handleOpenCameraModal = () => {
     console.log("[ProductDetail] handleOpenCameraModal called");
-    setIsEditing(true); // Switch to edit mode if not already
+    setIsEditing(true); 
     setShowCameraModal(true);
-    if (hasCameraPermission === null || !hasCameraPermission) { // Only call enableCamera if permission not yet granted or denied
+    if (hasCameraPermission === null || !hasCameraPermission) { 
         enableCamera();
     } else if (hasCameraPermission && videoRef.current && !videoRef.current.srcObject) {
-        // If permission granted but stream lost (e.g. dialog closed and reopened)
         enableCamera();
     }
   };
@@ -349,7 +345,7 @@ export default function ProductDetailPage() {
       const context = canvas.getContext('2d');
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // Compress to JPEG
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); 
         setEditedProduct(prev => ({ ...prev, imageUrl: dataUrl }));
         console.log("[ProductDetail] Image captured, imageUrl in editedProduct set.");
         toast({ title: t('product_image_captured_title'), description: t('product_image_captured_desc') });
@@ -375,7 +371,6 @@ export default function ProductDetailPage() {
   }, []);
 
   useEffect(() => {
-    // Cleanup stream when component unmounts or dialog closes
     return () => {
       stopCameraStream();
     };
@@ -385,33 +380,33 @@ export default function ProductDetailPage() {
    const handleQuantityUpdateOnDetailPage = async (change: number) => {
      if (!product || !product.id || !user || !user.id) return;
      setIsUpdatingQuantityDetail(true);
-     const newQuantity = (editedProduct.quantity ?? product.quantity ?? 0) + change;
+     const currentQty = isEditing ? (editedProduct.quantity ?? 0) : (product.quantity ?? 0);
+     const newQuantity = currentQty + change;
      if (newQuantity < 0) {
        toast({ title: t('inventory_toast_invalid_quantity_title'), description: t('inventory_toast_invalid_quantity_desc_negative'), variant: "destructive" });
        setIsUpdatingQuantityDetail(false);
        return;
      }
-     try {
-       const productDataToUpdate = { quantity: newQuantity };
-       await updateProductService(product.id, productDataToUpdate, user.id);
-       
-       // Update local state for both product and editedProduct
-       const updatedProductState = (prev: Product | null) => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (prev.unitPrice || 0)).toFixed(2)) } : null;
-       setProduct(updatedProductState);
-       setEditedProduct(prev => ({ ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
-
-       toast({
-         title: t('inventory_toast_quantity_updated_title'),
-         description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || "", quantity: newQuantity })
-       });
-     } catch (error) {
-       console.error("Failed to update quantity on detail page:", error);
-       toast({ title: t('inventory_toast_quantity_update_fail_title'), description: t('inventory_toast_quantity_update_fail_desc'), variant: "destructive" });
-     } finally {
-       setIsUpdatingQuantityDetail(false);
+     
+     const productDataToUpdate = { quantity: newQuantity };
+     if (isEditing) {
+        setEditedProduct(prev => ({ ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
+     } else {
+        // If not in edit mode, directly update and then reload
+        try {
+           await updateProductService(product.id, productDataToUpdate, user.id);
+           await loadProduct(); // Reload product to reflect changes
+           toast({
+             title: t('inventory_toast_quantity_updated_title'),
+             description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || "", quantity: newQuantity })
+           });
+         } catch (error) {
+           console.error("Failed to update quantity on detail page:", error);
+           toast({ title: t('inventory_toast_quantity_update_fail_title'), description: t('inventory_toast_quantity_update_fail_desc'), variant: "destructive" });
+         }
      }
+     setIsUpdatingQuantityDetail(false);
    };
-
 
    const renderViewItem = (icon: React.ElementType, labelKey: string, value: string | number | undefined | null, isCurrency: boolean = false, isQuantity: boolean = false, isBarcode: boolean = false, isStockLevel: boolean = false) => {
      const IconComponent = icon;
@@ -421,7 +416,7 @@ export default function ProductDetailPage() {
         if (typeof value === 'number') {
             if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true });
+            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true }); // Default formatting for numbers if not specified
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -429,9 +424,8 @@ export default function ProductDetailPage() {
         displayValue = (isBarcode || isStockLevel || (labelKey === "product_detail_label_sale_price" && isCurrency) || (labelKey === "product_detail_label_unit_price_cost" && isCurrency)) ? t('product_detail_not_set') : '-';
      }
 
-
      return (
-       <div className="flex items-start space-x-3 py-2">
+       <div className="flex items-start space-x-3">
          <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
          <div className="flex-grow">
            <p className="text-sm font-medium text-muted-foreground">{t(labelKey)}</p>
@@ -452,16 +446,13 @@ export default function ProductDetailPage() {
            inputType === 'number'
              ? formatInputValue(value as number | undefined | null, isCurrency ? 'currency' : (isStockLevel ? 'stockLevel' : 'quantity'))
              : (value as string) || '';
-
-        const isSalePriceField = fieldKey === 'salePrice';
-
-
+        
         return (
-          <div className="flex items-start space-x-3 py-2">
+          <div className="flex items-start space-x-3">
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
             <div className="flex-grow">
               <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">
-                {t(labelKey)} {isSalePriceField && <span className="text-destructive">*</span>}
+                {t(labelKey)}
               </Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -471,10 +462,9 @@ export default function ProductDetailPage() {
                     onChange={(e) => handleInputChange(fieldKey, e.target.value)}
                     className="mt-1 h-9 flex-grow"
                     step={inputType === 'number' ? (isCurrency ? '0.01' : '1') : undefined}
-                    min={inputType === 'number' ? (isSalePriceField ? '0.01' : (isStockLevel ? "0" : "0")) : undefined}
+                    min={inputType === 'number' ? ((isStockLevel || isQuantity) ? "0" : "0.01") : undefined}
                     disabled={fieldKey === 'lineTotal' || isSaving || isDeleting}
-                    placeholder={isStockLevel ? t('optional_placeholder') : (isSalePriceField ? t('required_placeholder') : "")}
-                    // required={isSalePriceField} // Sale price is optional in the backend
+                    placeholder={isStockLevel ? t('optional_placeholder') : ""}
                   />
                   {isBarcode && (
                     <Button
@@ -505,7 +495,6 @@ export default function ProductDetailPage() {
     );
   }
 
-
   if (error) {
     return (
       <div className="container mx-auto p-4 md:p-8 text-center">
@@ -533,7 +522,7 @@ export default function ProductDetailPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <div className="mb-4">
-         <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting} size="sm">
+         <Button variant="outline" onClick={handleBack} disabled={isSaving || isDeleting || isUpdatingQuantityDetail} size="sm">
            <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
          </Button>
        </div>
@@ -623,48 +612,53 @@ export default function ProductDetailPage() {
              )}
             </div>
         </CardHeader>
-        <CardContent className="space-y-1 sm:space-y-2">
-            {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && !isEditing && (
-                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
-                    <AlertTriangle className="mr-1 h-4 w-4" />
-                    {t('product_detail_low_stock_badge')}
-                </span>
+        <CardContent className="space-y-3 sm:space-y-4 pt-4"> {/* Increased vertical spacing between items */}
+            {/* Stock Level Badges - Display only in view mode */}
+            {!isEditing && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {product.quantity <= (product.minStockLevel ?? 10) && product.quantity > 0 && (
+                        <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
+                            <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_low_stock_badge')}
+                        </span>
+                    )}
+                    {product.quantity === 0 && (
+                        <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}>
+                            <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_out_of_stock_badge')}
+                        </span>
+                    )}
+                    {product.maxStockLevel !== undefined && product.maxStockLevel !== null && product.quantity > product.maxStockLevel && (
+                        <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`}>
+                            <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_over_stock_badge')}
+                        </span>
+                    )}
+                    {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.minStockLevel !== null && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.maxStockLevel === null || product.quantity <= product.maxStockLevel))) && (
+                        <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>
+                            <Package className="mr-1 h-4 w-4" />{t('inventory_filter_in_stock')}
+                        </span>
+                    )}
+                </div>
             )}
-            {product.quantity === 0 && !isEditing && (
-                 <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`}>
-                    <AlertTriangle className="mr-1 h-4 w-4" />
-                    {t('product_detail_out_of_stock_badge')}
-                </span>
-            )}
-             {product.maxStockLevel !== undefined && product.maxStockLevel !== null && product.quantity > product.maxStockLevel && !isEditing && (
-                <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200`}>
-                    <AlertTriangle className="mr-1 h-4 w-4" />
-                    {t('product_detail_over_stock_badge')}
-                </span>
-            )}
-             {((product.quantity > 0 && product.minStockLevel === undefined) || (product.quantity > 0 && product.minStockLevel !== undefined && product.minStockLevel !== null && product.quantity > product.minStockLevel && (product.maxStockLevel === undefined || product.maxStockLevel === null || product.quantity <= product.maxStockLevel))) && !isEditing && (
-               <span className={`mt-2 inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>
-                 <Package className="mr-1 h-4 w-4" />
-                 {t('inventory_filter_in_stock')}
-               </span>
-            )}
-            <Separator className="my-3 sm:my-4" />
+             <Separator className="my-3 sm:my-4" />
 
-           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0">
+           <div className="space-y-3"> {/* Main container for fields */}
              {isEditing ? (
                  <>
                     {renderEditItem(Barcode, "product_detail_label_barcode", editedProduct.barcode, 'barcode', false, false, true)}
                     {renderEditItem(Layers, "product_detail_label_quantity", editedProduct.quantity, 'quantity', false, true)}
-                    {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
-                    {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5"> {/* py-1.5 for vertical spacing between paired rows */}
+                        {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
+                        {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
+                    </div>
                     {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true)}
-                    {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
-                    {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                        {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
+                        {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
+                    </div>
                  </>
              ) : (
                  <>
                     {renderViewItem(Barcode, "product_detail_label_barcode", product.barcode, false, false, true)}
-                    <div className="flex items-start space-x-3 py-2">
+                    <div className="flex items-start space-x-3 py-1.5">
                         <Layers className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
                         <div className="flex-grow">
                             <p className="text-sm font-medium text-muted-foreground">{t("product_detail_label_quantity")}</p>
@@ -695,14 +689,18 @@ export default function ProductDetailPage() {
                             </div>
                         </div>
                     </div>
-                    {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, true)}
-                    {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, true)}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                        {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, true)}
+                        {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, true)}
+                    </div>
                     {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, true)}
-                    {renderViewItem(TrendingDown, "product_detail_label_min_stock", product.minStockLevel, false, false, false, true)}
-                    {renderViewItem(TrendingUp, "product_detail_label_max_stock", product.maxStockLevel, false, false, false, true)}
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                        {renderViewItem(TrendingDown, "product_detail_label_min_stock", product.minStockLevel, false, false, false, true)}
+                        {renderViewItem(TrendingUp, "product_detail_label_max_stock", product.maxStockLevel, false, false, false, true)}
+                    </div>
                  </>
              )}
-          </div>
+            </div>
             <Separator className="my-3 sm:my-4" />
             {/* Image section at the bottom */}
             <div className="mt-4">
@@ -749,7 +747,6 @@ export default function ProductDetailPage() {
                         <NextImage src={product.imageUrl} alt={product.shortName || product.description || ''} layout="fill" objectFit="contain" />
                     </div>
                 ): null }
-                 {/* Preview of captured/entered image in edit mode */}
                  {isEditing && editedProduct.imageUrl && (
                      <div className="mt-2 relative h-32 w-32 rounded overflow-hidden border bg-muted/20">
                         <NextImage src={editedProduct.imageUrl} alt={t('product_image_preview_alt')} layout="fill" objectFit="contain" />
@@ -786,7 +783,6 @@ export default function ProductDetailPage() {
                         </Alert>
                     )}
                     <video ref={videoRef} className={cn("w-full aspect-video rounded-md bg-gray-900", hasCameraPermission === false && "hidden")} playsInline muted autoPlay />
-                    {/* Hidden canvas for capturing */}
                     <canvas ref={canvasRef} style={{ display: 'none' }} />
                 </div>
                 <DialogFooterComponent className="p-4 border-t">
@@ -800,6 +796,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
-
-    
