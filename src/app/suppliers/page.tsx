@@ -15,7 +15,7 @@ import {
     updateSupplierContactInfoService,
     deleteSupplierService,
     createSupplierService
-} from '@/services/backend'; // Ensure services use Firestore
+} from '@/services/backend';
 import { Briefcase, Search, DollarSign, FileText as FileTextIcon, Loader2, Info, ChevronDown, ChevronUp, Phone, Mail, BarChart3, ListChecks, Edit, Save, X, PlusCircle, CalendarDays, BarChartHorizontalBig, Clock, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isValid } from 'date-fns';
@@ -52,8 +52,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 
 const ITEMS_PER_PAGE = 4;
@@ -86,7 +87,7 @@ const formatDateDisplay = (date: Date | string | Timestamp | undefined, t: (key:
 
 const formatCurrencyDisplay = (value: number | undefined | null, t: (key: string, params?: any) => string): string => {
     if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
-    return `${t('currency_symbol')}${value.toLocaleString(t('locale_code_for_number_formatting') || undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${t('currency_symbol')}${value.toLocaleString(t('locale_code_for_number_formatting') || undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
 
@@ -298,15 +299,19 @@ export default function SuppliersPage() {
     if (matchingOption) {
         setEditedPaymentTermsOption(matchingOption);
         setCustomPaymentTerm('');
-    } else {
+    } else if (terms) { // If terms exist and don't match predefined, assume custom
         setEditedPaymentTermsOption('custom');
         setCustomPaymentTerm(terms);
+    } else { // No terms set
+        setEditedPaymentTermsOption('custom'); // Default to custom input if nothing is set
+        setCustomPaymentTerm('');
     }
+
 
     setIsEditingContact(false);
     setIsEditingPaymentTerms(false);
 
-    const invoicesForSupplier = allInvoices.filter(inv => inv.supplierName === supplier.name)
+    const invoicesForSupplier = allInvoices.filter(inv => inv.supplierName === supplier.name && inv.status === 'completed')
                                       .sort((a,b) => {
                                         let dateA = 0;
                                         let dateB = 0;
@@ -315,9 +320,13 @@ export default function SuppliersPage() {
 
                                         if (aDate instanceof Timestamp) dateA = aDate.toDate().getTime();
                                         else if (typeof aDate === 'string' && isValid(parseISO(aDate))) dateA = parseISO(aDate).getTime();
+                                        else if (aDate instanceof Date && isValid(aDate)) dateA = aDate.getTime();
+
 
                                         if (bDate instanceof Timestamp) dateB = bDate.toDate().getTime();
                                         else if (typeof bDate === 'string' && isValid(parseISO(bDate))) dateB = parseISO(bDate).getTime();
+                                        else if (bDate instanceof Date && isValid(bDate)) dateB = bDate.getTime();
+
 
                                         return dateB - dateA;
                                       });
@@ -339,6 +348,8 @@ export default function SuppliersPage() {
         let uploadTimeDate: Date | null = null;
         if (invoice.uploadTime instanceof Timestamp) uploadTimeDate = invoice.uploadTime.toDate();
         else if (typeof invoice.uploadTime === 'string' && isValid(parseISO(invoice.uploadTime))) uploadTimeDate = parseISO(invoice.uploadTime);
+        else if (invoice.uploadTime instanceof Date && isValid(invoice.uploadTime)) uploadTimeDate = invoice.uploadTime;
+
 
         if (uploadTimeDate && isValid(uploadTimeDate)){
             const monthYear = formatDateDisplay(uploadTimeDate, t, 'MMM yyyy');
@@ -350,7 +361,7 @@ export default function SuppliersPage() {
     });
     const chartData = Object.entries(spendingByMonth)
       .map(([month, total]) => ({ month, total }))
-      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime());
+      .sort((a,b) => parseISO(a.month).getTime() - parseISO(b.month).getTime()); // This might need locale-aware parsing if month names are localized
     setMonthlySpendingData(chartData);
 
     setIsDetailSheetOpen(true);
@@ -366,12 +377,12 @@ export default function SuppliersPage() {
     setIsSavingContact(true);
     try {
       await updateSupplierContactInfoService(selectedSupplier.id, {
-        phone: editedContactInfo.phone,
-        email: editedContactInfo.email,
+        phone: editedContactInfo.phone?.trim() || null, // Send null if empty
+        email: editedContactInfo.email?.trim() || null, // Send null if empty
       }, user.id);
 
       await fetchData(); 
-      setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone, email: editedContactInfo.email } : null);
+      setSelectedSupplier(prev => prev ? { ...prev, phone: editedContactInfo.phone?.trim() || null, email: editedContactInfo.email?.trim() || null } : null);
 
       toast({ title: t('suppliers_toast_contact_updated_title'), description: t('suppliers_toast_contact_updated_desc', { supplierName: selectedSupplier.name }) });
       setIsEditingContact(false);
@@ -385,8 +396,8 @@ export default function SuppliersPage() {
 
   const handleSavePaymentTerms = async () => {
     if (!selectedSupplier || !user || !user.id) return;
-    setIsSavingContact(true); // Use the same saving flag for simplicity
-    let finalPaymentTerm: string;
+    setIsSavingContact(true); // Use the same saving flag
+    let finalPaymentTerm: string | null;
     if (editedPaymentTermsOption === 'custom') {
         if (!customPaymentTerm.trim()) {
             toast({ title: t('error_title'), description: t('suppliers_payment_terms_custom_empty_error'), variant: 'destructive'});
@@ -421,7 +432,7 @@ export default function SuppliersPage() {
       fetchData();
     } catch (error: any) {
       console.error("Failed to create supplier:", error);
-      toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc')} ${(error as Error).message}`, variant: "destructive" });
+      toast({ title: t('suppliers_toast_create_fail_title'), description: `${t('suppliers_toast_create_fail_desc', {message: (error as Error).message})}`, variant: "destructive" });
     }
   };
 
@@ -454,7 +465,10 @@ export default function SuppliersPage() {
             uploadTimeDate = invoice.uploadTime.toDate();
         } else if (typeof invoice.uploadTime === 'string') {
             uploadTimeDate = parseISO(invoice.uploadTime);
+        } else if (invoice.uploadTime instanceof Date) {
+            uploadTimeDate = invoice.uploadTime;
         }
+
 
         if (!uploadTimeDate || !isValid(uploadTimeDate)) return false;
 
@@ -640,28 +654,7 @@ export default function SuppliersPage() {
                             <Button variant="ghost" size="icon" onClick={() => handleViewSupplierDetails(supplier)} title={t('suppliers_view_details_title', { supplierName: supplier.name })}>
                               <Info className="h-4 w-4 text-primary" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" title={t('suppliers_delete_title', { supplierName: supplier.name })} disabled={isDeletingSupplier}>
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    {t('suppliers_delete_confirm_desc', { supplierName: supplier.name })}
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDeleteSupplier(supplier.id)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
-                                    {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    {t('suppliers_delete_confirm_action')}
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                           
                           </TableCell>
                         </TableRow>
                       ))
@@ -769,11 +762,37 @@ export default function SuppliersPage() {
 
       <Sheet open={isDetailSheetOpen} onOpenChange={setIsDetailSheetOpen}>
         <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 overflow-hidden">
-          <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
-            <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || t('suppliers_details_title_generic')}</SheetTitle>
-            <SheetDescription>
-              {t('suppliers_details_desc', { supplierName: selectedSupplier?.name || '' })}
-            </SheetDescription>
+          <SheetHeader className="p-4 sm:p-6 border-b shrink-0 flex flex-row justify-between items-center">
+            <div>
+              <SheetTitle className="text-lg sm:text-xl">{selectedSupplier?.name || t('suppliers_details_title_generic')}</SheetTitle>
+              <SheetDescription>
+                {t('suppliers_details_desc', { supplierName: selectedSupplier?.name || '' })}
+              </SheetDescription>
+            </div>
+             {selectedSupplier && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" title={t('suppliers_delete_title', { supplierName: selectedSupplier.name })} disabled={isDeletingSupplier}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t('suppliers_delete_confirm_title')}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('suppliers_delete_confirm_desc', { supplierName: selectedSupplier.name })}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeletingSupplier}>{t('cancel_button')}</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleDeleteSupplier(selectedSupplier.id)} disabled={isDeletingSupplier} className={cn(buttonVariants({variant: "destructive"}), isDeletingSupplier && "opacity-50")}>
+                      {isDeletingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('suppliers_delete_confirm_action')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </SheetHeader>
           {selectedSupplier && (
             <ScrollArea className="flex-grow">
@@ -883,7 +902,7 @@ export default function SuppliersPage() {
                                     />
                                 )}
                                 <div className="flex gap-2 pt-2">
-                                  <Button size="sm" onClick={() => {setIsEditingPaymentTerms(false); const terms = selectedSupplier.paymentTerms || ''; const pO: PaymentTermOption[] = ['immediate', 'net30', 'net60', 'eom']; const mO = pO.find(opt=>t(`suppliers_payment_terms_option_${opt}`)===terms); if(mO){setEditedPaymentTermsOption(mO);setCustomPaymentTerm('')}else{setEditedPaymentTermsOption('custom');setCustomPaymentTerm(terms)}}} variant="outline" disabled={isSavingContact}>
+                                  <Button size="sm" onClick={() => {setIsEditingPaymentTerms(false); const terms = selectedSupplier.paymentTerms || ''; const pO: PaymentTermOption[] = ['immediate', 'net30', 'net60', 'eom']; const mO = pO.find(opt=>t(`suppliers_payment_terms_option_${opt}`)===terms); if(mO){setEditedPaymentTermsOption(mO);setCustomPaymentTerm('')}else if(terms){setEditedPaymentTermsOption('custom');setCustomPaymentTerm(terms)}else{setEditedPaymentTermsOption('custom');setCustomPaymentTerm('')}}} variant="outline" disabled={isSavingContact}>
                                     <X className="mr-1 h-4 w-4" /> {t('cancel_button')}
                                   </Button>
                                   <Button size="sm" onClick={handleSavePaymentTerms} disabled={isSavingContact}>
@@ -975,4 +994,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-
