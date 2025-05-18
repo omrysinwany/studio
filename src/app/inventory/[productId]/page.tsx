@@ -37,20 +37,20 @@ const formatDisplayNumber = (
     t: (key: string, params?: Record<string, string | number>) => string,
     options?: { decimals?: number, useGrouping?: boolean, currencySymbol?: string }
 ): string => {
-    const { decimals = 2, useGrouping = true, currencySymbol = t('currency_symbol') } = options || {};
+    const { decimals = 0, useGrouping = true, currencySymbol = t('currency_symbol') } = options || {};
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
+            minimumFractionDigits: currencySymbol ? 0 : decimals, // Keep 0 decimals for currency if value is 0/null/undefined
+            maximumFractionDigits: currencySymbol ? 0 : decimals,
             useGrouping: useGrouping,
         });
         return currencySymbol ? `${currencySymbol}${zeroFormatted}` : zeroFormatted;
     }
 
     const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
+        minimumFractionDigits: currencySymbol ? 0 : decimals,
+        maximumFractionDigits: currencySymbol ? 0 : decimals,
         useGrouping: useGrouping,
     });
     return currencySymbol ? `${currencySymbol}${formattedValue}` : formattedValue;
@@ -120,7 +120,7 @@ export default function ProductDetailPage() {
       const data = await getProductByIdService(productId, user.id);
       if (data) {
         setProduct(data);
-        setEditedProduct({ ...data }); 
+        setEditedProduct({ ...data });
       } else {
         setError(t('product_detail_error_not_found'));
          toast({
@@ -180,7 +180,7 @@ export default function ProductDetailPage() {
     if (!product || !product.id || !user || !user.id) return;
 
     if (editedProduct.salePrice === undefined || editedProduct.salePrice === null || isNaN(Number(editedProduct.salePrice)) || Number(editedProduct.salePrice) <=0) {
-        // Sale price is optional. 
+        // Sale price is optional.
     }
     if (editedProduct.minStockLevel !== undefined && editedProduct.minStockLevel !== null && (isNaN(Number(editedProduct.minStockLevel)) || Number(editedProduct.minStockLevel) < 0)) {
       toast({ title: t('product_detail_toast_invalid_min_stock_title'), description: t('product_detail_toast_invalid_min_stock_desc'), variant: "destructive" });
@@ -261,7 +261,7 @@ export default function ProductDetailPage() {
 
   const handleCancelEdit = () => {
     if (product) {
-        setEditedProduct({ ...product }); 
+        setEditedProduct({ ...product });
         setIsEditing(false);
         toast({
             title: t('product_detail_toast_edit_cancelled_title'),
@@ -276,10 +276,6 @@ export default function ProductDetailPage() {
    };
 
    const handleScanBarcode = () => {
-       // Currently, this is a placeholder. If you integrate a scanner component:
-       // 1. Open the scanner component/modal.
-       // 2. Get the scanned barcode value via a callback.
-       // 3. Call handleInputChange('barcode', scannedValue);
        toast({ title: "Scanner Not Implemented", description: "Barcode scanning functionality will be added soon." });
    };
 
@@ -316,16 +312,18 @@ export default function ProductDetailPage() {
         title: t('barcode_scanner_toast_camera_error_title'),
         description: userMsg,
       });
-      setShowCameraModal(false); 
+      setShowCameraModal(false);
     }
   };
 
   const handleOpenCameraModal = () => {
     console.log("[ProductDetail] handleOpenCameraModal called");
     setShowCameraModal(true);
-    if (hasCameraPermission === null || !hasCameraPermission) { 
+    // Request camera permission only when modal is opened and not already granted
+    if (hasCameraPermission === null || !hasCameraPermission) {
         enableCamera();
     } else if (hasCameraPermission && videoRef.current && !videoRef.current.srcObject) {
+        // If permission was granted but stream is not active (e.g., after closing modal)
         enableCamera();
     }
   };
@@ -340,9 +338,9 @@ export default function ProductDetailPage() {
       const context = canvas.getContext('2d');
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8); 
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setEditedProduct(prev => ({ ...prev, imageUrl: dataUrl }));
-        if (!isEditing) setIsEditing(true);
+        if (!isEditing) setIsEditing(true); // Switch to edit mode if not already
         console.log("[ProductDetail] Image captured, imageUrl in editedProduct set.");
         toast({ title: t('product_image_captured_title'), description: t('product_image_captured_desc') });
       } else {
@@ -374,7 +372,7 @@ export default function ProductDetailPage() {
 
 
    const handleQuantityUpdateOnDetailPage = async (change: number) => {
-     if (!product || !product.id || !user || !user.id || isEditing) return; 
+     if (!product || !product.id || !user || !user.id || isEditing) return;
      setIsUpdatingQuantityDetail(true);
      const currentQty = product.quantity ?? 0;
      const newQuantity = currentQty + change;
@@ -442,9 +440,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true, currencySymbol: t('currency_symbol') });
+            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true, currencySymbol: t('currency_symbol') });
             else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 2, useGrouping: true, currencySymbol: '' });
+            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true, currencySymbol: '' });
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -453,7 +451,7 @@ export default function ProductDetailPage() {
      }
 
      return (
-       <div className="flex items-start space-x-3">
+       <div className="flex items-start space-x-3 py-1.5">
          <IconComponent className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
          <div className="flex-grow">
            <p className="text-sm font-medium text-muted-foreground">{t(labelKey)}</p>
@@ -498,7 +496,7 @@ export default function ProductDetailPage() {
              : (value as string) || '';
         
         return (
-          <div className="flex items-start space-x-3">
+          <div className="flex items-start space-x-3 py-1.5">
             <IconComponent className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
             <div className="flex-grow">
               <Label htmlFor={fieldKey} className="text-sm font-medium text-muted-foreground">
@@ -551,7 +549,7 @@ export default function ProductDetailPage() {
          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
         <p className="text-xl text-destructive mb-4">{error}</p>
         <Button variant="outline" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> {t('go_back_button')}
+          <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
         </Button>
       </div>
     );
@@ -562,7 +560,7 @@ export default function ProductDetailPage() {
        <div className="container mx-auto p-4 md:p-8 text-center">
          <p>{t('product_not_found')}</p>
          <Button variant="outline" onClick={handleBack} className="mt-4">
-           <ArrowLeft className="mr-2 h-4 w-4" /> {t('go_back_button')}
+           <ArrowLeft className="mr-2 h-4 w-4" /> {t('back_button')}
          </Button>
        </div>
      );
@@ -662,10 +660,10 @@ export default function ProductDetailPage() {
              )}
             </div>
         </CardHeader>
-        <CardContent className="space-y-3 sm:space-y-4 pt-4"> 
+        <CardContent className="space-y-3 sm:space-y-4 pt-4">
             {!isEditing && (
                 <div className="flex flex-wrap gap-2 mb-2">
-                    {product.quantity <= (product.minStockLevel ?? 0) && product.quantity > 0 && ( // Changed default minStock to 0 for more accurate "low stock"
+                    {product.quantity <= (product.minStockLevel ?? 0) && product.quantity > 0 && (
                         <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`}>
                             <AlertTriangle className="mr-1 h-4 w-4" />{t('product_detail_low_stock_badge')}
                         </span>
@@ -689,17 +687,17 @@ export default function ProductDetailPage() {
             )}
              <Separator className="my-3 sm:my-4" />
 
-           <div className="space-y-3"> 
+           <div className="space-y-1">
              {isEditing ? (
                  <>
                     {renderEditItem(Barcode, "product_detail_label_barcode", editedProduct.barcode, 'barcode', false, false, true)}
                     {renderEditItem(Layers, "product_detail_label_quantity", editedProduct.quantity, 'quantity', false, true)}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
                         {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
                     </div>
                     {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true, false, false, false)}
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                         {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                     </div>
@@ -738,20 +736,19 @@ export default function ProductDetailPage() {
                             </div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, undefined, true)}
                         {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, undefined, true)}
                     </div>
                     {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, undefined, true, false, false, false)}
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 py-1.5">
-                        {renderViewItem(TrendingDown, "product_detail_label_min_stock", product.minStockLevel, 'minStockLevel', false, false, false, true)}
-                        {renderViewItem(TrendingUp, "product_detail_label_max_stock", product.maxStockLevel, 'maxStockLevel', false, false, false, true)}
+                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        {renderViewItem(TrendingDown, t("product_detail_label_min_stock"), product.minStockLevel, 'minStockLevel', false, false, false, true)}
+                        {renderViewItem(TrendingUp, t("product_detail_label_max_stock"), product.maxStockLevel, 'maxStockLevel', false, false, false, true)}
                     </div>
                  </>
              )}
             </div>
-            <Separator className="my-3 sm:my-4" />
-            <div className="mt-4">
+             <div className="mt-4">
                  <Label className="text-sm font-medium text-muted-foreground">{t('product_detail_label_image_url')}</Label>
                 {isEditing ? (
                     <div className="flex items-center gap-2 mt-1">
@@ -778,7 +775,7 @@ export default function ProductDetailPage() {
                 ) : null}
 
                 {(!isEditing && (!product.imageUrl || product.imageUrl.trim() === '')) ? (
-                     <div 
+                     <div
                         className="mt-2 h-48 w-full sm:h-60 md:h-72 rounded border-2 border-dashed border-muted-foreground/50 bg-muted/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary cursor-pointer transition-colors"
                         onClick={() => {setIsEditing(true); handleOpenCameraModal();}}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {setIsEditing(true); handleOpenCameraModal();} }}
@@ -837,3 +834,5 @@ export default function ProductDetailPage() {
     </div>
   );
 }
+
+    
