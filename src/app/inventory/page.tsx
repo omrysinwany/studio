@@ -1,7 +1,7 @@
 // src/app/inventory/page.tsx
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, ImageIcon as ImageIconLucide, ListChecks, Grid, DollarSign, Phone, Mail, Info } from 'lucide-react';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, ImageIcon as ImageIconLucide, ListChecks, Grid, DollarSign, Phone, Mail, Info, Settings as SettingsIcon } from 'lucide-react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ import NextImage from 'next/image';
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Separator } from '@/components/ui/separator';
+import { calculateInventoryValue, getLowStockItems } from '@/lib/kpi-calculations';
 
 
 const ITEMS_PER_PAGE = 10;
@@ -107,7 +108,7 @@ export default function InventoryPage() {
     imageUrl: false, 
     id: false,
     shortName: true,
-    description: false, 
+    description: true, 
     catalogNumber: true, 
     barcode: false,
     quantity: true,
@@ -130,7 +131,6 @@ export default function InventoryPage() {
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
-  const [isUpdatingQuantity, setIsUpdatingQuantity] = useState<Record<string, boolean>>({});
 
   const fetchInventory = useCallback(async () => {
       if (!user || !user.id) {
@@ -190,12 +190,13 @@ export default function InventoryPage() {
     if (shouldRefresh === 'true') {
         const current = new URLSearchParams(Array.from(searchParamsHook.entries()));
         current.delete('refresh');
-        current.delete('mobileView');
+        current.delete('mobileView'); // also remove mobileView after applying it
         const search = current.toString();
         const query = search ? `?${search}` : "";
         router.replace(`${pathname}${query}`, { scroll: false }); 
      }
-   }, [authLoading, user, fetchInventory, router, searchParamsHook, pathname, inventory.length, isMobileView]);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [authLoading, user, fetchInventory, router, searchParamsHook, pathname, inventory.length]);
 
 
   const handleSort = (key: SortKey) => {
@@ -210,15 +211,11 @@ export default function InventoryPage() {
    };
 
    const inventoryValue = useMemo(() => {
-    return inventory.reduce((acc, product) => acc + ((Number(product.unitPrice) || 0) * (Number(product.quantity) || 0)), 0);
+    return calculateInventoryValue(inventory);
   }, [inventory]);
   
   const stockAlerts = useMemo(() => {
-    return inventory.filter(item => 
-        (Number(item.quantity) || 0) === 0 || 
-        (item.minStockLevel !== undefined && item.minStockLevel !== null && (Number(item.quantity) || 0) <= item.minStockLevel) ||
-        (item.maxStockLevel !== undefined && item.maxStockLevel !== null && (Number(item.quantity) || 0) > item.maxStockLevel)
-    );
+    return getLowStockItems(inventory);
   }, [inventory]);
   const stockAlertsCount = stockAlerts.length;
 
@@ -424,40 +421,45 @@ export default function InventoryPage() {
   return (
       <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
-           <div className="flex-1">
+         <CardHeader className="flex flex-col p-4">
+           <div className="flex justify-between items-center mb-1">
              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
              </CardTitle>
-             <CardDescription>{t('inventory_description')}</CardDescription>
+             <div className="flex items-center gap-2">
+                 <Button
+                   variant="ghost"
+                   size="icon"
+                   onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
+                   className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
+                   aria-label={t('inventory_filter_button_aria')}
+                 >
+                   <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                 </Button>
+                 <Button
+                   variant="outline"
+                   onClick={() => {
+                     const newMode = viewMode === 'table' ? 'cards' : 'table';
+                     setViewMode(newMode);
+                     // Update URL for mobile view persistence if needed
+                      const params = new URLSearchParams(searchParamsHook.toString());
+                      params.set('mobileView', newMode);
+                      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+                   }}
+                   className="h-9 sm:h-10 px-3"
+                   aria-label={t('inventory_toggle_view_mode_aria')}
+                 >
+                   {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
+                 </Button>
+             </div>
            </div>
-           <div className="flex items-center gap-2 self-start sm:self-center">
-             <Button
-               variant="ghost"
-               size="icon"
-               onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
-               className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-               aria-label={t('inventory_filter_button_aria')}
-             >
-               <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-             </Button>
-             <Button
-               variant="outline"
-               onClick={() => {
-                 const newMode = viewMode === 'table' ? 'cards' : 'table';
-                 setViewMode(newMode);
-               }}
-               className="h-9 sm:h-10 px-3"
-               aria-label={t('inventory_toggle_view_mode_aria')}
-             >
-               {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
-             </Button>
-           </div>
+           <CardDescription>{t('inventory_description')}</CardDescription>
          </CardHeader>
         <CardContent>
-            <div className="mb-6 p-0">
-                 <h3 className="text-lg font-semibold text-foreground mb-2 px-1 sm:px-0">{t('inventory_summary_and_alerts_title')}</h3>
-                 <div className="grid grid-cols-2 gap-3 p-4 bg-muted/20 rounded-lg">
+            {/* KPIs / Summary Cards */}
+            <div className="mb-6">
+                <h3 className="text-lg font-semibold text-foreground mb-2 px-1 sm:px-0">{t('inventory_summary_and_alerts_title')}</h3>
+                <div className="grid grid-cols-2 gap-3 p-4 bg-muted/20 rounded-lg">
                     <div className="p-3 bg-muted/50 rounded-lg flex flex-col items-center justify-center aspect-auto sm:aspect-square shadow hover:shadow-md transition-shadow">
                         <DollarSign className="h-5 w-5 text-green-500 mb-1" />
                         <p className="text-sm font-medium text-muted-foreground text-center">{t('inventory_kpi_total_value_short')}</p>
@@ -470,17 +472,17 @@ export default function InventoryPage() {
                     </div>
                 </div>
             </div>
-          
-          <div className="relative w-full md:max-w-xs lg:max-w-sm mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('inventory_search_placeholder')}
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="pl-10 h-10"
-              aria-label={t('inventory_search_aria')}
-            />
-          </div>
+            
+            <div className="relative w-full md:max-w-xs lg:max-w-sm mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t('inventory_search_placeholder')}
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                className="pl-10 h-10"
+                aria-label={t('inventory_search_aria')}
+              />
+            </div>
           
           {showAdvancedInventoryFilters && (
             <div className="mb-4 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
@@ -584,12 +586,12 @@ export default function InventoryPage() {
                          ) : null}
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3 flex-grow">
-                        <p> {/* Changed from p to div to allow badge inside */}
+                        <div> {/* Changed from p to div to allow badge inside */}
                             <strong>{t('inventory_col_qty')}:</strong> {formatIntegerQuantityWithTranslation(item.quantity, t)}
                             {item.quantity === 0 && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{t('inventory_badge_out_of_stock')}</Badge>}
                             {item.quantity > 0 && item.minStockLevel !== undefined && item.minStockLevel !== null && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="ml-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
                             {item.maxStockLevel !== undefined && item.maxStockLevel !== null && item.quantity > item.maxStockLevel && <Badge variant="default" className="ml-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
-                         </p>
+                         </div>
                          {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined && item.salePrice !== null ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</p>}
                      </CardContent>
                      <CardFooter className="p-2 border-t flex items-center justify-end">
@@ -790,4 +792,3 @@ export default function InventoryPage() {
      </div>
   );
 }
-
