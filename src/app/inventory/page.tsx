@@ -20,8 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Phone, Mail, DollarSign } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Search, Filter, ChevronDown, Loader2, Eye, Package, AlertTriangle, Download, Trash2, ChevronLeft, ChevronRight, ChevronUp, Image as ImageIconLucide, ListChecks, Grid, Phone, Mail, DollarSign, Columns } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
@@ -100,21 +100,21 @@ export default function InventoryPage() {
 
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(isDeleting);
+  const [isDeleting, setIsDeleting] = useState(false); // Corrected initialization
   const [searchTerm, setSearchTerm] = useState('');
   
   const defaultVisibleColumns: Record<keyof Product | 'actions' | 'imageUrl' , boolean> = useMemo(() => ({
     actions: true,
-    imageUrl: false, // Default to hidden as requested
+    imageUrl: false, 
     id: false,
     shortName: true,
     description: false,
     catalogNumber: true, 
     barcode: false,
     quantity: true,
-    unitPrice: false, // Default to hidden
+    unitPrice: false,
     salePrice: true,
-    lineTotal: false, // Default to hidden
+    lineTotal: false,
     minStockLevel: false, 
     maxStockLevel: false, 
     lastUpdated: false,
@@ -128,7 +128,7 @@ export default function InventoryPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table'); // Default to table view
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [showAdvancedInventoryFilters, setShowAdvancedInventoryFilters] = useState(false);
 
 
@@ -198,10 +198,12 @@ export default function InventoryPage() {
             const search = current.toString();
             const query = search ? `?${search}` : "";
             router.replace(`${pathname}${query}`, { scroll: false });
+        } else if (!urlViewMode && isMobileView && viewMode !== 'cards') {
+            // Default to cards on mobile if not specified
+            // setViewMode('cards'); // Commented out: Default view is now 'table' globally
         }
     }
-
-    if (user && user.id && (inventory.length === 0 || shouldRefresh === 'true')) {
+     if (user && user.id && (inventory.length === 0 || shouldRefresh === 'true')) {
         fetchInventory();
     } else if (!user && !authLoading) {
         router.push('/login');
@@ -218,7 +220,7 @@ export default function InventoryPage() {
         const query = search ? `?${search}` : "";
         router.replace(`${pathname}${query}`, { scroll: false }); 
      }
-   }, [authLoading, user, fetchInventory, router, searchParams, pathname, inventory.length]);
+   }, [authLoading, user, fetchInventory, router, searchParams, pathname, inventory.length, isMobileView, viewMode]);
 
 
   const handleSort = (key: SortKey) => {
@@ -315,18 +317,18 @@ export default function InventoryPage() {
     };
 
     const columnDefinitions: { key: keyof Product | 'actions' | 'imageUrl'; labelKey: string; sortable: boolean, className?: string, mobileHidden?: boolean, headerClassName?: string, isNumeric?: boolean }[] = [
-        { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'px-2 sm:px-4 py-2 text-center sticky left-0 bg-card z-10' },
+        { key: 'actions', labelKey: 'inventory_col_actions', sortable: false, className: 'text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2 sticky left-0 bg-card z-10' },
         { key: 'imageUrl', labelKey: 'inventory_col_image', sortable: false, className: 'w-12 text-center px-1 sm:px-2 py-1', headerClassName: 'text-center px-1 sm:px-2 py-1'},
-        { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2 text-center', headerClassName: 'px-2 sm:px-4 py-2 text-center' },
-        { key: 'description', labelKey: 'inventory_col_description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
-        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
-        { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center' },
+        { key: 'shortName', labelKey: 'inventory_col_product', sortable: true, className: 'min-w-[100px] sm:min-w-[150px] px-2 sm:px-4 py-2 text-center', headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'description', labelKey: 'inventory_col_description', sortable: true, className: 'min-w-[150px] sm:min-w-[200px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'catalogNumber', labelKey: 'inventory_col_catalog', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
+        { key: 'barcode', labelKey: 'inventory_col_barcode', sortable: true, className: 'min-w-[100px] sm:min-w-[120px] px-2 sm:px-4 py-2 text-center', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2' },
         { key: 'quantity', labelKey: 'inventory_col_qty', sortable: true, className: 'text-center min-w-[60px] sm:min-w-[80px] px-2 sm:px-4 py-2', headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-        { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'minStockLevel', labelKey: 'product_detail_label_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
-        { key: 'maxStockLevel', labelKey: 'product_detail_label_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'px-2 sm:px-4 py-2 text-center', isNumeric: true },
+        { key: 'unitPrice', labelKey: 'inventory_col_unit_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'salePrice', labelKey: 'inventory_col_sale_price', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: false, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'minStockLevel', labelKey: 'product_detail_label_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
+        { key: 'maxStockLevel', labelKey: 'product_detail_label_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
     ];
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
@@ -431,16 +433,16 @@ export default function InventoryPage() {
 
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
             <div>
               <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                 <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
               </CardTitle>
               <CardDescription>{t('inventory_description')}</CardDescription>
             </div>
-             <div className="flex items-center gap-2 self-start sm:self-center">
+            <div className="flex items-center gap-2 self-start sm:self-center">
                  <Button
                    variant="ghost"
                    size="icon"
@@ -522,33 +524,33 @@ export default function InventoryPage() {
             )}
            </div>
             
-           <Card className="shadow-sm bg-muted/30 border-border/50 mb-6 scale-fade-in delay-100">
-             <CardHeader className="pb-3 pt-4 px-4">
-                <CardTitle className="text-base font-semibold text-primary flex items-center">
-                    <Package className="mr-2 h-4 w-4" /> {t('inventory_summary_and_alerts_title')}
-                </CardTitle>
-             </CardHeader>
-             <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 text-center sm:text-left">
-                <div className="p-3 border rounded-md bg-background/70">
-                    <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
-                        <DollarSign className="mr-1 h-3.5 w-3.5 text-green-500"/>{t('inventory_kpi_total_value_short')}
-                    </p>
-                    <p className="text-xl font-bold">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
-                </div>
-                <div className="p-3 border rounded-md bg-background/70">
-                    <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
-                        <Package className="mr-1 h-3.5 w-3.5 text-blue-500"/>{t('inventory_kpi_total_units_short')}
-                    </p>
-                    <p className="text-xl font-bold">{formatIntegerQuantityWithTranslation(totalStockItems, t)}</p>
-                </div>
-                <div className="p-3 border rounded-md bg-background/70">
-                    <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
-                        <AlertTriangle className="mr-1 h-3.5 w-3.5 text-yellow-500"/>{t('inventory_kpi_stock_alerts_short')}
-                    </p>
-                    <p className="text-xl font-bold">{formatIntegerQuantityWithTranslation(stockAlertsCount, t)}</p>
-                </div>
-             </CardContent>
-           </Card>
+            <Card className="shadow-sm bg-card/70 backdrop-blur-sm border-border/50 mb-6 scale-fade-in delay-100">
+                <CardHeader className="pb-3 pt-4 px-4">
+                    <CardTitle className="text-base font-semibold text-primary flex items-center">
+                        <Package className="mr-2 h-4 w-4" /> {t('inventory_summary_and_alerts_title')}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 text-center sm:text-left">
+                    <div className="p-3 border rounded-md bg-background/70">
+                        <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
+                            <DollarSign className="mr-1 h-3.5 w-3.5 text-green-500"/>{t('inventory_kpi_total_value_short')}
+                        </p>
+                        <p className="text-xl font-bold">{formatDisplayNumberWithTranslation(inventoryValue, t, { currency: true, decimals: 0 })}</p>
+                    </div>
+                    <div className="p-3 border rounded-md bg-background/70">
+                        <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
+                            <Package className="mr-1 h-3.5 w-3.5 text-blue-500"/>{t('inventory_kpi_total_units_short')}
+                        </p>
+                        <p className="text-xl font-bold">{formatIntegerQuantityWithTranslation(totalStockItems, t)}</p>
+                    </div>
+                    <div className="p-3 border rounded-md bg-background/70">
+                        <p className="text-xs text-muted-foreground flex items-center justify-center sm:justify-start">
+                            <AlertTriangle className="mr-1 h-3.5 w-3.5 text-yellow-500"/>{t('inventory_kpi_stock_alerts_short')}
+                        </p>
+                        <p className="text-xl font-bold">{formatIntegerQuantityWithTranslation(stockAlertsCount, t)}</p>
+                    </div>
+                </CardContent>
+            </Card>
 
 
            {(viewMode === 'cards') ? (
@@ -607,12 +609,13 @@ export default function InventoryPage() {
                          ) : null}
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3 flex-grow">
-                         <p>
-                           <strong>{t('inventory_col_qty')}:</strong> {formatIntegerQuantityWithTranslation(item.quantity, t)}
+                         <div>
+                           <strong className='mr-1'>{t('inventory_col_qty')}:</strong> 
+                           <span>{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
                            {item.quantity === 0 && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{t('inventory_badge_out_of_stock')}</Badge>}
                            {item.quantity > 0 && item.minStockLevel !== undefined && item.minStockLevel !== null && item.quantity <= item.minStockLevel && <Badge variant="secondary" className="ml-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 text-[9px] px-1 py-0">{t('inventory_badge_low_stock')}</Badge>}
                            {item.maxStockLevel !== undefined && item.maxStockLevel !== null && item.quantity > item.maxStockLevel && <Badge variant="default" className="ml-1 bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 text-[9px] px-1 py-0">{t('inventory_badge_over_stock')}</Badge>}
-                         </p>
+                         </div>
                          {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined && item.salePrice !== null ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true, decimals: 0 }) : '-'}</p>}
                      </CardContent>
                       <CardFooter className="p-2 border-t flex items-center justify-end">
@@ -640,7 +643,7 @@ export default function InventoryPage() {
                        <TableHead
                          key={header.key}
                          className={cn(
-                           "px-2 sm:px-4 py-2 text-center", 
+                           "text-center", 
                            header.headerClassName, 
                            header.sortable && "cursor-pointer hover:bg-muted/50",
                            header.mobileHidden ? 'hidden sm:table-cell' : 'table-cell'
