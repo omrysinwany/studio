@@ -32,28 +32,29 @@ import { Timestamp } from 'firebase/firestore';
 import { format, parseISO, isValid } from 'date-fns';
 
 // Helper to format numbers for display
-const formatDisplayNumber = (
+const formatDisplayNumberWithTranslation = (
     value: number | undefined | null,
     t: (key: string, params?: Record<string, string | number>) => string,
-    options?: { decimals?: number, useGrouping?: boolean, currencySymbol?: string }
+    options?: { decimals?: number, useGrouping?: boolean, currency?: boolean }
 ): string => {
-    const { decimals = 0, useGrouping = true, currencySymbol = t('currency_symbol') } = options || {};
+    const { decimals = 0, useGrouping = true, currency = false } = options || {};
+    const shekelSymbol = t('currency_symbol');
 
     if (value === null || value === undefined || isNaN(value)) {
         const zeroFormatted = (0).toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-            minimumFractionDigits: currencySymbol ? 0 : decimals, // Keep 0 decimals for currency if value is 0/null/undefined
-            maximumFractionDigits: currencySymbol ? 0 : decimals,
+            minimumFractionDigits: currency ? 0 : decimals,
+            maximumFractionDigits: currency ? 0 : decimals,
             useGrouping: useGrouping,
         });
-        return currencySymbol ? `${currencySymbol}${zeroFormatted}` : zeroFormatted;
+        return currency ? `${shekelSymbol}${zeroFormatted}` : zeroFormatted;
     }
 
     const formattedValue = value.toLocaleString(t('locale_code_for_number_formatting') || undefined, {
-        minimumFractionDigits: currencySymbol ? 0 : decimals,
-        maximumFractionDigits: currencySymbol ? 0 : decimals,
+        minimumFractionDigits: currency ? 0 : decimals,
+        maximumFractionDigits: currency ? 0 : decimals,
         useGrouping: useGrouping,
     });
-    return currencySymbol ? `${currencySymbol}${formattedValue}` : formattedValue;
+    return currency ? `${shekelSymbol}${formattedValue}` : formattedValue;
 };
 
 // Helper to format numbers for input fields
@@ -71,7 +72,7 @@ const formatInputValue = (value: number | undefined | null, fieldType: 'currency
 };
 
 
-const formatIntegerQuantity = (
+const formatIntegerQuantityWithTranslation = (
     value: number | undefined | null,
     t: (key: string) => string
 ): string => {
@@ -319,11 +320,9 @@ export default function ProductDetailPage() {
   const handleOpenCameraModal = () => {
     console.log("[ProductDetail] handleOpenCameraModal called");
     setShowCameraModal(true);
-    // Request camera permission only when modal is opened and not already granted
     if (hasCameraPermission === null || !hasCameraPermission) {
         enableCamera();
     } else if (hasCameraPermission && videoRef.current && !videoRef.current.srcObject) {
-        // If permission was granted but stream is not active (e.g., after closing modal)
         enableCamera();
     }
   };
@@ -340,7 +339,7 @@ export default function ProductDetailPage() {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         setEditedProduct(prev => ({ ...prev, imageUrl: dataUrl }));
-        if (!isEditing) setIsEditing(true); // Switch to edit mode if not already
+        if (!isEditing) setIsEditing(true); 
         console.log("[ProductDetail] Image captured, imageUrl in editedProduct set.");
         toast({ title: t('product_image_captured_title'), description: t('product_image_captured_desc') });
       } else {
@@ -382,11 +381,11 @@ export default function ProductDetailPage() {
        return;
      }
      
-     const productDataToUpdate = { quantity: newQuantity };
+     const productDataToUpdate = { quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(product.unitPrice) || 0)).toFixed(2)) };
         try {
            await updateProductService(product.id, productDataToUpdate, user.id);
-           setProduct(prev => prev ? { ...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) } : null);
-           setEditedProduct(prev => ({...prev, quantity: newQuantity, lineTotal: parseFloat((newQuantity * (Number(prev.unitPrice) || 0)).toFixed(2)) }));
+           setProduct(prev => prev ? { ...prev, ...productDataToUpdate } : null);
+           setEditedProduct(prev => ({...prev, ...productDataToUpdate }));
            toast({
              title: t('inventory_toast_quantity_updated_title'),
              description: t('inventory_toast_quantity_updated_desc', { productName: product.shortName || product.description || "", quantity: newQuantity })
@@ -440,9 +439,9 @@ export default function ProductDetailPage() {
 
      if (value !== null && value !== undefined && String(value).trim() !== '') {
         if (typeof value === 'number') {
-            if (isCurrency) displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true, currencySymbol: t('currency_symbol') });
-            else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantity(value, t);
-            else displayValue = formatDisplayNumber(value, t, { decimals: 0, useGrouping: true, currencySymbol: '' });
+            if (isCurrency) displayValue = formatDisplayNumberWithTranslation(value, t, { decimals: 0, useGrouping: true, currency: true });
+            else if (isQuantity || isStockLevel) displayValue = formatIntegerQuantityWithTranslation(value, t);
+            else displayValue = formatDisplayNumberWithTranslation(value, t, { decimals: 0, useGrouping: true, currency: false });
         } else {
             displayValue = value || (isBarcode || isStockLevel ? t('product_detail_not_set') : '-');
         }
@@ -465,7 +464,7 @@ export default function ProductDetailPage() {
                         aria-label={t(fieldKey === 'minStockLevel' ? 'decrease_min_stock_aria_label' : 'decrease_max_stock_aria_label', { productName: product?.shortName || product?.description || ""})}
                     > <Minus className="h-3 w-3" /> </Button>
                      <p className="text-base font-semibold min-w-[20px] text-center">
-                        {isUpdatingMinMaxStock ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : displayValue}
+                        {isUpdatingMinMaxStock && editedProduct[fieldKey] === product?.[fieldKey] ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : displayValue}
                     </p>
                     <Button
                         variant="outline" size="icon" className="h-6 w-6"
@@ -473,6 +472,30 @@ export default function ProductDetailPage() {
                         disabled={isUpdatingMinMaxStock || isEditing || isSaving || isDeleting}
                          aria-label={t(fieldKey === 'minStockLevel' ? 'increase_min_stock_aria_label' : 'increase_max_stock_aria_label', { productName: product?.shortName || product?.description || ""})}
                     > <Plus className="h-3 w-3" /> </Button>
+                </>
+            ) : fieldKey === 'quantity' && !isEditing ? (
+                 <>
+                    <Button
+                        variant="outline" size="icon" className="h-7 w-7"
+                        onClick={() => handleQuantityUpdateOnDetailPage(-1)}
+                        disabled={isUpdatingQuantityDetail || isEditing || isSaving || isDeleting || (product?.quantity ?? 0) <= 0}
+                        aria-label={t('decrease_quantity_aria_label', { productName: product?.shortName || product?.description || "" })}
+                    >
+                        <Minus className="h-3.5 w-3.5" />
+                    </Button>
+                    <p className="text-base font-semibold min-w-[30px] text-center">
+                        {isUpdatingQuantityDetail ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : formatIntegerQuantityWithTranslation(product?.quantity, t)}
+                    </p>
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleQuantityUpdateOnDetailPage(1)}
+                        disabled={isUpdatingQuantityDetail || isEditing || isSaving || isDeleting}
+                        aria-label={t('increase_quantity_aria_label', { productName: product?.shortName || product?.description || "" })}
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                    </Button>
                 </>
             ) : (
                  <p className="text-base font-semibold">{displayValue}</p>
@@ -691,12 +714,14 @@ export default function ProductDetailPage() {
              {isEditing ? (
                  <>
                     {renderEditItem(Barcode, "product_detail_label_barcode", editedProduct.barcode, 'barcode', false, false, true)}
-                    {renderEditItem(Layers, "product_detail_label_quantity", editedProduct.quantity, 'quantity', false, true)}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        {renderEditItem(Layers, "product_detail_label_quantity", editedProduct.quantity, 'quantity', false, true)}
+                        {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true, false, false, false)}
+                    </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderEditItem(Tag, "product_detail_label_unit_price_cost", editedProduct.unitPrice, 'unitPrice', true)}
                         {renderEditItem(DollarSign, "product_detail_label_sale_price", editedProduct.salePrice, 'salePrice', true)}
                     </div>
-                    {renderEditItem(DollarSign, "product_detail_label_line_total_cost", editedProduct.lineTotal, 'lineTotal', true, false, false, false)}
                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderEditItem(TrendingDown, "product_detail_label_min_stock", editedProduct.minStockLevel, 'minStockLevel', false, false, false, true)}
                         {renderEditItem(TrendingUp, "product_detail_label_max_stock", editedProduct.maxStockLevel, 'maxStockLevel', false, false, false, true)}
@@ -705,42 +730,14 @@ export default function ProductDetailPage() {
              ) : (
                  <>
                     {renderViewItem(Barcode, "product_detail_label_barcode", product.barcode, undefined, false, false, true)}
-                    <div className="flex items-start space-x-3 py-1.5">
-                        <Layers className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
-                        <div className="flex-grow">
-                            <p className="text-sm font-medium text-muted-foreground">{t("product_detail_label_quantity")}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => handleQuantityUpdateOnDetailPage(-1)}
-                                    disabled={isUpdatingQuantityDetail || isEditing || isSaving || isDeleting || (product.quantity ?? 0) <= 0}
-                                    aria-label={t('decrease_quantity_aria_label', { productName: product.shortName || product.description || "" })}
-                                >
-                                    <Minus className="h-3.5 w-3.5" />
-                                </Button>
-                                <p className="text-base font-semibold min-w-[30px] text-center">
-                                    {isUpdatingQuantityDetail ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : formatIntegerQuantity(product.quantity, t)}
-                                </p>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => handleQuantityUpdateOnDetailPage(1)}
-                                    disabled={isUpdatingQuantityDetail || isEditing || isSaving || isDeleting}
-                                    aria-label={t('increase_quantity_aria_label', { productName: product.shortName || product.description || "" })}
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                        </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                         {renderViewItem(Layers, "product_detail_label_quantity", product.quantity, 'quantity', false, true)}
+                         {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, undefined, true, false, false, false)}
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderViewItem(Tag, "product_detail_label_unit_price_cost", product.unitPrice, undefined, true)}
                         {renderViewItem(DollarSign, "product_detail_label_sale_price", product.salePrice, undefined, true)}
                     </div>
-                    {renderViewItem(DollarSign, "product_detail_label_line_total_cost", product.lineTotal, undefined, true, false, false, false)}
                      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                         {renderViewItem(TrendingDown, t("product_detail_label_min_stock"), product.minStockLevel, 'minStockLevel', false, false, false, true)}
                         {renderViewItem(TrendingUp, t("product_detail_label_max_stock"), product.maxStockLevel, 'maxStockLevel', false, false, false, true)}
@@ -784,8 +781,8 @@ export default function ProductDetailPage() {
                         aria-label={t('product_add_capture_image_aria')}
                         data-ai-hint="product photography"
                     >
-                        <Camera className="h-10 w-10 sm:h-12 sm:w-12 mb-2" />
-                        <p className="text-xs sm:text-sm font-medium">{t('product_add_capture_image_text')}</p>
+                        <ImageIconLucide className="h-10 w-10 sm:h-12 sm:w-12 mb-2 text-primary" />
+                        <p className="text-xs sm:text-sm font-medium text-primary">{t('product_add_capture_image_text')}</p>
                     </div>
                 ) : (!isEditing && product.imageUrl) ? (
                      <div className="mt-2 relative h-48 w-full sm:h-60 md:h-72 rounded overflow-hidden border bg-muted/20" data-ai-hint="product photo">
@@ -834,5 +831,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
-    
