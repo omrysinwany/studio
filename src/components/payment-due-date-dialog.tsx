@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,7 +8,6 @@ import {
   SheetTitle,
   SheetDescription,
   SheetFooter,
-  SheetClose,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -17,18 +15,18 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon, Check, X } from 'lucide-react';
-import { format, addDays, endOfMonth } from 'date-fns';
+import { format, addDays, endOfMonth, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
+
+export type DueDateOption = 'immediate' | 'net30' | 'net60' | 'eom' | 'custom';
 
 interface PaymentDueDateDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onConfirm: (dueDate: string | Date | undefined) => void;
+  onConfirm: (dueDate: Date | undefined, selectedOption: DueDateOption) => void;
   onCancel: () => void;
 }
-
-type DueDateOption = 'immediate' | 'net30' | 'net60' | 'eom' | 'custom';
 
 const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   isOpen,
@@ -43,7 +41,6 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   useEffect(() => {
     console.log("[PaymentDueDateDialog] isOpen prop changed to:", isOpen);
     if (isOpen) {
-        // Reset to default when opened if needed
         console.log("[PaymentDueDateDialog] Dialog opened. Resetting to default state (immediate, today).");
         setSelectedOption('immediate');
         setCustomDate(new Date());
@@ -51,7 +48,7 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   }, [isOpen]);
 
   const handleConfirm = () => {
-    let dueDate: string | Date | undefined;
+    let dueDate: Date | undefined;
     switch (selectedOption) {
       case 'immediate':
         dueDate = new Date();
@@ -72,14 +69,23 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
         dueDate = undefined;
     }
     console.log("[PaymentDueDateDialog] Confirming with option:", selectedOption, "resulting due date:", dueDate);
-    onConfirm(dueDate);
-    onOpenChange(false); // Close the dialog after confirmation
+    onConfirm(dueDate, selectedOption); // Pass selectedOption here
+    onOpenChange(false);
   };
 
   const handleDialogCancel = () => {
-    console.log("[PaymentDueDateDialog] Cancelled by user (Skip or Close button).");
+    console.log("[PaymentDueDateDialog] Cancelled by user action (Skip or Close button).");
     onCancel();
-    onOpenChange(false); // Close the dialog
+    onOpenChange(false);
+  };
+  
+  const handleSheetOpenChange = (open: boolean) => {
+    console.log("[PaymentDueDateDialog] Sheet onOpenChange called with:", open);
+    if (!open) {
+        handleDialogCancel();
+    } else {
+        onOpenChange(open);
+    }
   };
 
   const handleRadioChange = (value: string) => {
@@ -89,20 +95,23 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
   
   const handleCustomDateChange = (date: Date | undefined) => {
       console.log("[PaymentDueDateDialog] Custom date selected:", date);
-      setCustomDate(date);
+      if (date) {
+        const today = new Date();
+        today.setHours(0,0,0,0); // Compare with start of today
+        if (date >= today) {
+          setCustomDate(date);
+        } else {
+            // Optionally show a toast or prevent setting past dates
+            console.warn("[PaymentDueDateDialog] Attempted to select a past date.");
+            // For now, let's just not update if it's a past date
+        }
+      } else {
+        setCustomDate(undefined);
+      }
   };
 
-
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => {
-        console.log("[PaymentDueDateDialog] onOpenChange called with:", open);
-        // If the dialog is closed by means other than Confirm/Cancel buttons (e.g., overlay click, X button)
-        if (!open) {
-            handleDialogCancel(); // Treat external close as a cancel/skip
-        } else {
-            onOpenChange(open); // Propagate open state if it's being opened
-        }
-    }}>
+    <Sheet open={isOpen} onOpenChange={handleSheetOpenChange}>
       <SheetContent side="bottom" className="h-auto max-h-[80vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="flex items-center text-lg sm:text-xl">
@@ -174,7 +183,7 @@ const PaymentDueDateDialog: React.FC<PaymentDueDateDialogProps> = ({
                       selected={customDate}
                       onSelect={handleCustomDateChange}
                       initialFocus
-                      disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Disable past dates
+                      disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))}
                     />
                   </PopoverContent>
                 </Popover>
