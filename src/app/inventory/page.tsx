@@ -97,7 +97,7 @@ export default function InventoryPage() {
   const searchParamsHook = useSearchParams();
   const { toast } = useToast();
   const { t, locale } = useTranslation();
-  const isMobileView = useIsMobile();
+  const isMobileViewHook = useIsMobile();
 
   const [inventory, setInventory] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -141,7 +141,6 @@ export default function InventoryPage() {
           return;
       }
       setIsLoading(true);
-      console.log("[InventoryPage] Fetching inventory for user:", user.id);
       try {
         const data = await getProductsService(user.id);
         const inventoryWithCorrectTotals = data.map(item => {
@@ -156,9 +155,8 @@ export default function InventoryPage() {
              };
         });
         setInventory(inventoryWithCorrectTotals);
-        console.log(`[InventoryPage] Fetched ${inventoryWithCorrectTotals.length} products.`);
       } catch (error) {
-        console.error("[InventoryPage] Failed to fetch inventory:", error);
+        console.error("Failed to fetch inventory:", error);
         toast({
           title: t('inventory_toast_error_fetch_title'),
           description: `${t('inventory_toast_error_fetch_desc')} (${(error as Error).message})`,
@@ -167,7 +165,6 @@ export default function InventoryPage() {
         setInventory([]);
       } finally {
         setIsLoading(false);
-        console.log("[InventoryPage] fetchInventory finished. isLoading set to false.");
       }
     }, [toast, t, user]);
 
@@ -200,8 +197,7 @@ export default function InventoryPage() {
         const query = search ? `?${search}` : "";
         router.replace(`${pathname}${query}`, { scroll: false }); 
      }
-   // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [user, authLoading, router, fetchInventory, inventory.length, searchParamsHook, pathname]);
+   }, [user, authLoading, router, fetchInventory, inventory.length, searchParamsHook, pathname]); // Added inventory.length to re-fetch if cleared
 
 
   const handleSort = (key: SortKey) => {
@@ -419,35 +415,35 @@ export default function InventoryPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
        <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="flex flex-row items-center justify-between gap-2 p-4">
-           <div className="flex-1 min-w-0">
+         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+           <div>
              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
              </CardTitle>
              <CardDescription>{t('inventory_description')}</CardDescription>
            </div>
-           <div className="flex items-center gap-2 self-start sm:self-center">
-              <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
-                  className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
-                  aria-label={t('inventory_filter_button_aria')}
-              >
-                  <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <Button
-                  variant="outline"
-                  onClick={() => {
-                      const newMode = viewMode === 'table' ? 'cards' : 'table';
-                      setViewMode(newMode);
-                  }}
-                  className="h-9 sm:h-10 px-3"
-                  aria-label={t('inventory_toggle_view_mode_aria')}
+            <div className="flex items-center gap-2 self-start sm:self-center">
+                 <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => setShowAdvancedInventoryFilters(prev => !prev)}
+                    className={cn("h-9 w-9 sm:h-10 sm:w-10", showAdvancedInventoryFilters && "bg-accent text-accent-foreground")}
+                    aria-label={t('inventory_filter_button_aria')}
                   >
-                  {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
-              </Button>
-           </div>
+                    <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                 <Button
+                    variant="outline"
+                    onClick={() => {
+                        const newMode = viewMode === 'table' ? 'cards' : 'table';
+                        setViewMode(newMode);
+                    }}
+                    className="h-9 sm:h-10 px-3"
+                    aria-label={t('inventory_toggle_view_mode_aria')}
+                    >
+                    {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
+                </Button>
+            </div>
          </CardHeader>
         <CardContent className="p-4 pt-0">
             {/* Inventory Value Display */}
@@ -470,6 +466,7 @@ export default function InventoryPage() {
           
             {showAdvancedInventoryFilters && (
               <div className="mb-4 flex flex-wrap items-center gap-2 animate-in fade-in-0 duration-300">
+                <div className="flex gap-2"> {/* Wrapper for the two dropdowns */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
@@ -511,11 +508,12 @@ export default function InventoryPage() {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
+                </div>
               </div>
             )}
             
-           {(viewMode === 'cards') ? (
-             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+           {viewMode === 'cards' ? (
+             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
                {isLoading && paginatedInventory.length === 0 ? ( 
                  Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
                    <Card key={index} className="animate-pulse bg-card/30 backdrop-blur-sm border-border/50 shadow">
@@ -570,9 +568,8 @@ export default function InventoryPage() {
                          ) : null}
                      </CardHeader>
                      <CardContent className="text-xs space-y-1 pt-1 pb-3 px-3 flex-grow">
-                        <p className="flex items-center">
-                            <strong>{t('inventory_col_qty')}:</strong> 
-                            <span className="mx-1">{formatIntegerQuantityWithTranslation(item.quantity, t)}</span>
+                        <p>
+                            <strong>{t('inventory_col_qty')}:</strong> {formatIntegerQuantityWithTranslation(item.quantity, t)}
                          </p>
                          {visibleColumns.salePrice && <p><strong>{t('inventory_col_sale_price', { currency_symbol: t('currency_symbol')})}:</strong> {item.salePrice !== undefined && item.salePrice !== null ? formatDisplayNumberWithTranslation(item.salePrice, t, { currency: true }) : '-'}</p>}
                      </CardContent>
@@ -774,3 +771,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+
