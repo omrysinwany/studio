@@ -1,3 +1,4 @@
+
 // src/app/inventory/page.tsx
 'use client';
 
@@ -109,7 +110,7 @@ export default function InventoryPage() {
     id: false,
     shortName: true,
     description: false,
-    catalogNumber: true, 
+    catalogNumber: false, 
     barcode: false,
     quantity: true,
     unitPrice: false, 
@@ -136,13 +137,14 @@ export default function InventoryPage() {
     return inventory.reduce((acc, product) => acc + ((Number(product.unitPrice) || 0) * (Number(product.quantity) || 0)), 0);
   }, [inventory]);
   
-  const stockAlertsCount = useMemo(() => {
+  const stockAlerts = useMemo(() => {
     return inventory.filter(item => 
         (Number(item.quantity) || 0) === 0 || 
         (item.minStockLevel !== undefined && item.minStockLevel !== null && (Number(item.quantity) || 0) <= item.minStockLevel) ||
         (item.maxStockLevel !== undefined && item.maxStockLevel !== null && (Number(item.quantity) || 0) > item.maxStockLevel)
-    ).length;
+    );
   }, [inventory]);
+  const stockAlertsCount = stockAlerts.length;
 
 
   const fetchInventory = useCallback(async () => {
@@ -193,8 +195,7 @@ export default function InventoryPage() {
             const query = search ? `?${search}` : "";
             router.replace(`${pathname}${query}`, { scroll: false });
         } else {
-            // setViewMode(isMobileView ? 'cards' : 'table'); // Default based on device
-             setViewMode('table'); // Default to table view
+             setViewMode('table'); 
         }
     }
      if (user && user.id && (inventory.length === 0 || shouldRefresh === 'true')) {
@@ -266,7 +267,8 @@ export default function InventoryPage() {
            if (typeof valA === 'number' && typeof valB === 'number') {
              comparison = valA - valB;
            } else if (typeof valA === 'string' && typeof valB === 'string') {
-                comparison = (valA || "").localeCompare(valB || "", locale === 'he' ? 'he-IL-u-co-standard' : 'en-US');
+                const collator = new Intl.Collator(locale === 'he' ? 'he-IL-u-co-standard' : 'en-US', { sensitivity: 'base' });
+                comparison = collator.compare(valA || "", valB || "");
            } else {
               if (valA == null && valB != null) comparison = -1;
               else if (valA != null && valB == null) comparison = 1;
@@ -323,7 +325,7 @@ export default function InventoryPage() {
         { key: 'lineTotal', labelKey: 'inventory_col_total', sortable: false, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'minStockLevel', labelKey: 'product_detail_label_min_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
         { key: 'maxStockLevel', labelKey: 'product_detail_label_max_stock', sortable: true, className: 'text-center min-w-[80px] sm:min-w-[100px] px-2 sm:px-4 py-2', mobileHidden: true, headerClassName: 'text-center px-2 sm:px-4 py-2', isNumeric: true },
-    ], [t]);
+    ], [t, locale]);
 
     const visibleColumnHeaders = columnDefinitions.filter(h => visibleColumns[h.key as keyof typeof visibleColumns]);
 
@@ -427,14 +429,16 @@ export default function InventoryPage() {
 
 
   return (
-      <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
-       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
-         <CardHeader className="p-4">
-           <div className="flex justify-between items-center mb-1">
-             <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
-               <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
-             </CardTitle>
-             <div className="flex items-center gap-2">
+    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+      <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
+            <div>
+              <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">
+                <Package className="mr-2 h-5 sm:h-6 w-5 sm:w-6" /> {t('inventory_title')}
+              </CardTitle>
+              <CardDescription>{t('inventory_description')}</CardDescription>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-center">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -455,32 +459,16 @@ export default function InventoryPage() {
                 >
                   {viewMode === 'table' ? <Grid className="h-4 w-4 sm:h-5 sm:w-5" /> : <ListChecks className="h-4 w-4 sm:h-5 sm:w-5" />}
                 </Button>
-             </div>
-           </div>
-           <CardDescription>{t('inventory_description')}</CardDescription>
-         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 md:gap-4 mb-4">
-            <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t('inventory_search_placeholder')}
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                className="pl-10 h-10"
-                aria-label={t('inventory_search_aria')}
-              />
             </div>
-          </div>
-          
+        </CardHeader>
+        <CardContent>
           {showAdvancedInventoryFilters && (
             <div className="mb-4 flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 p-3 border rounded-md bg-muted/50 animate-in fade-in-0 duration-300">
-              <div className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
                       <Package className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                      {t('inventory_filter_pill_stock')}
+                      {t('inventory_filter_pill_stock_label')}
                       <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -498,7 +486,7 @@ export default function InventoryPage() {
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="rounded-full text-xs h-8 px-3 py-1 border bg-background hover:bg-muted">
                       <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                      {t('inventory_filter_pill_columns')}
+                      {t('inventory_filter_pill_columns_label')}
                       <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -517,10 +505,9 @@ export default function InventoryPage() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
             </div>
           )}
-            
+          
           <Card className="shadow-none bg-transparent mb-6 scale-fade-in delay-100">
             <CardHeader className="pb-2 pt-0 px-0">
                 <CardTitle className="text-base font-semibold text-primary flex items-center">
@@ -541,6 +528,16 @@ export default function InventoryPage() {
             </CardContent>
           </Card>
 
+          <div className="relative w-full md:flex-grow md:max-w-xs lg:max-w-sm mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t('inventory_search_placeholder')}
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              className="pl-10 h-10"
+              aria-label={t('inventory_search_aria')}
+            />
+          </div>
 
            {(viewMode === 'cards') ? (
              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-6">
@@ -804,4 +801,3 @@ export default function InventoryPage() {
      </div>
   );
 }
-
