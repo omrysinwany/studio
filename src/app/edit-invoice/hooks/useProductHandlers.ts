@@ -1,7 +1,9 @@
+// src/app/edit-invoice/hooks/useProductHandlers.ts
 import { useCallback } from 'react';
 import type { EditableProduct } from '../types';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/context/AuthContext'; // Assuming User type is available
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 
 interface UseProductHandlersProps {
   setProducts: React.Dispatch<React.SetStateAction<EditableProduct[]>>;
@@ -24,9 +26,10 @@ export function useProductHandlers({
   const { toast } = useToast();
 
   const handleAddRow = useCallback(() => {
+    const uniqueId = `prod-temp-${uuidv4()}`; // Use uuid for unique ID
     const newProduct: EditableProduct = {
-      id: `prod-temp-${Date.now()}-newManual`,
-      _originalId: `prod-temp-${Date.now()}-newManual`,
+      id: uniqueId,
+      _originalId: uniqueId, // Use the same unique ID for _originalId if it's a new manual entry
       userId: user?.id || 'unknown_user',
       catalogNumber: '',
       description: '',
@@ -40,7 +43,7 @@ export function useProductHandlers({
       imageUrl: null,
     };
     setProducts(prevProducts => [...prevProducts, newProduct]);
-    setProductsForNextStep(prev => [...prev, newProduct]);
+    setProductsForNextStep(prev => [...prev, newProduct]); // Also update productsForNextStep
   }, [user?.id, setProducts, setProductsForNextStep]);
 
   const handleRemoveRow = useCallback((id: string) => {

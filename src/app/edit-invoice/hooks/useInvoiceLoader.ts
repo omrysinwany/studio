@@ -1,7 +1,8 @@
+// src/app/edit-invoice/hooks/useInvoiceLoader.ts
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { db } from '@/lib/firebase'; // Assuming db is exported from firebase setup
+import { db } from '@/lib/firebase';
 import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import { format, parseISO, isValid } from 'date-fns';
 import type { EditableProduct, EditableTaxInvoiceDetails, InvoiceHistoryItem } from '../types';
@@ -10,14 +11,12 @@ import {
     getStorageKey,
     DOCUMENTS_COLLECTION,
     Product,
-    // MAX_SCAN_RESULTS_SIZE_BYTES // If needed
-} from '@/services/backend'; // Assuming these constants are exported
+} from '@/services/backend';
 import type { ScanInvoiceOutput } from '@/ai/flows/invoice-schemas';
 import type { ScanTaxInvoiceOutput } from '@/ai/flows/tax-invoice-schemas';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 
-interface UseInvoiceLoaderProps {
-  // t: (key: string, params?: Record<string, string | number>) => string; // No longer needed directly here if errors are returned as codes/raw messages
-}
+interface UseInvoiceLoaderProps {}
 
 export interface UseInvoiceLoaderReturn {
   initialProducts: EditableProduct[];
@@ -28,19 +27,19 @@ export interface UseInvoiceLoaderReturn {
   isNewScan: boolean;
   isViewModeInitially: boolean;
   isLoading: boolean;
-  dataError: string | null; // Renamed from errorLoading for clarity
+  dataError: string | null;
   scanProcessErrorFromLoad: string | null;
   initialTempInvoiceId: string | null;
   initialInvoiceIdParam: string | null;
   docType: 'deliveryNote' | 'invoice' | null;
   localStorageScanDataMissing: boolean;
   aiScannedSupplierNameFromStorage: string | undefined;
-  initialSelectedPaymentDueDate?: Date; // To pass to state manager or dialog flow
+  initialSelectedPaymentDueDate?: Date;
   cleanupTemporaryData: () => void;
   initialDataLoaded: boolean;
 }
 
-export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoiceLoaderReturn {
+export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderReturn {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
 
@@ -69,7 +68,7 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
 
   const cleanupTemporaryData = useCallback(() => {
     if (keyParamFromUrl && user?.id) {
-      const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `<span class="math-inline">\{user\.id\}\_</span>{keyParamFromUrl}`);
+      const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${keyParamFromUrl}`);
       localStorage.removeItem(dataKey);
       console.log(`[useInvoiceLoader][cleanupTemporaryData] Cleared localStorage (if existed): ${dataKey}`);
     }
@@ -78,11 +77,11 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
   useEffect(() => {
     if (authLoading || initialDataLoaded) return;
     if (!user && !authLoading) {
-        setDataError("User not authenticated. Please login."); // Or redirect from component
+        setDataError("User not authenticated. Please login.");
         setIsLoading(false);
         return;
     }
-    if (!user?.id) { // Still no user after auth check
+    if (!user?.id) { 
         setIsLoading(false);
         return;
     }
@@ -97,17 +96,16 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
 
       if (currentIsNewScan) {
         setIsViewModeInitially(false);
-        // Reset other states if they were managed here, otherwise they'll be reset by state manager
         setInitialProducts([]);
         setInitialTaxDetails({});
         setAiScannedSupplierNameFromStorage(undefined);
         setInitialSelectedPaymentDueDate(undefined);
       } else if (initialInvoiceIdParam) {
         setIsViewModeInitially(true);
-      } else { // Manual entry
+      } else { 
         setIsViewModeInitially(false);
-        setOriginalFileName('Manual Entry'); // Consider using t() if passed
-        setIsNewScanState(true); // Treat as new for save logic
+        setOriginalFileName('Manual Entry');
+        setIsNewScanState(true);
       }
 
       setOriginalFileName(urlOriginalFileName || (docType === 'invoice' ? 'New Invoice' : 'New Delivery Note'));
@@ -163,11 +161,11 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
           setDataError(lsMissingError);
           setScanProcessErrorFromLoad(lsMissingError);
         } else if (currentIsNewScan && !initialInvoiceIdParam && !initialTempInvoiceId && keyParamFromUrl && user?.id) {
-          const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `<span class="math-inline">\{user\.id\}\_</span>{keyParamFromUrl}`);
+          const dataKey = getStorageKey(TEMP_DATA_KEY_PREFIX, `${user.id}_${keyParamFromUrl}`);
           rawScanResultJsonFromStorage = localStorage.getItem(dataKey);
           if (!rawScanResultJsonFromStorage) {
             const lsError = `Scan results not found locally for key: ${keyParamFromUrl}. The data might have been cleared or not saved.`;
-            setDataError(lsError); // This might be a secondary error if pending doc also failed.
+            setDataError(lsError); 
           }
         }
 
@@ -175,31 +173,32 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
           try {
             const parsedScanResult = JSON.parse(rawScanResultJsonFromStorage);
             if (docType === 'deliveryNote' && parsedScanResult && 'products' in parsedScanResult && Array.isArray(parsedScanResult.products)) {
-              loadedProducts = parsedScanResult.products.map((p: any, index: number) => ({
-                id: p.id || `scan-temp-<span class="math-inline">\{Date\.now\(\)\}\-</span>{index}`,
-                _originalId: p.id || p.catalogNumber || `scan-temp-<span class="math-inline">\{Date\.now\(\)\}\-</span>{index}`,
-                userId: user.id!,
-                catalogNumber: p.catalogNumber || 'N/A',
-                description: p.product_name || p.description || 'N/A',
-                shortName: p.shortName || p.short_product_name || p.product_name?.substring(0,20) || 'N/A',
-                quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
-                unitPrice: (p.purchase_price !== undefined ? Number(p.purchase_price) : (p.unitPrice !== undefined ? Number(p.unitPrice) : 0)),
-                lineTotal: p.total !== undefined ? Number(p.total) : ((typeof p.quantity === 'number' ? p.quantity : 0) * ((p.purchase_price !== undefined ? Number(p.purchase_price) : (p.unitPrice !== undefined ? Number(p.unitPrice) : 0)))),
-                salePrice: undefined, // Always undefined initially for delivery notes to trigger prompt
-                minStockLevel: p.minStockLevel !== undefined ? Number(p.minStockLevel) : null,
-                maxStockLevel: p.maxStockLevel !== undefined ? Number(p.maxStockLevel) : null,
-                imageUrl: p.imageUrl === undefined ? null : p.imageUrl,
-              } as EditableProduct));
+              loadedProducts = parsedScanResult.products.map((p: any) => {
+                const uniqueId = p.id || p.catalogNumber || `scan-temp-${uuidv4()}`; // Use uuid
+                return {
+                    id: uniqueId,
+                    _originalId: uniqueId, // Use the same for _originalId initially
+                    userId: user.id!,
+                    catalogNumber: p.catalogNumber || 'N/A',
+                    description: p.product_name || p.description || 'N/A',
+                    shortName: p.shortName || p.short_product_name || p.product_name?.substring(0,20) || 'N/A',
+                    quantity: typeof p.quantity === 'number' ? p.quantity : parseFloat(String(p.quantity)) || 0,
+                    unitPrice: (p.purchase_price !== undefined ? Number(p.purchase_price) : (p.unitPrice !== undefined ? Number(p.unitPrice) : 0)),
+                    lineTotal: p.total !== undefined ? Number(p.total) : ((typeof p.quantity === 'number' ? p.quantity : 0) * ((p.purchase_price !== undefined ? Number(p.purchase_price) : (p.unitPrice !== undefined ? Number(p.unitPrice) : 0)))),
+                    salePrice: undefined, 
+                    minStockLevel: p.minStockLevel !== undefined ? Number(p.minStockLevel) : null,
+                    maxStockLevel: p.maxStockLevel !== undefined ? Number(p.maxStockLevel) : null,
+                    imageUrl: p.imageUrl === undefined ? null : p.imageUrl,
+                } as EditableProduct
+              });
             } else if (docType === 'invoice' && parsedScanResult) {
               const taxScan = parsedScanResult as ScanTaxInvoiceOutput;
-              // Merge with data from pendingDoc if it existed, giving preference to pendingDoc
               loadedTaxDetails = {
                 supplierName: loadedTaxDetails.supplierName || taxScan.supplierName || null,
                 invoiceNumber: loadedTaxDetails.invoiceNumber || taxScan.invoiceNumber || null,
                 totalAmount: loadedTaxDetails.totalAmount ?? taxScan.totalAmount ?? null,
                 invoiceDate: loadedTaxDetails.invoiceDate || taxScan.invoiceDate || null,
                 paymentMethod: loadedTaxDetails.paymentMethod || taxScan.paymentMethod || null,
-                // paymentDueDate will be handled by initialSelectedPaymentDueDate logic or dialogs
               };
               localAiScannedSupplier = loadedTaxDetails.supplierName || localAiScannedSupplier;
             }
@@ -210,10 +209,9 @@ export function useInvoiceLoader({ /* t */ }: UseInvoiceLoaderProps): UseInvoice
           } catch (jsonError) {
             const parseErrorMsg = `Error parsing scan data. It might be corrupted.`;
             if (!scanProcessErrorFromLoad) setScanProcessErrorFromLoad(prev => prev ? `${prev}; ${parseErrorMsg}` : parseErrorMsg);
-            if (!dataError) setDataError(parseErrorMsg); // Set general data error too
+            if (!dataError) setDataError(parseErrorMsg);
           }
         }
-        // If loading an existing finalized document that had products (e.g. old delivery note viewed as invoice)
         else if (pendingDocSnap?.exists() && pendingDocSnap.data()?.products && docType === 'deliveryNote') {
             loadedProducts = pendingDocSnap.data()?.products.map((p: Product) => ({ ...p, _originalId: p.id })) || [];
         }
