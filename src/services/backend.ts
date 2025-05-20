@@ -1102,20 +1102,22 @@ export async function getOtherExpensesService(userId: string): Promise<OtherExpe
   }
 }
 
-export async function saveOtherExpenseService(expenseData: Omit<OtherExpense, 'id' | 'userId'> & {id?: string}, userId: string): Promise<string> {
+export async function saveOtherExpenseService(expenseData: Omit<OtherExpense, 'id' | 'userId' | 'date'> & {id?:string, date: string | Date | Timestamp }, userId: string): Promise<string> {
   if (!db || !userId) throw new Error("User authentication required for saveOtherExpenseService.");
   
-  const { id: expenseId, ...dataToProcess } = expenseData;
+  const { id: expenseId, date: dateInput, ...dataToProcess } = expenseData;
 
   let dateForFirestore: Timestamp | FieldValue;
-  if (dataToProcess.date instanceof Timestamp) {
-    dateForFirestore = dataToProcess.date;
-  } else if (typeof dataToProcess.date === 'string' && isValid(parseISO(dataToProcess.date))) {
-    dateForFirestore = Timestamp.fromDate(parseISO(dataToProcess.date));
-  } else if (dataToProcess.date instanceof Date && isValid(dataToProcess.date)) {
-    dateForFirestore = Timestamp.fromDate(dataToProcess.date);
+  // ✅ הבדיקות תקינות עכשיו כי OtherExpense.date יכול להיות גם Date
+  if (dateInput instanceof Timestamp) {
+    dateForFirestore = dateInput;
+  } else if (dateInput instanceof Date && isValid(dateInput)) { // בדוק Date לפני string
+    dateForFirestore = Timestamp.fromDate(dateInput);
+  } else if (typeof dateInput === 'string' && isValid(parseISO(dateInput))) {
+    dateForFirestore = Timestamp.fromDate(parseISO(dateInput));
   } else {
-    dateForFirestore = serverTimestamp();
+    console.warn(`[Backend] Invalid date provided for expense, defaulting to server timestamp:`, dateInput);
+    dateForFirestore = serverTimestamp(); // Fallback
   }
 
   const dataToSave: any = { 
@@ -1125,17 +1127,17 @@ export async function saveOtherExpenseService(expenseData: Omit<OtherExpense, 'i
     _internalCategoryKey: dataToProcess._internalCategoryKey || null, 
     categoryId: dataToProcess.categoryId || null, 
   };
+  // הסר את השדה createdAt אם הוא לא אמור להיות כאן בעדכון, אלא רק ביצירה
+  // if (expenseId) delete dataToSave.createdAt; 
 
   if (expenseId) { 
     const docRef = doc(db, OTHER_EXPENSES_COLLECTION, expenseId);
     await updateDoc(docRef, sanitizeForFirestore({ ...dataToSave, lastUpdatedAt: serverTimestamp() }));
-    console.log(`[Backend] Other expense ${expenseId} updated for user ${userId}.`);
     return expenseId;
   } else { 
     const newDocRef = doc(collection(db, OTHER_EXPENSES_COLLECTION));
-    delete dataToSave.id; 
+    // delete dataToSave.id; // No need if id is not part of dataToSave initially
     await setDoc(newDocRef, sanitizeForFirestore({ ...dataToSave, createdAt: serverTimestamp() }));
-    console.log(`[Backend] New other expense ${newDocRef.id} created for user ${userId}.`);
     return newDocRef.id;
   }
 }

@@ -1,6 +1,7 @@
+// src/components/unit-price-confirmation-dialog.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -8,33 +9,48 @@ import {
   SheetTitle,
   SheetDescription,
   SheetFooter,
-  SheetClose,
+  SheetClose, // שימושי לסגירה אוטומטית
 } from "@/components/ui/sheet";
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertTriangle, Check, X, ChevronsUpDown } from 'lucide-react';
 import type { Product, ProductPriceDiscrepancy } from '@/services/backend';
-import { cn } from '@/lib/utils';
+// cn לא בשימוש בקוד שסיפקת, אך אם נדרש, יש לוודא ייבוא
+// import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useTranslation } from '@/hooks/useTranslation';
 
-interface UnitPriceConfirmationDialogProps {
+// ✅ עדכון ממשק הפרופס
+export interface UnitPriceConfirmationDialogProps {
   discrepancies: ProductPriceDiscrepancy[];
   onComplete: (resolvedProducts: Product[] | null) => void;
+  isOpen: boolean; // פרופ לשליטה חיצונית על נראות
+  onOpenChange: (isOpen: boolean) => void; // פרופ לעדכון ההורה על שינוי מצב נראות
 }
 
 type PriceDecision = 'keep_old' | 'update_new';
 
-const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = ({ discrepancies, onComplete }) => {
+const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = ({
+  discrepancies,
+  onComplete,
+  isOpen,       // ✅ שימוש בפרופ מההורה
+  onOpenChange, // ✅ שימוש בפרופ מההורה
+}) => {
   const { t } = useTranslation();
-  const [priceDecisions, setPriceDecisions] = useState<Record<string, PriceDecision>>(
-    discrepancies.reduce((acc, d) => {
-      acc[d.id] = 'keep_old';
-      return acc;
-    }, {} as Record<string, PriceDecision>)
-  );
-  const [isOpen, setIsOpen] = useState(true);
+  const [priceDecisions, setPriceDecisions] = useState<Record<string, PriceDecision>>({});
+
+  // ✅ איפוס ההחלטות כאשר הדיאלוג נפתח או שה discrepancies משתנים
+  useEffect(() => {
+    if (isOpen) {
+      setPriceDecisions(
+        discrepancies.reduce((acc, d) => {
+          acc[d.id] = 'keep_old'; // ברירת מחדל: שמור על המחיר הישן
+          return acc;
+        }, {} as Record<string, PriceDecision>)
+      );
+    }
+  }, [discrepancies, isOpen]);
 
   const handleDecisionChange = (productId: string, decision: PriceDecision) => {
     setPriceDecisions(prev => ({ ...prev, [productId]: decision }));
@@ -42,26 +58,28 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
 
   const handleConfirm = () => {
     const resolvedProducts: Product[] = discrepancies.map(d => {
-      const decision = priceDecisions[d.id];
+      const decision = priceDecisions[d.id] || 'keep_old'; // Fallback במידה ומשהו השתבש
       return {
-        ...d,
+        ...d, // מעתיק את כל שדות ה-ProductPriceDiscrepancy
+        // ודורס את unitPrice בהתאם להחלטה
         unitPrice: decision === 'update_new' ? d.newUnitPrice : d.existingUnitPrice,
       };
     });
-    setIsOpen(false);
     onComplete(resolvedProducts);
+    // אין צורך לקרוא ל-onOpenChange(false) כאן; ההורה יעשה זאת בתגובה ל-onComplete
   };
 
   const handleCancel = () => {
-    setIsOpen(false);
-    onComplete(null);
+    onComplete(null); // מודיע להורה שהמשתמש ביטל
+    // אין צורך לקרוא ל-onOpenChange(false) כאן; ההורה יעשה זאת
   };
   
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (!open) {
-      onComplete(null); // Call onComplete with null if dialog is closed by clicking outside or X button
-    }
+  // ✅ ה-onOpenChange של ה-Sheet הפנימי יקרא ל-onOpenChange מההורה
+  const internalSheetOpenChangeHandler = (openStatus: boolean) => {
+    onOpenChange(openStatus); // מודיע להורה על השינוי
+    // אם הדיאלוג נסגר (openStatus === false) וההורה לא טיפל בזה עדיין דרך onComplete,
+    // ההורה יקבל את האירוע הזה ויוכל להחליט אם לקרוא ל-onComplete(null).
+    // (ב-EditInvoiceContent.tsx, ה-onOpenChange המועבר לדיאלוג הזה כבר קורא ל-saver.clearPriceDiscrepancies)
   };
 
   const handleUpdateAllToNew = () => {
@@ -76,10 +94,14 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
     setPriceDecisions(newDecisions);
   };
 
-  const formatCurrency = (value: number) => `${t('currency_symbol')}${value.toFixed(2)}`;
+  const formatCurrency = (value: number | undefined | null): string => { // הוספתי טיפול ב-undefined/null
+    if (value === undefined || value === null || isNaN(value)) return `${t('currency_symbol')}0.00`;
+    return `${t('currency_symbol')}${value.toFixed(2)}`;
+  }
 
   return (
-    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+    // ✅ ה-Sheet נשלט כעת על ידי isOpen ו-onOpenChange מה-props
+    <Sheet open={isOpen} onOpenChange={internalSheetOpenChangeHandler}>
       <SheetContent side="bottom" className="h-[85vh] sm:h-[90vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="flex items-center text-lg sm:text-xl">
@@ -103,7 +125,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
         <ScrollArea className="flex-grow">
           <div className="space-y-3 p-3 sm:p-4">
             {discrepancies.map((d) => (
-              <div key={d.id} className="p-3 border rounded-md shadow-sm bg-card">
+              <div key={d.id} className="p-3 border rounded-md shadow-sm bg-background"> {/* שינוי ל-bg-background או bg-card */}
                 <p className="font-medium text-sm">{d.shortName || d.description}</p>
                 <p className="text-xs text-muted-foreground">{t('unit_price_confirmation_catalog_label')}: {d.catalogNumber}</p>
                 <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
@@ -117,7 +139,7 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
                   </div>
                 </div>
                 <RadioGroup
-                  value={priceDecisions[d.id]}
+                  value={priceDecisions[d.id] || 'keep_old'} // Fallback אם אין עדיין החלטה
                   onValueChange={(value) => handleDecisionChange(d.id, value as PriceDecision)}
                   className="mt-3 space-y-1"
                 >
@@ -136,10 +158,11 @@ const UnitPriceConfirmationDialog: React.FC<UnitPriceConfirmationDialogProps> = 
         </ScrollArea>
 
         <SheetFooter className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 shrink-0">
+          {/* SheetClose יקרא אוטומטית ל-onOpenChange של ה-Sheet עם false, מה שיפעיל את internalSheetOpenChangeHandler */}
           <SheetClose asChild>
-             <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-                <X className="mr-2 h-4 w-4" /> {t('unit_price_confirmation_cancel_button')}
-             </Button>
+            <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+              <X className="mr-2 h-4 w-4" /> {t('unit_price_confirmation_cancel_button')}
+            </Button>
           </SheetClose>
           <Button onClick={handleConfirm} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
             <Check className="mr-2 h-4 w-4" /> {t('unit_price_confirmation_confirm_button')}

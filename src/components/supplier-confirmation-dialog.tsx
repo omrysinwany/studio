@@ -1,4 +1,4 @@
-
+// src/components/supplier-confirmation-dialog.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,7 +9,6 @@ import {
   SheetTitle,
   SheetDescription,
   SheetFooter,
-  SheetClose,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -22,7 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useTranslation } from '@/hooks/useTranslation';
 import { toast } from '@/hooks/use-toast';
 
-interface SupplierConfirmationDialogProps {
+export interface SupplierConfirmationDialogProps {
   potentialSupplierName: string;
   existingSuppliers: SupplierSummary[];
   onConfirm: (confirmedSupplierName: string | null, isNew?: boolean) => void;
@@ -43,70 +42,73 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
 }) => {
   const { t } = useTranslation();
   const [selectedOption, setSelectedOption] = useState<SupplierOption>('use_new');
-  const [renamedSupplier, setRenamedSupplier] = useState(potentialSupplierName);
+  // ✅ שימוש ב-renamedSupplier וב-setRenamedSupplier עבור האפשרות של שינוי שם
+  const [renamedSupplier, setRenamedSupplier] = useState<string>(potentialSupplierName);
   const [chosenExistingSupplier, setChosenExistingSupplier] = useState<string>('');
 
   useEffect(() => {
-    console.log("[SupplierConfirmationDialog] Props received. isOpen:", isOpen, "potentialSupplierName:", potentialSupplierName);
+    // איתחול/איפוס המצבים הפנימיים כאשר הדיאלוג נפתח או שם הספק הפוטנציאלי משתנה
     if (isOpen) {
-      setRenamedSupplier(potentialSupplierName);
-      setSelectedOption('use_new');
-      setChosenExistingSupplier('');
-       console.log("[SupplierConfirmationDialog] State reset for new opening.");
+      setRenamedSupplier(potentialSupplierName); // מאתחל את שדה שינוי השם לשם המוצע
+      setSelectedOption('use_new'); // ברירת המחדל היא להשתמש בשם החדש כמו שהוא
+      setChosenExistingSupplier(''); // מאפס בחירה של ספק קיים
+      console.log("[SupplierConfirmationDialog] State reset. isOpen:", isOpen, "potentialName:", potentialSupplierName);
     }
   }, [potentialSupplierName, isOpen]);
 
-  const handleConfirm = () => {
+  const handleConfirmInternal = () => {
     let confirmedName: string | null = null;
     let isNewSupplier = false;
-    console.log("[SupplierConfirmationDialog] handleConfirm called. Selected option:", selectedOption);
 
     if (selectedOption === 'use_new') {
       confirmedName = potentialSupplierName;
       isNewSupplier = true;
-      console.log("[SupplierConfirmationDialog] Using new supplier name:", confirmedName);
     } else if (selectedOption === 'rename_new') {
       if (renamedSupplier.trim() === '') {
         toast({ title: t('error_title'), description: t('supplier_confirmation_error_empty_name'), variant: 'destructive' });
-        console.warn("[SupplierConfirmationDialog] Renamed supplier name is empty.");
         return;
       }
       confirmedName = renamedSupplier.trim();
       isNewSupplier = true;
-      console.log("[SupplierConfirmationDialog] Using renamed new supplier name:", confirmedName);
     } else if (selectedOption === 'select_existing') {
       if (!chosenExistingSupplier) {
         toast({ title: t('error_title'), description: t('supplier_confirmation_error_select_existing'), variant: 'destructive' });
-        console.warn("[SupplierConfirmationDialog] No existing supplier chosen.");
         return;
       }
       confirmedName = chosenExistingSupplier;
-      console.log("[SupplierConfirmationDialog] Using existing supplier:", confirmedName);
+      isNewSupplier = false; // אם בחרנו ספק קיים, זה לא ספק חדש
     }
     onConfirm(confirmedName, isNewSupplier);
-    onOpenChange(false);
+    // סגירת הדיאלוג תתבצע על ידי ההורה (EditInvoiceContent) שישנה את ה-prop `isOpen`
   };
 
-  const handleDialogCancel = () => {
-    console.log("[SupplierConfirmationDialog] Dialog cancelled by user action (Skip or Close).");
-    onCancel(); // Call the original cancel handler from parent
-    onOpenChange(false); // Ensure parent knows the dialog is closed
+  const handleSkipOrExternalClose = () => {
+    onCancel(); // קורא לקולבק onCancel מההורה
   };
   
-  const handleSheetOpenChange = (open: boolean) => {
-    console.log("[SupplierConfirmationDialog] Sheet onOpenChange called with:", open);
-    if (!open) {
-        // If the dialog is closed by means other than Confirm/Cancel buttons (e.g., overlay click, X button in header)
-        // We treat it as a cancel/skip action.
-        handleDialogCancel();
-    } else {
-        onOpenChange(open); // Propagate open state if it's being opened programmatically
+  const internalSheetOpenChangeHandler = (sheetIsCurrentlyOpen: boolean) => {
+    onOpenChange(sheetIsCurrentlyOpen); // מעדכן את ההורה על ניסיון שינוי מצב ה-Sheet
+  };
+
+  // כאשר הבחירה ב-RadioGroup משתנה
+  const handleOptionChange = (value: string) => {
+    const newOption = value as SupplierOption;
+    setSelectedOption(newOption);
+    if (newOption === 'rename_new') {
+      // אם המשתמש בוחר לשנות שם, נאתחל את שדה הטקסט לשם הפוטנציאלי
+      // כדי שיהיה לו בסיס לעריכה, אם הוא עדיין לא ערך אותו.
+      if (renamedSupplier === potentialSupplierName || renamedSupplier === '') { // או תנאי אחר לאיפוס
+          setRenamedSupplier(potentialSupplierName);
+      }
+    } else if (newOption === 'use_new') {
+        // אין צורך לעשות משהו מיוחד, השם הוא potentialSupplierName
+    } else if (newOption === 'select_existing') {
+        // אין צורך לעשות משהו מיוחד, הבחירה תתבצע ב-Select
     }
   };
 
-
   return (
-    <Sheet open={isOpen} onOpenChange={handleSheetOpenChange}>
+    <Sheet open={isOpen} onOpenChange={internalSheetOpenChangeHandler}>
       <SheetContent side="bottom" className="h-[75vh] sm:h-[80vh] flex flex-col p-0 rounded-t-lg">
         <SheetHeader className="p-4 sm:p-6 border-b shrink-0">
           <SheetTitle className="flex items-center text-lg sm:text-xl">
@@ -120,39 +122,39 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
 
         <ScrollArea className="flex-grow">
             <div className="p-4 sm:p-6 space-y-4">
-            <RadioGroup value={selectedOption} onValueChange={(value) => setSelectedOption(value as SupplierOption)} className="space-y-3">
+            <RadioGroup value={selectedOption} onValueChange={handleOptionChange} className="space-y-3"> {/* שימוש ב-handleOptionChange */}
                 <div>
-                <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="use_new" id="use_new_supplier" />
-                    <Label htmlFor="use_new_supplier" className="font-medium cursor-pointer">
-                    {t('supplier_confirmation_option_use_new', { supplierName: potentialSupplierName || t('invoices_unknown_supplier') })}
-                    </Label>
-                </div>
+                  <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="use_new" id="sd_use_new_supplier_v2" /> {/* שינוי קל ב-id למניעת התנגשויות */}
+                      <Label htmlFor="sd_use_new_supplier_v2" className="font-medium cursor-pointer">
+                      {t('supplier_confirmation_option_use_new', { supplierName: potentialSupplierName || t('invoices_unknown_supplier') })}
+                      </Label>
+                  </div>
                 </div>
 
                 <div>
-                <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="rename_new" id="rename_new_supplier" />
-                    <Label htmlFor="rename_new_supplier" className="font-medium cursor-pointer">
-                    {t('supplier_confirmation_option_rename_new')}
-                    </Label>
-                </div>
-                {selectedOption === 'rename_new' && (
-                    <Input
-                    type="text"
-                    value={renamedSupplier}
-                    onChange={(e) => setRenamedSupplier(e.target.value)}
-                    placeholder={t('supplier_confirmation_rename_placeholder')}
-                    className="mt-2 h-9"
-                    />
-                )}
+                  <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="rename_new" id="sd_rename_new_supplier_v2" />
+                      <Label htmlFor="sd_rename_new_supplier_v2" className="font-medium cursor-pointer">
+                      {t('supplier_confirmation_option_rename_new')}
+                      </Label>
+                  </div>
+                  {selectedOption === 'rename_new' && (
+                      <Input
+                        type="text"
+                        value={renamedSupplier} // ✅ שימוש ב-renamedSupplier
+                        onChange={(e) => setRenamedSupplier(e.target.value)} // ✅ שימוש ב-setRenamedSupplier
+                        placeholder={t('supplier_confirmation_rename_placeholder')}
+                        className="mt-2 h-9"
+                      />
+                  )}
                 </div>
                 
                 {existingSuppliers && existingSuppliers.length > 0 && (
                     <div>
                         <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="select_existing" id="select_existing_supplier" />
-                        <Label htmlFor="select_existing_supplier" className="font-medium cursor-pointer">
+                        <RadioGroupItem value="select_existing" id="sd_select_existing_supplier_v2" />
+                        <Label htmlFor="sd_select_existing_supplier_v2" className="font-medium cursor-pointer">
                             {t('supplier_confirmation_option_select_existing')}
                         </Label>
                         </div>
@@ -163,7 +165,7 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
                             </SelectTrigger>
                             <SelectContent>
                             {existingSuppliers.map((supplier) => (
-                                <SelectItem key={supplier.id} value={supplier.name}>
+                                <SelectItem key={supplier.id || supplier.name} value={supplier.name}>
                                 {supplier.name}
                                 </SelectItem>
                             ))}
@@ -177,11 +179,10 @@ const SupplierConfirmationDialog: React.FC<SupplierConfirmationDialogProps> = ({
         </ScrollArea>
 
         <SheetFooter className="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 shrink-0">
-          {/* SheetClose is not needed here if onOpenChange handles closure correctly */}
-          <Button variant="outline" onClick={handleDialogCancel} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
-            <X className="mr-2 h-4 w-4" /> {t('cancel_button')}
+          <Button variant="outline" onClick={handleSkipOrExternalClose} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+            <X className="mr-2 h-4 w-4" /> {t('skip_button')}
           </Button>
-          <Button onClick={handleConfirm} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+          <Button onClick={handleConfirmInternal} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
             <Check className="mr-2 h-4 w-4" /> {t('supplier_confirmation_confirm_button')}
           </Button>
         </SheetFooter>
