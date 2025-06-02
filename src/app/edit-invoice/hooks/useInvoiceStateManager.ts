@@ -107,7 +107,7 @@ export function useInvoiceStateManager({
             (updatedProduct as any)[field] = numericValue;
           } else (updatedProduct as any)[field] = value;
 
-          let currentQuantity = Number(updatedProduct.quantity) || 0;
+          const currentQuantity = Number(updatedProduct.quantity) || 0;
           let currentUnitPrice = (updatedProduct.unitPrice !== undefined && updatedProduct.unitPrice !== null && !isNaN(Number(updatedProduct.unitPrice))) ? Number(updatedProduct.unitPrice) : 0;
           let currentLineTotal = Number(updatedProduct.lineTotal) || 0;
 

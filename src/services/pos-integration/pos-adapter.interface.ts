@@ -44,10 +44,9 @@ export interface Product {
   description: string;
   quantity: number;
   unitPrice: number;
-  salePrice?: number; // Added sale price
+  salePrice?: number | null; // Allow null for salePrice
   lineTotal: number;
 }
-
 
 /**
  * Interface defining the common methods that any POS system adapter must implement.
@@ -68,7 +67,9 @@ export interface IPosSystemAdapter {
    * @param config - The connection configuration.
    * @returns A promise resolving to an object { success: boolean, message: string }.
    */
-  testConnection(config: PosConnectionConfig): Promise<{ success: boolean; message: string }>;
+  testConnection(
+    config: PosConnectionConfig
+  ): Promise<{ success: boolean; message: string }>;
 
   /**
    * Synchronizes product data from the POS system to InvoTrack.

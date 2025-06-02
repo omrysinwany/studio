@@ -256,7 +256,7 @@ export default function ReportsPage() {
 
        // Inventory Value Over Time Chart
        const votData = [];
-       let currentDateForVOT = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const currentDateForVOT = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDateForVOT = dateRange?.to || new Date();
        const numPointsVOT = isMobile ? 5 : 10;
        const stepDurationVOT = (endDateForVOT.getTime() - currentDateForVOT.getTime()) / Math.max(1, numPointsVOT -1);
@@ -296,7 +296,7 @@ export default function ReportsPage() {
 
        // Documents Processed Chart
        const procVolData = [];
-       let currentDateForProcVol = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
+       const currentDateForProcVol = dateRange?.from ? new Date(dateRange.from) : subMonths(new Date(), 6);
        const endDateForProcVol = dateRange?.to || new Date();
        const procVolNumPoints = isMobile ? 3 : 5;
        const procVolStepDuration = (endDateForProcVol.getTime() - currentDateForProcVol.getTime()) / Math.max(1, procVolNumPoints -1);

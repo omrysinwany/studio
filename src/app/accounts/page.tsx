@@ -222,7 +222,7 @@ export default function AccountsPage() {
         try {
             const expenseDate = exp.date instanceof Timestamp ? exp.date.toDate() : parseISO(exp.date as string);
             if (isValid(expenseDate) && isSameMonth(expenseDate, new Date())) {
-                let amountToAdd = exp.amount;
+                const amountToAdd = exp.amount;
                 const internalKey = exp._internalCategoryKey?.toLowerCase();
                 const categoryString = exp.category?.toLowerCase();
                 const biMonthlyKeys = ['property_tax', 'rent',
@@ -266,7 +266,7 @@ export default function AccountsPage() {
             return isValid(expenseDate) && expenseDate >= startDate && expenseDate <= endDate;
         })
         .reduce((sum, exp) => {
-            let amountToAdd = exp.amount;
+            const amountToAdd = exp.amount;
             const internalKey = exp._internalCategoryKey?.toLowerCase();
             const categoryString = exp.category?.toLowerCase();
              const biMonthlyKeys = [

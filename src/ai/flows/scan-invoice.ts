@@ -121,7 +121,7 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>({
 }, async (input) => { // Removed streamingCallback from async parameters
     let rawOutputFromAI: PromptOutputType | null = null;
     let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
-    let invoiceDetailsForOutput: Partial<Omit<ScanInvoiceOutput, 'products' | 'error'>> = {};
+    const invoiceDetailsForOutput: Partial<Omit<ScanInvoiceOutput, 'products' | 'error'>> = {};
 
 
     const maxRetries = 3;

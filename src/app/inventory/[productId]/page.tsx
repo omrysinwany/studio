@@ -404,7 +404,7 @@ export default function ProductDetailPage() {
        let newValue = (currentValue || 0) + change;
        if (newValue < 0) newValue = 0;
 
-       let updateData: Partial<Product> = { [field]: newValue };
+       const updateData: Partial<Product> = { [field]: newValue };
 
         if (field === 'minStockLevel' && product.maxStockLevel !== null && product.maxStockLevel !== undefined && newValue > product.maxStockLevel) {
             toast({ title: t('product_detail_toast_invalid_min_max_range_title'), description: t('product_detail_toast_invalid_min_max_range_desc_min_gt_max'), variant: "destructive"});
