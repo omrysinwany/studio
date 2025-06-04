@@ -1,227 +1,464 @@
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation'; // ודא שזה המיקום הנכון
-import { useToast } from '@/hooks/use-toast';
-import type { User } from '@/context/AuthContext';
-// ודא ש-InvoiceHistoryItem מיובא מהמקום הנכון (מה-types המקומי)
-import type { EditableProduct, EditableTaxInvoiceDetails, InvoiceHistoryItem, DueDateOption } from '../types';
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
+import type { User } from "@/context/AuthContext";
+import type {
+  EditableProduct,
+  EditableTaxInvoiceDetails,
+  DueDateOption,
+} from "../types";
 import {
   checkProductPricesBeforeSaveService,
   finalizeSaveProductsService,
   ProductPriceDiscrepancy,
-  DOCUMENTS_COLLECTION,
-} from '@/services/backend';
-import { Timestamp, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { isValid, parseISO } from 'date-fns';
-// ייבוא של Product מ-backend אם הוא שונה מ-EditableProduct
-import type { Product as BackendProduct } from '@/services/backend';
-
+  archiveDocumentService,
+  updateInvoicePaymentStatusService,
+  InvoiceHistoryItem as BackendInvoiceHistoryItem,
+} from "@/services/backend";
+import { Timestamp } from "firebase/firestore";
+import { isValid, parseISO, format } from "date-fns";
+import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
+import type { Product as BackendProduct } from "@/services/backend";
 
 interface UseInvoiceSaverProps {
   user: User | null;
-  docType: 'deliveryNote' | 'invoice' | null;
+  docType: "deliveryNote" | "invoice" | "paymentReceipt" | null;
   productsToSave: EditableProduct[];
   taxDetailsToSave: EditableTaxInvoiceDetails;
-  originalFileName: string;
+  initialRawScanResultJsonFromLoader: string | null | undefined;
+  originalFileName: string | null;
   initialTempInvoiceId: string | null;
   initialInvoiceIdParam: string | null;
   displayedOriginalImageUrl?: string | null;
   displayedCompressedImageUrl?: string | null;
   isNewScan: boolean;
-  paymentDueDateForSave?: Date;
-  currentDocumentPaymentTermOption?: DueDateOption | null;
-  cleanupTemporaryData: () => void;
+  finalizedSupplierName: string | null | undefined;
+  finalizedPaymentDueDate: Date | undefined;
+  finalizedPaymentTermOption: DueDateOption | null;
+  cleanupTemporaryData: (tempId?: string) => void;
   t: (key: string, params?: Record<string, string | number>) => string;
-  onSaveSuccess: (savedInvoice: InvoiceHistoryItem) => void; // מצפה לטיפוס המקומי
+  onSaveSuccess: (savedInvoice: BackendInvoiceHistoryItem) => void;
   onSaveError: (errorMsg: string) => void;
 }
 
 export interface UseInvoiceSaverReturn {
   isSaving: boolean;
-  handleSaveChecks: () => Promise<void>;
+  saveError: string | null;
+  handleFullSave: () => Promise<void>;
   priceDiscrepanciesForDialog: ProductPriceDiscrepancy[] | null;
   productsForPriceDiscrepancyDialog: EditableProduct[] | null;
-  resolvePriceDiscrepancies: (resolvedProducts: EditableProduct[] | null) => void;
+  resolvePriceDiscrepancies: (
+    resolvedProducts: EditableProduct[] | null
+  ) => void;
   clearPriceDiscrepancies: () => void;
+  handleMarkAsPaid: () => Promise<void>;
+  handleArchiveDocument: () => Promise<void>;
+  isArchiving: boolean;
+  isMarkingAsPaid: boolean;
+}
+
+function getPaymentTermStringForDocumentPersistence(
+  termOption: DueDateOption | null,
+  dueDate: Date | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string | undefined {
+  if (!termOption) return undefined;
+  switch (termOption) {
+    case "immediate":
+    case "net30":
+    case "net60":
+    case "eom":
+      return t(`payment_terms_option_${termOption}`);
+    case "custom":
+      return dueDate
+        ? format(dueDate, "PP", {
+            locale:
+              t("locale_code_for_date_fns") === "he" ? heLocale : enUSLocale,
+          })
+        : t("payment_terms_option_custom_fallback");
+    default:
+      console.warn(
+        "[useInvoiceSaver] Unexpected paymentTermOption value in helper:",
+        termOption
+      );
+      return typeof termOption === "string"
+        ? termOption
+        : t("payment_terms_option_unknown");
+  }
 }
 
 export function useInvoiceSaver({
-  user, docType, productsToSave, taxDetailsToSave, originalFileName: initialOriginalFileName,
-  initialTempInvoiceId, initialInvoiceIdParam, displayedOriginalImageUrl, displayedCompressedImageUrl,
-  isNewScan, paymentDueDateForSave, currentDocumentPaymentTermOption, cleanupTemporaryData, t,
-  onSaveSuccess, onSaveError,
+  user,
+  docType,
+  productsToSave,
+  taxDetailsToSave,
+  initialRawScanResultJsonFromLoader,
+  originalFileName: initialOriginalFileName,
+  initialTempInvoiceId,
+  initialInvoiceIdParam,
+  displayedOriginalImageUrl,
+  displayedCompressedImageUrl,
+  isNewScan,
+  finalizedSupplierName,
+  finalizedPaymentDueDate,
+  finalizedPaymentTermOption,
+  cleanupTemporaryData,
+  t,
+  onSaveSuccess,
+  onSaveError,
 }: UseInvoiceSaverProps): UseInvoiceSaverReturn {
   const [isSaving, setIsSaving] = useState(false);
-  // const router = useRouter(); // לא בשימוש ישיר כאן, הניווט מטופל ב-EditInvoiceContent
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const router = useRouter();
   const { toast } = useToast();
 
-  const [priceDiscrepanciesForDialog, setPriceDiscrepanciesForDialog] = useState<ProductPriceDiscrepancy[] | null>(null);
-  const [productsForPriceDiscrepancyDialog, setProductsForPriceDiscrepancyDialog] = useState<EditableProduct[] | null>(null);
+  const [priceDiscrepanciesForDialog, setPriceDiscrepanciesForDialog] =
+    useState<ProductPriceDiscrepancy[] | null>(null);
+  const [
+    productsForPriceDiscrepancyDialog,
+    setProductsForPriceDiscrepancyDialog,
+  ] = useState<EditableProduct[] | null>(null);
 
-  const proceedWithFinalSave = useCallback(async (finalProductsToSave: EditableProduct[]) => {
-    if (!user?.id || !docType) {
-      onSaveError(t("edit_invoice_user_not_authenticated_desc"));
-      return;
-    }
-    setIsSaving(true);
-    try {
-      const productsForService = finalProductsToSave.map(({ _originalId, ...rest }) => ({
-        ...rest,
-        salePrice: (rest.salePrice !== undefined && !isNaN(Number(rest.salePrice)) && Number(rest.salePrice) > 0) ? Number(rest.salePrice) : null,
-        barcode: rest.barcode || null,
-      } as BackendProduct)); // השתמש בטיפוס Product מהשירות אם הוא שונה
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isMarkingAsPaid, setIsMarkingAsPaid] = useState(false);
 
-      let finalFileNameForSave = initialOriginalFileName;
-      const finalSupplierNameForSave = taxDetailsToSave.supplierName;
-      const finalInvoiceNumberForSave = taxDetailsToSave.invoiceNumber;
-      let finalTotalAmountForSave = taxDetailsToSave.totalAmount;
-
-      if(docType === 'deliveryNote' && productsForService.length > 0 && (finalTotalAmountForSave === null || finalTotalAmountForSave === 0 || finalTotalAmountForSave === undefined)){
-        finalTotalAmountForSave = productsForService.reduce((sum, p) => sum + (p.lineTotal || 0), 0);
+  const proceedWithFinalSave = useCallback(
+    async (finalProductsToSave: EditableProduct[]) => {
+      if (!user?.id || !docType) {
+        const err = t("edit_invoice_user_not_authenticated_desc");
+        setSaveError(err);
+        onSaveError(err);
+        return;
       }
+      setIsSaving(true);
+      setSaveError(null);
 
-      let finalInvoiceDateForSave: Date | Timestamp | string | null = null;
-      if (taxDetailsToSave.invoiceDate instanceof Timestamp) finalInvoiceDateForSave = taxDetailsToSave.invoiceDate;
-      else if (typeof taxDetailsToSave.invoiceDate === 'string' && isValid(parseISO(taxDetailsToSave.invoiceDate))) finalInvoiceDateForSave = parseISO(taxDetailsToSave.invoiceDate);
-      else if (taxDetailsToSave.invoiceDate instanceof Date && isValid(taxDetailsToSave.invoiceDate)) finalInvoiceDateForSave = taxDetailsToSave.invoiceDate;
+      try {
+        const productsForService = finalProductsToSave.map(
+          ({ _originalId, ...rest }) => {
+            const backendProduct: Partial<BackendProduct> = { ...rest };
+            if (
+              rest.salePrice !== undefined &&
+              !isNaN(Number(rest.salePrice))
+            ) {
+              backendProduct.salePrice =
+                Number(rest.salePrice) > 0 ? Number(rest.salePrice) : null;
+            } else {
+              backendProduct.salePrice = null;
+            }
+            backendProduct.barcode = rest.barcode || null;
+            if (
+              _originalId &&
+              !_originalId.startsWith("prod-temp-") &&
+              !_originalId.startsWith("scan-temp-")
+            ) {
+              backendProduct.id = _originalId;
+            } else if (
+              rest.id &&
+              !rest.id.startsWith("prod-temp-") &&
+              !rest.id.startsWith("scan-temp-")
+            ) {
+              backendProduct.id = rest.id;
+            } else {
+              delete backendProduct.id;
+            }
+            return backendProduct as BackendProduct;
+          }
+        );
 
-      let finalPaymentDueDateForSave: Date | Timestamp | string | null = null;
-      if (paymentDueDateForSave instanceof Timestamp) finalPaymentDueDateForSave = paymentDueDateForSave;
-      else if (typeof paymentDueDateForSave === 'string' && isValid(parseISO(paymentDueDateForSave))) finalPaymentDueDateForSave = parseISO(paymentDueDateForSave);
-      else if (paymentDueDateForSave instanceof Date && isValid(paymentDueDateForSave)) finalPaymentDueDateForSave = paymentDueDateForSave;
+        let finalFileNameForSave = initialOriginalFileName;
 
-      if(finalSupplierNameForSave && finalSupplierNameForSave.trim() !== '' && finalInvoiceNumberForSave && finalInvoiceNumberForSave.trim() !== '') {
-        finalFileNameForSave = `${finalSupplierNameForSave}_${finalInvoiceNumberForSave}`;
-      } else if (finalSupplierNameForSave && finalSupplierNameForSave.trim() !== '') {
-        finalFileNameForSave = finalSupplierNameForSave;
-      } else if (finalInvoiceNumberForSave && finalInvoiceNumberForSave.trim() !== '') {
-        finalFileNameForSave = `Invoice_${finalInvoiceNumberForSave}`;
-      }
-      finalFileNameForSave = finalFileNameForSave.replace(/[/\\?%*:|"<>]/g, '-').substring(0, 100);
+        const finalSupplierNameForSave = finalizedSupplierName;
+        const finalInvoiceNumberForSave = taxDetailsToSave.invoiceNumber;
+        let finalTotalAmountForSave = taxDetailsToSave.totalAmount;
 
-      let rawScanResultJsonToSave: string | null = null;
-      const currentTempId = initialTempInvoiceId;
-      if (currentTempId && db && user?.id) {
-         const pendingDocRef = doc(db, DOCUMENTS_COLLECTION, currentTempId);
-         const pendingDocSnapForJson = await getDoc(pendingDocRef);
-         if (pendingDocSnapForJson.exists()) rawScanResultJsonToSave = pendingDocSnapForJson.data()?.rawScanResultJson || null;
-      } else if (initialInvoiceIdParam && db) {
-         const finalDocRef = doc(db, DOCUMENTS_COLLECTION, initialInvoiceIdParam);
-         const finalDocSnap = await getDoc(finalDocRef);
-         if (finalDocSnap.exists()) rawScanResultJsonToSave = finalDocSnap.data()?.rawScanResultJson || null;
-      }
-
-      const result = await finalizeSaveProductsService(
-        productsForService, finalFileNameForSave, docType, user.id,
-        currentTempId || initialInvoiceIdParam || undefined,
-        finalInvoiceNumberForSave || undefined, finalSupplierNameForSave || undefined,
-        finalTotalAmountForSave ?? undefined, finalPaymentDueDateForSave,
-        finalInvoiceDateForSave, taxDetailsToSave.paymentMethod || undefined,
-        displayedOriginalImageUrl || undefined, displayedCompressedImageUrl || undefined,
-        rawScanResultJsonToSave
-        // ✅ הערה: הסרנו את currentDocumentPaymentTermOption מכאן זמנית
-        // , currentDocumentPaymentTermOption // אם פונקציית השירות שלך לא מעודכנת לקבל 15 ארגומנטים
-      );
-
-      if (isNewScan && !initialInvoiceIdParam) cleanupTemporaryData();
-
-      if (result.finalInvoiceRecord) {
-        // ✅ תיקון לשגיאה 2: "העשרת" האובייקט המוחזר מהשירות
-        const recordFromService = result.finalInvoiceRecord as any; // המרה זמנית ל-any כדי למנוע שגיאות אם השדות באמת חסרים
-        const augmentedRecord: InvoiceHistoryItem = {
-            ...recordFromService,
-            id: recordFromService.id || '', // ודא ש-id קיים
-            userId: recordFromService.userId || user.id, // ודא ש-userId קיים
-            originalFileName: recordFromService.originalFileName || finalFileNameForSave,
-            docType: recordFromService.docType || docType, // הוסף אם חסר
-            uploadDate: recordFromService.uploadDate || Timestamp.now(), // הוסף עם ערך ברירת מחדל אם חסר
-            // ודא ששאר השדות הנדרשים על ידי הטיפוס המקומי InvoiceHistoryItem קיימים
-            // או ספק להם ערכי ברירת מחדל / הפוך אותם לאופציונליים בטיפוס המקומי אם זה נכון
-        };
-
-        onSaveSuccess(augmentedRecord);
-        toast({
-          title: docType === 'deliveryNote' ? t('edit_invoice_toast_products_saved_title') : t('edit_invoice_toast_invoice_details_saved_title'),
-          description: docType === 'deliveryNote' ? t('edit_invoice_toast_products_saved_desc') : t('edit_invoice_toast_invoice_details_saved_desc'),
-        });
-      } else {
-        onSaveError(t('edit_invoice_toast_save_failed_desc_finalize', { message: "Final invoice record not returned."}));
-      }
-    } catch (error: any) {
-      console.error("[useInvoiceSaver][proceedWithFinalSave] Failed to finalize save:", error);
-      let errorMsg = t('edit_invoice_toast_save_failed_desc_finalize', { message: (error as Error).message || t('edit_invoice_try_again')});
-      if ((error as any).isQuotaError) {
-        errorMsg = t('upload_toast_storage_full_desc_finalize', {context: "(finalize save)"});
-        toast({ title: t('upload_toast_storage_full_title_critical'), description: errorMsg, variant: "destructive", duration: 10000 });
-      } else {
-        toast({ title: t('edit_invoice_toast_save_failed_title'), description: errorMsg, variant: "destructive", });
-      }
-      onSaveError(errorMsg);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [
-    user, docType, taxDetailsToSave, initialOriginalFileName, initialTempInvoiceId, initialInvoiceIdParam,
-    displayedOriginalImageUrl, displayedCompressedImageUrl, isNewScan, paymentDueDateForSave, /* currentDocumentPaymentTermOption, */ // הוסר זמנית
-    cleanupTemporaryData, t, onSaveSuccess, onSaveError, toast
-  ]);
-
-  const handleSaveChecks = useCallback(async () => {
-    if (isSaving || !user?.id || !docType) return;
-    setIsSaving(true);
-    setPriceDiscrepanciesForDialog(null);
-    setProductsForPriceDiscrepancyDialog(null);
-
-    let currentProductsToProcess = [...productsToSave];
-
-    try {
-      if(docType === 'deliveryNote' && currentProductsToProcess.length > 0) {
-        const priceCheckResult = await checkProductPricesBeforeSaveService(currentProductsToProcess, user.id);
-        if (priceCheckResult.priceDiscrepancies.length > 0) {
-          setPriceDiscrepanciesForDialog(priceCheckResult.priceDiscrepancies);
-          const productsForDialog = priceCheckResult.productsToSaveDirectly.concat(
-            priceCheckResult.priceDiscrepancies.map(d => ({ ...d, unitPrice: d.newUnitPrice, salePrice: d.salePrice, } as EditableProduct))
+        if (
+          docType === "deliveryNote" &&
+          productsForService.length > 0 &&
+          (finalTotalAmountForSave === null ||
+            finalTotalAmountForSave === 0 ||
+            finalTotalAmountForSave === undefined)
+        ) {
+          finalTotalAmountForSave = productsForService.reduce(
+            (sum, p) => sum + (p.lineTotal || 0),
+            0
           );
-          setProductsForPriceDiscrepancyDialog(productsForDialog);
-          setIsSaving(false);
-          return;
         }
-        currentProductsToProcess = priceCheckResult.productsToSaveDirectly.map(p => ({...p} as EditableProduct));
-      }
-      await proceedWithFinalSave(currentProductsToProcess);
-    } catch (error) {
-      console.error("[useInvoiceSaver][handleSaveChecks] Error during save preparation:", error);
-      const errorMsg = t('edit_invoice_toast_error_preparing_save_desc', { message: (error as Error).message});
-      toast({ title: t('edit_invoice_toast_error_preparing_save_title'), description: errorMsg, variant: "destructive",});
-      onSaveError(errorMsg);
-      setIsSaving(false);
-    }
-  }, [
-    isSaving, user, docType, productsToSave, t, toast, proceedWithFinalSave, onSaveError
-  ]);
 
-  const resolvePriceDiscrepancies = useCallback(async (resolvedProducts: EditableProduct[] | null) => {
-    setPriceDiscrepanciesForDialog(null);
-    setProductsForPriceDiscrepancyDialog(null);
-    if (resolvedProducts === null) {
-      toast({ title: t("edit_invoice_toast_save_cancelled_title"), description: t("edit_invoice_toast_save_cancelled_desc_price"), variant: "default" });
-      setIsSaving(false);
+        let finalInvoiceDateForSave: Date | Timestamp | string | null = null;
+        if (taxDetailsToSave.invoiceDate instanceof Timestamp) {
+          finalInvoiceDateForSave = taxDetailsToSave.invoiceDate;
+        } else if (typeof taxDetailsToSave.invoiceDate === "string") {
+          const parsed = parseISO(taxDetailsToSave.invoiceDate);
+          if (isValid(parsed))
+            finalInvoiceDateForSave = Timestamp.fromDate(parsed);
+          else finalInvoiceDateForSave = taxDetailsToSave.invoiceDate;
+        } else if (
+          taxDetailsToSave.invoiceDate instanceof Date &&
+          isValid(taxDetailsToSave.invoiceDate)
+        ) {
+          finalInvoiceDateForSave = Timestamp.fromDate(
+            taxDetailsToSave.invoiceDate
+          );
+        }
+
+        let paymentDueDateForDoc: Date | Timestamp | string | null = null;
+        if (finalizedPaymentDueDate) {
+          paymentDueDateForDoc = Timestamp.fromDate(finalizedPaymentDueDate);
+        }
+
+        const paymentTermStringForDocument =
+          getPaymentTermStringForDocumentPersistence(
+            finalizedPaymentTermOption,
+            finalizedPaymentDueDate,
+            t
+          );
+
+        const rawScanResultJsonForSave = initialRawScanResultJsonFromLoader;
+
+        const { finalInvoiceRecord } = await finalizeSaveProductsService(
+          productsForService,
+          initialOriginalFileName || "Unnamed Document",
+          docType,
+          user.id,
+          initialTempInvoiceId || initialInvoiceIdParam,
+          finalInvoiceNumberForSave,
+          finalSupplierNameForSave,
+          finalTotalAmountForSave,
+          paymentDueDateForDoc,
+          finalInvoiceDateForSave,
+          taxDetailsToSave.paymentMethod,
+          displayedOriginalImageUrl,
+          displayedCompressedImageUrl,
+          rawScanResultJsonForSave,
+          paymentTermStringForDocument
+        );
+
+        toast({
+          title: t("edit_invoice_toast_save_success_title"),
+          description: t("edit_invoice_toast_save_success_desc", {
+            fileName:
+              finalInvoiceRecord.originalFileName ||
+              finalInvoiceRecord.generatedFileName,
+          }),
+        });
+        if (isNewScan && initialTempInvoiceId) {
+          cleanupTemporaryData(initialTempInvoiceId);
+        }
+        onSaveSuccess(finalInvoiceRecord);
+      } catch (error: any) {
+        console.error(
+          "[useInvoiceSaver] Error in proceedWithFinalSave:",
+          error
+        );
+        const errorMsg =
+          error.message || t("edit_invoice_toast_error_saving_desc_default");
+        setSaveError(errorMsg);
+        onSaveError(errorMsg);
+        toast({
+          title: t("edit_invoice_toast_error_saving_title"),
+          description: errorMsg,
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [
+      user?.id,
+      docType,
+      initialOriginalFileName,
+      initialTempInvoiceId,
+      initialInvoiceIdParam,
+      displayedOriginalImageUrl,
+      displayedCompressedImageUrl,
+      isNewScan,
+      finalizedSupplierName,
+      finalizedPaymentDueDate,
+      finalizedPaymentTermOption,
+      taxDetailsToSave,
+      initialRawScanResultJsonFromLoader,
+      cleanupTemporaryData,
+      t,
+      onSaveSuccess,
+      onSaveError,
+      toast,
+    ]
+  );
+
+  const handleFullSave = useCallback(async () => {
+    setSaveError(null);
+    if (!user?.id) {
+      const err = t("edit_invoice_user_not_authenticated_desc");
+      setSaveError(err);
+      onSaveError(err);
       return;
     }
-    await proceedWithFinalSave(resolvedProducts);
-  }, [t, toast, proceedWithFinalSave]);
+    if (!docType) {
+      const err = t("edit_invoice_error_no_doctype");
+      setSaveError(err);
+      onSaveError(err);
+      return;
+    }
+    if (productsToSave.length === 0 && docType === "deliveryNote") {
+      toast({
+        title: t("edit_invoice_toast_error_no_products_title"),
+        description: t("edit_invoice_toast_error_no_products_desc"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (docType === "deliveryNote") {
+      try {
+        setIsSaving(true);
+        const result = await checkProductPricesBeforeSaveService(
+          productsToSave.map((p) => ({ ...p, userId: user.id })),
+          user.id
+        );
+        setIsSaving(false);
+
+        if (result.priceDiscrepancies.length > 0) {
+          setPriceDiscrepanciesForDialog(result.priceDiscrepancies);
+          setProductsForPriceDiscrepancyDialog(productsToSave);
+        } else {
+          await proceedWithFinalSave(productsToSave);
+        }
+      } catch (error: any) {
+        setIsSaving(false);
+        console.error(
+          "[useInvoiceSaver] Error checking product prices:",
+          error
+        );
+        const errorMsg =
+          error.message || t("edit_invoice_toast_error_price_check_default");
+        setSaveError(errorMsg);
+        onSaveError(errorMsg);
+        toast({
+          title: t("edit_invoice_toast_error_price_check_title"),
+          description: errorMsg,
+          variant: "destructive",
+        });
+      }
+    } else {
+      await proceedWithFinalSave(productsToSave);
+    }
+  }, [
+    user?.id,
+    docType,
+    productsToSave,
+    proceedWithFinalSave,
+    t,
+    toast,
+    onSaveError,
+  ]);
+
+  const resolvePriceDiscrepancies = useCallback(
+    (resolvedProducts: EditableProduct[] | null) => {
+      setPriceDiscrepanciesForDialog(null);
+      setProductsForPriceDiscrepancyDialog(null);
+      if (resolvedProducts) {
+        proceedWithFinalSave(resolvedProducts);
+      } else {
+        toast({
+          title: t("edit_invoice_price_discrepancy_not_resolved_title"),
+          description: t("edit_invoice_price_discrepancy_not_resolved_desc"),
+          variant: "default",
+        });
+      }
+    },
+    [proceedWithFinalSave, t, toast]
+  );
 
   const clearPriceDiscrepancies = useCallback(() => {
     setPriceDiscrepanciesForDialog(null);
     setProductsForPriceDiscrepancyDialog(null);
   }, []);
 
+  const handleArchiveDocument = useCallback(async () => {
+    if (!initialInvoiceIdParam || !user?.id) {
+      toast({
+        title: t("error_title"),
+        description: t("archive_error_no_id"),
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsArchiving(true);
+    try {
+      await archiveDocumentService(initialInvoiceIdParam, user.id);
+      toast({
+        title: t("success_title"),
+        description: t("archive_success_desc"),
+      });
+      router.push(
+        docType === "deliveryNote"
+          ? "/inventory?refresh=true"
+          : "/invoices?tab=scanned-docs&refresh=true"
+      );
+    } catch (error: any) {
+      console.error("[useInvoiceSaver] Error archiving document:", error);
+      toast({
+        title: t("error_title"),
+        description: error.message || t("archive_error_generic"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsArchiving(false);
+    }
+  }, [initialInvoiceIdParam, user?.id, docType, router, t, toast]);
+
+  const handleMarkAsPaid = useCallback(async () => {
+    if (!initialInvoiceIdParam || !user?.id || !docType) {
+      toast({
+        title: t("error_title"),
+        description: t("mark_as_paid_error_no_id_or_doctype"),
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsMarkingAsPaid(true);
+    try {
+      await updateInvoicePaymentStatusService(
+        initialInvoiceIdParam,
+        "paid",
+        user.id
+      );
+      toast({
+        title: t("success_title"),
+        description: t("mark_as_paid_success_desc"),
+      });
+
+      const updatedDocPartial: Partial<BackendInvoiceHistoryItem> = {
+        id: initialInvoiceIdParam,
+        paymentStatus: "paid",
+        userId: user.id,
+        documentType: docType,
+      };
+      onSaveSuccess(updatedDocPartial as BackendInvoiceHistoryItem);
+    } catch (error: any) {
+      console.error("[useInvoiceSaver] Error marking document as paid:", error);
+      toast({
+        title: t("error_title"),
+        description: error.message || t("mark_as_paid_error_generic"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingAsPaid(false);
+    }
+  }, [initialInvoiceIdParam, user?.id, docType, t, toast, onSaveSuccess]);
+
   return {
     isSaving,
-    handleSaveChecks,
+    saveError,
+    handleFullSave,
     priceDiscrepanciesForDialog,
     productsForPriceDiscrepancyDialog,
     resolvePriceDiscrepancies,
     clearPriceDiscrepancies,
+    handleArchiveDocument,
+    isArchiving,
+    handleMarkAsPaid,
+    isMarkingAsPaid,
   };
 }

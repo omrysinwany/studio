@@ -15,6 +15,7 @@ import {
   getStorageKey,
   DOCUMENTS_COLLECTION,
   Product,
+  clearTemporaryScanData,
 } from "@/services/backend";
 
 import type { ScanInvoiceOutput } from "@/ai/flows/invoice-schemas";
@@ -40,7 +41,7 @@ export interface UseInvoiceLoaderReturn {
   localStorageScanDataMissing: boolean;
   aiScannedSupplierNameFromStorage: string | undefined;
   initialSelectedPaymentDueDate?: Date;
-  cleanupTemporaryData: () => void;
+  cleanupTemporaryData: (tempId?: string) => void;
   initialDataLoaded: boolean;
 }
 
@@ -98,18 +99,30 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
   const [initialSelectedPaymentDueDate, setInitialSelectedPaymentDueDate] =
     useState<Date | undefined>();
 
-  const cleanupTemporaryData = useCallback(() => {
-    if (keyParamFromUrl && user?.id) {
-      const dataKey = getStorageKey(
-        TEMP_DATA_KEY_PREFIX,
-        `${user.id}_${keyParamFromUrl}`
-      );
-      localStorage.removeItem(dataKey);
-      console.log(
-        `[useInvoiceLoader][cleanupTemporaryData] Cleared localStorage (if existed): ${dataKey}`
-      );
-    }
-  }, [keyParamFromUrl, user?.id]);
+  const cleanupTemporaryData = useCallback(
+    async (tempId?: string) => {
+      const idToClear = tempId || initialTempInvoiceId;
+      if (idToClear && user?.id) {
+        try {
+          console.log(
+            `[useInvoiceLoader] Attempting to delete temporary scan data for ID: ${idToClear}`
+          );
+          clearTemporaryScanData(idToClear, user.id);
+          // Also clear from localStorage if it was stored there
+          localStorage.removeItem(`${TEMP_DATA_KEY_PREFIX}${idToClear}`);
+          console.log(
+            `[useInvoiceLoader] Temporary data for ID ${idToClear} cleared from service and localStorage.`
+          );
+        } catch (error) {
+          console.error(
+            `[useInvoiceLoader] Error cleaning up temporary data for ID ${idToClear}:`,
+            error
+          );
+        }
+      }
+    },
+    [user?.id, initialTempInvoiceId]
+  );
 
   useEffect(() => {
     if (authLoading || initialDataLoaded) return;
@@ -133,17 +146,26 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
       setIsNewScanState(currentIsNewScan);
 
       if (currentIsNewScan) {
-        setIsViewModeInitially(false);
+        setIsViewModeInitially(true);
         setInitialProducts([]);
         setInitialTaxDetails({});
         setAiScannedSupplierNameFromStorage(undefined);
         setInitialSelectedPaymentDueDate(undefined);
+        console.log(
+          "[useInvoiceLoader] New scan detected (tempId/key). Setting isViewModeInitially to true."
+        );
       } else if (initialInvoiceIdParam) {
         setIsViewModeInitially(true);
+        console.log(
+          "[useInvoiceLoader] Existing invoiceId detected. Setting isViewModeInitially to true."
+        );
       } else {
         setIsViewModeInitially(false);
         setOriginalFileName("Manual Entry");
         setIsNewScanState(true);
+        console.log(
+          "[useInvoiceLoader] No invoiceId or tempId (manual entry). Setting isViewModeInitially to false."
+        );
       }
 
       setOriginalFileName(
@@ -197,6 +219,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
           setOriginalFileName(
             pendingData.originalFileName || "Scanned Document"
           );
+          rawScanResultJsonFromStorage = pendingData.rawScanResultJson || null;
           loadedTaxDetails = {
             supplierName: pendingData.supplierName || null,
             invoiceNumber: pendingData.invoiceNumber || null,
@@ -204,6 +227,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
             invoiceDate: pendingData.invoiceDate || null,
             paymentMethod: pendingData.paymentMethod || null,
             paymentDueDate: pendingData.paymentDueDate || null,
+            rawScanResultJson: rawScanResultJsonFromStorage,
           };
           localAiScannedSupplier = pendingData.supplierName || undefined;
           if (pendingData.paymentDueDate) {
@@ -228,7 +252,6 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
           setDisplayedCompressedImageUrl(
             pendingData.compressedImageForFinalRecordUri || null
           );
-          rawScanResultJsonFromStorage = pendingData.rawScanResultJson || null;
           if (pendingData.errorMessage)
             setScanProcessErrorFromLoad(pendingData.errorMessage);
         } else if (
@@ -349,6 +372,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
                   loadedTaxDetails.paymentMethod ||
                   taxScan.paymentMethod ||
                   null,
+                rawScanResultJson: rawScanResultJsonFromStorage,
               };
               localAiScannedSupplier =
                 loadedTaxDetails.supplierName || localAiScannedSupplier;

@@ -31,7 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
 
-interface BarcodePromptDialogProps {
+export interface BarcodePromptDialogProps {
   products: Product[]; // These are products identified as NEW or needing sale price
   onComplete: (updatedProducts: Product[] | null) => void; // Returns all initial products, updated, or null if cancelled
   isOpen: boolean;

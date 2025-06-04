@@ -37,6 +37,7 @@ import {
   UserPlus,
   LayoutDashboard,
   Edit3,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -155,18 +156,40 @@ const formatLargeNumber = (
   }
 
   const prefix = isCurrency ? `${t("currency_symbol")}` : "";
-  const localeCode = t("locale_code_for_number_formatting") as
-    | string
-    | undefined;
+  const translationKeyForLocale = "locale_code_for_number_formatting";
+  const localeCodeFromT = t(translationKeyForLocale);
+
+  // Safeguard: If t() returns the key itself or an empty/falsy value,
+  // it means the translation isn't ready. Fallback to undefined (system locale).
+  const effectiveLocale =
+    localeCodeFromT && localeCodeFromT !== translationKeyForLocale
+      ? localeCodeFromT
+      : undefined;
+
   const effectiveDecimals = isCurrency ? 0 : decimals;
 
-  return (
-    prefix +
-    num.toLocaleString(localeCode || undefined, {
-      minimumFractionDigits: effectiveDecimals,
-      maximumFractionDigits: effectiveDecimals,
-    })
-  );
+  try {
+    return (
+      prefix +
+      num.toLocaleString(effectiveLocale, {
+        minimumFractionDigits: effectiveDecimals,
+        maximumFractionDigits: effectiveDecimals,
+      })
+    );
+  } catch (error) {
+    console.warn(
+      `Error in formatLargeNumber with locale '${effectiveLocale}':`,
+      error
+    );
+    // Fallback to default locale if specific one fails for some other reason
+    return (
+      prefix +
+      num.toLocaleString(undefined, {
+        minimumFractionDigits: effectiveDecimals,
+        maximumFractionDigits: effectiveDecimals,
+      })
+    );
+  }
 };
 
 const allKpiConfigurations: ItemConfig[] = [
@@ -867,12 +890,11 @@ export default function Home() {
   };
 
   const renderKpiValueDisplay = (valueString: string) => {
-    if (isLoadingKpis && user) {
-      return <Skeleton className="h-8 w-3/5 mt-1 rounded-md" />;
-    }
-    if (kpiError && user)
-      return <span className="text-destructive text-xl font-semibold">-</span>;
-    return valueString;
+    return (
+      <div className="text-2xl font-bold text-foreground text-left rtl:text-left">
+        {valueString}
+      </div>
+    );
   };
 
   const handleSaveKpiPreferences = (preferences: {
@@ -936,6 +958,40 @@ export default function Home() {
     }
   };
 
+  const renderRecentActivityItem = (
+    item: KpiData["recentActivity"][0],
+    index: number
+  ) => (
+    <Card
+      key={index}
+      className="group flex transform items-center space-x-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all duration-200 ease-in-out hover:scale-[1.02] hover:border-primary hover:bg-transparent hover:shadow-md rtl:space-x-reverse"
+    >
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        {item.icon ? (
+          <item.icon className="h-5 w-5" />
+        ) : (
+          <History className="h-5 w-5" />
+        )}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-medium text-foreground">
+          {t(item.descriptionKey, item.params)}
+        </p>
+        <p className="text-xs text-muted-foreground">{item.time}</p>
+      </div>
+      {item.link && (
+        <Link href={item.link} passHref legacyBehavior>
+          <a
+            aria-label={t("home_recent_activity_view_details")}
+            className="p-1 text-muted-foreground opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </a>
+        </Link>
+      )}
+    </Card>
+  );
+
   if (authLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-var(--header-height,4rem))] p-6 animate-fade-in">
@@ -958,7 +1014,7 @@ export default function Home() {
       <TooltipProvider>
         <div className="w-full max-w-6xl">
           <header className="text-center mb-8 md:mb-12 animate-fade-in-down">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight gradient-text">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-primary">
               {t("home_welcome_title")}
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground mt-3 max-w-2xl mx-auto">
@@ -972,8 +1028,9 @@ export default function Home() {
           <section className="mb-8 md:mb-12 flex flex-col items-center gap-4 animate-scale-in stagger-1">
             <Button
               size="lg"
-              variant="gradient"
-              className="w-full max-w-md sm:max-w-lg transform hover:scale-105 py-3.5 sm:py-4 text-lg sm:text-xl"
+              className="w-full max-w-md sm:max-w-lg transform hover:scale-105 py-3.5 sm:py-4 text-lg sm:text-xl \
+                         bg-gradient-to-br from-[hsl(235_62%_25%)] to-[hsl(174_100%_22%)] text-primary-foreground \
+                         hover:from-[hsl(235_62%_22%)] hover:to-[hsl(174_100%_19%)]"
               onClick={handleScanClick}
               isLoading={isLoadingKpis}
               loadingText={t("home_scan_button_loading")}
@@ -985,7 +1042,7 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 asChild
-                className="transform hover:scale-105 transition-all"
+                className="transform hover:scale-105 transition-all hover:bg-transparent hover:text-primary hover:border-primary"
               >
                 <Link href="/inventory">
                   <Package className="mr-1.5" /> {t("nav_inventory")}
@@ -995,7 +1052,7 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 asChild
-                className="transform hover:scale-105 transition-all"
+                className="transform hover:scale-105 transition-all hover:bg-transparent hover:text-primary hover:border-primary"
               >
                 <Link href="/invoices">
                   <FileTextIcon className="mr-1.5" /> {t("nav_documents")}
@@ -1020,100 +1077,99 @@ export default function Home() {
                 <span className="sr-only">{t("home_customize_qa_button")}</span>
               </Button>
             </div>
-            <Card variant="glass" className="p-4 sm:p-5">
-              <CardContent className="p-0">
-                {isLoadingKpis && user && visibleQuickActions.length === 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-                    {Array.from({ length: 3 }).map((_, idx) => (
-                      <Skeleton
-                        key={`qa-skeleton-${idx}`}
-                        className="h-20 sm:h-24 w-full rounded-lg"
-                      />
-                    ))}
-                  </div>
-                ) : !isLoadingKpis && visibleQuickActions.length === 0 ? (
-                  <div className="col-span-full text-center py-6">
-                    <LayoutDashboard className="mx-auto h-10 w-10 mb-2 text-muted-foreground opacity-50" />
-                    <p className="text-muted-foreground">
-                      {t("home_no_quick_actions_selected")}
-                    </p>
-                    <Button
-                      variant="link"
-                      onClick={() => setIsCustomizeQuickActionsSheetOpen(true)}
-                      className="text-primary"
-                    >
-                      {t("home_no_quick_actions_action")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-                    {visibleQuickActions.map((action, index) => {
-                      const ActionIcon = action.icon;
-                      const buttonContent = (
-                        <>
-                          <ActionIcon
-                            className={cn(
-                              "mb-1.5 h-6 w-6 sm:h-7 sm:w-7 group-hover:scale-110 transition-transform",
-                              action.iconColor || "text-primary"
-                            )}
-                          />
-                          <span className="text-xs sm:text-sm font-medium text-center leading-tight">
-                            {t(action.titleKey)}
-                          </span>
-                        </>
-                      );
-                      const commonButtonClasses =
-                        "h-auto py-4 px-2 flex-col items-center justify-center transform transition-all duration-300 group glass-hover rounded-lg focus-visible:ring-offset-0 focus-visible:ring-primary/50";
-                      const animationStyle = {
-                        animationDelay: `${0.05 * index}s`,
-                      };
+            <div className="p-4 sm:p-5">
+              {isLoadingKpis && user && visibleQuickActions.length === 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <Skeleton
+                      key={`qa-skeleton-${idx}`}
+                      className="h-20 sm:h-24 w-full rounded-lg"
+                    />
+                  ))}
+                </div>
+              ) : !isLoadingKpis && visibleQuickActions.length === 0 ? (
+                <div className="col-span-full text-center py-6">
+                  <LayoutDashboard className="mx-auto h-10 w-10 mb-2 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">
+                    {t("home_no_quick_actions_selected")}
+                  </p>
+                  <Button
+                    variant="link"
+                    onClick={() => setIsCustomizeQuickActionsSheetOpen(true)}
+                    className="text-primary"
+                  >
+                    {t("home_no_quick_actions_action")}
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                  {visibleQuickActions.map((action, index) => {
+                    const ActionIcon = action.icon;
+                    const buttonContent = (
+                      <>
+                        <ActionIcon
+                          className={cn(
+                            "mb-1.5 h-6 w-6 sm:h-7 sm:w-7 group-hover:scale-110 transition-transform",
+                            action.iconColor || "text-primary"
+                          )}
+                        />
+                        <span className="text-xs sm:text-sm font-medium text-center leading-tight">
+                          {t(action.titleKey)}
+                        </span>
+                      </>
+                    );
+                    const commonButtonClasses =
+                      "h-auto py-4 px-2 flex-col items-center justify-center transform transition-all duration-300 group rounded-lg focus-visible:ring-offset-0 focus-visible:ring-primary/50 \
+                       border-2 border-transparent hover:border-primary focus:border-primary hover:bg-transparent";
+                    const animationStyle = {
+                      animationDelay: `${0.05 * index}s`,
+                    };
 
-                      return (
-                        <Tooltip key={action.id} delayDuration={150}>
-                          <TooltipTrigger asChild>
-                            {action.link ? (
-                              <Button
-                                variant="outline"
-                                asChild
-                                className={cn(
-                                  commonButtonClasses,
-                                  "animate-scale-in"
-                                )}
-                                style={animationStyle}
-                              >
-                                <Link
-                                  href={action.link}
-                                  className="flex flex-col items-center justify-center w-full h-full"
-                                >
-                                  {buttonContent}
-                                </Link>
-                              </Button>
-                            ) : action.onClick ? (
-                              <Button
-                                variant="outline"
-                                onClick={action.onClick}
-                                className={cn(
-                                  commonButtonClasses,
-                                  "animate-scale-in"
-                                )}
-                                style={animationStyle}
+                    return (
+                      <Tooltip key={action.id} delayDuration={150}>
+                        <TooltipTrigger asChild>
+                          {action.link ? (
+                            <Button
+                              variant="outline"
+                              asChild
+                              className={cn(
+                                commonButtonClasses,
+                                "animate-scale-in"
+                              )}
+                              style={animationStyle}
+                            >
+                              <Link
+                                href={action.link}
+                                className="flex flex-col items-center justify-center w-full h-full"
                               >
                                 {buttonContent}
-                              </Button>
-                            ) : null}
-                          </TooltipTrigger>
-                          {action.descriptionKey && (
-                            <TooltipContent>
-                              <p>{t(action.descriptionKey)}</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                              </Link>
+                            </Button>
+                          ) : action.onClick ? (
+                            <Button
+                              variant="outline"
+                              onClick={action.onClick}
+                              className={cn(
+                                commonButtonClasses,
+                                "animate-scale-in"
+                              )}
+                              style={animationStyle}
+                            >
+                              {buttonContent}
+                            </Button>
+                          ) : null}
+                        </TooltipTrigger>
+                        {action.descriptionKey && (
+                          <TooltipContent>
+                            <p>{t(action.descriptionKey)}</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="mb-8 md:mb-12 animate-fade-in-up stagger-3">
@@ -1143,164 +1199,60 @@ export default function Home() {
                 </AlertDescription>
               </Alert>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-              {isLoadingKpis && user ? (
-                Array.from({
-                  length: Math.min(visibleKpiConfigs.length || 4, 6),
-                }).map((_, idx) => (
-                  <Card
-                    key={`skeleton-${idx}`}
-                    variant="gradient"
-                    className="p-4 sm:p-5 h-[170px] sm:h-[180px] flex flex-col justify-between animate-pulse bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-700 dark:to-gray-800"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <Skeleton className="h-5 w-3/5 rounded bg-white/20" />
-                      <Skeleton className="h-6 w-6 rounded-full bg-white/20" />
-                    </div>
-                    <div className="flex-grow flex flex-col justify-center">
-                      <Skeleton className="h-8 w-1/2 mb-2 rounded bg-white/20" />
-                      <Skeleton className="h-4 w-full rounded bg-white/20" />
-                    </div>
-                    <Skeleton className="h-2.5 w-full mt-3 rounded-full bg-white/20" />
-                  </Card>
-                ))
-              ) : !kpiError && (!kpiData || visibleKpiConfigs.length === 0) ? (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {visibleKpiConfigs.map((kpi) => (
                 <Card
-                  variant="glass"
-                  className="col-span-full text-center py-10 sm:py-12 px-6"
+                  key={kpi.id}
+                  className={cn(
+                    "group transform border border-border bg-card shadow-md transition-all duration-200 ease-in-out hover:border-primary/50 hover:shadow-lg rounded-xl flex flex-col justify-between"
+                  )}
+                  onClick={
+                    kpi.link ? () => router.push(kpi.link!) : kpi.onClick
+                  }
                 >
-                  <LayoutDashboard className="mx-auto h-12 w-12 mb-3 text-muted-foreground opacity-60" />
-                  <h3 className="text-xl font-semibold text-foreground mb-1">
-                    {t("home_no_kpis_selected_title")}
-                  </h3>
-                  <p className="text-muted-foreground mb-3">
-                    {t("home_no_kpis_selected_desc")}
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsCustomizeKpiSheetOpen(true)}
-                    className="text-primary border-primary hover:bg-primary/10"
-                  >
-                    <SettingsIcon className="mr-2" />{" "}
-                    {t("home_no_kpis_selected_action")}
-                  </Button>
-                </Card>
-              ) : (
-                visibleKpiConfigs.map((kpi, index) => {
-                  const Icon = kpi.icon;
-                  const valueString = kpi.getValue
-                    ? kpi.getValue(kpiData, t)
-                    : "–";
-                  const progress =
-                    kpi.showProgress && kpi.progressValue && kpiData
-                      ? kpi.progressValue(kpiData)
-                      : 0;
-                  const cardVariant = "gradient";
-
-                  const cardClasses = cn(
-                    "kpiCard h-full flex flex-col transition-all duration-300 ease-out transform hover:scale-[1.02] focus-within:scale-[1.02] hover:shadow-xl focus-within:shadow-xl",
-                    {
-                      "animate-fade-in-up": true,
-                      [`gradient-${kpi.gradientFrom?.split("-")[1]}-${
-                        kpi.gradientTo?.split("-")[1]
-                      }`]:
-                        cardVariant === "gradient" &&
-                        kpi.gradientFrom &&
-                        kpi.gradientTo,
-                    },
-                    cardVariant === "gradient" &&
-                      kpi.gradientFrom &&
-                      kpi.gradientTo
-                      ? `${kpi.gradientFrom} ${kpi.gradientTo}`
-                      : ""
-                  );
-                  const animationDelay = `${
-                    0.05 *
-                    (userKpiPreferences.kpiOrder.findIndex(
-                      (k) => k === kpi.id
-                    ) %
-                      10)
-                  }s`;
-
-                  return (
-                    <Card
-                      key={kpi.id}
-                      variant={
-                        cardVariant as
-                          | "default"
-                          | "glass"
-                          | "gradient"
-                          | "bordered"
-                      }
-                      className={cardClasses}
-                      style={{ animationDelay }}
-                    >
-                      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 px-0 pt-0">
-                        <div className="flex flex-col overflow-hidden">
-                          <CardTitle className="text-base font-medium text-foreground/90 dark:text-foreground/80 truncate flex items-center">
-                            {kpi.tagKey && (
-                              <span
-                                className={cn(
-                                  "kpi-tag inline-block text-xs font-semibold px-2 py-0.5 rounded-full mr-1.5 align-middle whitespace-nowrap",
-                                  cardVariant === "gradient"
-                                    ? "bg-white/20 dark:bg-black/30"
-                                    : "bg-muted text-muted-foreground"
-                                )}
-                              >
-                                {t(kpi.tagKey)}
-                              </span>
-                            )}
-                            <span className="kpi-label truncate">
-                              {t(kpi.titleKey)}
-                            </span>
-                          </CardTitle>
-                          {kpi.descriptionKey && (
-                            <CardDescription className="kpi-description text-xs mt-0.5 truncate">
-                              {t(kpi.descriptionKey)}
-                            </CardDescription>
-                          )}
-                        </div>
-                        <Icon
-                          className={cn(
-                            "h-6 w-6 shrink-0",
-                            kpi.iconColor ||
-                              (cardVariant === "gradient"
-                                ? "text-white/90"
-                                : "text-primary")
-                          )}
-                        />
-                      </CardHeader>
-                      <CardContent className="px-0 pb-0 pt-2 flex-grow flex flex-col justify-center">
-                        <div
-                          className={cn(
-                            "kpi-value text-3xl sm:text-4xl font-bold mb-1 truncate",
-                            isLoadingKpis && user && "opacity-0"
-                          )}
-                        >
-                          {renderKpiValueDisplay(valueString)}
-                        </div>
-                        {kpi.showProgress && (
-                          <Progress
-                            value={isLoadingKpis ? 60 : progress}
-                            className={cn(
-                              "h-1.5 sm:h-2 w-full mt-auto rounded-full",
-                              isLoadingKpis && "animate-pulse",
-                              cardVariant === "gradient"
-                                ? "bg-white/30 [&>*]:bg-white"
-                                : "bg-muted-foreground/30 [&>*]:bg-primary"
-                            )}
-                            indicatorClassName={cn(
-                              cardVariant === "gradient"
-                                ? "bg-white"
-                                : "bg-primary"
-                            )}
-                          />
+                  <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                    <div className="flex flex-col items-start w-full">
+                      <CardTitle className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                        {t(kpi.titleKey)}
+                      </CardTitle>
+                      {kpi.tagKey && (
+                        <span className="mt-1 text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-primary/10">
+                          {t(kpi.tagKey)}
+                        </span>
+                      )}
+                    </div>
+                    {kpi.icon && (
+                      <kpi.icon
+                        className={cn(
+                          "h-6 w-6 flex-shrink-0",
+                          kpi.iconColor || "text-primary"
                         )}
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
+                      />
+                    )}
+                  </CardHeader>
+                  <CardContent className="text-left flex-grow flex flex-col justify-center">
+                    {kpi.descriptionKey && (
+                      <p className="text-xs text-muted-foreground mb-2 text-left rtl:text-left">
+                        {t(kpi.descriptionKey)}
+                      </p>
+                    )}
+                    {kpi.getValue &&
+                      renderKpiValueDisplay(kpi.getValue(kpiData, t))}
+
+                    {kpi.showProgress && kpiData && kpi.progressValue && (
+                      <Progress
+                        value={isLoadingKpis ? 60 : kpi.progressValue(kpiData)}
+                        className={cn(
+                          "h-1.5 sm:h-2 w-full mt-auto rounded-full",
+                          isLoadingKpis && "animate-pulse",
+                          "bg-primary/20 dark:bg-primary/30"
+                        )}
+                        indicatorClassName={"bg-primary"}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </section>
 
@@ -1346,7 +1298,7 @@ export default function Home() {
                             variant="outline"
                             size="sm"
                             asChild
-                            className="h-auto py-1 px-2 text-xs"
+                            className="h-auto py-1 px-2 text-xs hover:bg-transparent hover:text-primary hover:border-primary"
                           >
                             <Link href={`/inventory/${product.id}`}>
                               {t("view_details_button")}
@@ -1424,7 +1376,7 @@ export default function Home() {
                         variant="outline"
                         size="sm"
                         asChild
-                        className="h-auto py-1 px-2 text-xs"
+                        className="h-auto py-1 px-2 text-xs hover:bg-transparent hover:text-primary hover:border-primary"
                       >
                         <Link
                           href={`/invoices?tab=scanned-docs&viewInvoiceId=${kpiData.nextPaymentDueInvoice.id}`}
@@ -1443,8 +1395,8 @@ export default function Home() {
               </CardContent>
             </Card>
 
-            <Card variant="glass" className="animate-fade-in-up stagger-5">
-              <CardHeader className="pb-3 flex-row items-center justify-between">
+            <div className="animate-fade-in-up stagger-5">
+              <CardHeader className="pb-3 flex-row items-center justify-between px-0">
                 <div className="flex items-center">
                   <History className="mr-2.5 h-6 w-6 text-primary" />
                   <CardTitle className="text-xl font-semibold text-foreground">
@@ -1465,66 +1417,22 @@ export default function Home() {
                     </Button>
                   )}
               </CardHeader>
-              <CardContent className="pt-2">
+              <div className="pt-2">
                 {isLoadingKpis ? (
                   <div className="space-y-3">
                     {[...Array(3)].map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full rounded-md" />
+                      <Skeleton key={i} className="h-14 w-full rounded-lg" />
                     ))}
                   </div>
                 ) : kpiData?.recentActivity &&
                   kpiData.recentActivity.length > 0 ? (
-                  <ul className="space-y-1.5 text-sm">
+                  <div className="space-y-3">
                     {kpiData.recentActivity
                       .slice(0, 5)
-                      .map((activity, index) => {
-                        const ActivityIcon = activity.icon || FileTextIcon;
-                        return (
-                          <li
-                            key={index}
-                            className="flex items-center justify-between p-2.5 rounded-md hover:bg-muted/50 transition-colors group"
-                          >
-                            <div className="flex items-center overflow-hidden">
-                              <ActivityIcon
-                                className={cn(
-                                  "h-5 w-5 mr-3 text-muted-foreground group-hover:text-primary transition-colors",
-                                  activity.icon === TrendingUp
-                                    ? "text-green-500"
-                                    : activity.icon === TrendingDown
-                                    ? "text-red-500"
-                                    : ""
-                                )}
-                              />
-                              <span className="truncate">
-                                {activity.link ? (
-                                  <Link
-                                    href={activity.link}
-                                    className="font-medium text-foreground hover:underline"
-                                  >
-                                    {t(
-                                      activity.descriptionKey,
-                                      activity.params
-                                    )}
-                                  </Link>
-                                ) : (
-                                  <span className="text-foreground">
-                                    {t(
-                                      activity.descriptionKey,
-                                      activity.params
-                                    )}
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap pl-2">
-                              {activity.time}
-                            </span>
-                          </li>
-                        );
-                      })}
-                  </ul>
+                      .map(renderRecentActivityItem)}
+                  </div>
                 ) : (
-                  <div className="text-muted-foreground text-center py-10">
+                  <div className="text-muted-foreground text-center py-10 border rounded-lg bg-card shadow-sm">
                     <FileTextIcon className="mx-auto h-10 w-10 mb-2 opacity-50" />
                     <p>{t("home_empty_state_recent_activity_title")}</p>
                     <p className="text-xs">
@@ -1532,8 +1440,8 @@ export default function Home() {
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </section>
         </div>
       </TooltipProvider>

@@ -120,10 +120,10 @@
   "guest_home_feature_insights_title": "תובנות לפעולה",
   "guest_home_feature_insights_desc": "הפיקו דוחות והבינו טוב יותר את ביצועי העסק.",
   "currency_symbol": "₪",
-  "number_suffix_thousand": "א'",
-  "number_suffix_million": "מ'",
-  "number_suffix_billion": "מיליארד",
-  "number_suffix_trillion": "טריליון",
+  "number_suffix_thousand": "K",
+  "number_suffix_million": "M",
+  "number_suffix_billion": "B",
+  "number_suffix_trillion": "T",
   "error_title": "שגיאה",
   "loading_data": "טוען נתונים...",
   "loading_editor": "טוען עורך...",
@@ -1177,5 +1177,11 @@
   "decrease_quantity_aria_label": "הפחת כמות עבור {{productName}}",
   "increase_quantity_aria_label": "הגדל כמות עבור {{productName}}",
   "paid_invoices_view_receipt_link": "הצג קבלה",
-  "detail_button": "הצג פרטים"
+  "detail_button": "הצג פרטים",
+  "app_name_slug": "InvoTrack",
+  "footer_rights_reserved": "כל הזכויות שמורות",
+  "footer_privacy_policy": "מדיניות פרטיות",
+  "footer_terms_of_service": "תנאי שימוש",
+  "footer_contact_us": "צור קשר",
+  "reports_kpi_low_stock_items": "פריטים במלאי נמוך"
 }
