@@ -21,6 +21,7 @@ export const SiteFooter = () => {
           >
             {t("footer_terms_of_service") || "Terms of Service"}
           </Link>
+          <span className="text-slate-400"></span> {/* separator */}
           <Link
             href="/privacy"
             className="hover:text-slate-900 dark:hover:text-slate-200 text-sm"

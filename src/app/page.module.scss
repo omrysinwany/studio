@@ -1,4 +1,3 @@
-
 .homeContainer {
   /* Basic styling to ensure the file is not empty and is valid SCSS */
   width: 100%;
@@ -10,32 +9,56 @@
 
 .kpiCard:hover {
   transform: translateY(-4px) scale(1.02); /* Slightly reduced scale for subtlety */
-  box-shadow: 0 6px 15px hsla(var(--foreground), 0.08), 0 3px 6px hsla(var(--foreground), 0.06); /* Adjusted shadow */
+  box-shadow: 0 6px 15px hsla(var(--foreground), 0.08),
+    0 3px 6px hsla(var(--foreground), 0.06); /* Adjusted shadow */
 }
 
 .homeContainerGradient {
-  /* Updated gradient to be more transparent, especially at the top */
-  background: linear-gradient(180deg, hsla(var(--background) / 0.3) 0%, hsla(var(--muted) / 0.15) 100%); /* Reduced alpha values */
+  /* Allow background image to show through */
+  background: transparent;
   position: relative;
   overflow: hidden;
 }
 
 .homeContainerGradient::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
-  background-image: 
-    radial-gradient(circle at 10% 20%, hsla(var(--primary)/0.02) 0%, transparent 30%), /* Slightly less opacity for shimmer */
-    radial-gradient(circle at 90% 80%, hsla(var(--accent)/0.02) 0%, transparent 30%);
+  background-image: radial-gradient(
+      circle at 10% 20%,
+      hsla(var(--primary) / 0.02) 0%,
+      transparent 30%
+    ),
+    /* Slightly less opacity for shimmer */
+      radial-gradient(
+        circle at 90% 80%,
+        hsla(var(--accent) / 0.02) 0%,
+        transparent 30%
+      );
   opacity: 0.4; /* Adjusted opacity of the shimmer effect itself */
-  z-index: 0; 
+  z-index: 0;
   animation: subtleShimmer 20s infinite alternate ease-in-out;
 }
 
 @keyframes subtleShimmer {
-  0% { transform: translate(0,0) rotate(0deg); opacity: 0.3; } /* Adjusted opacity within animation */
-  25% { transform: translate(5px, 5px) rotate(2deg); opacity: 0.4; }
-  50% { transform: translate(0, 10px) rotate(0deg); opacity: 0.5; }
-  75% { transform: translate(-5px, 5px) rotate(-2deg); opacity: 0.4; }
-  100% { transform: translate(0,0) rotate(0deg); opacity: 0.3; }
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.3;
+  } /* Adjusted opacity within animation */
+  25% {
+    transform: translate(5px, 5px) rotate(2deg);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate(0, 10px) rotate(0deg);
+    opacity: 0.5;
+  }
+  75% {
+    transform: translate(-5px, 5px) rotate(-2deg);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0.3;
+  }
 }

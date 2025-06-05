@@ -857,7 +857,7 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="container mx-auto p-4 md:p-8 space-y-8">
+    <div className="container mx-auto p-4 md:p-8 space-y-8 bg-transparent">
       <Card className="shadow-lg scale-fade-in bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-xl sm:text-2xl font-semibold text-primary flex items-center">

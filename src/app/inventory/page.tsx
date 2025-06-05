@@ -702,7 +702,7 @@ export default function InventoryPage() {
   if (!user && !authLoading) return null;
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 md:p-8 space-y-6">
+    <div className="container mx-auto p-2 sm:p-4 md:p-6 space-y-4">
       <Card className="shadow-md bg-card text-card-foreground scale-fade-in">
         <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 p-4">
           <div className="flex-1 min-w-0">
@@ -1171,15 +1171,15 @@ export default function InventoryPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto relative">
-                <Table>
+              <div className="overflow-x-auto relative -mx-4 sm:-mx-6">
+                <Table className="text-xs sm:text-sm">
                   <TableHeader>
                     <TableRow>
                       {visibleColumnHeaders.map((header) => (
                         <TableHead
                           key={header.key}
                           className={cn(
-                            "text-center",
+                            "text-center text-xs sm:text-sm px-1 sm:px-3 py-1 sm:py-2",
                             header.headerClassName,
                             header.sortable &&
                               "cursor-pointer hover:bg-muted/50",
@@ -1262,11 +1262,11 @@ export default function InventoryPage() {
                           {visibleColumns.actions && (
                             <TableCell
                               className={cn(
-                                "text-center sticky left-0 bg-card z-10 px-2 sm:px-4 py-2",
+                                "text-center sticky left-0 bg-card z-10 px-1 sm:px-2 py-1 text-xs sm:text-sm",
                                 !item.isActive && "opacity-60"
                               )}
                             >
-                              <div className="flex items-center justify-center space-x-1">
+                              <div className="flex items-center justify-center space-x-0.5">
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1281,9 +1281,9 @@ export default function InventoryPage() {
                                     productName:
                                       item.shortName || item.description || "",
                                   })}
-                                  className="h-8 w-8 text-primary hover:text-primary/80"
+                                  className="h-6 w-6 sm:h-7 sm:w-7 text-primary hover:text-primary/80"
                                 >
-                                  <Eye className="h-4 w-4" />
+                                  <Eye className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                                 </Button>
                                 {item.isActive === false ? (
                                   <Button

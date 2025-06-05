@@ -891,7 +891,7 @@ export default function Home() {
 
   const renderKpiValueDisplay = (valueString: string) => {
     return (
-      <div className="text-2xl font-bold text-foreground text-left rtl:text-left">
+      <div className="text-2xl font-bold text-foreground text-right rtl:text-right">
         {valueString}
       </div>
     );
@@ -1120,7 +1120,7 @@ export default function Home() {
                     );
                     const commonButtonClasses =
                       "h-auto py-4 px-2 flex-col items-center justify-center transform transition-all duration-300 group rounded-lg focus-visible:ring-offset-0 focus-visible:ring-primary/50 \
-                       border-2 border-transparent hover:border-primary focus:border-primary hover:bg-transparent";
+   bg-white/25 dark:bg-white/10 backdrop-blur-md border border-white/40 dark:border-white/20 hover:border-primary hover:bg-white/35 dark:hover:bg-white/20 hover:shadow-xl shadow-lg ring-1 ring-white/10 dark:ring-white/5";
                     const animationStyle = {
                       animationDelay: `${0.05 * index}s`,
                     };
@@ -1230,9 +1230,9 @@ export default function Home() {
                       />
                     )}
                   </CardHeader>
-                  <CardContent className="text-left flex-grow flex flex-col justify-center">
+                  <CardContent className="text-right flex-grow flex flex-col justify-center">
                     {kpi.descriptionKey && (
-                      <p className="text-xs text-muted-foreground mb-2 text-left rtl:text-left">
+                      <p className="text-xs text-muted-foreground mb-2 text-right rtl:text-right">
                         {t(kpi.descriptionKey)}
                       </p>
                     )}

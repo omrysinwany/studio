@@ -76,30 +76,30 @@ export function ProductsTable({
 
   return (
     <>
-      <div className="overflow-x-auto relative border rounded-md bg-card">
+      <div className="overflow-x-auto relative">
         <Table className="min-w-full sm:min-w-[600px]">
-          <TableHeader>
+          <TableHeader className="bg-muted/50">
             <TableRow>
-              <TableHead className="px-2 sm:px-4 py-2">
+              <TableHead className="px-2 sm:px-4 py-3 font-semibold">
                 {t("edit_invoice_th_catalog")}
               </TableHead>
-              <TableHead className="px-2 sm:px-4 py-2">
+              <TableHead className="px-2 sm:px-4 py-3 font-semibold">
                 {t("edit_invoice_th_description")}
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-2">
+              <TableHead className="text-right px-2 sm:px-4 py-3 font-semibold">
                 {t("edit_invoice_th_qty")}
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-2">
+              <TableHead className="text-right px-2 sm:px-4 py-3 font-semibold">
                 {t("edit_invoice_th_unit_price", {
                   currency_symbol: t("currency_symbol"),
                 })}
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-2">
+              <TableHead className="text-right px-2 sm:px-4 py-3 font-semibold">
                 {t("edit_invoice_th_line_total", {
                   currency_symbol: t("currency_symbol"),
                 })}
               </TableHead>
-              <TableHead className="text-right px-2 sm:px-4 py-2">
+              <TableHead className="text-right px-2 sm:px-4 py-3 font-semibold">
                 {isEditing ? t("edit_invoice_th_actions") : ""}
               </TableHead>
             </TableRow>
@@ -229,8 +229,13 @@ export function ProductsTable({
         </Table>
       </div>
       {isEditing && (
-        <div className="flex justify-start items-center pt-4 mt-4 border-t">
-          <Button variant="outline" onClick={onAddRow} disabled={isSaving}>
+        <div className="flex justify-start items-center pt-4 border-t bg-muted/30 px-4 pb-4">
+          <Button
+            variant="outline"
+            onClick={onAddRow}
+            disabled={isSaving}
+            className="bg-background hover:bg-muted"
+          >
             <PlusCircle className="mr-2 h-4 w-4" />{" "}
             {t("edit_invoice_add_row_button")}
           </Button>

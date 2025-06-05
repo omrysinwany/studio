@@ -419,13 +419,9 @@ export default function EditInvoiceContent() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mt-4 md:mt-6">
-        <div className="lg:col-span-1 space-y-4">
-          <InvoiceImagePreview
-            displayedOriginalImageUrl={currentDisplayedOriginalImageUrl}
-            displayedCompressedImageUrl={currentDisplayedCompressedImageUrl}
-            t={t}
-          />
+      <div className="space-y-6 mt-4 md:mt-6">
+        {/* פרטי החשבונית וכותרת הקובץ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           <InvoiceHeaderCard
             originalFileName={currentOriginalFileName || t("unknown_file_name")}
             docType={docType}
@@ -446,28 +442,45 @@ export default function EditInvoiceContent() {
           )}
         </div>
 
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                {docType === "deliveryNote"
-                  ? t("delivery_note_products_title")
-                  : t("invoice_products_title")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProductsTable
-                products={products}
-                handleInputChange={stateManager.handleInputChange}
-                onRemoveRow={productHandlers.handleRemoveRow}
-                onAddRow={productHandlers.handleAddRow}
-                isEditing={!isViewMode}
-                isSaving={saver.isSaving}
-                t={t}
-              />
-            </CardContent>
-          </Card>
-        </div>
+        {/* טבלת המוצרים */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <PackageIcon className="mr-2 h-5 w-5" />
+              {docType === "deliveryNote"
+                ? t("delivery_note_products_title")
+                : t("invoice_products_title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ProductsTable
+              products={products}
+              handleInputChange={stateManager.handleInputChange}
+              onRemoveRow={productHandlers.handleRemoveRow}
+              onAddRow={productHandlers.handleAddRow}
+              isEditing={!isViewMode}
+              isSaving={saver.isSaving}
+              t={t}
+            />
+          </CardContent>
+        </Card>
+
+        {/* תצוגת התמונה הסרוקה - בתחתית הדף */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <FileTextIconLucide className="mr-2 h-5 w-5" />
+              {t("edit_invoice_image_preview_title")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InvoiceImagePreview
+              displayedOriginalImageUrl={currentDisplayedOriginalImageUrl}
+              displayedCompressedImageUrl={currentDisplayedCompressedImageUrl}
+              t={t}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       {dialogFlow.currentDialogStep === "supplier_payment_details" &&
