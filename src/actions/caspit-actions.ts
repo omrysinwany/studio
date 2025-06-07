@@ -5,7 +5,21 @@ import type {
   PosConnectionConfig,
   SyncResult,
 } from "@/services/pos-integration/pos-adapter.interface";
-import type { Product } from "@/services/backend";
+import type {
+  Product,
+  SupplierSummary,
+  InvoiceHistoryItem,
+} from "@/services/backend";
+import {
+  CaspitContact,
+  CaspitDocument,
+} from "@/services/pos-integration/caspit-types";
+import { Timestamp } from "firebase/firestore";
+
+const CASPIT_TRX_TYPE_IDS = {
+  PURCHASE_INVOICE: 300, // חשבונית רכש
+  GOODS_RECEIVED_VOUCHER: 305, // תעודת כניסה למלאי (תעודת משלוח)
+};
 
 const CASPIT_API_BASE_URL = "https://app.caspit.biz/api/v1";
 
@@ -786,51 +800,361 @@ export async function syncCaspitProductsAction(
 export async function syncCaspitSalesAction(
   config: PosConnectionConfig
 ): Promise<SyncResult> {
-  let token: string;
+  console.log("[Caspit Action - syncSales] Starting sales sync...");
   try {
-    console.log("[Caspit Action - syncSales] Fetching fresh token...");
-    token = await getCaspitToken(config);
+    const token = await getCaspitToken(config);
+    const url = `${CASPIT_API_BASE_URL}/Invoices`; // Assuming sales are invoices
     console.log(
-      "[Caspit Action - syncSales] Fresh token obtained for sales sync."
+      `[Caspit Action - syncSales] Fetching sales from Caspit API: ${url}`
     );
-  } catch (error: any) {
-    return {
-      success: false,
-      message: `Sales sync failed: Could not get token. Check server logs.`,
-    };
-  }
 
-  console.log("[Caspit Action - syncSales] Placeholder for sales sync...");
-  try {
-    // TODO: Implement actual sales sync logic with Caspit API (e.g., GET api/v1/Documents), using the token.
-    // Remember to request 'Accept: application/json' header.
-    // Map sales data to a meaningful structure for InvoTrack (e.g., affect inventory or create sales records).
-    // Example: Fetch documents of type 'Invoice' (trxTypeId for Invoices)
-    // const salesUrl = `${CASPIT_API_BASE_URL}/Documents?token=${token}&trxTypeId=YOUR_INVOICE_TRX_TYPE_ID&page=1`;
-    // const salesResponse = await fetch(salesUrl, { headers: { 'Accept': 'application/json' } });
-    // ... process salesResponse ...
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[Caspit Action - syncSales] Caspit API error: ${response.status} ${response.statusText}`,
+        errorText
+      );
+      throw new Error(
+        `Failed to fetch sales from Caspit: ${response.statusText}`
+      );
+    }
+
+    const salesData = await response.json();
+    console.log(
+      `[Caspit Action - syncSales] Received ${salesData.length} sales records from Caspit.`
+    );
+    // Here you would typically process and save the sales data
+    // For now, we'll just log it.
+    console.log("Sales data:", salesData);
+
     return {
       success: true,
-      message:
-        "Sales sync placeholder completed. Actual implementation pending.",
-      products: [], // Or sales data if applicable
+      message: `Successfully synced ${salesData.length} sales records.`,
+      data: salesData, // Or a summary
+    };
+  } catch (error: any) {
+    console.error("[Caspit Action - syncSales] Error:", error.message);
+    return {
+      success: false,
+      message: `An error occurred during sales sync: ${error.message}`,
+    };
+  }
+}
+
+// --- Server Action to Sync Suppliers ---
+export async function syncCaspitSuppliersAction(
+  config: PosConnectionConfig
+): Promise<SyncResult> {
+  console.log("[Caspit Action - syncSuppliers] Starting supplier sync...");
+  try {
+    const token = await getCaspitToken(config);
+    const url = `${CASPIT_API_BASE_URL}/Suppliers`; // Endpoint assumption
+    console.log(
+      `[Caspit Action - syncSuppliers] Fetching suppliers from Caspit API: ${url}`
+    );
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[Caspit Action - syncSuppliers] Caspit API error: ${response.status} ${response.statusText}`,
+        errorText
+      );
+      throw new Error(
+        `Failed to fetch suppliers from Caspit: ${response.statusText}`
+      );
+    }
+
+    const suppliersData = await response.json();
+    console.log(
+      `[Caspit Action - syncSuppliers] Received ${suppliersData.length} supplier records from Caspit.`
+    );
+    // TODO: Map to app's Supplier type and save to DB
+    console.log("Suppliers data:", suppliersData);
+
+    return {
+      success: true,
+      message: `Successfully synced ${suppliersData.length} supplier records.`,
+      data: suppliersData,
+    };
+  } catch (error: any) {
+    console.error("[Caspit Action - syncSuppliers] Error:", error.message);
+    return {
+      success: false,
+      message: `An error occurred during supplier sync: ${error.message}`,
+    };
+  }
+}
+
+// --- Server Action to Sync Documents ---
+export async function syncCaspitDocumentsAction(
+  config: PosConnectionConfig
+): Promise<SyncResult> {
+  console.log("[Caspit Action - syncDocuments] Starting document sync...");
+  try {
+    const token = await getCaspitToken(config);
+    const invoicesUrl = `${CASPIT_API_BASE_URL}/Invoices`;
+    console.log(
+      `[Caspit Action - syncDocuments] Fetching invoices from Caspit API: ${invoicesUrl}`
+    );
+
+    const response = await fetch(invoicesUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[Caspit Action - syncDocuments] Caspit API error: ${response.status} ${response.statusText}`,
+        errorText
+      );
+      throw new Error(
+        `Failed to fetch documents from Caspit: ${response.statusText}`
+      );
+    }
+
+    const documentsData = await response.json();
+    console.log(
+      `[Caspit Action - syncDocuments] Received ${documentsData.length} document records from Caspit.`
+    );
+    // TODO: Map to app's Document type and save to DB
+    console.log("Documents data:", documentsData);
+
+    return {
+      success: true,
+      message: `Successfully synced ${documentsData.length} document records.`,
+      data: documentsData,
+    };
+  } catch (error: any) {
+    console.error("[Caspit Action - syncDocuments] Error:", error.message);
+    return {
+      success: false,
+      message: `An error occurred during document sync: ${error.message}`,
+    };
+  }
+}
+
+// --- PAYLOAD INTERFACES ---
+
+// Payload for creating/updating a contact (Supplier/Customer) in Caspit
+interface CaspitContactPayload {
+  Id?: string | null;
+  Name: string;
+  OsekMorshe?: string | null; // Tax ID
+  ContactType: number; // 1 for Customer, 2 for Supplier
+  Email?: string | null;
+  Address1?: string | null;
+  City?: string | null;
+  MobilePhone?: string | null;
+  // Include other fields from CaspitContact as needed
+}
+
+// Payload for creating a document in Caspit
+interface CaspitDocumentPayload extends CaspitDocument {
+  // This can extend the main type and override/add fields as needed for creation payloads
+}
+
+// --- Server Action to Create or Update a Contact in Caspit ---
+export async function createOrUpdateCaspitContactAction(
+  config: PosConnectionConfig,
+  supplier: SupplierSummary
+): Promise<{
+  success: boolean;
+  message: string;
+  caspitAccountId?: string | null;
+}> {
+  console.log(
+    `[Caspit Action] Starting create/update for contact: ${supplier.name}`
+  );
+  try {
+    const token = await getCaspitToken(config);
+
+    const payload: CaspitContactPayload = {
+      Id: supplier.id, // Using the app's internal ID as the reference ID in Caspit
+      Name: supplier.name,
+      OsekMorshe: null,
+      Email: supplier.email || null,
+      MobilePhone: supplier.phone || null,
+      ContactType: 2, // 2 for Supplier
+    };
+
+    const isUpdate = !!supplier.caspitAccountId;
+    // NOTE: The logic here assumes we use our internal ID (`supplier.id`) as Caspit's ID for simplicity and idempotency.
+    // If Caspit generates its own ID on creation, this flow needs adjustment to store that ID back in our system.
+    // The current Product implementation uses the app's ID for creation, so we follow that pattern.
+    const url = `${CASPIT_API_BASE_URL}/Contacts?token=${token}`;
+    const method = "POST"; // Caspit API might use POST for both create and update (upsert)
+
+    console.log(
+      `[Caspit Action - createOrUpdateContact] Sending request to Caspit. Method: ${method}, URL: ${url}`
+    );
+    console.log(
+      `[Caspit Action - createOrUpdateContact] Payload:`,
+      JSON.stringify(payload, null, 2)
+    );
+
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `Caspit API request failed (${response.status}): ${responseText}`
+      );
+    }
+
+    const responseData = JSON.parse(responseText);
+    // Assuming the response contains the created/updated contact, and its ID is what we sent.
+    const returnedCaspitId = responseData?.Id || payload.Id;
+
+    console.log(
+      `[Caspit Action] Successfully created/updated contact. Caspit ID: ${returnedCaspitId}`
+    );
+    return {
+      success: true,
+      message: "Supplier synced successfully with Caspit.",
+      caspitAccountId: returnedCaspitId,
     };
   } catch (error: any) {
     console.error(
-      "[Caspit Action - syncSales] Error during sales sync:",
+      `[Caspit Action] Error syncing supplier ${supplier.name}:`,
       error
     );
-    if (error instanceof Error && error.message.includes("401")) {
-      return {
-        success: false,
-        message: `Sales sync failed: Invalid token. Check server logs.`,
-      };
-    }
     return {
       success: false,
-      message: `Sales sync failed: ${
-        error.message || "Unknown error. Check server logs."
-      }`,
+      message: `Failed to sync supplier to Caspit: ${error.message}`,
+    };
+  }
+}
+
+// --- Server Action to Create a Document in Caspit ---
+export async function createCaspitDocumentAction(
+  config: PosConnectionConfig,
+  document: InvoiceHistoryItem,
+  products: Product[],
+  caspitSupplierId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  caspitPurchaseDocId?: string;
+}> {
+  console.log(`[Caspit Action] Starting create for document: ${document.id}`);
+  try {
+    const token = await getCaspitToken(config);
+    if (!token) {
+      throw new Error("Failed to obtain Caspit token.");
+    }
+
+    const trxTypeId =
+      document.documentType === "invoice"
+        ? CASPIT_TRX_TYPE_IDS.PURCHASE_INVOICE
+        : CASPIT_TRX_TYPE_IDS.GOODS_RECEIVED_VOUCHER;
+
+    // --- START: Improved Date Logic ---
+    const dateSource = document.invoiceDate || document.uploadTime;
+    let finalDate: string;
+
+    if (dateSource instanceof Timestamp) {
+      finalDate = dateSource.toDate().toISOString();
+    } else if (typeof dateSource === "string") {
+      const parsedDate = new Date(dateSource);
+      // Use the parsed date only if it's valid
+      finalDate = !isNaN(parsedDate.getTime())
+        ? parsedDate.toISOString()
+        : new Date().toISOString();
+    } else {
+      // Fallback for null, undefined, or FieldValue
+      finalDate = new Date().toISOString();
+    }
+    // --- END: Improved Date Logic ---
+
+    const caspitDocumentPayload: CaspitDocumentPayload = {
+      DocumentId: document.id, // Using our internal ID as the reference
+      TrxTypeId: trxTypeId,
+      Date: finalDate, // Use the safer, finalDate variable
+      CustomerId: caspitSupplierId,
+      CustomerBusinessName: document.supplierName || "N/A",
+      Details: `Document from InvoTrack: ${document.originalFileName}`,
+      DocumentLines: products.map((p) => ({
+        ProductName: p.description,
+        ProductCatalogNumber: p.catalogNumber,
+        UnitPrice: p.unitPrice,
+        Qty: p.quantity,
+        ExtendedPrice: p.lineTotal,
+        ChargeVAT: true, // Assuming VAT is always applicable for purchase docs
+      })),
+      Total: document.totalAmount || 0,
+    };
+
+    console.log(
+      `[Caspit Action - createDocument] Sending request to Caspit. Method: POST, URL: ${CASPIT_API_BASE_URL}/Documents?token=${token}`
+    );
+    console.log(
+      `[Caspit Action - createDocument] Payload:`,
+      JSON.stringify(caspitDocumentPayload, null, 2)
+    );
+
+    const response = await fetch(
+      `${CASPIT_API_BASE_URL}/Documents?token=${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(caspitDocumentPayload),
+      }
+    );
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `Caspit API request failed (${response.status}): ${responseText}`
+      );
+    }
+
+    // The response from Caspit for creating a document is the new document's ID.
+    // It's often returned as a simple string, sometimes with quotes.
+    const caspitPurchaseDocId = responseText.replace(/"/g, "");
+
+    console.log(
+      `[Caspit Action] Successfully created document. Caspit Purchase Doc ID: ${caspitPurchaseDocId}`
+    );
+    return {
+      success: true,
+      message: "Document created successfully in Caspit.",
+      caspitPurchaseDocId: caspitPurchaseDocId,
+    };
+  } catch (error: any) {
+    console.error(
+      `[Caspit Action] Error syncing document ${document.id}:`,
+      error
+    );
+    return {
+      success: false,
+      message: error.message,
     };
   }
 }

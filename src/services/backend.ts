@@ -20,13 +20,18 @@ import {
   addDoc,
   FieldValue,
   runTransaction,
+  Query,
+  DocumentData,
+  QuerySnapshot,
 } from "firebase/firestore";
 import { parseISO, isValid } from "date-fns";
 import type { PosConnectionConfig } from "./pos-integration/pos-adapter.interface";
 import {
   createOrUpdateCaspitProductAction,
   updateCaspitProductAction,
-  deactivateCaspitProductAction, // Import the new action
+  deactivateCaspitProductAction,
+  createOrUpdateCaspitContactAction,
+  createCaspitDocumentAction,
 } from "@/actions/caspit-actions";
 import firebaseApp from "@/lib/firebase";
 
@@ -130,22 +135,28 @@ export interface InvoiceHistoryItem {
   originalFileName: string;
   generatedFileName: string;
   uploadTime: string | Timestamp | FieldValue;
-  status: "pending" | "processing" | "completed" | "error";
+  status: "pending" | "processing" | "completed" | "error" | "archived";
   documentType: "deliveryNote" | "invoice" | "paymentReceipt";
   supplierName?: string | null;
+  supplierId?: string | null;
   invoiceNumber?: string | null;
   invoiceDate?: string | Timestamp | FieldValue | null;
   totalAmount?: number | null;
+  itemCount?: number;
   paymentMethod?: string | null;
   paymentDueDate?: string | Timestamp | FieldValue | null;
   paymentStatus: "paid" | "unpaid" | "pending_payment";
+  products: (string | Product)[];
+  isArchived?: boolean;
   paymentReceiptImageUri?: string | null;
-  originalImagePreviewUri?: string | null; // Data URI or Firebase Storage URL
-  compressedImageForFinalRecordUri?: string | null; // Data URI or Firebase Storage URL
+  originalImagePreviewUri?: string | null;
+  compressedImageForFinalRecordUri?: string | null;
   errorMessage?: string | null;
   linkedDeliveryNoteId?: string | null;
-  rawScanResultJson?: string | null; // Store the full JSON output from AI scan
+  rawScanResultJson?: string | null;
   _displayContext?: "image_only" | "full_details";
+  caspitPurchaseDocId?: string | null;
+  syncError?: string | null;
 }
 
 export interface SupplierSummary {
@@ -159,6 +170,7 @@ export interface SupplierSummary {
   paymentTerms?: string | null;
   lastActivityDate?: string | Timestamp | null;
   createdAt: Timestamp | FieldValue;
+  caspitAccountId?: string | null; // Optional Caspit account ID
 }
 
 export interface AccountantSettings {
@@ -1075,7 +1087,7 @@ export async function checkProductPricesBeforeSaveService(
 export async function finalizeSaveProductsService(
   productsFromDoc: Partial<Product>[],
   originalFileNameFromUpload: string,
-  documentType: "deliveryNote" | "invoice" | "paymentReceipt", // Updated type
+  documentType: "deliveryNote" | "invoice" | "paymentReceipt",
   userId: string,
   tempInvoiceId?: string | null | undefined,
   extractedInvoiceNumber?: string | null,
@@ -1087,544 +1099,260 @@ export async function finalizeSaveProductsService(
   originalImagePreviewDataUri?: string | null,
   compressedImageForFinalRecordDataUri?: string | null,
   rawScanResultJson?: string | null,
-  paymentTermString?: string | null // Added 15th parameter
+  paymentTermString?: string | null
 ): Promise<{
   finalInvoiceRecord: InvoiceHistoryItem;
   savedProductsWithFinalIds: Product[];
 }> {
-  console.log(
-    // This log is from the original code and appears in user's logs
-    `[finalizeSaveProductsService] Called with ${productsFromDoc.length} products for user ${userId}. DocType: ${documentType}, TempInvoiceId: ${tempInvoiceId}, InvoiceNum: ${extractedInvoiceNumber}, Supplier: ${finalSupplierName}`
-  );
-  console.log(
-    // This log is from the original code
-    `[finalizeSaveProductsService] Dates - Due: ${paymentDueDate}, Invoice: ${invoiceDate}`
-  );
-  console.log(
-    // This log is from the original code
-    "[finalizeSaveProductsService] productsFromDoc received:",
-    JSON.stringify(productsFromDoc, null, 2)
-  );
-
-  if (!db) throw new Error("Firestore (db) is not initialized.");
+  const firestoreDb = db;
+  if (!firestoreDb) throw new Error("Firestore (db) is not initialized.");
   if (!userId) throw new Error("User ID is missing.");
+  if (!finalSupplierName) throw new Error("Supplier name is required.");
 
-  const batchOp = writeBatch(db);
-  console.log("[finalizeSaveProductsService] Firestore batchOp created.");
+  // Step 1: Query for the supplier *outside* the transaction to find its reference.
+  const supplierQuery = query(
+    collection(firestoreDb, SUPPLIERS_COLLECTION),
+    where("userId", "==", userId),
+    where("name", "==", finalSupplierName),
+    limit(1)
+  );
+  const supplierQuerySnapshot = await getDocs(supplierQuery);
+  const existingSupplierDoc = supplierQuerySnapshot.docs[0]; // This is either the document or undefined
+
+  let finalInvoiceRecord!: InvoiceHistoryItem;
   const savedProductsWithFinalIds: Product[] = [];
-  const newDocumentProducts: Partial<Product>[] = [];
-  let calculatedInvoiceTotalAmountFromProducts = 0;
+  let finalSupplierId!: string;
 
-  let userPosConfig: PosConnectionConfig | null = null;
-  let userPosSystemId: string | null = null;
   try {
-    const userSettings = await getUserSettingsService(userId);
-    if (
-      userSettings &&
-      userSettings.posSystemId === "caspit" &&
-      userSettings.posConfig
-    ) {
-      userPosConfig = userSettings.posConfig;
-      userPosSystemId = userSettings.posSystemId;
-      console.log(
-        `[finalizeSaveProductsService] User ${userId} has Caspit POS configured.`
+    await runTransaction(firestoreDb, async (transaction) => {
+      const productsCollectionRef = collection(
+        firestoreDb,
+        INVENTORY_COLLECTION
       );
-    }
-  } catch (settingsError) {
-    console.error(
-      `[finalizeSaveProductsService] Error fetching user settings for POS integration: `,
-      settingsError
-    );
-  }
+      let supplierRef;
 
-  for (const productFromDoc of productsFromDoc) {
-    console.log(
-      `[finalizeSaveProductsService] Loop start for product ID (from doc): ${productFromDoc.id}, Cat: ${productFromDoc.catalogNumber}`
-    );
-    const quantityFromDoc = Number(productFromDoc.quantity) || 0;
-    let unitPriceFromDoc = Number(productFromDoc.unitPrice) || 0;
-    const lineTotalFromDoc = Number(productFromDoc.lineTotal) || 0;
-    const salePriceFromDoc =
-      productFromDoc.salePrice !== undefined
-        ? Number(productFromDoc.salePrice) ?? null
-        : null;
-    console.log(
-      // This log is from the original code and appears in user's logs
-      `[finalizeSaveProductsService] Processing product Cat: ${
-        productFromDoc.catalogNumber
-      }, Bar: ${productFromDoc.barcode}, ID: ${
-        productFromDoc.id || "N/A"
-      }. Incoming salePrice: ${
-        productFromDoc.salePrice
-      }, Parsed salePriceFromDoc: ${salePriceFromDoc}`
-    );
-
-    if (
-      unitPriceFromDoc === 0 &&
-      quantityFromDoc !== 0 &&
-      lineTotalFromDoc !== 0
-    ) {
-      unitPriceFromDoc = parseFloat(
-        (lineTotalFromDoc / quantityFromDoc).toFixed(2)
-      );
-    }
-    calculatedInvoiceTotalAmountFromProducts += lineTotalFromDoc;
-
-    let existingProductRef;
-    let existingProductData: Product | undefined = undefined;
-    let productIdentifierForLog = `Cat: ${productFromDoc.catalogNumber}, Bar: ${
-      productFromDoc.barcode
-    }, Desc: ${productFromDoc.description?.substring(0, 20)}`;
-
-    // Prioritize _originalId if it exists, as it's a confirmed Firestore ID from price check
-    const idToTryDirectGet = productFromDoc._originalId;
-    console.log(
-      `[finalizeSaveProductsService] idToTryDirectGet (from _originalId): ${idToTryDirectGet}`
-    );
-
-    if (idToTryDirectGet) {
-      const productDocPath = `${INVENTORY_COLLECTION}/${idToTryDirectGet}`;
-      console.log(
-        `[finalizeSaveProductsService] Attempting to getDoc for product at path: ${productDocPath}`
-      );
-      try {
-        const snap = await getDoc(
-          doc(db, INVENTORY_COLLECTION, idToTryDirectGet)
+      // Step 2: Inside the transaction, use the result from the outside query.
+      if (existingSupplierDoc) {
+        // If the supplier exists, get its ref and update it.
+        supplierRef = doc(
+          firestoreDb,
+          SUPPLIERS_COLLECTION,
+          existingSupplierDoc.id
         );
-        if (snap.exists() && snap.data().userId === userId) {
-          existingProductRef = snap.ref;
-          existingProductData = {
-            id: snap.id,
-            userId,
-            ...snap.data(),
-          } as Product;
-          productIdentifierForLog = `ID: ${idToTryDirectGet}`;
-          console.log(
-            `[finalizeSaveProductsService] Existing product found by _originalId: ${idToTryDirectGet}`
+        finalSupplierId = existingSupplierDoc.id;
+
+        // Re-read the document inside the transaction to ensure atomicity.
+        const supplierDocInTransaction = await transaction.get(supplierRef);
+        if (!supplierDocInTransaction.exists()) {
+          // This case is unlikely but handles deletion between the initial read and the transaction start.
+          throw new Error(
+            "Supplier was deleted between the initial query and the transaction start."
           );
-        } else {
-          console.log(
-            `[finalizeSaveProductsService] Product with _originalId ${idToTryDirectGet} not found or userId mismatch. Snap exists: ${snap.exists()}, snap.data().userId: ${
-              snap.exists() ? snap.data().userId : "N/A"
-            }`
-          );
-          // If _originalId was present but doc not found or mismatch, it's a data integrity issue,
-          // but we might still want to proceed to catalog/barcode search if that makes sense for the flow.
-          // For now, if _originalId was given, we trust it was correct at an earlier stage.
         }
-      } catch (error) {
-        console.error(
-          `[finalizeSaveProductsService] Error during getDoc for _originalId ${idToTryDirectGet}:`,
-          error
-        );
-        // If permission denied here, it means _originalId exists but doesn't belong to user, which is unexpected
-        // or the product was deleted between price check and now.
-      }
-    }
 
-    // Fallback to query by catalog number if not found by _originalId
-    if (
-      !existingProductData &&
-      productFromDoc.catalogNumber &&
-      productFromDoc.catalogNumber !== "N/A"
-    ) {
-      console.log(
-        `[finalizeSaveProductsService] Attempting to find product by catalog: ${productFromDoc.catalogNumber}`
-      );
-      const qCat = query(
-        collection(db, INVENTORY_COLLECTION),
-        where("userId", "==", userId),
-        where("catalogNumber", "==", productFromDoc.catalogNumber),
-        limit(1)
-      );
-      const catSnap = await getDocs(qCat);
-      if (!catSnap.empty) {
-        existingProductRef = catSnap.docs[0].ref;
-        existingProductData = {
-          id: catSnap.docs[0].id,
-          userId,
-          ...catSnap.docs[0].data(),
-        } as Product;
-        productIdentifierForLog = `Catalog: ${productFromDoc.catalogNumber}`;
-        console.log(
-          `[finalizeSaveProductsService] Existing product found by catalog: ${productFromDoc.catalogNumber}, ID: ${existingProductData.id}`
-        );
-      }
-    }
-    // Fallback to query by barcode if still not found
-    if (
-      !existingProductData &&
-      productFromDoc.barcode &&
-      productFromDoc.barcode.trim() !== ""
-    ) {
-      console.log(
-        `[finalizeSaveProductsService] Attempting to find product by barcode: ${productFromDoc.barcode?.trim()}`
-      );
-      const qBar = query(
-        collection(db, INVENTORY_COLLECTION),
-        where("userId", "==", userId),
-        where("barcode", "==", productFromDoc.barcode.trim()),
-        limit(1)
-      );
-      const barSnap = await getDocs(qBar);
-      if (!barSnap.empty) {
-        existingProductRef = barSnap.docs[0].ref;
-        existingProductData = {
-          id: barSnap.docs[0].id,
-          userId,
-          ...barSnap.docs[0].data(),
-        } as Product;
-        productIdentifierForLog = `Barcode: ${productFromDoc.barcode}`;
-        console.log(
-          `[finalizeSaveProductsService] Existing product found by barcode: ${productFromDoc.barcode}, ID: ${existingProductData.id}`
-        );
-      }
-    }
-
-    const productForInvoiceDoc = {
-      catalogNumber: productFromDoc.catalogNumber || null,
-      description: productFromDoc.description || "N/A",
-      quantity: quantityFromDoc,
-      unitPrice: unitPriceFromDoc,
-      lineTotal: lineTotalFromDoc,
-      salePrice: salePriceFromDoc,
-      barcode: productFromDoc.barcode || null,
-    };
-
-    if (existingProductRef && existingProductData) {
-      console.log(
-        `[finalizeSaveProductsService] Updating existing product: ${productIdentifierForLog}, Path: ${existingProductRef.path}`
-      );
-      const updatePayload: Partial<Omit<Product, "id" | "userId">> & {
-        lastUpdated: FieldValue;
-      } = {
-        quantity:
-          documentType === "deliveryNote"
-            ? (Number(existingProductData.quantity) || 0) + quantityFromDoc
-            : Number(existingProductData.quantity) || 0,
-        unitPrice:
-          unitPriceFromDoc > 0
-            ? unitPriceFromDoc
-            : existingProductData.unitPrice || 0,
-        lastUpdated: serverTimestamp(),
-      };
-      if (
-        productFromDoc.description !== undefined &&
-        productFromDoc.description !== existingProductData.description
-      )
-        updatePayload.description = productFromDoc.description;
-      if (
-        productFromDoc.shortName !== undefined &&
-        productFromDoc.shortName !== existingProductData.shortName
-      )
-        updatePayload.shortName = productFromDoc.shortName;
-      if (
-        productFromDoc.catalogNumber &&
-        productFromDoc.catalogNumber !== existingProductData.catalogNumber
-      )
-        updatePayload.catalogNumber = productFromDoc.catalogNumber;
-      if (
-        productFromDoc.barcode !== undefined &&
-        productFromDoc.barcode !== existingProductData.barcode
-      )
-        updatePayload.barcode = productFromDoc.barcode || null;
-
-      // Explicitly log and set salePrice for update
-      console.log(
-        `[finalizeSaveProductsService] Update - salePriceFromDoc: ${salePriceFromDoc}, existingProductData.salePrice: ${existingProductData.salePrice}`
-      );
-      if (salePriceFromDoc !== undefined) {
-        // Check if salePriceFromDoc is defined
-        updatePayload.salePrice = salePriceFromDoc; // Assign it (even if null, to clear it)
+        const supplierData = supplierDocInTransaction.data();
+        transaction.update(supplierRef, {
+          totalSpent:
+            (supplierData.totalSpent || 0) + (extractedTotalAmount || 0),
+          invoiceCount: (supplierData.invoiceCount || 0) + 1,
+          lastActivityDate: serverTimestamp(),
+        });
       } else {
-        // If salePriceFromDoc is undefined, retain existing salePrice or set to null if creating and not provided
-        // For updates, if salePriceFromDoc is not provided, we might not want to change existing salePrice.
-        // However, the current logic implies if productFromDoc.salePrice was undefined, salePriceFromDoc is null.
-        // Let's ensure we only update it if it was actually provided in productFromDoc.
-        if (productFromDoc.hasOwnProperty("salePrice")) {
-          updatePayload.salePrice = salePriceFromDoc; // This will be null if productFromDoc.salePrice was undefined
-        }
+        // If the supplier does not exist, create a new one.
+        supplierRef = doc(collection(firestoreDb, SUPPLIERS_COLLECTION));
+        finalSupplierId = supplierRef.id;
+        transaction.set(supplierRef, {
+          id: finalSupplierId,
+          userId,
+          name: finalSupplierName,
+          totalSpent: extractedTotalAmount || 0,
+          invoiceCount: 1,
+          createdAt: serverTimestamp(),
+          lastActivityDate: serverTimestamp(),
+          paymentTerms: paymentTermString || null,
+          caspitAccountId: null,
+        });
       }
 
-      updatePayload.lineTotal = parseFloat(
-        (
-          (updatePayload.quantity || 0) * (updatePayload.unitPrice || 0)
-        ).toFixed(2)
-      );
+      // Step 3: Continue with the rest of the original transaction logic.
+      for (const product of productsFromDoc) {
+        const newProductRef = doc(productsCollectionRef);
+        const newProductData = {
+          ...product,
+          id: newProductRef.id,
+          userId,
+          lastUpdated: serverTimestamp(),
+        };
+        transaction.set(newProductRef, newProductData);
+        savedProductsWithFinalIds.push(newProductData as Product);
+      }
 
-      console.log(
-        `[finalizeSaveProductsService] Adding UPDATE to batchOp for product path: ${
-          existingProductRef.path
-        }, Data: ${JSON.stringify(updatePayload)}`
-      );
-      batchOp.update(
-        existingProductRef,
-        sanitizeForFirestore(updatePayload as Partial<Product>)
-      );
-      savedProductsWithFinalIds.push({
-        ...existingProductData,
-        ...updatePayload,
-        id: existingProductData.id,
+      const finalInvoiceRef = tempInvoiceId
+        ? doc(firestoreDb, DOCUMENTS_COLLECTION, tempInvoiceId)
+        : doc(collection(firestoreDb, DOCUMENTS_COLLECTION));
+
+      const invoiceData: Omit<InvoiceHistoryItem, "uploadTime"> & {
+        uploadTime: FieldValue;
+      } = {
+        id: finalInvoiceRef.id,
         userId,
-      } as Product);
-      newDocumentProducts.push({
-        ...productForInvoiceDoc,
-        id: existingProductData.id,
-        catalogNumber:
-          productForInvoiceDoc.catalogNumber === null
-            ? undefined
-            : productForInvoiceDoc.catalogNumber,
-      });
-    } else {
-      console.log(
-        `[finalizeSaveProductsService] Creating new product: ${productIdentifierForLog}`
-      );
-      if (
-        !productFromDoc.catalogNumber &&
-        !productFromDoc.description &&
-        !productFromDoc.barcode
-      ) {
-        console.warn(
-          "[finalizeSaveProductsService] Skipping new product due to missing identifiers:",
-          productFromDoc
-        );
-        continue;
-      }
-      const newProductRef = doc(collection(db, INVENTORY_COLLECTION));
-      console.log(
-        `[finalizeSaveProductsService] New product ref path: ${newProductRef.path}`
-      );
-      const newProductData: Product = {
-        id: newProductRef.id,
-        userId: userId,
-        catalogNumber: productFromDoc.catalogNumber || "N/A",
-        description: productFromDoc.description || "No Description",
-        shortName: productFromDoc.shortName || null,
-        barcode: productFromDoc.barcode || null,
-        quantity: documentType === "deliveryNote" ? quantityFromDoc : 0,
-        unitPrice: unitPriceFromDoc,
-        salePrice: salePriceFromDoc, // Directly use salePriceFromDoc
-        lineTotal: parseFloat(
-          (
-            (documentType === "deliveryNote" ? quantityFromDoc : 0) *
-            unitPriceFromDoc
-          ).toFixed(2)
-        ),
-        minStockLevel: Number(productFromDoc.minStockLevel) ?? null,
-        maxStockLevel: Number(productFromDoc.maxStockLevel) ?? null,
-        imageUrl: productFromDoc.imageUrl || null,
-        lastUpdated: serverTimestamp(),
-        caspitProductId: null,
+        originalFileName: originalFileNameFromUpload,
+        generatedFileName: `${documentType}_${
+          extractedInvoiceNumber || "N_A"
+        }_${Date.now()}`,
+        uploadTime: serverTimestamp(),
+        status: "completed",
+        documentType,
+        supplierName: finalSupplierName,
+        supplierId: finalSupplierId,
+        invoiceNumber: extractedInvoiceNumber || null,
+        invoiceDate: convertToTimestampIfValid(invoiceDate),
+        totalAmount: extractedTotalAmount ?? 0,
+        itemCount: productsFromDoc.length,
+        paymentMethod: paymentMethod || null,
+        paymentDueDate: convertToTimestampIfValid(paymentDueDate),
+        paymentStatus: "unpaid",
+        products: savedProductsWithFinalIds.map((p) => p.id),
+        isArchived: false,
+        rawScanResultJson: rawScanResultJson || null,
+        caspitPurchaseDocId: null,
+        syncError: null,
+        paymentReceiptImageUri: null,
+        originalImagePreviewUri: originalImagePreviewDataUri || null,
+        compressedImageForFinalRecordUri:
+          compressedImageForFinalRecordDataUri || null,
+        errorMessage: null,
+        linkedDeliveryNoteId: null,
+        _displayContext: "full_details",
       };
-      console.log(
-        `[finalizeSaveProductsService] Create - newProductData.salePrice (from salePriceFromDoc): ${newProductData.salePrice}`
-      );
-      console.log(
-        `[finalizeSaveProductsService] Adding SET to batchOp for new product path: ${
-          newProductRef.path
-        }, Data: ${JSON.stringify(newProductData)}`
-      );
-      batchOp.set(newProductRef, sanitizeForFirestore(newProductData));
-      savedProductsWithFinalIds.push({ ...newProductData });
-      newDocumentProducts.push({
-        ...productForInvoiceDoc,
-        id: newProductRef.id,
-        catalogNumber:
-          productForInvoiceDoc.catalogNumber === null
-            ? undefined
-            : productForInvoiceDoc.catalogNumber,
-      });
-    }
-    console.log(
-      `[finalizeSaveProductsService] Loop end for product ID (from doc): ${productFromDoc.id}`
-    );
-  }
 
-  const finalInvoiceDate = convertToTimestampIfValid(invoiceDate);
-  const finalPaymentDueDate = convertToTimestampIfValid(paymentDueDate);
-
-  const invoiceDocData: Omit<InvoiceHistoryItem, "id"> = {
-    userId,
-    originalFileName: originalFileNameFromUpload,
-    generatedFileName: `${documentType}_${
-      extractedInvoiceNumber || "N_A"
-    }_${Date.now()}.${originalFileNameFromUpload.split(".").pop() || "png"}`,
-    uploadTime: serverTimestamp(),
-    status: "completed",
-    documentType,
-    supplierName: finalSupplierName || null,
-    invoiceNumber: extractedInvoiceNumber || null,
-    invoiceDate: finalInvoiceDate,
-    totalAmount:
-      extractedTotalAmount ??
-      parseFloat(calculatedInvoiceTotalAmountFromProducts.toFixed(2)),
-    paymentMethod: paymentMethod || null,
-    paymentDueDate: finalPaymentDueDate,
-    paymentStatus: "unpaid",
-    originalImagePreviewUri: originalImagePreviewDataUri || null,
-    compressedImageForFinalRecordUri:
-      compressedImageForFinalRecordDataUri || null,
-    rawScanResultJson: rawScanResultJson || null,
-    // paymentTerms: paymentTermString || null, // Ensure this is part of InvoiceHistoryItem if used
-  };
-  if (paymentTermString) {
-    (invoiceDocData as any).paymentTerms = paymentTermString;
-  }
-
-  let finalInvoiceRecordId: string;
-  let invoiceDocRefPath: string;
-  if (tempInvoiceId && tempInvoiceId.startsWith("pending-inv-")) {
-    console.log(
-      `[finalizeSaveProductsService] Finalizing PENDING Firestore document: ${tempInvoiceId}`
-    );
-    const finalDocRef = doc(db, DOCUMENTS_COLLECTION, tempInvoiceId);
-    invoiceDocRefPath = finalDocRef.path;
-    console.log(
-      `[finalizeSaveProductsService] Adding SET (merge) to batchOp for invoice path: ${invoiceDocRefPath}, Data: ${JSON.stringify(
-        invoiceDocData
-      )}`
-    );
-    batchOp.set(finalDocRef, sanitizeForFirestore(invoiceDocData), {
-      merge: true,
+      transaction.set(finalInvoiceRef, invoiceData);
+      finalInvoiceRecord = invoiceData as unknown as InvoiceHistoryItem;
     });
-    finalInvoiceRecordId = tempInvoiceId;
-  } else {
-    console.log(
-      `[finalizeSaveProductsService] Creating NEW Firestore document record for invoice.`
-    );
-    const newInvoiceDocRef = doc(collection(db, DOCUMENTS_COLLECTION));
-    invoiceDocRefPath = newInvoiceDocRef.path;
-    console.log(
-      `[finalizeSaveProductsService] Adding SET to batchOp for new invoice path: ${invoiceDocRefPath}, Data: ${JSON.stringify(
-        invoiceDocData
-      )}`
-    );
-    batchOp.set(newInvoiceDocRef, sanitizeForFirestore(invoiceDocData));
-    finalInvoiceRecordId = newInvoiceDocRef.id;
-  }
 
-  const finalInvoiceRecord: InvoiceHistoryItem = {
-    id: finalInvoiceRecordId,
-    ...invoiceDocData,
-  };
-
-  console.log(
-    `[finalizeSaveProductsService] PREPARING TO COMMIT BATCH for user ${userId}. Number of product operations: ${productsFromDoc.length}, Invoice operation path: ${invoiceDocRefPath}`
-  );
-  await batchOp.commit();
-  console.log(
-    `[finalizeSaveProductsService] Firestore batch commit successful for user ${userId}. Processed ${savedProductsWithFinalIds.length} products. Invoice ID: ${finalInvoiceRecordId}`
-  );
-
-  // --- START CASPIT INTEGRATION ---
-  if (userPosSystemId === "caspit" && userPosConfig) {
-    console.log(
-      `[finalizeSaveProductsService] Starting Caspit sync for ${savedProductsWithFinalIds.length} products. User: ${userId}`
-    );
-    for (const finalProduct of savedProductsWithFinalIds) {
-      if (!finalProduct.id) {
-        console.warn(
-          `[finalizeSaveProductsService] Skipping Caspit sync for product without final ID: `,
-          finalProduct
-        );
-        continue;
-      }
-      try {
-        console.log(
-          `[finalizeSaveProductsService] Attempting to create/update product in Caspit: Firebase ID ${
-            finalProduct.id
-          }, Name: ${finalProduct.shortName || finalProduct.description}`
-        );
-        const caspitResult = await createOrUpdateCaspitProductAction(
-          userPosConfig, // Pass the loaded POS config
-          {
-            ...finalProduct, // Spread all fields of the final product
-            userId: userId, // Ensure userId is part of the object passed to the action
-          }
-        );
-
-        if (caspitResult.success) {
-          console.log(
-            `[finalizeSaveProductsService] Successfully synced product ID ${finalProduct.id} with Caspit. Caspit ID: ${caspitResult.caspitProductId}`
-          );
-          // Optionally, update the Firestore product document with the caspitProductId
-          if (
-            caspitResult.caspitProductId &&
-            finalProduct.caspitProductId !== caspitResult.caspitProductId
-          ) {
-            const productRef = doc(db, INVENTORY_COLLECTION, finalProduct.id);
-            // This update is not part of the main batch, handle its success/failure independently
-            updateDoc(productRef, {
-              caspitProductId: caspitResult.caspitProductId,
-            })
-              .then(() =>
-                console.log(
-                  `[finalizeSaveProductsService] Updated product ${finalProduct.id} in Firestore with Caspit ID: ${caspitResult.caspitProductId}`
-                )
-              )
-              .catch((err) =>
-                console.error(
-                  `[finalizeSaveProductsService] Error updating product ${finalProduct.id} with Caspit ID in Firestore: `,
-                  err
-                )
-              );
-          }
-        } else {
-          console.error(
-            `[finalizeSaveProductsService] Failed to sync product ID ${finalProduct.id} with Caspit: ${caspitResult.message}`
-          );
-        }
-      } catch (caspitError) {
-        console.error(
-          `[finalizeSaveProductsService] Critical error during Caspit sync for product ID ${finalProduct.id}: `,
-          caspitError
-        );
-      }
-    }
-    console.log(
-      `[finalizeSaveProductsService] Finished Caspit sync attempts for user ${userId}.`
-    );
-  } else {
-    console.log(
-      `[finalizeSaveProductsService] Caspit POS not configured or system ID is not 'caspit' for user ${userId}. Skipping Caspit sync.`
-    );
-  }
-  // --- END CASPIT INTEGRATION ---
-
-  // Attempt to delete the temporary Firestore document if it existed and was successfully migrated
-  if (tempInvoiceId && tempInvoiceId.startsWith("pending-inv-")) {
+    // Caspit sync logic (non-transactional, runs after success)
     try {
-      // Check if the final document (which now has the ID of tempInvoiceId) exists and is completed
-      const finalDocSnapshot = await getDoc(
-        doc(db, DOCUMENTS_COLLECTION, tempInvoiceId)
-      );
+      const userSettings = await getUserSettingsService(userId);
       if (
-        finalDocSnapshot.exists() &&
-        finalDocSnapshot.data().status === "completed"
+        userSettings.posSystemId === "caspit" &&
+        userSettings.posConfig &&
+        finalSupplierId
       ) {
-        // The 'pending-inv-' document has been successfully finalized.
-        // No separate deletion needed as we used set with merge on the same ID.
-        console.log(
-          `[finalizeSaveProductsService] Temporary document ${tempInvoiceId} was finalized. No separate deletion needed.`
+        const supplierDocRef = doc(
+          firestoreDb,
+          SUPPLIERS_COLLECTION,
+          finalSupplierId
         );
-      } else if (!finalDocSnapshot.exists()) {
-        // This case should ideally not happen if batchOp.commit() was successful.
-        console.warn(
-          `[finalizeSaveProductsService] Finalized document ${tempInvoiceId} not found after commit. Cannot confirm temp doc status.`
-        );
-      }
-    } catch (error) {
-      console.error(
-        `[finalizeSaveProductsService] Error during cleanup check for temporary document ${tempInvoiceId}: `,
-        error
-      );
-    }
-  }
+        const supplierDoc = await getDoc(supplierDocRef);
 
-  console.log(
-    `[finalizeSaveProductsService] Returning finalInvoiceRecord ID: ${finalInvoiceRecord.id} and ${savedProductsWithFinalIds.length} products.`
-  );
-  return { finalInvoiceRecord, savedProductsWithFinalIds };
+        const invoiceDocRef = doc(
+          firestoreDb,
+          DOCUMENTS_COLLECTION,
+          finalInvoiceRecord.id
+        );
+        const invoiceDoc = await getDoc(invoiceDocRef);
+
+        if (supplierDoc.exists() && invoiceDoc.exists()) {
+          const supplierData = supplierDoc.data();
+          const invoiceData = invoiceDoc.data();
+          let caspitContactId = supplierData.caspitAccountId;
+
+          if (!caspitContactId) {
+            // Create a plain serializable object for the supplier
+            const plainSupplierPayload = {
+              id: finalSupplierId,
+              userId: supplierData.userId,
+              name: supplierData.name,
+              invoiceCount: supplierData.invoiceCount,
+              totalSpent: supplierData.totalSpent,
+              phone: supplierData.phone || null,
+              email: supplierData.email || null,
+              paymentTerms: supplierData.paymentTerms || null,
+              lastActivityDate:
+                (supplierData.lastActivityDate as Timestamp)
+                  ?.toDate()
+                  ?.toISOString() ?? null,
+              createdAt:
+                (supplierData.createdAt as Timestamp)
+                  ?.toDate()
+                  ?.toISOString() ?? new Date().toISOString(),
+              caspitAccountId: supplierData.caspitAccountId || null,
+            };
+
+            const contactResult = await createOrUpdateCaspitContactAction(
+              userSettings.posConfig,
+              plainSupplierPayload as unknown as SupplierSummary
+            );
+            if (contactResult.success && contactResult.caspitAccountId) {
+              caspitContactId = contactResult.caspitAccountId;
+              await updateDoc(supplierDocRef, {
+                caspitAccountId: caspitContactId,
+              });
+            } else {
+              throw new Error(
+                `Caspit supplier sync failed: ${contactResult.message}`
+              );
+            }
+          }
+          if (caspitContactId) {
+            // Create a plain serializable object for the invoice
+            const plainInvoicePayload = {
+              ...invoiceData,
+              id: invoiceData.id || finalInvoiceRecord.id,
+              uploadTime:
+                (invoiceData.uploadTime as Timestamp)?.toDate().toISOString() ??
+                new Date().toISOString(),
+              invoiceDate:
+                (invoiceData.invoiceDate as Timestamp)
+                  ?.toDate()
+                  .toISOString() ?? null,
+              paymentDueDate:
+                (invoiceData.paymentDueDate as Timestamp)
+                  ?.toDate()
+                  .toISOString() ?? null,
+            };
+
+            const documentResult = await createCaspitDocumentAction(
+              userSettings.posConfig,
+              plainInvoicePayload as InvoiceHistoryItem,
+              savedProductsWithFinalIds,
+              caspitContactId
+            );
+            if (documentResult.success && documentResult.caspitPurchaseDocId) {
+              await updateDoc(invoiceDocRef, {
+                caspitPurchaseDocId: documentResult.caspitPurchaseDocId,
+                syncError: null,
+              });
+            } else {
+              await updateDoc(invoiceDocRef, {
+                syncError: `Caspit: ${documentResult.message}`,
+              });
+            }
+          }
+        }
+      }
+    } catch (caspitError: any) {
+      console.error(
+        "[Backend] Non-blocking error during Caspit sync:",
+        caspitError
+      );
+      if (finalInvoiceRecord) {
+        const invoiceDocRef = doc(
+          firestoreDb,
+          DOCUMENTS_COLLECTION,
+          finalInvoiceRecord.id
+        );
+        await updateDoc(invoiceDocRef, {
+          syncError: `Caspit Sync Failed: ${caspitError.message}`,
+        });
+      }
+    }
+
+    return { finalInvoiceRecord, savedProductsWithFinalIds };
+  } catch (error) {
+    console.error("[Backend finalizeSaveProductsService] Error:", error);
+    throw error;
+  }
 }
 
 // --- Supplier Management (Firestore) ---

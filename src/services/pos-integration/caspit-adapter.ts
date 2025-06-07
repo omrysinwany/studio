@@ -12,6 +12,8 @@ import {
   testCaspitConnectionAction,
   syncCaspitProductsAction,
   syncCaspitSalesAction,
+  syncCaspitSuppliersAction,
+  syncCaspitDocumentsAction,
 } from "@/actions/caspit-actions";
 
 class CaspitAdapter implements IPosSystemAdapter {
@@ -87,6 +89,50 @@ class CaspitAdapter implements IPosSystemAdapter {
       return {
         success: false,
         message: `Sales sync failed: ${error.message || "Unknown error"}`,
+      };
+    }
+  }
+
+  // --- Supplier Sync ---
+  async syncSuppliers(config: PosConnectionConfig): Promise<SyncResult> {
+    console.log(`[CaspitAdapter] Starting supplier sync via server action...`);
+    try {
+      const result = await syncCaspitSuppliersAction(config);
+      console.log(
+        `[CaspitAdapter] Supplier sync result from server action:`,
+        result
+      );
+      return result;
+    } catch (error: any) {
+      console.error(
+        "[CaspitAdapter] Error calling supplier sync server action:",
+        error
+      );
+      return {
+        success: false,
+        message: `Supplier sync failed: ${error.message || "Unknown error"}`,
+      };
+    }
+  }
+
+  // --- Document Sync ---
+  async syncDocuments(config: PosConnectionConfig): Promise<SyncResult> {
+    console.log(`[CaspitAdapter] Starting document sync via server action...`);
+    try {
+      const result = await syncCaspitDocumentsAction(config);
+      console.log(
+        `[CaspitAdapter] Document sync result from server action:`,
+        result
+      );
+      return result;
+    } catch (error: any) {
+      console.error(
+        "[CaspitAdapter] Error calling document sync server action:",
+        error
+      );
+      return {
+        success: false,
+        message: `Document sync failed: ${error.message || "Unknown error"}`,
       };
     }
   }

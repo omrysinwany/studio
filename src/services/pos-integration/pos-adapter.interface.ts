@@ -32,6 +32,7 @@ export interface SyncResult {
   itemsSynced?: number;
   errors?: any[];
   products?: Product[]; // Optional: Include products fetched during sync
+  data?: any; // Generic data payload
 }
 
 /**
@@ -87,6 +88,20 @@ export interface IPosSystemAdapter {
    * @returns A promise resolving to a SyncResult object.
    */
   syncSales(config: PosConnectionConfig): Promise<SyncResult>;
+
+  /**
+   * Synchronizes suppliers data from the POS system to InvoTrack.
+   * @param config - The connection configuration.
+   * @returns A promise resolving to a SyncResult object.
+   */
+  syncSuppliers(config: PosConnectionConfig): Promise<SyncResult>;
+
+  /**
+   * Synchronizes documents data from the POS system to InvoTrack.
+   * @param config - The connection configuration.
+   * @returns A promise resolving to a SyncResult object.
+   */
+  syncDocuments(config: PosConnectionConfig): Promise<SyncResult>;
 
   // Add other potential methods as needed:
   // syncCustomers?(config: PosConnectionConfig): Promise<SyncResult>;
