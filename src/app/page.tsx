@@ -44,10 +44,10 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   getProductsService,
-  InvoiceHistoryItem,
+  Invoice,
   getInvoicesService,
-  SupplierSummary,
-  getSupplierSummariesService,
+  Supplier,
+  getSuppliersService,
   Product as BackendProduct,
   OtherExpense,
   UserSettings,
@@ -106,7 +106,7 @@ interface KpiData {
   inventoryValue: number;
   lowStockItemsCount: number;
   criticalLowStockProducts: BackendProduct[];
-  nextPaymentDueInvoice: InvoiceHistoryItem | null;
+  nextPaymentDueInvoice: Invoice | null;
   recentActivity: {
     descriptionKey: string;
     params?: Record<string, string | number>;
@@ -577,38 +577,35 @@ export default function Home() {
     console.log("[HomePage] fetchKpiData called for user:", user.id);
     try {
       const [
-        products,
+        productsData,
         invoicesData,
-        suppliers,
-        userSettings,
+        suppliersData,
         otherExpensesData,
+        settingsData,
       ] = await Promise.all([
         getProductsService(user.id),
         getInvoicesService(user.id),
-        getSupplierSummariesService(user.id),
-        getUserSettingsService(user.id),
+        getSuppliersService(user.id),
         getOtherExpensesService(user.id),
+        getUserSettingsService(user.id),
       ]);
       console.log(
         "[HomePage] Data fetched: Products:",
-        products.length,
+        productsData.length,
         "Invoices:",
         invoicesData.length,
         "Suppliers:",
-        suppliers.length,
+        suppliersData.length,
         "Other Expenses:",
         otherExpensesData.length
       );
 
-      const invoices = invoicesData.map((inv) => ({
-        ...inv,
-        uploadTime: inv.uploadTime,
-      }));
+      const activeProducts = productsData.filter((p) => p.isActive !== false);
 
-      const totalItems = calculateTotalItems(products);
-      const inventoryValue = calculateInventoryValue(products);
+      const totalItems = calculateTotalItems(activeProducts);
+      const inventoryValue = calculateInventoryValue(activeProducts);
 
-      const allLowStockItems = getLowStockItems(products);
+      const allLowStockItems = getLowStockItems(activeProducts);
       const lowStockItemsCount = allLowStockItems.length;
       const criticalLowStockProducts = allLowStockItems
         .sort(
@@ -620,29 +617,9 @@ export default function Home() {
         )
         .slice(0, 2);
 
-      const unpaidInvoices = invoices
-        .filter(
-          (invoice) =>
-            (invoice.paymentStatus === "unpaid" ||
-              invoice.paymentStatus === "pending_payment") &&
-            invoice.paymentDueDate &&
-            isValid(
-              invoice.paymentDueDate instanceof Timestamp
-                ? invoice.paymentDueDate.toDate()
-                : parseISO(invoice.paymentDueDate as string)
-            )
-        )
-        .sort((a, b) => {
-          const dateA =
-            a.paymentDueDate instanceof Timestamp
-              ? a.paymentDueDate.toDate()
-              : parseISO(a.paymentDueDate as string);
-          const dateB =
-            b.paymentDueDate instanceof Timestamp
-              ? b.paymentDueDate.toDate()
-              : parseISO(b.paymentDueDate as string);
-          return dateA.getTime() - dateB.getTime();
-        });
+      const unpaidInvoices = invoicesData.filter(
+        (invoice) => invoice.paymentStatus !== "paid"
+      );
       const nextPaymentDueInvoice =
         unpaidInvoices.length > 0 ? unpaidInvoices[0] : null;
 
@@ -650,13 +627,13 @@ export default function Home() {
         (sum, invoice) => sum + (invoice.totalAmount || 0),
         0
       );
-      const grossProfit = calculateTotalPotentialGrossProfit(products);
+      const grossProfit = calculateTotalPotentialGrossProfit(activeProducts);
 
       const currentMonthStart = startOfMonth(new Date());
       const currentMonthEnd = endOfMonth(new Date());
       let totalExpensesFromInvoices = 0;
 
-      invoices.forEach((invoice) => {
+      invoicesData.forEach((invoice) => {
         if (invoice.status !== "completed") return;
         let relevantDateForExpense: Date | null = null;
         let paymentDateTs: Date | null = null;
@@ -746,7 +723,7 @@ export default function Home() {
       const calculatedCurrentMonthTotalExpenses =
         totalExpensesFromInvoices + totalOtherExpensesForMonth;
       const thirtyDaysAgo = subDays(new Date(), 30);
-      const documentsProcessed30d = invoices.filter((inv) => {
+      const documentsProcessed30d = invoicesData.filter((inv) => {
         if (inv.status !== "completed" || !inv.uploadTime) return false;
         let uploadDate: Date | null = null;
         if (inv.uploadTime instanceof Timestamp)
@@ -759,7 +736,7 @@ export default function Home() {
         return uploadDate && uploadDate >= thirtyDaysAgo;
       }).length;
 
-      const completedInvoices = invoices.filter(
+      const completedInvoices = invoicesData.filter(
         (inv) => inv.status === "completed" && inv.totalAmount !== undefined
       );
       const totalInvoiceValue = completedInvoices.reduce(
@@ -770,9 +747,9 @@ export default function Home() {
         completedInvoices.length > 0
           ? totalInvoiceValue / completedInvoices.length
           : 0;
-      const suppliersCountData = suppliers.length;
+      const suppliersCountData = suppliersData.length;
 
-      const recentInvoices = invoices
+      const recentInvoices = invoicesData
         .sort((a, b) => {
           const timeA = a.uploadTime
             ? (a.uploadTime instanceof Timestamp
@@ -843,8 +820,8 @@ export default function Home() {
         nextPaymentDueInvoice,
         recentActivity: mockRecentActivity,
         latestDocName:
-          invoices.length > 0 && invoices[0].originalFileName
-            ? invoices[0].originalFileName
+          invoicesData.length > 0 && invoicesData[0].originalFileName
+            ? invoicesData[0].originalFileName
             : undefined,
         grossProfit,
         amountRemainingToPay,
@@ -1231,11 +1208,6 @@ export default function Home() {
                     )}
                   </CardHeader>
                   <CardContent className="text-right flex-grow flex flex-col justify-center">
-                    {kpi.descriptionKey && (
-                      <p className="text-xs text-muted-foreground mb-2 text-right rtl:text-right">
-                        {t(kpi.descriptionKey)}
-                      </p>
-                    )}
                     {kpi.getValue &&
                       renderKpiValueDisplay(kpi.getValue(kpiData, t))}
 
@@ -1249,6 +1221,11 @@ export default function Home() {
                         )}
                         indicatorClassName={"bg-primary"}
                       />
+                    )}
+                    {kpi.descriptionKey && (
+                      <p className="text-xs text-muted-foreground mb-2 text-right rtl:text-right">
+                        {t(kpi.descriptionKey)}
+                      </p>
                     )}
                   </CardContent>
                 </Card>

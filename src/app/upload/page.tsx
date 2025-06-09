@@ -40,7 +40,7 @@ import {
   X as ClearIcon,
 } from "lucide-react";
 import {
-  InvoiceHistoryItem,
+  Invoice,
   getInvoicesService,
   TEMP_DATA_KEY_PREFIX,
   MAX_SCAN_RESULTS_SIZE_BYTES,
@@ -48,7 +48,6 @@ import {
   MAX_INVOICE_HISTORY_ITEMS,
   getStorageKey,
   clearOldTemporaryScanData,
-  DOCUMENTS_COLLECTION,
 } from "@/services/backend";
 import {
   Dialog,
@@ -75,6 +74,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== "string") return false;
@@ -151,13 +151,13 @@ export default function UploadPage() {
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadHistory, setUploadHistory] = useState<InvoiceHistoryItem[]>([]);
+  const [uploadHistory, setUploadHistory] = useState<Invoice[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] =
-    useState<InvoiceHistoryItem | null>(null);
+    useState<Invoice | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [documentType, setDocumentType] = useState<"deliveryNote" | "invoice">(
@@ -531,10 +531,12 @@ export default function UploadPage() {
 
         const pendingInvoiceDocRef = doc(
           db,
-          DOCUMENTS_COLLECTION,
+          "users",
+          user.id,
+          "documents",
           tempInvoiceId
         );
-        const pendingInvoice: Omit<InvoiceHistoryItem, "id" | "uploadTime"> & {
+        const pendingInvoice: Omit<Invoice, "id" | "uploadTime"> & {
           userId: string;
           uploadTime: FieldValue;
         } = {
@@ -704,6 +706,62 @@ export default function UploadPage() {
     };
   };
 
+  const handleRetryUpload = async (invoiceId: string) => {
+    if (!user || !user.id) {
+      console.error("[UploadPage handleRetryUpload] User not authenticated.");
+      toast({
+        title: t("upload_toast_retry_unavailable_title"),
+        description: t("upload_toast_retry_unavailable_desc"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setScanError(null);
+    setStreamingContent("");
+
+    setUploadHistory((prev) =>
+      prev.map((inv) =>
+        inv.id === invoiceId ? { ...inv, status: "processing" } : inv
+      )
+    );
+
+    try {
+      const storageKey = getStorageKey(user.id);
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          invoiceData: null,
+          tempInvoiceId: invoiceId,
+          timestamp: Date.now(),
+        })
+      );
+
+      const queryParams = new URLSearchParams({
+        tempInvoiceId: invoiceId,
+        docType: historyItem.documentType || "invoice",
+        originalFileName: encodeURIComponent(historyItem.originalFileName),
+        retry: "true",
+      });
+      router.push(`/edit-invoice?${queryParams.toString()}`);
+    } catch (error) {
+      console.error("[UploadPage] Error during retry upload process:", error);
+      toast({
+        title: t("upload_toast_retry_fail_title"),
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+      setUploadHistory((prev) =>
+        prev.map((inv) =>
+          inv.id === invoiceId ? { ...inv, status: "failed" } : inv
+        )
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const formatDateForDisplay = useCallback(
     (
       dateInput: string | Date | Timestamp | undefined,
@@ -740,30 +798,20 @@ export default function UploadPage() {
     [locale, t]
   );
 
-  const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
-    if (invoice) {
-      const detailsToSet: InvoiceHistoryItem = {
-        ...invoice,
-        _displayContext: "full_details",
-      };
-      setSelectedInvoiceDetails(detailsToSet);
-      setShowDetailsModal(true);
-    } else {
-      setSelectedInvoiceDetails(null);
-      setShowDetailsModal(false);
-    }
+  const handleViewDetails = (invoice: Invoice | null) => {
+    setSelectedInvoiceDetails(invoice);
+    setShowDetailsModal(!!invoice);
   };
 
-  const handleViewImage = (invoice: InvoiceHistoryItem) => {
-    const detailsToSet: InvoiceHistoryItem = {
+  const handleViewImage = (invoice: Invoice) => {
+    setSelectedInvoiceDetails({
       ...invoice,
       _displayContext: "image_only",
-    };
-    setSelectedInvoiceDetails(detailsToSet);
+    });
     setShowDetailsModal(true);
   };
 
-  const renderStatusBadge = (status: InvoiceHistoryItem["status"]) => {
+  const renderStatusBadge = (status: Invoice["status"]) => {
     let variant: "default" | "secondary" | "destructive" | "outline" =
       "default";
     let className = "";
