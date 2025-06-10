@@ -998,7 +998,8 @@ export default function Home() {
               {t("home_greeting", {
                 username: user?.username || t("user_fallback_name"),
               })}
-              . {t("home_sub_greeting")}
+              <br />
+              {t("home_sub_greeting")}
             </p>
           </header>
 

@@ -82,7 +82,6 @@ const prompt = ai.definePrompt({
     }),
   },
   output: {
-    // Output schema from AI matches the extraction request
     schema: PromptOutputSchema,
   },
   prompt: `
@@ -115,10 +114,10 @@ const prompt = ai.definePrompt({
     The value of "invoice_details" should be a JSON object containing the following optional keys:
     "invoice_number" (string, the invoice number from the document),
     "supplier_name" (string, the supplier's name identified on the document),
-    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including taxes. Look for keywords like "סהכ לתשלום", "Total Amount Due", "Grand Total", "סהכ מחיר", "סהכ בתעודה", "סה''כ כולל מע''מ". Extract ONLY the numerical value, no currency symbols),
+    "invoice_total_amount" (number, the final total amount stated on the invoice, typically including keywords like "סהכ לתשלום"),
     "invoice_date" (string, the date written on the invoice document, e.g., 'YYYY-MM-DD', 'DD/MM/YYYY', 'Month DD, YYYY'),
-    "payment_method" (string, the method of payment mentioned, if any, e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check', 'מזומן', 'אשראי', 'העברה בנקאית', 'צ׳ק').
-
+    "osek_morshe" (string, the 'עוסק מורשה' or 'ח.פ.' number of the supplier. This is a crucial identifier for Israeli businesses. Look for labels like "עוסק מורשה", "ח.פ.", "ע.מ.", or "מס' עוסק". It's a 9-digit number),
+    "payment_method" (string, the method of payment mentioned, if any, e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check')
 
     Ensure the entire output is a valid JSON object.
     If no products are found, "products" should be an empty array: \`{"products": []}\`.
@@ -130,13 +129,13 @@ const prompt = ai.definePrompt({
 });
 
 // Removed streamingCallback from the flow definition
-const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>(
+const scanInvoiceFlow = ai.defineFlow(
   {
     name: "scanInvoiceFlow",
     inputSchema: ScanInvoiceInputSchema,
     outputSchema: ScanInvoiceOutputSchema,
   },
-  async (input) => {
+  async (input: ScanInvoiceInput): Promise<ScanInvoiceOutput> => {
     // Removed streamingCallback from async parameters
     let rawOutputFromAI: PromptOutputType | null = null;
     let productsForOutput: z.infer<typeof FinalProductSchema>[] = [];
@@ -355,6 +354,8 @@ const scanInvoiceFlow = ai.defineFlow<ScanInvoiceInput, ScanInvoiceOutput>(
           rawOutputFromAI.invoice_details.invoice_date;
         invoiceDetailsForOutput.paymentMethod =
           rawOutputFromAI.invoice_details.payment_method;
+        invoiceDetailsForOutput.osekMorshe =
+          rawOutputFromAI.invoice_details.osek_morshe;
       }
 
       // Removed streamingCallback call

@@ -116,6 +116,7 @@ export const PromptOutputSchema = z.object({
         .describe(
           "The method of payment indicated on the invoice (e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check')."
         ), // Added
+      osek_morshe: z.string().optional(),
     })
     .optional()
     .describe(
@@ -132,26 +133,33 @@ export const ScanInvoiceOutputSchema = z.object({
   invoiceNumber: z
     .string()
     .optional()
+    .nullable()
     .describe("The extracted invoice number from the document."),
   supplier: z
     .string()
     .optional()
+    .nullable()
     .describe("The extracted supplier name from the document."),
   totalAmount: z
     .number()
     .optional()
+    .nullable()
     .describe("The extracted final total amount from the document."),
   invoiceDate: z
     .string()
     .optional()
+    .nullable()
     .describe("The date appearing on the invoice document."), // Added
   paymentMethod: z
     .string()
     .optional()
+    .nullable()
     .describe("The method of payment indicated on the invoice."), // Added
+  osekMorshe: z.string().optional().nullable(),
   error: z
     .string()
     .optional()
+    .nullable()
     .describe("An error message if the scan or processing failed."),
 });
 export type ScanInvoiceOutput = z.infer<typeof ScanInvoiceOutputSchema>;

@@ -17,6 +17,7 @@ import {
   updateSupplierService,
   getUserSettingsService,
   UserSettings,
+  createSupplierAndSyncWithCaspitService,
 } from "@/services/backend";
 import { parseISO, isValid, format, addDays, endOfMonth } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
@@ -106,6 +107,7 @@ interface UseDialogFlowProps {
   productsForNextStep: EditableProduct[];
   initialScannedTaxDetails: EditableTaxInvoiceDetails;
   aiScannedSupplierNameFromStorage?: string;
+  aiScannedOsekMorsheFromStorage?: string;
   currentInvoiceDate?: Date | string | Timestamp | null;
   onSupplierChangeInMainForm: (name: string | null) => void;
   onPaymentDetailsChangeInMainForm: (
@@ -135,6 +137,7 @@ export interface UseDialogFlowReturn {
   finalizedSupplierName: string | null | undefined;
   finalizedPaymentDueDate: Date | undefined;
   finalizedPaymentTermOption: DueDateOption | null;
+  finalizedOsekMorshe: string | null | undefined;
   dialogFlowError: string | null;
   productsForDialog: EditableProduct[];
 }
@@ -146,6 +149,7 @@ export function useDialogFlow({
   productsForNextStep,
   initialScannedTaxDetails,
   aiScannedSupplierNameFromStorage,
+  aiScannedOsekMorsheFromStorage,
   currentInvoiceDate,
   onSupplierChangeInMainForm,
   onPaymentDetailsChangeInMainForm,
@@ -175,9 +179,13 @@ export function useDialogFlow({
     useState<Date | undefined>(undefined);
   const [finalPaymentTermOptionFromFlow, setFinalPaymentTermOptionFromFlow] =
     useState<DueDateOption | null>(null);
+  const [finalOsekMorsheFromFlow, setFinalOsekMorsheFromFlow] = useState<
+    string | null | undefined
+  >();
   const [productsToDisplayForNewDetails, setProductsToDisplayForNewDetails] =
     useState<EditableProduct[]>([]);
   const [hasFlowStarted, setHasFlowStarted] = useState(false);
+  const [isSupplierFlowLocked, setIsSupplierFlowLocked] = useState(false);
 
   // New useEffect for logging state changes
   useEffect(() => {
@@ -187,7 +195,9 @@ export function useDialogFlow({
       "| finalPaymentTermOptionFromFlow:",
       finalPaymentTermOptionFromFlow,
       "| finalSupplierNameFromFlow:",
-      finalSupplierNameFromFlow
+      finalSupplierNameFromFlow,
+      "| finalOsekMorsheFromFlow:",
+      finalOsekMorsheFromFlow
     );
     // Update main form when finalized values change internally, especially if sheet is skipped
     if (currentDialogStep === "idle" || currentDialogStep === "ready_to_save") {
@@ -202,6 +212,7 @@ export function useDialogFlow({
     finalPaymentTermOptionFromFlow,
     finalSupplierNameFromFlow,
     finalPaymentDueDateFromFlow,
+    finalOsekMorsheFromFlow,
     onSupplierChangeInMainForm,
     onPaymentDetailsChangeInMainForm,
   ]);
@@ -387,6 +398,9 @@ export function useDialogFlow({
 
         if (existingSupplierMatch) {
           setFinalSupplierNameFromFlow(trimmedScannedSupplier);
+          setFinalOsekMorsheFromFlow(
+            existingSupplierMatch.osekMorshe || aiScannedOsekMorsheFromStorage
+          );
           onSupplierChangeInMainForm(trimmedScannedSupplier);
 
           if (
@@ -417,6 +431,7 @@ export function useDialogFlow({
             );
             setFinalPaymentDueDateFromFlow(undefined);
             setFinalPaymentTermOptionFromFlow(null);
+            setFinalOsekMorsheFromFlow(null);
             await processNextDialogStep("supplier_payment_sheet_needed");
           }
         } else {
@@ -424,6 +439,7 @@ export function useDialogFlow({
             "[useDialogFlow] New supplier scenario: '${trimmedScannedSupplier}'. SupplierPaymentSheet needed."
           );
           setFinalSupplierNameFromFlow(trimmedScannedSupplier);
+          setFinalOsekMorsheFromFlow(null);
           setFinalPaymentDueDateFromFlow(undefined);
           setFinalPaymentTermOptionFromFlow(null);
           setInitialPaymentTermOptionForSheet(null);
@@ -435,6 +451,7 @@ export function useDialogFlow({
           "[useDialogFlow] No supplier name scanned by AI. Will show sheet for manual entry."
         );
         setFinalSupplierNameFromFlow(null);
+        setFinalOsekMorsheFromFlow(null);
         setFinalPaymentDueDateFromFlow(undefined);
         setFinalPaymentTermOptionFromFlow(null);
         setInitialPaymentTermOptionForSheet(null);
@@ -447,294 +464,231 @@ export function useDialogFlow({
   );
 
   const startInitialDialogFlow = useCallback(async () => {
-    if (hasFlowStarted) {
-      console.log(
-        "[useDialogFlow] startInitialDialogFlow attempted to run again, but was blocked."
-      );
-      return;
-    }
+    if (!user?.id || hasFlowStarted) return;
     setHasFlowStarted(true);
-
-    console.log(
-      "[useDialogFlow] startInitialDialogFlow called. isNewScan:",
-      isNewScan,
-      "docType:",
-      docType
-    );
-    if (!user?.id) {
-      setDialogFlowError("User not authenticated.");
-      return;
-    }
     setIsDialogFlowActive(true);
-    setDialogFlowError(null);
+    console.log("[useDialogFlow] startInitialDialogFlow: Flow started.");
 
-    let supplierNameForSheet =
-      initialScannedTaxDetails.supplierName || aiScannedSupplierNameFromStorage;
-    let paymentOption: DueDateOption | null = null;
-    let paymentDate: Date | undefined = undefined;
+    try {
+      const suppliers = await getSuppliersService(user.id);
+      setExistingSuppliers(suppliers);
+      const potentialSupplierName =
+        aiScannedSupplierNameFromStorage ||
+        initialScannedTaxDetails.supplierName;
 
-    // Try to parse existing payment terms from initialScannedTaxDetails
-    if (initialScannedTaxDetails.paymentTerms) {
-      const parsed = parsePaymentTermString(
-        initialScannedTaxDetails.paymentTerms,
-        t
-      );
-      paymentOption = parsed.option;
-      paymentDate = parsed.date;
-    }
-    // If not found in tax details, try from paymentDueDate (if it's a Date)
-    if (
-      !paymentOption &&
-      initialScannedTaxDetails.paymentDueDate instanceof Timestamp
-    ) {
-      paymentDate = initialScannedTaxDetails.paymentDueDate.toDate();
-      paymentOption = "custom"; // Assume custom if only a date is present
-    }
-    if (
-      !paymentOption &&
-      typeof initialScannedTaxDetails.paymentDueDate === "string" &&
-      isValid(parseISO(initialScannedTaxDetails.paymentDueDate))
-    ) {
-      paymentDate = parseISO(initialScannedTaxDetails.paymentDueDate);
-      paymentOption = "custom";
-    }
-
-    setFinalSupplierNameFromFlow(supplierNameForSheet);
-    setFinalPaymentTermOptionFromFlow(paymentOption);
-    setFinalPaymentDueDateFromFlow(paymentDate);
-    setInitialPaymentTermOptionForSheet(paymentOption);
-    setInitialCustomDateForSheet(paymentDate);
-    setPotentialSupplierNameForSheet(supplierNameForSheet);
-
-    // Fetch existing suppliers if not already fetched or if supplier name exists
-    if (supplierNameForSheet && existingSuppliers.length === 0) {
-      try {
-        const suppliers = await getSuppliersService(user.id);
-        setExistingSuppliers(suppliers);
-      } catch (error) {
-        console.error("[useDialogFlow] Error fetching suppliers:", error);
-        setDialogFlowError("Failed to fetch suppliers.");
-        // Continue without existing suppliers, user can still add new
+      if (potentialSupplierName) {
+        const existingSupplier = suppliers.find(
+          (s) => s.name === potentialSupplierName
+        );
+        if (existingSupplier) {
+          console.log(
+            `[useDialogFlow] Scanned supplier '${potentialSupplierName}' already exists. Skipping supplier sheet.`
+          );
+          setFinalSupplierNameFromFlow(existingSupplier.name);
+          setFinalOsekMorsheFromFlow(
+            existingSupplier.osekMorshe || aiScannedOsekMorsheFromStorage
+          );
+          const { option, date } = parsePaymentTermString(
+            existingSupplier.paymentTerms,
+            t
+          );
+          setFinalPaymentTermOptionFromFlow(option);
+          processNextDialogStep("supplier_payment_details_confirmed");
+          return;
+        }
       }
-    }
-
-    // Determine the first dialog step
-    // For a new scan of any document type that might have a supplier/payment terms (Invoice, Delivery Note)
-    if (isNewScan && (docType === "invoice" || docType === "deliveryNote")) {
       console.log(
         "[useDialogFlow] New scan of Invoice/Delivery Note. Starting with supplier/payment sheet."
       );
+      setPotentialSupplierNameForSheet(potentialSupplierName ?? undefined);
+      setFinalSupplierNameFromFlow(potentialSupplierName);
       setCurrentDialogStep("supplier_payment_details");
-      return; // Supplier/Payment sheet will handle next steps including new product check
-    }
-
-    // If not a new scan OR it's a payment receipt (which doesn't have these initial dialogs)
-    // OR if it's a type that doesn't need supplier/payment dialogs and no new products were flagged earlier.
-    // Check for new products if it's a delivery note (could be existing DN being edited with new items added manually)
-    if (docType === "deliveryNote") {
-      console.log(
-        "[useDialogFlow] Document is Delivery Note. Checking for new products."
+    } catch (error: any) {
+      const msg =
+        error.message || t("edit_invoice_toast_error_fetching_suppliers_desc");
+      console.error(
+        "[useDialogFlow] Error fetching suppliers on flow start:",
+        error
       );
-      // Ensure productsForNextStep is used here
-      const { needsReview, productsForReview } =
-        await checkForNewProductsAndDetails(productsForNextStep);
-      if (needsReview) {
-        setProductsToDisplayForNewDetails(productsForReview);
-        setCurrentDialogStep("new_product_details");
-        return;
-      }
+      setDialogFlowError(msg);
+      onDialogError(msg);
+      setIsDialogFlowActive(false);
     }
-
-    // If no dialogs were triggered, flow is complete or not needed for this doc type
-    console.log(
-      "[useDialogFlow] No initial dialogs triggered. Setting to ready_to_save."
-    );
-    setCurrentDialogStep("ready_to_save");
-    setIsDialogFlowActive(false);
-    onSupplierChangeInMainForm(finalSupplierNameFromFlow || null); // Ensure main form is updated
-    onPaymentDetailsChangeInMainForm(
-      finalPaymentDueDateFromFlow,
-      finalPaymentTermOptionFromFlow
-    );
   }, [
-    user,
-    isNewScan,
-    docType,
-    initialScannedTaxDetails,
+    user?.id,
+    hasFlowStarted,
     aiScannedSupplierNameFromStorage,
-    checkForNewProductsAndDetails, // Make sure this is stable or correctly memoized
-    productsForNextStep, // Dependency for products to check
-    existingSuppliers.length, // To re-trigger if suppliers load late and conditions met
+    aiScannedOsekMorsheFromStorage,
+    initialScannedTaxDetails.supplierName,
     t,
-    // Not including state setters like setCurrentDialogStep, setExistingSuppliers etc.
-    // finalSupplierNameFromFlow, finalPaymentTermOptionFromFlow, finalPaymentDueDateFromFlow, // these are set here, not deps for starting
+    onDialogError,
+    processNextDialogStep,
   ]);
 
   const handleSupplierPaymentSheetSave = useCallback(
-    async (
-      confirmedSupplierName: string,
-      isNewSupplierFlag: boolean,
-      paymentTermOption: DueDateOption | null,
-      paymentDueDate: Date | undefined
-    ) => {
-      if (!user?.id) {
-        const err = t("edit_invoice_user_not_authenticated_desc");
-        toast({
-          title: t("error_title"),
-          description: err,
-          variant: "destructive",
-        });
-        setDialogFlowError(err);
-        onDialogError(err);
-        await processNextDialogStep("supplier_payment_save_error");
-        return;
-      }
-
+    async (data: {
+      confirmedSupplierName: string;
+      isNewSupplierFlag: boolean;
+      paymentTermOption: DueDateOption | null;
+      paymentDueDate: Date | undefined;
+      osekMorshe?: string | null;
+    }) => {
+      const {
+        confirmedSupplierName,
+        isNewSupplierFlag,
+        paymentTermOption,
+        paymentDueDate,
+        osekMorshe,
+      } = data;
       console.log("[useDialogFlow] handleSupplierPaymentSheetSave", {
         confirmedSupplierName,
         isNewSupplierFlag,
         paymentTermOption,
         paymentDueDate,
+        osekMorshe,
       });
 
-      const paymentTermsString = getPaymentTermStringForSupplierPersistence(
-        paymentTermOption,
-        paymentDueDate,
-        t
-      );
+      if (!user?.id) {
+        toast({
+          title: t("edit_invoice_user_not_authenticated_title"),
+          description: t("edit_invoice_user_not_authenticated_desc"),
+          variant: "destructive",
+        });
+        return;
+      }
 
-      try {
-        if (isNewSupplierFlag && user?.id) {
-          const settings = await getUserSettingsService(user.id);
-          const posConfig = settings.posConfig;
-          let caspitAccountId: string | undefined = undefined;
+      if (isSupplierFlowLocked) {
+        console.warn("[useDialogFlow] Supplier flow is locked. Aborting save.");
+        return;
+      }
+      setIsSupplierFlowLocked(true);
 
-          // Prepare a partial SupplierSummary object for Caspit
-          const newSupplierForCaspit = {
+      setFinalSupplierNameFromFlow(confirmedSupplierName);
+      setFinalPaymentTermOptionFromFlow(paymentTermOption);
+      setFinalPaymentDueDateFromFlow(paymentDueDate);
+      setFinalOsekMorsheFromFlow(osekMorshe);
+
+      onSupplierChangeInMainForm(confirmedSupplierName);
+      onPaymentDetailsChangeInMainForm(paymentDueDate, paymentTermOption);
+
+      if (isNewSupplierFlag) {
+        console.log(
+          `[useDialogFlow] Creating new supplier: ${confirmedSupplierName}`
+        );
+        try {
+          const paymentTermString = getPaymentTermStringForSupplierPersistence(
+            paymentTermOption,
+            paymentDueDate,
+            t
+          );
+
+          const newSupplierData: Partial<Supplier> = {
             name: confirmedSupplierName,
-            // Assuming default values for a new supplier for now.
-            // These might need to be populated from a form in the future.
-            invoiceCount: 0,
-            totalSpent: 0,
+            paymentTerms: paymentTermString,
+            osekMorshe: osekMorshe,
           };
 
-          if (posConfig?.autoSync) {
-            try {
-              const caspitResult = await createOrUpdateCaspitContactAction(
-                posConfig,
-                newSupplierForCaspit
-              );
-              if (caspitResult.success && caspitResult.caspitAccountId) {
-                caspitAccountId = caspitResult.caspitAccountId;
-              } else {
-                console.warn(
-                  "Failed to create supplier in Caspit or no ID returned.",
-                  caspitResult.message
-                );
-              }
-            } catch (caspitError) {
-              toast({
-                title: "Caspit Sync Error",
-                description: (caspitError as Error).message,
-                variant: "destructive",
-              });
-            }
-          }
-
-          const newSupplierData: {
-            paymentTerms?: string;
-            caspitAccountId?: string;
-          } = {
-            paymentTerms: paymentTermsString,
-          };
-          if (caspitAccountId) {
-            newSupplierData.caspitAccountId = caspitAccountId;
-          }
-
-          const newSupplier = await createSupplierService(
-            confirmedSupplierName,
+          const newSupplier = await createSupplierAndSyncWithCaspitService(
             newSupplierData,
             user.id
           );
-          // Update local state with the new supplier
+
           setExistingSuppliers((prev) => [...prev, newSupplier]);
-        } else {
-          const existingSupplier = existingSuppliers.find(
-            (s) => s.name.toLowerCase() === confirmedSupplierName.toLowerCase()
+          toast({
+            title: t("edit_invoice_toast_new_supplier_created_title"),
+            description: t("edit_invoice_toast_new_supplier_created_desc", {
+              supplierName: newSupplier.name,
+            }),
+          });
+        } catch (error: any) {
+          console.error(
+            `[useDialogFlow] Failed to create new supplier:`,
+            error
           );
-          if (existingSupplier && existingSupplier.id) {
-            if (existingSupplier.paymentTerms !== paymentTermsString) {
+          const errorMsg =
+            error.message || t("edit_invoice_toast_error_creating_supplier");
+          toast({
+            title: t("edit_invoice_toast_error_creating_supplier_title"),
+            description: errorMsg,
+            variant: "destructive",
+          });
+          setIsSupplierFlowLocked(false);
+          return; // Stop the flow if supplier creation fails
+        }
+      } else {
+        const existingSupplier = existingSuppliers.find(
+          (s) => s.name === confirmedSupplierName
+        );
+        if (existingSupplier) {
+          const paymentTermString = getPaymentTermStringForSupplierPersistence(
+            paymentTermOption,
+            paymentDueDate,
+            t
+          );
+
+          const dataToUpdate: Partial<Supplier> = {};
+          let needsUpdate = false;
+
+          if (existingSupplier.paymentTerms !== paymentTermString) {
+            dataToUpdate.paymentTerms = paymentTermString;
+            needsUpdate = true;
+          }
+          if (osekMorshe && existingSupplier.osekMorshe !== osekMorshe) {
+            dataToUpdate.osekMorshe = osekMorshe;
+            needsUpdate = true;
+          }
+
+          if (needsUpdate) {
+            console.log(
+              `[useDialogFlow] Updating details for existing supplier: ${confirmedSupplierName}`
+            );
+            try {
               await updateSupplierService(
                 existingSupplier.id,
-                {
-                  paymentTerms: paymentTermsString,
-                },
+                dataToUpdate,
                 user.id
               );
+              setExistingSuppliers((prev) =>
+                prev.map((s) =>
+                  s.id === existingSupplier.id ? { ...s, ...dataToUpdate } : s
+                )
+              );
               toast({
-                title: t("supplier_updated_toast_title_short"),
-                description: t("supplier_payment_terms_updated_desc", {
+                title: t("edit_invoice_toast_supplier_updated_title"),
+                description: t("edit_invoice_toast_supplier_updated_desc", {
                   supplierName: confirmedSupplierName,
                 }),
               });
-            } else {
-              console.log(
-                `[useDialogFlow] Payment terms for existing supplier '${confirmedSupplierName}' are unchanged.`
+            } catch (error: any) {
+              console.error(
+                `[useDialogFlow] Failed to update supplier:`,
+                error
               );
+              toast({
+                title: t("edit_invoice_toast_error_updating_supplier_title"),
+                description:
+                  error.message ||
+                  t("edit_invoice_toast_error_updating_supplier_desc"),
+                variant: "destructive",
+              });
+              setIsSupplierFlowLocked(false);
+              return;
             }
-          } else {
-            console.error(
-              `Could not find existing supplier by name '${confirmedSupplierName}' to update payment terms. Attempting to create as new.`
-            );
-            await createSupplierService(
-              confirmedSupplierName,
-              { paymentTerms: paymentTermsString },
-              user.id
-            );
-            toast({
-              title: t("supplier_created_toast_title_short"),
-              description: t("supplier_created_toast_desc_short_fallback", {
-                supplierName: confirmedSupplierName,
-              }),
-            });
           }
         }
-
-        setFinalSupplierNameFromFlow(confirmedSupplierName);
-        setFinalPaymentTermOptionFromFlow(paymentTermOption);
-        setFinalPaymentDueDateFromFlow(paymentDueDate);
-        onSupplierChangeInMainForm(confirmedSupplierName);
-        onPaymentDetailsChangeInMainForm(paymentDueDate, paymentTermOption);
-
-        if (user?.id) {
-          const updatedSuppliers = await getSuppliersService(user.id);
-          setExistingSuppliers(updatedSuppliers);
-        }
-      } catch (error: any) {
-        console.error(
-          "[useDialogFlow] Error saving supplier/payment terms:",
-          error
-        );
-        const errorMsg = error.message || t("supplier_save_error_generic");
-        toast({
-          title: t("error_title"),
-          description: errorMsg,
-          variant: "destructive",
-        });
-        setDialogFlowError(errorMsg);
-        onDialogError(errorMsg);
       }
-      await processNextDialogStep("supplier_payment_details_confirmed");
+
+      processNextDialogStep("supplier_payment_details_confirmed");
     },
     [
       user?.id,
+      isSupplierFlowLocked,
       t,
       toast,
-      existingSuppliers,
       onSupplierChangeInMainForm,
       onPaymentDetailsChangeInMainForm,
       processNextDialogStep,
-      onDialogError,
+      existingSuppliers,
     ]
   );
 
@@ -761,6 +715,7 @@ export function useDialogFlow({
     "isOpen" | "onOpenChange" | "t"
   > & { invoiceDate?: Date | string | Timestamp | null } = {
     potentialSupplierNameFromScan: potentialSupplierNameForSheet,
+    potentialOsekMorsheFromScan: aiScannedOsekMorsheFromStorage,
     existingSuppliers,
     initialPaymentTermOption: initialPaymentTermOptionForSheet,
     initialCustomPaymentDate: initialCustomDateForSheet,
@@ -789,32 +744,23 @@ export function useDialogFlow({
     startInitialDialogFlow,
     resetDialogFlow: () => {
       setCurrentDialogStep("idle");
-      setIsDialogFlowActive(false);
-      // Reset finalized values to reflect initial document state
-      setFinalSupplierNameFromFlow(initialScannedTaxDetails.supplierName);
-      const initialParsedTerms = parsePaymentTermString(
-        initialScannedTaxDetails.paymentTerms || null,
-        t
-      ); // Assuming paymentTerms is on initialTaxDetails
-      setFinalPaymentTermOptionFromFlow(initialParsedTerms.option);
-      setFinalPaymentDueDateFromFlow(initialParsedTerms.date);
       setDialogFlowError(null);
-      // Reset sheet-specific initial states
-      setPotentialSupplierNameForSheet(undefined);
-      setInitialPaymentTermOptionForSheet(null);
-      setInitialCustomDateForSheet(undefined);
-      // Trigger update in main form
-      onSupplierChangeInMainForm(initialScannedTaxDetails.supplierName || null);
-      onPaymentDetailsChangeInMainForm(
-        initialParsedTerms.date,
-        initialParsedTerms.option
-      );
+      setIsDialogFlowActive(false);
+      setHasFlowStarted(false);
+      setIsSupplierFlowLocked(false);
+      setFinalSupplierNameFromFlow(null);
+      setFinalPaymentDueDateFromFlow(undefined);
+      setFinalPaymentTermOptionFromFlow(null);
+      setFinalOsekMorsheFromFlow(null);
+      setProductsToDisplayForNewDetails([]);
+      console.log("[useDialogFlow] Dialog flow reset.");
     },
     supplierPaymentSheetProps: determinedSupplierPaymentSheetProps,
     newProductDetailsDialogProps: determinedNewProductDetailsDialogProps,
     finalizedSupplierName: finalSupplierNameFromFlow,
     finalizedPaymentDueDate: finalPaymentDueDateFromFlow,
     finalizedPaymentTermOption: finalPaymentTermOptionFromFlow,
+    finalizedOsekMorshe: finalOsekMorsheFromFlow,
     dialogFlowError,
     productsForDialog: productsToDisplayForNewDetails,
   };

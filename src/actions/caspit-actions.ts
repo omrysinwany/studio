@@ -5,11 +5,7 @@ import type {
   PosConnectionConfig,
   SyncResult,
 } from "@/services/pos-integration/pos-adapter.interface";
-import type {
-  Product,
-  SupplierSummary,
-  InvoiceHistoryItem,
-} from "@/services/backend";
+import type { Product, InvoiceHistoryItem, Supplier } from "@/services/backend";
 import {
   CaspitContact,
   CaspitDocument,
@@ -960,7 +956,7 @@ interface CaspitContactPayload {
   Id?: string | null;
   Name: string;
   OsekMorshe?: string | null; // Tax ID
-  ContactType: number; // 1 for Customer, 2 for Supplier
+  ContactType: number; // 0 for Customer, 1 for Supplier, 2 for CustomerAndSupplier
   Email?: string | null;
   Address1?: string | null;
   City?: string | null;
@@ -973,36 +969,86 @@ interface CaspitDocumentPayload extends CaspitDocument {
   // This can extend the main type and override/add fields as needed for creation payloads
 }
 
-// --- Server Action to Create or Update a Contact in Caspit ---
-export async function createOrUpdateCaspitContactAction(
+// A helper function to convert our Payment Term string to Caspit's numeric codes
+const convertPaymentTermsToCaspit = (
+  termString: string | null | undefined
+): { PaymentTerms?: number; PaymentTermsDays?: number } => {
+  if (!termString) return {};
+
+  if (termString.toLowerCase().includes("immediate"))
+    return { PaymentTerms: 2 }; // Cash
+  if (termString.toLowerCase().includes("eom")) return { PaymentTerms: 1 }; // "Shotef"
+  if (termString.toLowerCase().includes("net 30"))
+    return { PaymentTerms: 3, PaymentTermsDays: 30 }; // Days
+  if (termString.toLowerCase().includes("net 60"))
+    return { PaymentTerms: 3, PaymentTermsDays: 60 }; // Days
+  if (termString.toLowerCase().includes("net 90"))
+    return { PaymentTerms: 3, PaymentTermsDays: 90 }; // Days
+
+  // Basic logic for "Shotef+X"
+  const shotefPlusMatch = termString.match(/(\d+)/);
+  if (shotefPlusMatch && shotefPlusMatch[1]) {
+    return {
+      PaymentTerms: 3,
+      PaymentTermsDays: parseInt(shotefPlusMatch[1], 10),
+    };
+  }
+
+  return {};
+};
+
+export const createOrUpdateCaspitContactAction = async (
   config: PosConnectionConfig,
-  supplier: SupplierSummary
+  supplier: Supplier
 ): Promise<{
   success: boolean;
-  message: string;
-  caspitAccountId?: string | null;
-}> {
-  console.log(
-    `[Caspit Action] Starting create/update for contact: ${supplier.name}`
-  );
+  caspitAccountId?: string;
+  message?: string;
+}> => {
   try {
+    console.log(
+      `[Caspit Action] Starting create/update for contact: ${supplier.name}`
+    );
     const token = await getCaspitToken(config);
+    if (!token) throw new Error("Could not retrieve Caspit auth token.");
 
-    const payload: CaspitContactPayload = {
-      Id: supplier.id, // Using the app's internal ID as the reference ID in Caspit
-      Name: supplier.name,
-      OsekMorshe: null,
-      Email: supplier.email || null,
-      MobilePhone: supplier.phone || null,
-      ContactType: 2, // 2 for Supplier
-    };
-
-    const isUpdate = !!supplier.caspitAccountId;
-    // NOTE: The logic here assumes we use our internal ID (`supplier.id`) as Caspit's ID for simplicity and idempotency.
-    // If Caspit generates its own ID on creation, this flow needs adjustment to store that ID back in our system.
-    // The current Product implementation uses the app's ID for creation, so we follow that pattern.
     const url = `${CASPIT_API_BASE_URL}/Contacts?token=${token}`;
-    const method = "POST"; // Caspit API might use POST for both create and update (upsert)
+    const method = "POST"; // Caspit uses POST for both create and update (upsert)
+
+    const caspitPaymentTerms = convertPaymentTermsToCaspit(
+      supplier.paymentTerms
+    );
+
+    const payload = {
+      // Key fields
+      ContactId: supplier.caspitAccountId || supplier.id, // Use existing Caspit ID or fall back to Firestore ID
+      ContactType: 2, // 1 for Supplier, 2 for Customer+Supplier. 2 is safer.
+
+      // Main identifiers
+      BusinessName: supplier.name,
+      OsekMorshe: supplier.osekMorshe || null,
+
+      // Contact Person and Details
+      Name: supplier.contactPersonName || supplier.name, // Use specific contact person or fallback to business name
+      Email: supplier.email || null,
+      Phone: supplier.phone || null,
+      Mobile: supplier.mobile || null,
+
+      // Address
+      Address1: supplier.address?.street || null,
+      City: supplier.address?.city || null,
+      PostalCode: supplier.address?.postalCode || null,
+      Country: supplier.address?.country || "ישראל",
+
+      // Payment and invoicing
+      ...caspitPaymentTerms,
+      InvoiceComment: supplier.invoiceComment || null,
+
+      // Bank Details
+      BankAcctNumber: supplier.bankDetails?.accountNumber || null,
+      BankAcctBranch: supplier.bankDetails?.branch || null,
+      BankAcctBankId: supplier.bankDetails?.bankId || null,
+    };
 
     console.log(
       `[Caspit Action - createOrUpdateContact] Sending request to Caspit. Method: ${method}, URL: ${url}`
@@ -1013,11 +1059,8 @@ export async function createOrUpdateCaspitContactAction(
     );
 
     const response = await fetch(url, {
-      method: method,
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      method,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
@@ -1028,29 +1071,22 @@ export async function createOrUpdateCaspitContactAction(
       );
     }
 
-    const responseData = JSON.parse(responseText);
-    // Assuming the response contains the created/updated contact, and its ID is what we sent.
-    const returnedCaspitId = responseData?.Id || payload.Id;
+    // Caspit returns the object on success, which includes the ID.
+    const result = JSON.parse(responseText);
+    const returnedId = result.ContactId;
 
     console.log(
-      `[Caspit Action] Successfully created/updated contact. Caspit ID: ${returnedCaspitId}`
+      `[Caspit Action] Successfully created/updated contact. Caspit ID: ${returnedId}`
     );
-    return {
-      success: true,
-      message: "Supplier synced successfully with Caspit.",
-      caspitAccountId: returnedCaspitId,
-    };
+
+    return { success: true, caspitAccountId: returnedId };
   } catch (error: any) {
     console.error(
-      `[Caspit Action] Error syncing supplier ${supplier.name}:`,
-      error
+      `[Caspit Action] Error syncing contact ${supplier.name}: ${error.message}`
     );
-    return {
-      success: false,
-      message: `Failed to sync supplier to Caspit: ${error.message}`,
-    };
+    return { success: false, message: error.message };
   }
-}
+};
 
 // --- Server Action to Create a Document in Caspit ---
 export async function createCaspitDocumentAction(

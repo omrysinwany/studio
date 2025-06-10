@@ -25,14 +25,18 @@ import {
   arrayUnion,
   arrayRemove,
   DocumentReference,
+  CollectionReference,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
   createOrUpdateCaspitProductAction,
   deactivateCaspitProductAction,
+  createOrUpdateCaspitContactAction,
+  createCaspitDocumentAction,
+  updateCaspitProductAction,
 } from "@/actions/caspit-actions";
 import type { PosConnectionConfig } from "./pos-integration/pos-adapter.interface";
-import { useAuth } from "@/contexts/AuthContext";
+import { parseISO, isValid } from "date-fns";
 
 // =================================================================
 // COLLECTION AND SUBCOLLECTION NAMES
@@ -104,7 +108,7 @@ export interface Invoice {
   caspitPurchaseDocId?: string | null;
   lastUpdated?: Timestamp | FieldValue;
   paymentTerms?: string;
-  paymentReceiptImageUri?: string;
+  paymentReceiptImageUri?: string | null | undefined;
   originalImageUri?: string;
   originalImagePreviewUri?: string | null;
   driveFileId?: string;
@@ -127,12 +131,27 @@ export interface Supplier {
   name: string;
   invoiceCount: number;
   totalSpent: number;
+  caspitAccountId?: string | null;
+  osekMorshe?: string | null;
+  contactPersonName?: string | null;
   phone?: string | null;
+  mobile?: string | null;
   email?: string | null;
+  address?: {
+    street?: string | null;
+    city?: string | null;
+    postalCode?: string | null;
+    country?: string | null;
+  } | null;
   paymentTerms?: string | null;
+  invoiceComment?: string | null;
+  bankDetails?: {
+    accountNumber?: string | null;
+    branch?: string | null;
+    bankId?: number | null;
+  } | null;
   lastActivityDate?: string | Timestamp | null;
   createdAt: Timestamp | FieldValue;
-  caspitAccountId?: string | null;
 }
 
 export interface OtherExpense {
@@ -191,10 +210,10 @@ export interface PriceCheckResult {
 // SUBCOLLECTION HELPERS
 // =================================================================
 
-const getUserSubcollectionRef = <T>(userId: string, collectionName: string) => {
+const getUserSubcollectionRef = (userId: string, collectionName: string) => {
   if (!db) throw new Error("Firestore is not initialized.");
   if (!userId) throw new Error("User ID is required to access subcollections.");
-  return collection(db, USERS_COLLECTION, userId, collectionName) as Query<T>;
+  return collection(db, USERS_COLLECTION, userId, collectionName);
 };
 
 const getUserSubcollectionDocRef = (
@@ -215,56 +234,131 @@ const getUserSubcollectionDocRef = (
 // SERVICE FUNCTIONS
 // =================================================================
 
+const convertToTimestampIfValid = (
+  dateVal: any
+): Timestamp | null | FieldValue => {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date && isValid(dateVal)) {
+    return Timestamp.fromDate(dateVal);
+  }
+  if (dateVal instanceof Timestamp) {
+    return dateVal;
+  }
+  if (typeof dateVal === "string") {
+    // Handle DD/MM/YYYY format which is common in some locales
+    const dmyParts = dateVal.split("/");
+    if (dmyParts.length === 3) {
+      const day = parseInt(dmyParts[0], 10);
+      const month = parseInt(dmyParts[1], 10);
+      const year = parseInt(dmyParts[2], 10);
+      // Note: month is 0-indexed in JavaScript Date constructor
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year > 1000) {
+        const parsedDmy = new Date(Date.UTC(year, month - 1, day));
+        if (isValid(parsedDmy)) {
+          return Timestamp.fromDate(parsedDmy);
+        }
+      }
+    }
+
+    // Fallback to ISO parsing
+    const parsedIso = parseISO(dateVal);
+    if (isValid(parsedIso)) {
+      return Timestamp.fromDate(parsedIso);
+    }
+  }
+  if (
+    typeof dateVal === "object" &&
+    dateVal !== null &&
+    "isEqual" in dateVal &&
+    typeof dateVal.isEqual === "function"
+  ) {
+    // This checks for FieldValue like serverTimestamp()
+    return dateVal as FieldValue;
+  }
+  console.warn(
+    `[convertToTimestampIfValid] Could not convert date value:`,
+    dateVal
+  );
+  return null;
+};
+
 export const checkProductPricesBeforeSaveService = async (
   productsToCheck: Product[],
   userId: string
 ): Promise<PriceCheckResult> => {
-  const inventoryRef = getUserSubcollectionRef<Product>(
-    userId,
-    INVENTORY_SUBCOLLECTION
-  );
+  const inventoryRef = getUserSubcollectionRef(userId, INVENTORY_SUBCOLLECTION);
   const priceDiscrepancies: ProductPriceDiscrepancy[] = [];
   const productsToSaveDirectly: Product[] = [];
+
   const catalogNumbers = productsToCheck
     .map((p) => p.catalogNumber)
-    .filter(Boolean);
+    .filter((cn): cn is string => !!cn);
+  const barcodes = productsToCheck
+    .map((p) => p.barcode)
+    .filter((b): b is string => !!b);
 
-  if (catalogNumbers.length === 0) {
+  if (catalogNumbers.length === 0 && barcodes.length === 0) {
     return { productsToSaveDirectly: productsToCheck, priceDiscrepancies: [] };
   }
 
   const existingProductsMap = new Map<string, Product>();
 
-  // Firestore 'in' query can take up to 30 items.
-  const chunks = [];
-  for (let i = 0; i < catalogNumbers.length; i += 30) {
-    chunks.push(catalogNumbers.slice(i, i + 30));
-  }
+  // Helper to add product to map
+  const addProductToMap = (product: Product) => {
+    if (
+      product.catalogNumber &&
+      !existingProductsMap.has(product.catalogNumber)
+    ) {
+      existingProductsMap.set(product.catalogNumber, product);
+    }
+    if (product.barcode && !existingProductsMap.has(product.barcode)) {
+      existingProductsMap.set(product.barcode, product);
+    }
+  };
 
-  for (const chunk of chunks) {
-    const q = query(inventoryRef, where("catalogNumber", "in", chunk));
-    const querySnapshot = await getDocs(q);
-    querySnapshot.forEach((doc) => {
-      const product = { ...doc.data(), id: doc.id } as Product;
-      if (product.catalogNumber) {
-        existingProductsMap.set(product.catalogNumber, product);
-      }
-    });
+  const fetchInChunks = async (
+    field: "catalogNumber" | "barcode",
+    values: string[]
+  ) => {
+    for (let i = 0; i < values.length; i += 10) {
+      const chunk = values.slice(i, i + 10);
+      const q = query(inventoryRef, where(field, "in", chunk));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((doc) => {
+        addProductToMap(doc.data() as Product);
+      });
+    }
+  };
+
+  if (catalogNumbers.length > 0) {
+    await fetchInChunks("catalogNumber", catalogNumbers);
+  }
+  if (barcodes.length > 0) {
+    await fetchInChunks("barcode", barcodes);
   }
 
   for (const product of productsToCheck) {
-    const existingProduct = existingProductsMap.get(product.catalogNumber);
-    if (
-      existingProduct &&
-      existingProduct.unitPrice !== product.unitPrice &&
-      product.unitPrice > 0
-    ) {
-      priceDiscrepancies.push({
-        ...product,
-        id: existingProduct.id,
-        existingUnitPrice: existingProduct.unitPrice,
-        newUnitPrice: product.unitPrice,
-      });
+    const existingProduct =
+      existingProductsMap.get(product.catalogNumber) ||
+      existingProductsMap.get(product.barcode!);
+
+    if (existingProduct) {
+      const existingUnitPrice = Number(existingProduct.unitPrice) || 0;
+      const newUnitPrice = Number(product.unitPrice) || 0;
+
+      if (Math.abs(existingUnitPrice - newUnitPrice) > 0.001) {
+        priceDiscrepancies.push({
+          ...product,
+          id: existingProduct.id,
+          existingUnitPrice: existingUnitPrice,
+          newUnitPrice: newUnitPrice,
+        });
+      } else {
+        productsToSaveDirectly.push({
+          ...product,
+          id: existingProduct.id,
+        });
+      }
     } else {
       productsToSaveDirectly.push(product);
     }
@@ -274,7 +368,10 @@ export const checkProductPricesBeforeSaveService = async (
 };
 
 export const finalizeSaveProductsService = async (
-  productsToSave: (Omit<Product, "id"> & { id?: string })[],
+  productsToSave: (Omit<Product, "id" | "userId"> & {
+    id?: string;
+    _originalId?: string;
+  })[],
   originalFileName: string,
   docType: "deliveryNote" | "invoice" | "paymentReceipt",
   userId: string,
@@ -293,171 +390,275 @@ export const finalizeSaveProductsService = async (
   finalInvoiceRecord: InvoiceHistoryItem;
   savedOrUpdatedProducts: Product[];
 }> => {
-  if (!db) throw new Error("Firestore is not initialized.");
-  if (!userId) throw new Error("User ID is required.");
+  const firestoreDb = db;
+  if (!firestoreDb) throw new Error("Firestore (db) is not initialized.");
+  if (!userId) throw new Error("User ID is missing.");
+  if (!supplierName) throw new Error("Supplier name is required.");
 
-  console.log(
-    `[finalizeSaveProductsService] Starting save for docType: ${docType}, tempOrExistingDocId: ${tempOrExistingDocId}`
+  const supplierQuery = query(
+    getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION),
+    where("name", "==", supplierName),
+    limit(1)
   );
+  const supplierQuerySnapshot = await getDocs(supplierQuery);
+  const existingSupplierDoc = supplierQuerySnapshot.docs[0];
+
+  let finalInvoiceRecord!: InvoiceHistoryItem;
+  const savedOrUpdatedProducts: Product[] = [];
+  let finalSupplierId!: string;
 
   try {
-    const { finalInvoiceRecord, savedOrUpdatedProducts } = await runTransaction(
-      db,
-      async (transaction) => {
-        // =================================================================
-        // 1. READ PHASE - Gather all required data from Firestore
-        // =================================================================
-        const productSnapshots = new Map<string, DocumentSnapshot>();
+    await runTransaction(firestoreDb, async (transaction) => {
+      const inventoryCollectionRef = getUserSubcollectionRef(
+        userId,
+        INVENTORY_SUBCOLLECTION
+      );
+      let supplierRef: DocumentReference;
 
-        for (const productToSave of productsToSave) {
-          const isExistingProduct =
-            productToSave.id && !productToSave.id.startsWith("scan-item-");
-          if (isExistingProduct) {
-            const productRef = doc(
-              db!,
-              `users/${userId}/${INVENTORY_SUBCOLLECTION}`,
-              productToSave.id!
-            );
-            const snap = await transaction.get(productRef);
-            if (snap.exists()) {
-              productSnapshots.set(snap.ref.path, snap);
-            }
-          }
+      if (existingSupplierDoc) {
+        supplierRef = existingSupplierDoc.ref;
+        finalSupplierId = existingSupplierDoc.id;
+        const supplierDocInTransaction = await transaction.get(supplierRef);
+        if (!supplierDocInTransaction.exists()) {
+          throw new Error(
+            "Supplier was deleted between the initial query and the transaction start."
+          );
         }
+        const supplierData = supplierDocInTransaction.data();
+        transaction.update(supplierRef, {
+          totalSpent: (supplierData.totalSpent || 0) + (totalAmount || 0),
+          invoiceCount: (supplierData.invoiceCount || 0) + 1,
+          lastActivityDate: serverTimestamp(),
+        });
+      } else {
+        supplierRef = doc(
+          getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION)
+        );
+        finalSupplierId = supplierRef.id;
+        transaction.set(supplierRef, {
+          id: finalSupplierId,
+          userId,
+          name: supplierName,
+          totalSpent: totalAmount || 0,
+          invoiceCount: 1,
+          createdAt: serverTimestamp(),
+          lastActivityDate: serverTimestamp(),
+          paymentTerms: paymentTermStringForDocument || null,
+          caspitAccountId: null,
+        });
+      }
 
-        // =================================================================
-        // 2. WRITE PHASE - Perform all writes
-        // =================================================================
-        const savedOrUpdatedProductsData: Product[] = [];
+      for (const product of productsToSave) {
+        let productRef: DocumentReference;
+        const { _originalId, ...productData } = product;
 
-        for (const productToSave of productsToSave) {
-          let productRef: DocumentReference;
-          const isExistingProduct =
-            productToSave.id && !productToSave.id.startsWith("scan-item-");
-
-          if (isExistingProduct) {
-            productRef = doc(
-              db!,
-              `users/${userId}/${INVENTORY_SUBCOLLECTION}`,
-              productToSave.id!
-            );
-            const productSnap = productSnapshots.get(productRef.path);
-
-            if (productSnap && productSnap.exists()) {
-              // Product exists, update it
-              const existingProductData = productSnap.data() as Product;
-              const newQuantity =
-                (existingProductData.quantity || 0) +
-                (productToSave.quantity || 0);
-              transaction.update(productRef, { quantity: newQuantity });
-
-              savedOrUpdatedProductsData.push({
-                ...existingProductData,
-                ...productToSave,
-                id: productRef.id,
-                quantity: newQuantity,
-              });
-            } else {
-              // Product has an ID but doesn't exist in DB, treat as new
-              delete productToSave.id;
-              productRef = doc(
-                collection(db!, `users/${userId}/${INVENTORY_SUBCOLLECTION}`)
-              );
-              const newProductData: Product = {
-                ...(productToSave as Omit<Product, "id">),
-                userId,
-                id: productRef.id,
-                quantity: productToSave.quantity || 0, // Ensure quantity is a number
-                isActive: true,
-              };
-              transaction.set(productRef, newProductData);
-              savedOrUpdatedProductsData.push(newProductData);
-            }
-          } else {
-            // New product, create it
-            if (productToSave.id?.startsWith("scan-item-")) {
-              delete productToSave.id;
-            }
-            productRef = doc(
-              collection(db!, `users/${userId}/${INVENTORY_SUBCOLLECTION}`)
-            );
-            const newProductData: Product = {
-              ...(productToSave as Omit<Product, "id">),
-              userId,
-              id: productRef.id,
-              quantity: productToSave.quantity || 0, // Ensure quantity is a number
-              isActive: true,
-            };
-            transaction.set(productRef, newProductData);
-            savedOrUpdatedProductsData.push(newProductData);
-          }
+        if (_originalId && !_originalId.startsWith("prod-temp-")) {
+          productRef = getUserSubcollectionDocRef(
+            userId,
+            INVENTORY_SUBCOLLECTION,
+            _originalId
+          );
+          transaction.update(productRef, {
+            ...productData,
+            lastUpdated: serverTimestamp(),
+            isActive: true, // Ensure re-activating if it was inactive
+          });
+          // Omit serverTimestamp from the object saved in the invoice's product array
+          const { lastUpdated, ...productDataForInvoice } =
+            productData as Partial<Product>;
+          savedOrUpdatedProducts.push({
+            ...productDataForInvoice,
+            id: _originalId,
+            userId,
+          } as Product);
+        } else {
+          productRef = doc(inventoryCollectionRef);
+          const newProductData = {
+            ...productData,
+            id: productRef.id,
+            userId,
+            lastUpdated: serverTimestamp(),
+            isActive: true,
+          };
+          transaction.set(productRef, newProductData);
+          // Omit serverTimestamp from the object saved in the invoice's product array
+          const { lastUpdated, ...newProductForInvoice } = newProductData;
+          savedOrUpdatedProducts.push(newProductForInvoice as Product);
         }
+      }
 
-        // 3. Finalize Invoice Document
-        const finalInvoiceId = tempOrExistingDocId?.startsWith("pending-inv-")
-          ? tempOrExistingDocId.replace("pending-inv-", "")
-          : doc(collection(db!, "users", userId, DOCUMENTS_SUBCOLLECTION)).id;
+      const finalInvoiceRef = tempOrExistingDocId
+        ? getUserSubcollectionDocRef(
+            userId,
+            DOCUMENTS_SUBCOLLECTION,
+            tempOrExistingDocId
+          )
+        : doc(getUserSubcollectionRef(userId, DOCUMENTS_SUBCOLLECTION));
 
-        const finalInvoiceDocRef = doc(
-          db!,
-          `users/${userId}/${DOCUMENTS_SUBCOLLECTION}`,
-          finalInvoiceId
+      const invoiceData = {
+        id: finalInvoiceRef.id,
+        userId,
+        originalFileName,
+        generatedFileName: `${docType}_${invoiceNumber || "N_A"}_${Date.now()}`,
+        uploadTime: serverTimestamp(),
+        status: "completed",
+        documentType: docType,
+        supplierName: supplierName,
+        supplierId: finalSupplierId,
+        invoiceNumber: invoiceNumber || null,
+        invoiceDate: convertToTimestampIfValid(invoiceDate),
+        totalAmount: totalAmount ?? 0,
+        itemCount: productsToSave.length,
+        paymentMethod: paymentMethod || null,
+        dueDate: convertToTimestampIfValid(paymentDueDate),
+        paymentStatus: "unpaid",
+        products: savedOrUpdatedProducts,
+        isArchived: false,
+        rawScanResultJson: rawScanResultJson || null,
+        caspitPurchaseDocId: null,
+        syncError: null,
+        paymentReceiptImageUri: null,
+        originalImagePreviewUri: originalImagePreviewUri || null,
+        compressedImageForFinalRecordUri:
+          compressedImageForFinalRecordUri || null,
+        errorMessage: null,
+        linkedDeliveryNoteId: null,
+        paymentTerms: paymentTermStringForDocument,
+      };
+
+      transaction.set(finalInvoiceRef, invoiceData, { merge: true });
+      finalInvoiceRecord = invoiceData as unknown as InvoiceHistoryItem;
+    });
+
+    try {
+      const userSettings = await getUserSettingsService(userId);
+      if (
+        userSettings?.posSystemId === "caspit" &&
+        userSettings.posConfig &&
+        finalSupplierId
+      ) {
+        console.log("[Caspit Sync] Starting sync for new document...");
+        const supplierDocRef = getUserSubcollectionDocRef(
+          userId,
+          SUPPLIERS_SUBCOLLECTION,
+          finalSupplierId
+        );
+        const supplierDoc = await getDoc(supplierDocRef);
+        const invoiceDocRef = getUserSubcollectionDocRef(
+          userId,
+          DOCUMENTS_SUBCOLLECTION,
+          finalInvoiceRecord.id
         );
 
-        const finalInvoiceData: Partial<Invoice> = {
-          userId,
-          originalFileName,
-          status: "completed",
-          documentType: docType,
-          products: savedOrUpdatedProductsData,
-          supplierName: supplierName || null,
-          invoiceNumber: invoiceNumber || null,
-          totalAmount: totalAmount || null,
-          dueDate: paymentDueDate || null,
-          invoiceDate: invoiceDate || null,
-          paymentMethod: paymentMethod || null,
-          paymentStatus: "unpaid",
-          isArchived: false,
-          lastUpdated: serverTimestamp(),
-          originalImagePreviewUri: originalImagePreviewUri || null,
-          compressedImageForFinalRecordUri:
-            compressedImageForFinalRecordUri || null,
-          rawScanResultJson: rawScanResultJson || null,
-        };
+        if (supplierDoc.exists()) {
+          const supplierData = supplierDoc.data() as Supplier;
+          let caspitContactId = supplierData.caspitAccountId;
 
-        if (paymentTermStringForDocument) {
-          finalInvoiceData.paymentTerms = paymentTermStringForDocument;
+          if (!caspitContactId) {
+            console.log(
+              "[Caspit Sync] Supplier does not have caspitAccountId, creating/updating in Caspit..."
+            );
+            const contactResult = await createOrUpdateCaspitContactAction(
+              userSettings.posConfig,
+              supplierData
+            );
+            if (contactResult.success && contactResult.caspitAccountId) {
+              caspitContactId = contactResult.caspitAccountId;
+              await updateDoc(supplierDocRef, {
+                caspitAccountId: caspitContactId,
+              });
+              console.log(
+                `[Caspit Sync] Successfully created/synced supplier. Caspit ID: ${caspitContactId}`
+              );
+            } else {
+              throw new Error(
+                `Caspit supplier sync failed: ${contactResult.message}`
+              );
+            }
+          }
+
+          if (caspitContactId) {
+            console.log(
+              `[Caspit Sync] Supplier has Caspit ID (${caspitContactId}). Proceeding to sync document.`
+            );
+            for (const product of savedOrUpdatedProducts) {
+              const caspitProductResult =
+                await createOrUpdateCaspitProductAction(
+                  userSettings.posConfig,
+                  product
+                );
+              if (
+                caspitProductResult.success &&
+                caspitProductResult.caspitProductId
+              ) {
+                const productRef = getUserSubcollectionDocRef(
+                  userId,
+                  INVENTORY_SUBCOLLECTION,
+                  product.id
+                );
+                await updateDoc(productRef, {
+                  caspitProductId: caspitProductResult.caspitProductId,
+                });
+                console.log(
+                  `[Caspit Sync] Product ${product.id} synced. Caspit ID: ${caspitProductResult.caspitProductId}`
+                );
+              } else {
+                console.error(
+                  `[Caspit Sync] Failed to sync product ${product.id} with Caspit: ${caspitProductResult.message}`
+                );
+              }
+            }
+
+            const documentResult = await createCaspitDocumentAction(
+              userSettings.posConfig,
+              JSON.parse(JSON.stringify(finalInvoiceRecord)),
+              savedOrUpdatedProducts,
+              caspitContactId
+            );
+
+            if (documentResult.success && documentResult.caspitPurchaseDocId) {
+              await updateDoc(invoiceDocRef, {
+                caspitPurchaseDocId: documentResult.caspitPurchaseDocId,
+                syncError: null,
+              });
+              console.log(
+                `[Caspit Sync] Document ${finalInvoiceRecord.id} synced. Caspit Doc ID: ${documentResult.caspitPurchaseDocId}`
+              );
+            } else {
+              await updateDoc(invoiceDocRef, {
+                syncError: `Caspit: ${documentResult.message}`,
+              });
+              console.error(
+                `[Caspit Sync] Failed to create Caspit document: ${documentResult.message}`
+              );
+            }
+          }
         }
-
-        transaction.set(finalInvoiceDocRef, finalInvoiceData, { merge: true });
-
-        // 4. Delete temporary document if it exists
-        if (tempOrExistingDocId?.startsWith("pending-inv-")) {
-          const tempDocRef = doc(
-            db!,
-            `users/${userId}/${DOCUMENTS_SUBCOLLECTION}`,
-            tempOrExistingDocId
-          );
-          transaction.delete(tempDocRef);
-        }
-
-        const finalInvoiceRecordForReturn = {
-          ...finalInvoiceData,
-          id: finalInvoiceId,
-          uploadTime: Timestamp.now(), // Use client-side timestamp for immediate UI update
-        } as InvoiceHistoryItem;
-
-        return {
-          finalInvoiceRecord: finalInvoiceRecordForReturn,
-          savedOrUpdatedProducts: savedOrUpdatedProductsData,
-        };
       }
-    );
+    } catch (caspitError: any) {
+      console.error(
+        "[Backend] Non-blocking error during Caspit sync:",
+        caspitError
+      );
+      if (finalInvoiceRecord?.id) {
+        const invoiceDocRef = getUserSubcollectionDocRef(
+          userId,
+          DOCUMENTS_SUBCOLLECTION,
+          finalInvoiceRecord.id
+        );
+        await updateDoc(invoiceDocRef, {
+          syncError: `Caspit Sync Failed: ${caspitError.message}`,
+        });
+      }
+    }
 
     return { finalInvoiceRecord, savedOrUpdatedProducts };
-  } catch (e) {
-    console.error(`[finalizeSaveProductsService] Transaction failed:`, e);
-    throw e;
+  } catch (error) {
+    console.error(
+      "[Backend finalizeSaveProductsService] Error in transaction:",
+      error
+    );
+    throw error;
   }
 };
 
@@ -465,176 +666,71 @@ export const syncProductsWithCaspitService = async (
   products: Product[],
   userId: string
 ): Promise<void> => {
-  if (!userId || !products || products.length === 0) {
+  const userSettings = await getUserSettingsService(userId);
+  if (userSettings?.posSystemId !== "caspit" || !userSettings.posConfig) {
+    console.log("Caspit POS not configured, skipping sync.");
     return;
   }
 
-  const settings = await getUserSettingsService(userId);
-  if (!settings.posConfig?.autoSync) {
-    return; // Auto-sync is disabled
-  }
-
-  console.log(
-    `[syncProductsWithCaspitService] Starting sync for ${products.length} products.`
-  );
-
   for (const product of products) {
     try {
-      const caspitResult = await createOrUpdateCaspitProductAction(
-        settings.posConfig,
-        product
-      );
-      if (caspitResult.caspitProductId && product.id) {
-        // Update our product with the ID from Caspit for future reference
-        const productRef = getUserSubcollectionDocRef(
-          userId,
-          INVENTORY_SUBCOLLECTION,
-          product.id
-        );
-        await updateDoc(productRef, {
-          caspitProductId: caspitResult.caspitProductId,
-        });
-      }
+      await createOrUpdateCaspitProductAction(userSettings.posConfig, product);
     } catch (error) {
-      console.error(
-        `[syncProductsWithCaspitService] Failed to sync product ${
-          product.catalogNumber || product.id
-        }:`,
-        error
-      );
-      // We continue to the next product even if one fails
+      console.error(`Failed to sync product ${product.id} with Caspit:`, error);
     }
   }
-  console.log(`[syncProductsWithCaspitService] Sync finished.`);
 };
-
-// USER SETTINGS
-// -----------------------------------------------------------------
 
 export async function getUserSettingsService(
   userId: string
 ): Promise<UserSettings> {
-  if (!db || !userId) {
-    throw new Error(
-      "DB not initialized or User ID missing for getUserSettingsService."
-    );
-  }
-
-  const userSettingsRef = getUserSubcollectionDocRef(
+  const settingsRef = getUserSubcollectionDocRef(
     userId,
     USER_SETTINGS_SUBCOLLECTION,
     "userProfile"
   );
-  const docSnap = await getDoc(userSettingsRef as any);
-
-  const defaultSettings: UserSettings = {
-    userId,
-    posSystemId: null,
-    posConfig: null,
-    accountantSettings: { name: null, email: null, phone: null },
-    monthlyBudget: null,
-    reminderDaysBefore: 3,
-    kpiPreferences: {
-      visibleKpiIds: [
-        "totalItems",
-        "inventoryValue",
-        "grossProfit",
-        "currentMonthExpenses",
-      ],
-      kpiOrder: [
-        "totalItems",
-        "inventoryValue",
-        "grossProfit",
-        "currentMonthExpenses",
-      ],
-    },
-    quickActionPreferences: {
-      visibleQuickActionIds: [
-        "scanDocument",
-        "viewInventory",
-        "viewDocuments",
-        "addExpense",
-      ],
-      quickActionOrder: [
-        "scanDocument",
-        "viewInventory",
-        "viewDocuments",
-        "addExpense",
-      ],
-    },
-  };
-
-  if (!docSnap.exists()) {
-    console.log(
-      `No settings found for user ${userId}. Creating default settings.`
-    );
-    await setDoc(userSettingsRef, defaultSettings);
-    return defaultSettings;
+  const docSnap = await getDoc(settingsRef);
+  if (docSnap.exists()) {
+    return docSnap.data() as UserSettings;
   }
-  return { ...defaultSettings, ...(docSnap.data() as UserSettings) };
+  return {} as UserSettings; // Return empty object if no settings found
 }
 
 export async function saveUserSettingsService(
   settings: Partial<Omit<UserSettings, "userId">>,
   userId: string
 ): Promise<void> {
-  if (!db || !userId) {
-    throw new Error(
-      "DB not initialized or User ID missing for saveUserSettingsService."
-    );
-  }
-  const userSettingsRef = getUserSubcollectionDocRef(
+  const settingsRef = getUserSubcollectionDocRef(
     userId,
     USER_SETTINGS_SUBCOLLECTION,
     "userProfile"
   );
-  await setDoc(userSettingsRef, settings, { merge: true });
+  await setDoc(settingsRef, settings, { merge: true });
 }
-
-// INVENTORY PRODUCTS
-// -----------------------------------------------------------------
 
 export async function getProductsService(
   userId: string,
   options: { includeInactive?: boolean } = {}
 ): Promise<Product[]> {
-  const products: Product[] = [];
-  if (!userId) {
-    console.error("getProductsService called without userId");
-    return products;
-  }
-
-  const inventoryRef = getUserSubcollectionRef<Product>(
-    userId,
-    INVENTORY_SUBCOLLECTION
-  );
-  let q = query(inventoryRef);
+  let q: Query = getUserSubcollectionRef(userId, INVENTORY_SUBCOLLECTION);
   if (!options.includeInactive) {
     q = query(q, where("isActive", "==", true));
   }
-
-  const querySnapshot = await getDocs(q);
-  querySnapshot.forEach((doc) => {
-    products.push({ ...doc.data(), id: doc.id } as Product);
-  });
-
-  return products;
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => doc.data() as Product);
 }
 
 export async function getProductByIdService(
   productId: string,
   userId: string
 ): Promise<Product | null> {
-  const docRef = getUserSubcollectionDocRef(
+  const productRef = getUserSubcollectionDocRef(
     userId,
     INVENTORY_SUBCOLLECTION,
     productId
   );
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return { ...docSnap.data(), id: docSnap.id } as Product;
-  }
-  return null;
+  const docSnap = await getDoc(productRef);
+  return docSnap.exists() ? (docSnap.data() as Product) : null;
 }
 
 export async function updateProductService(
@@ -642,18 +738,70 @@ export async function updateProductService(
   productData: Partial<Product>,
   userId: string
 ): Promise<void> {
-  if (!userId) {
-    throw new Error("User ID is required to update a product.");
-  }
+  if (!db || !userId) throw new Error("DB not initialized or User ID missing.");
+
   const productRef = getUserSubcollectionDocRef(
     userId,
     INVENTORY_SUBCOLLECTION,
     productId
   );
-  await updateDoc(productRef, {
+
+  const dataToUpdate = {
     ...productData,
     lastUpdated: serverTimestamp(),
-  });
+  };
+
+  try {
+    const productDoc = await getDoc(productRef);
+    if (!productDoc.exists()) {
+      throw new Error("Product not found for update.");
+    }
+    const productBeforeUpdate = {
+      id: productDoc.id,
+      userId,
+      ...productDoc.data(),
+    } as Product;
+
+    await updateDoc(productRef, dataToUpdate);
+    console.log(`[Backend] Product ${productId} updated in Firestore.`);
+
+    if (productBeforeUpdate.caspitProductId) {
+      const userSettings = await getUserSettingsService(userId);
+      if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
+        console.log(
+          `[Backend updateProductService] Attempting to update product in Caspit. Caspit ID: ${productBeforeUpdate.caspitProductId}`
+        );
+        const updatedProductForCaspit: Product = {
+          ...productBeforeUpdate,
+          ...dataToUpdate,
+        } as Product;
+
+        try {
+          const caspitResult = await updateCaspitProductAction(
+            userSettings.posConfig,
+            updatedProductForCaspit
+          );
+          if (caspitResult.success) {
+            console.log(
+              `[Backend updateProductService] Successfully updated product ${productId} in Caspit.`
+            );
+          } else {
+            console.error(
+              `[Backend updateProductService] Failed to update product ${productId} in Caspit: ${caspitResult.message}`
+            );
+          }
+        } catch (caspitError: any) {
+          console.error(
+            `[Backend updateProductService] Critical error during Caspit update for product ${productId}: `,
+            caspitError.message
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[Backend] Error updating product ${productId}:`, error);
+    throw error;
+  }
 }
 
 export async function deleteProductService(
@@ -665,24 +813,53 @@ export async function deleteProductService(
     INVENTORY_SUBCOLLECTION,
     productId
   );
-  const productSnap = await getDoc(productRef);
-  const productData = productSnap.data() as Product | undefined;
 
-  const settings = await getUserSettingsService(userId);
-  const posConfig = settings?.posConfig;
+  let productToDeactivate: Product | null = null;
 
-  if (posConfig?.autoSync && productData?.caspitProductId) {
-    try {
-      await deactivateCaspitProductAction(posConfig, productData);
-    } catch (error) {
-      console.error("Failed to deactivate product in Caspit:", error);
-      throw new Error(
-        "Failed to deactivate product in POS. Please check POS connection settings or try again."
-      );
+  try {
+    const productDoc = await getDoc(productRef);
+    if (!productDoc.exists()) {
+      throw new Error("Product not found for deactivation.");
     }
-  }
+    productToDeactivate = {
+      id: productDoc.id,
+      userId,
+      ...productDoc.data(),
+    } as Product;
 
-  await updateDoc(productRef, { isActive: false });
+    await updateDoc(productRef, {
+      isActive: false,
+      lastUpdated: serverTimestamp(),
+    });
+    console.log(
+      `[Backend] Product ${productId} marked as inactive in Firestore.`
+    );
+
+    if (productToDeactivate?.caspitProductId) {
+      const userSettings = await getUserSettingsService(userId);
+      if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
+        console.log(
+          `[Backend deleteProductService] Attempting to deactivate product in Caspit. Caspit ID: ${productToDeactivate.caspitProductId}`
+        );
+        const caspitResult = await deactivateCaspitProductAction(
+          userSettings.posConfig,
+          productToDeactivate
+        );
+        if (caspitResult.success) {
+          console.log(
+            `[Backend deleteProductService] Product ${productId} also marked as inactive in Caspit.`
+          );
+        } else {
+          console.error(
+            `[Backend deleteProductService] Failed to mark product ${productId} as inactive in Caspit: ${caspitResult.message}`
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`[Backend] Error deactivating product ${productId}:`, error);
+    throw error;
+  }
 }
 
 export async function reactivateProductService(
@@ -694,63 +871,47 @@ export async function reactivateProductService(
     INVENTORY_SUBCOLLECTION,
     productId
   );
-  await updateDoc(productRef, { isActive: true });
+  await updateDoc(productRef, {
+    isActive: true,
+    lastUpdated: serverTimestamp(),
+  });
 }
 
 export async function clearInventoryService(userId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized");
   const inventoryRef = getUserSubcollectionRef(userId, INVENTORY_SUBCOLLECTION);
-  const querySnapshot = await getDocs(inventoryRef);
-  const batch = writeBatch(db as any);
-  querySnapshot.docs.forEach((doc) => {
+  const snapshot = await getDocs(inventoryRef);
+  const batch = writeBatch(db);
+  snapshot.docs.forEach((doc) => {
     batch.delete(doc.ref);
   });
   await batch.commit();
 }
 
-// TEMP SCAN DATA
-// -----------------------------------------------------------------
 export function getStorageKey(baseKey: string, userId: string): string {
-  if (!userId) {
-    // Fallback for cases where a key might be needed without a user context,
-    // though this should be rare. Consider throwing an error for stricter enforcement.
-    return `${baseKey}_global_unauthenticated`;
-  }
-  return `${baseKey}_${userId}`;
+  return `${baseKey}:${userId}`;
 }
 
 export function clearTemporaryScanData(tempId: string, userId: string) {
-  if (!tempId || !userId) return;
-  const storageKey = getStorageKey(`${TEMP_DATA_KEY_PREFIX}${tempId}`, userId);
-  localStorage.removeItem(storageKey);
-  console.log(`Cleared temporary data for key: ${storageKey}`);
+  const key = getStorageKey(`${TEMP_DATA_KEY_PREFIX}${tempId}`, userId);
+  localStorage.removeItem(key);
 }
 
 export function clearOldTemporaryScanData(
   force = false,
   currentUserId?: string
 ) {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return;
-  }
-
-  const now = new Date().getTime();
-  const lastClearTimestamp = parseInt(
-    localStorage.getItem("lastTempDataClear") || "0",
-    10
-  );
-
-  if (!force && now - lastClearTimestamp < TEMP_DATA_EXPIRATION_MS) {
-    return;
-  }
-
   Object.keys(localStorage).forEach((key) => {
     if (key.startsWith(TEMP_DATA_KEY_PREFIX)) {
+      if (force && currentUserId && key.endsWith(currentUserId)) {
+        localStorage.removeItem(key);
+        return;
+      }
       try {
-        const itemStr = localStorage.getItem(key);
-        if (itemStr) {
-          const item = JSON.parse(itemStr);
-          const itemTimestamp = item.timestamp || 0;
-          if (now - itemTimestamp > TEMP_DATA_EXPIRATION_MS) {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const { timestamp } = JSON.parse(stored);
+          if (Date.now() - timestamp > TEMP_DATA_EXPIRATION_MS) {
             localStorage.removeItem(key);
           }
         }
@@ -759,31 +920,16 @@ export function clearOldTemporaryScanData(
       }
     }
   });
-
-  localStorage.setItem("lastTempDataClear", now.toString());
 }
-
-// INVOICES/DOCUMENTS
-// -----------------------------------------------------------------
 
 export async function getInvoicesService(
   userId: string
 ): Promise<InvoiceHistoryItem[]> {
-  const invoices: InvoiceHistoryItem[] = [];
-  if (!userId) {
-    console.error("getInvoicesService called without userId");
-    return invoices;
-  }
-  const documentsRef = getUserSubcollectionRef<InvoiceHistoryItem>(
-    userId,
-    DOCUMENTS_SUBCOLLECTION
-  );
-  const q = query(documentsRef, orderBy("invoiceDate", "desc"), limit(250));
-  const querySnapshot = await getDocs(q);
-  querySnapshot.forEach((doc) => {
-    invoices.push({ ...doc.data(), id: doc.id } as InvoiceHistoryItem);
-  });
-  return invoices;
+  if (!db) throw new Error("Firestore not initialized");
+  const invoicesRef = getUserSubcollectionRef(userId, DOCUMENTS_SUBCOLLECTION);
+  const q = query(invoicesRef, orderBy("uploadTime", "desc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => doc.data() as InvoiceHistoryItem);
 }
 
 export async function updateInvoiceService(
@@ -791,32 +937,26 @@ export async function updateInvoiceService(
   invoiceData: Partial<Invoice>,
   userId: string
 ): Promise<Invoice> {
-  const docRef = getUserSubcollectionDocRef(
+  const invoiceRef = getUserSubcollectionDocRef(
     userId,
     DOCUMENTS_SUBCOLLECTION,
     invoiceId
   );
-  await updateDoc(docRef, {
-    ...invoiceData,
-    lastUpdated: serverTimestamp(),
-  });
-  const updatedDoc = await getDoc(docRef);
-  if (!updatedDoc.exists()) {
-    throw new Error("Failed to retrieve updated invoice.");
-  }
-  return { id: updatedDoc.id, ...updatedDoc.data() } as Invoice;
+  await updateDoc(invoiceRef, invoiceData);
+  const updatedDoc = await getDoc(invoiceRef);
+  return updatedDoc.data() as Invoice;
 }
 
 export async function deleteInvoiceService(
   invoiceId: string,
   userId: string
 ): Promise<void> {
-  const docRef = getUserSubcollectionDocRef(
+  const invoiceRef = getUserSubcollectionDocRef(
     userId,
     DOCUMENTS_SUBCOLLECTION,
     invoiceId
   );
-  await deleteDoc(docRef);
+  await deleteDoc(invoiceRef);
 }
 
 export async function updateInvoicePaymentStatusService(
@@ -825,113 +965,123 @@ export async function updateInvoicePaymentStatusService(
   userId: string,
   paymentReceiptImageUri?: string | null
 ): Promise<void> {
-  if (userId) {
-    const docRef = getUserSubcollectionDocRef(
-      userId,
-      DOCUMENTS_SUBCOLLECTION,
-      invoiceId
-    );
-    const updatePayload: {
-      paymentStatus: Invoice["paymentStatus"];
-      paymentDate?: Timestamp;
-      paymentReceiptImageUri?: string | null;
-    } = { paymentStatus };
-
-    if (paymentStatus === "paid") {
-      updatePayload.paymentDate = Timestamp.now();
-      if (paymentReceiptImageUri) {
-        updatePayload.paymentReceiptImageUri = paymentReceiptImageUri;
-      }
-    }
-
-    await updateDoc(docRef, updatePayload);
-  } else {
-    console.error(
-      "User not authenticated or user ID is missing. Cannot update invoice payment status."
-    );
-    throw new Error(
-      "User not authenticated or user ID is missing. Cannot update invoice payment status."
-    );
+  const invoiceRef = getUserSubcollectionDocRef(
+    userId,
+    DOCUMENTS_SUBCOLLECTION,
+    invoiceId
+  );
+  const updateData: Partial<Invoice> = { paymentStatus };
+  if (paymentStatus === "paid" && paymentReceiptImageUri !== undefined) {
+    updateData.paymentReceiptImageUri = paymentReceiptImageUri;
+  } else if (paymentStatus !== "paid") {
+    updateData.paymentReceiptImageUri = "";
   }
+  await updateDoc(invoiceRef, updateData);
 }
 
 export const archiveDocumentService = async (
   docId: string,
   userId: string
 ): Promise<void> => {
-  if (!userId) {
-    throw new Error("User ID is required to archive a document.");
-  }
   const docRef = getUserSubcollectionDocRef(
     userId,
     DOCUMENTS_SUBCOLLECTION,
     docId
   );
-
   await updateDoc(docRef, {
     isArchived: true,
-    archivedAt: new Date(),
+    lastUpdated: serverTimestamp(),
   });
-  console.log(`Document ${docId} archived successfully.`);
 };
 
-// SUPPLIERS
-// -----------------------------------------------------------------
-
 export async function getSuppliersService(userId: string): Promise<Supplier[]> {
-  const suppliers: Supplier[] = [];
-  if (!userId) return suppliers;
-  const suppliersRef = getUserSubcollectionRef<Supplier>(
-    userId,
-    SUPPLIERS_SUBCOLLECTION
-  );
+  if (!db) throw new Error("Firestore not initialized");
+  const suppliersRef = getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION);
   const q = query(suppliersRef, orderBy("name"));
-  const querySnapshot = await getDocs(q);
-  querySnapshot.forEach((doc) => {
-    suppliers.push({ ...doc.data(), id: doc.id } as Supplier);
-  });
-  return suppliers;
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => doc.data() as Supplier);
+}
+
+export async function createSupplierAndSyncWithCaspitService(
+  supplierData: Partial<Omit<Supplier, "id">>,
+  userId: string
+): Promise<Supplier> {
+  const newSupplier = await createSupplierService(supplierData, userId);
+
+  const userSettings = await getUserSettingsService(userId);
+  if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
+    const result = await createOrUpdateCaspitContactAction(
+      userSettings.posConfig,
+      JSON.parse(JSON.stringify(newSupplier))
+    );
+    if (result.success && result.caspitAccountId) {
+      const supplierRef = getUserSubcollectionDocRef(
+        userId,
+        SUPPLIERS_SUBCOLLECTION,
+        newSupplier.id
+      );
+      await updateDoc(supplierRef, {
+        caspitAccountId: result.caspitAccountId,
+      });
+      return { ...newSupplier, caspitAccountId: result.caspitAccountId };
+    } else {
+      console.error("Failed to sync new supplier with Caspit:", result.message);
+    }
+  }
+  return newSupplier;
 }
 
 export async function createSupplierService(
-  name: string,
-  contactInfo: {
-    phone?: string;
-    email?: string;
-    paymentTerms?: string;
-    caspitAccountId?: string;
-  },
+  supplierData: Partial<Omit<Supplier, "id">>,
   userId: string
 ): Promise<Supplier> {
-  if (!userId) throw new Error("User ID is required to create a supplier.");
+  if (!db) throw new Error("Database not initialized");
+  if (!userId) throw new Error("User authentication is required");
+  if (!supplierData.name) {
+    throw new Error("Supplier name cannot be empty.");
+  }
 
-  const suppliersRef = getUserSubcollectionRef<Supplier>(
-    userId,
-    SUPPLIERS_SUBCOLLECTION
+  const normalizedName = supplierData.name.trim();
+  const q = query(
+    getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION),
+    where("name", "==", normalizedName)
   );
-  const newSupplierRef = doc(suppliersRef as any);
-  const newSupplier: Supplier = {
-    id: newSupplierRef.id,
-    userId,
-    name,
-    ...contactInfo,
+  const existing = await getDocs(q);
+  if (!existing.empty) {
+    throw new Error(`Supplier with name "${normalizedName}" already exists.`);
+  }
+
+  const newSupplierRef = doc(
+    getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION)
+  );
+
+  const newSupplierData = {
+    ...supplierData,
+    name: normalizedName,
+    userId: userId,
+    createdAt: serverTimestamp(),
     invoiceCount: 0,
     totalSpent: 0,
-    createdAt: serverTimestamp(),
+    caspitAccountId: supplierData.caspitAccountId || null,
   };
 
-  await setDoc(newSupplierRef, newSupplier);
+  await setDoc(newSupplierRef, newSupplierData);
+  console.log(
+    `[Backend] New supplier ${newSupplierRef.id} created for user ${userId}.`
+  );
 
-  return newSupplier;
+  const now = Timestamp.now();
+  return {
+    ...newSupplierData,
+    id: newSupplierRef.id,
+    createdAt: now,
+    lastActivityDate: null,
+  } as Supplier;
 }
 
 export async function updateSupplierService(
   supplierId: string,
-  contactInfo: {
-    phone?: string | null;
-    email?: string | null;
-    paymentTerms?: string | null;
-  },
+  supplierData: Partial<Omit<Supplier, "id" | "userId">>,
   userId: string
 ): Promise<void> {
   const supplierRef = getUserSubcollectionDocRef(
@@ -939,10 +1089,7 @@ export async function updateSupplierService(
     SUPPLIERS_SUBCOLLECTION,
     supplierId
   );
-  await updateDoc(supplierRef, {
-    ...contactInfo,
-    lastUpdated: serverTimestamp(),
-  });
+  await updateDoc(supplierRef, supplierData);
 }
 
 export async function deleteSupplierService(
@@ -954,37 +1101,22 @@ export async function deleteSupplierService(
     SUPPLIERS_SUBCOLLECTION,
     supplierId
   );
-  const q = query(
-    getUserSubcollectionRef(userId, DOCUMENTS_SUBCOLLECTION),
-    where("supplierId", "==", supplierId)
-  );
-  const docsSnapshot = await getDocs(q);
-  if (!docsSnapshot.empty) {
-    throw new Error(
-      "Cannot delete supplier with associated documents. Please reassign or delete them first."
-    );
-  }
+  // Optional: Add logic to check for dependent documents before deleting
   await deleteDoc(supplierRef);
 }
 
-// OTHER EXPENSES & CATEGORIES
-// -----------------------------------------------------------------
+// ... other service functions (OtherExpense, ExpenseCategory, etc.)
 export async function getOtherExpensesService(
   userId: string
 ): Promise<OtherExpense[]> {
-  const expenses: OtherExpense[] = [];
-  if (!userId) return expenses;
-
-  const expensesRef = getUserSubcollectionRef<OtherExpense>(
+  if (!db) throw new Error("Firestore not initialized");
+  const expensesRef = getUserSubcollectionRef(
     userId,
     OTHER_EXPENSES_SUBCOLLECTION
   );
   const q = query(expensesRef, orderBy("date", "desc"));
-  const querySnapshot = await getDocs(q);
-  querySnapshot.forEach((doc) => {
-    expenses.push({ ...doc.data(), id: doc.id } as OtherExpense);
-  });
-  return expenses;
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => doc.data() as OtherExpense);
 }
 
 export async function updateOtherExpenseService(
@@ -997,32 +1129,21 @@ export async function updateOtherExpenseService(
     OTHER_EXPENSES_SUBCOLLECTION,
     expenseId
   );
-  await updateDoc(expenseRef, {
-    ...expenseData,
-    lastUpdated: serverTimestamp(),
-  });
+  await updateDoc(expenseRef, expenseData);
 }
 
 export async function getExpenseCategoriesService(
   userId: string
 ): Promise<ExpenseCategory[]> {
-  const categories: ExpenseCategory[] = [];
-  if (!userId) return categories;
-  const categoriesRef = getUserSubcollectionRef<ExpenseCategory>(
+  if (!db) throw new Error("Firestore not initialized");
+  const categoriesRef = getUserSubcollectionRef(
     userId,
     EXPENSE_CATEGORIES_SUBCOLLECTION
   );
   const q = query(categoriesRef, orderBy("name"));
-  const querySnapshot = await getDocs(q);
-  querySnapshot.forEach((doc) => {
-    categories.push({ ...doc.data(), id: doc.id } as ExpenseCategory);
-  });
-  return categories;
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => doc.data() as ExpenseCategory);
 }
-
-/**
- * UTILITY FUNCTIONS
- */
 
 export const saveUserToFirestore = async (
   user: Pick<
@@ -1030,27 +1151,20 @@ export const saveUserToFirestore = async (
     "uid" | "email" | "displayName" | "metadata"
   >
 ): Promise<User> => {
-  const userRef = doc(db as any, USERS_COLLECTION, user.uid);
-  const { creationTime, lastSignInTime } = user.metadata;
-
-  const userData: Partial<User> & { lastLoginAt: any } = {
-    username: user.displayName,
+  if (!db) throw new Error("Firestore not initialized");
+  const userRef = doc(db, USERS_COLLECTION, user.uid);
+  const data: Partial<User> = {
     email: user.email,
-    lastLoginAt: lastSignInTime
-      ? Timestamp.fromDate(new Date(lastSignInTime))
-      : serverTimestamp(),
+    username: user.displayName,
+    lastLoginAt: serverTimestamp(),
   };
 
-  const userSnap = await getDoc(userRef);
-
-  if (userSnap.exists()) {
-    await updateDoc(userRef, userData);
-  } else {
-    userData.createdAt = creationTime
-      ? Timestamp.fromDate(new Date(creationTime))
-      : serverTimestamp();
-    await setDoc(userRef, userData, { merge: true });
+  const userDoc = await getDoc(userRef);
+  if (!userDoc.exists()) {
+    data.createdAt = serverTimestamp();
   }
-  const finalUserSnap = await getDoc(userRef);
-  return { ...finalUserSnap.data(), id: finalUserSnap.id } as User;
+
+  await setDoc(userRef, data, { merge: true });
+  const finalUserDoc = await getDoc(userRef);
+  return { id: finalUserDoc.id, ...finalUserDoc.data() } as User;
 };

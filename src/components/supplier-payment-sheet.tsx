@@ -31,7 +31,7 @@ import { CalendarIcon, Check, X, AlertTriangle, Info } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTranslation } from "@/hooks/useTranslation";
 import { toast } from "@/hooks/use-toast";
-import type { SupplierSummary } from "@/services/backend";
+import type { Supplier } from "@/services/backend";
 import type { DueDateOption } from "@/components/payment-due-date-dialog"; // Will reuse this type
 import {
   format,
@@ -49,17 +49,19 @@ export type SupplierOption = "use_new" | "rename_new" | "select_existing";
 export interface SupplierPaymentSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  potentialSupplierNameFromScan: string | undefined;
-  existingSuppliers: SupplierSummary[];
+  potentialSupplierNameFromScan?: string;
+  potentialOsekMorsheFromScan?: string;
+  existingSuppliers: Supplier[];
   initialPaymentTermOption?: DueDateOption | null;
   initialCustomPaymentDate?: Date | undefined;
   invoiceDate?: Date | string | Timestamp | null;
-  onSave: (
-    confirmedSupplierName: string,
-    isNewSupplier: boolean,
-    paymentTermOption: DueDateOption | null,
-    paymentDueDate: Date | undefined
-  ) => Promise<void>; // Changed to Promise to allow async operations like service calls
+  onSave: (data: {
+    confirmedSupplierName: string;
+    isNewSupplierFlag: boolean;
+    paymentTermOption: DueDateOption | null;
+    paymentDueDate: Date | undefined;
+    osekMorshe?: string | null;
+  }) => Promise<void>;
   onCancel: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -68,6 +70,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
   isOpen,
   onOpenChange,
   potentialSupplierNameFromScan,
+  potentialOsekMorsheFromScan,
   existingSuppliers,
   initialPaymentTermOption,
   initialCustomPaymentDate,
@@ -84,6 +87,9 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
   );
   const [selectedExistingSupplierId, setSelectedExistingSupplierId] =
     useState<string>("");
+  const [osekMorsheInput, setOsekMorsheInput] = useState(
+    potentialOsekMorsheFromScan || ""
+  );
 
   // Payment Term State
   const [paymentOption, setPaymentOption] = useState<DueDateOption | null>(
@@ -105,6 +111,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
         : "rename_new";
       setSupplierOption(initialSupOpt);
       setSupplierNameInput(potentialSupplierNameFromScan || "");
+      setOsekMorsheInput(potentialOsekMorsheFromScan || "");
       setSelectedExistingSupplierId("");
 
       // Reset payment part
@@ -118,10 +125,20 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
   }, [
     isOpen,
     potentialSupplierNameFromScan,
+    potentialOsekMorsheFromScan,
     existingSuppliers,
     initialPaymentTermOption,
     initialCustomPaymentDate,
   ]);
+
+  const handleSelectedSupplierChange = (supplierId: string) => {
+    setSelectedExistingSupplierId(supplierId);
+    const supplier = existingSuppliers.find((s) => s.id === supplierId);
+    if (supplier) {
+      setOsekMorsheInput(supplier.osekMorshe || "");
+      // You could also set payment terms based on the selected supplier here
+    }
+  };
 
   const handleSave = async () => {
     let finalSupplierName: string = "";
@@ -152,10 +169,8 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
     } else {
       // select_existing
       const chosenSupplier = existingSuppliers.find(
-        (s) =>
-          s.id === selectedExistingSupplierId ||
-          s.name === selectedExistingSupplierId
-      ); // ID might be name if old data
+        (s) => s.id === selectedExistingSupplierId
+      );
       if (!chosenSupplier) {
         toast({
           title: t("error_title"),
@@ -167,6 +182,8 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
       finalSupplierName = chosenSupplier.name;
       isNew = false;
     }
+
+    const finalOsekMorshe = osekMorsheInput.trim() || null;
 
     let finalPaymentDueDate: Date | undefined;
     let baseDateForCalc: Date;
@@ -226,14 +243,16 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
       isNew,
       paymentOption,
       finalPaymentDueDate,
+      osekMorshe: finalOsekMorshe,
     });
     try {
-      await onSave(
-        finalSupplierName,
-        isNew,
-        paymentOption,
-        finalPaymentDueDate
-      );
+      await onSave({
+        confirmedSupplierName: finalSupplierName,
+        isNewSupplierFlag: isNew,
+        paymentTermOption: paymentOption,
+        paymentDueDate: finalPaymentDueDate,
+        osekMorshe: finalOsekMorshe,
+      });
       onOpenChange(false); // Close sheet on successful save
     } catch (error) {
       console.error("[SupplierPaymentSheet] onSave callback failed:", error);
@@ -341,7 +360,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
                     {supplierOption === "select_existing" && (
                       <Select
                         value={selectedExistingSupplierId}
-                        onValueChange={setSelectedExistingSupplierId}
+                        onValueChange={handleSelectedSupplierChange}
                       >
                         <SelectTrigger className="w-full mt-1 h-9">
                           <SelectValue
@@ -365,6 +384,25 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
                   </>
                 )}
               </RadioGroup>
+            </div>
+
+            {/* Osek Morshe Input */}
+            <div className="space-y-2 rounded-md border p-4">
+              <Label htmlFor="osekMorshe" className="text-lg font-semibold">
+                {t("osek_morshe_label")}
+              </Label>
+              <Input
+                id="osekMorshe"
+                value={osekMorsheInput}
+                onChange={(e) => setOsekMorsheInput(e.target.value)}
+                placeholder={t("osek_morshe_placeholder")}
+                disabled={supplierOption === "use_new"}
+              />
+              {supplierOption === "use_new" && (
+                <p className="text-xs text-muted-foreground">
+                  {t("osek_morshe_scanned_info")}
+                </p>
+              )}
             </div>
 
             {/* Payment Terms Section */}

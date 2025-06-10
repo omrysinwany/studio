@@ -75,6 +75,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CircularProgress } from "@/components/ui/circular-progress";
 
 type DocType = "deliveryNote" | "invoice" | "paymentReceipt";
 
@@ -1167,7 +1168,11 @@ export default function UploadPage() {
                 </TableHeader>
                 <TableBody>
                   {uploadHistory.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow
+                      key={item.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleViewImage(item)}
+                    >
                       <TableCell
                         className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2"
                         title={item.originalFileName}
@@ -1175,7 +1180,6 @@ export default function UploadPage() {
                         <Button
                           variant="link"
                           className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate"
-                          onClick={() => handleViewImage(item)}
                         >
                           {(item.originalImagePreviewUri ||
                             item.compressedImageForFinalRecordUri) && (
@@ -1199,7 +1203,10 @@ export default function UploadPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleViewDetails(item)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewDetails(item);
+                            }}
                             className="h-8 w-8"
                             title={t("upload_history_view_details_title", {
                               fileName: item.originalFileName || "",
@@ -1219,23 +1226,9 @@ export default function UploadPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => {
-                                if (!item.id) {
-                                  toast({
-                                    title: t("upload_retry_unavailable_title"),
-                                    description: t(
-                                      "upload_retry_unavailable_desc"
-                                    ),
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-                                const queryParams = new URLSearchParams({
-                                  tempInvoiceId: item.id,
-                                });
-                                router.push(
-                                  `/edit-invoice?${queryParams.toString()}`
-                                );
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRetryUpload(item.id);
                               }}
                               className="h-8 w-8"
                               title={t("upload_history_retry_upload_title")}
