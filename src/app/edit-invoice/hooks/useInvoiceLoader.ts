@@ -13,7 +13,8 @@ import type {
 import {
   TEMP_DATA_KEY_PREFIX,
   getStorageKey,
-  DOCUMENTS_COLLECTION,
+  USERS_COLLECTION,
+  DOCUMENTS_SUBCOLLECTION,
   Product,
   clearTemporaryScanData,
 } from "@/services/backend";
@@ -181,7 +182,9 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
         if (initialInvoiceIdParam && db && user?.id) {
           const finalDocRef = doc(
             db,
-            DOCUMENTS_COLLECTION,
+            USERS_COLLECTION,
+            user.id,
+            DOCUMENTS_SUBCOLLECTION,
             initialInvoiceIdParam
           );
           pendingDocSnap = await getDoc(finalDocRef);
@@ -197,7 +200,9 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
         } else if (initialTempInvoiceId && db && user?.id) {
           const pendingDocRef = doc(
             db,
-            DOCUMENTS_COLLECTION,
+            USERS_COLLECTION,
+            user.id,
+            DOCUMENTS_SUBCOLLECTION,
             initialTempInvoiceId
           );
           pendingDocSnap = await getDoc(pendingDocRef);
@@ -270,11 +275,11 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
           keyParamFromUrl &&
           user?.id
         ) {
-          const dataKey = getStorageKey(
-            TEMP_DATA_KEY_PREFIX,
-            `${user.id}_${keyParamFromUrl}`
+          const storageKey = getStorageKey(
+            `${TEMP_DATA_KEY_PREFIX}${keyParamFromUrl}`,
+            user.id
           );
-          rawScanResultJsonFromStorage = localStorage.getItem(dataKey);
+          rawScanResultJsonFromStorage = localStorage.getItem(storageKey);
           if (!rawScanResultJsonFromStorage) {
             const lsError = `Scan results not found locally for key: ${keyParamFromUrl}. The data might have been cleared or not saved.`;
             setDataError(lsError);

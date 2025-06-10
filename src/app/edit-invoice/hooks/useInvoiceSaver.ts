@@ -10,6 +10,7 @@ import type {
 import {
   checkProductPricesBeforeSaveService,
   finalizeSaveProductsService,
+  syncProductsWithCaspitService,
   ProductPriceDiscrepancy,
   archiveDocumentService,
   updateInvoicePaymentStatusService,
@@ -19,6 +20,8 @@ import { Timestamp } from "firebase/firestore";
 import { isValid, parseISO, format } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
 import type { Product as BackendProduct } from "@/services/backend";
+import { useTranslation } from "@/hooks/useTranslation";
+import { useDialogFlow } from "./useDialogFlow";
 
 interface UseInvoiceSaverProps {
   user: User | null;
@@ -148,12 +151,6 @@ export function useInvoiceSaver({
             }
             backendProduct.barcode = rest.barcode || null;
             if (
-              _originalId &&
-              !_originalId.startsWith("prod-temp-") &&
-              !_originalId.startsWith("scan-temp-")
-            ) {
-              backendProduct.id = _originalId;
-            } else if (
               rest.id &&
               !rest.id.startsWith("prod-temp-") &&
               !rest.id.startsWith("scan-temp-")
@@ -216,30 +213,42 @@ export function useInvoiceSaver({
 
         const rawScanResultJsonForSave = initialRawScanResultJsonFromLoader;
 
-        const { finalInvoiceRecord } = await finalizeSaveProductsService(
-          productsForService,
-          initialOriginalFileName || "Unnamed Document",
-          docType,
-          user.id,
-          initialTempInvoiceId || initialInvoiceIdParam,
-          finalInvoiceNumberForSave,
-          finalSupplierNameForSave,
-          finalTotalAmountForSave,
-          paymentDueDateForDoc,
-          finalInvoiceDateForSave,
-          taxDetailsToSave.paymentMethod,
-          displayedOriginalImageUrl,
-          displayedCompressedImageUrl,
-          rawScanResultJsonForSave,
-          paymentTermStringForDocument
-        );
+        const { finalInvoiceRecord, savedOrUpdatedProducts } =
+          await finalizeSaveProductsService(
+            productsForService,
+            initialOriginalFileName || "Unnamed Document",
+            docType,
+            user.id,
+            initialTempInvoiceId || initialInvoiceIdParam,
+            finalInvoiceNumberForSave,
+            finalSupplierNameForSave,
+            finalTotalAmountForSave,
+            paymentDueDateForDoc,
+            finalInvoiceDateForSave,
+            taxDetailsToSave.paymentMethod,
+            displayedOriginalImageUrl,
+            displayedCompressedImageUrl,
+            rawScanResultJsonForSave,
+            paymentTermStringForDocument
+          );
+
+        // --- Sync with Caspit in the background ---
+        if (savedOrUpdatedProducts.length > 0) {
+          syncProductsWithCaspitService(savedOrUpdatedProducts, user.id).catch(
+            (e) => {
+              console.error("Background Caspit sync failed:", e);
+              // Optional: You could show a non-blocking toast notification here
+            }
+          );
+        }
 
         toast({
           title: t("edit_invoice_toast_save_success_title"),
           description: t("edit_invoice_toast_save_success_desc", {
             fileName:
               finalInvoiceRecord.originalFileName ||
-              finalInvoiceRecord.generatedFileName,
+              finalInvoiceRecord.generatedFileName ||
+              "Document",
           }),
         });
         if (isNewScan && initialTempInvoiceId) {
@@ -376,37 +385,33 @@ export function useInvoiceSaver({
   }, []);
 
   const handleArchiveDocument = useCallback(async () => {
-    if (!initialInvoiceIdParam || !user?.id) {
+    const docId = initialTempInvoiceId || initialInvoiceIdParam;
+    if (!docId || !user?.id) {
       toast({
-        title: t("error_title"),
-        description: t("archive_error_no_id"),
+        title: t("archive_error_title"),
+        description: t("archive_error_no_doc_id_desc"),
         variant: "destructive",
       });
       return;
     }
     setIsArchiving(true);
     try {
-      await archiveDocumentService(initialInvoiceIdParam, user.id);
+      await archiveDocumentService(docId, user.id);
       toast({
-        title: t("success_title"),
+        title: t("archive_success_title"),
         description: t("archive_success_desc"),
       });
-      router.push(
-        docType === "deliveryNote"
-          ? "/inventory?refresh=true"
-          : "/invoices?tab=scanned-docs&refresh=true"
-      );
+      router.push("/invoices");
     } catch (error: any) {
-      console.error("[useInvoiceSaver] Error archiving document:", error);
       toast({
-        title: t("error_title"),
-        description: error.message || t("archive_error_generic"),
+        title: t("archive_error_title"),
+        description: error.message,
         variant: "destructive",
       });
     } finally {
       setIsArchiving(false);
     }
-  }, [initialInvoiceIdParam, user?.id, docType, router, t, toast]);
+  }, [initialTempInvoiceId, initialInvoiceIdParam, user, toast, t, router]);
 
   const handleMarkAsPaid = useCallback(async () => {
     if (!initialInvoiceIdParam || !user?.id || !docType) {

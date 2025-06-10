@@ -51,6 +51,12 @@ import {
   CreditCard,
   ChevronLeft,
   ChevronRight,
+  CheckCircle,
+  MoreHorizontal,
+  PlusCircle,
+  FileDown,
+  Archive,
+  AlertCircle,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -81,6 +87,7 @@ import {
   getSuppliersService,
   getUserSettingsService,
   updateInvoicePaymentStatusService,
+  InvoiceHistoryItem,
 } from "@/services/backend";
 import {
   Sheet,
@@ -114,6 +121,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { generateAndEmailInvoicesAction } from "@/actions/invoice-export-actions";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
 
 const ITEMS_PER_PAGE = 8;
 
@@ -124,6 +133,7 @@ type SortKeyDocuments =
       | "uploadTime"
       | "supplierName"
       | "invoiceDate"
+      | "paymentDate"
       | "totalAmount"
       | "paymentMethod"
       | "paymentStatus"
@@ -131,6 +141,10 @@ type SortKeyDocuments =
     >
   | "paymentReceiptImageUri"
   | "";
+
+type DisplayInvoice = InvoiceHistoryItem & {
+  _displayContext?: "new-upload" | "error-upload";
+};
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== "string") return false;
@@ -141,6 +155,74 @@ const isValidImageSrc = (src: string | undefined | null): src is string => {
   );
 };
 
+const getStatusInfo = (
+  status: DisplayInvoice["status"],
+  t: (key: string) => string
+) => {
+  switch (status) {
+    case "completed":
+      return {
+        label: t("invoices_status_completed"),
+        icon: CheckCircle,
+        color: "text-green-500",
+      };
+    case "pending":
+      return {
+        label: t("invoices_status_pending"),
+        icon: Clock,
+        color: "text-yellow-500",
+      };
+    case "processing":
+      return {
+        label: t("invoices_status_processing"),
+        icon: Loader2,
+        color: "text-blue-500 animate-spin",
+      };
+    case "error":
+      return {
+        label: t("invoices_status_error"),
+        icon: XCircle,
+        color: "text-red-500",
+      };
+    case "archived":
+      return {
+        label: t("invoices_status_archived"),
+        icon: Archive,
+        color: "text-gray-500",
+      };
+    default:
+      return {
+        label: t("invoices_status_unknown"),
+        icon: AlertCircle,
+        color: "text-gray-400",
+      };
+  }
+};
+
+const getPaymentStatusInfo = (
+  status: DisplayInvoice["paymentStatus"],
+  t: (key: string) => string
+) => {
+  switch (status) {
+    case "paid":
+      return {
+        label: t("invoices_payment_status_paid"),
+        variant: "success",
+      };
+    case "unpaid":
+      return {
+        label: t("invoices_payment_status_unpaid"),
+        variant: "destructive",
+      };
+    case "pending_payment":
+    default:
+      return {
+        label: t("invoices_payment_status_pending"),
+        variant: "secondary",
+      };
+  }
+};
+
 export default function DocumentsPage() {
   const { user, loading: authLoading } = useAuth();
   const { t, locale } = useTranslation();
@@ -149,7 +231,7 @@ export default function DocumentsPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
-  const [allUserInvoices, setAllUserInvoices] = useState<Invoice[]>([]);
+  const [allUserInvoices, setAllUserInvoices] = useState<DisplayInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -160,19 +242,19 @@ export default function DocumentsPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<
-    Invoice["paymentStatus"] | ""
+    DisplayInvoice["paymentStatus"] | ""
   >("");
   const [sortKey, setSortKey] = useState<SortKeyDocuments>("uploadTime");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const [showDetailsSheet, setShowDetailsSheet] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] =
-    useState<Invoice | null>(null);
+    useState<DisplayInvoice | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [editedInvoiceData, setEditedInvoiceData] = useState<Partial<Invoice>>(
-    {}
-  );
+  const [editedInvoiceData, setEditedInvoiceData] = useState<
+    Partial<DisplayInvoice>
+  >({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
   const defaultViewMode = isMobile ? "grid" : "list";
@@ -181,7 +263,7 @@ export default function DocumentsPage() {
   const [existingSuppliers, setExistingSuppliers] = useState<Supplier[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
   const [invoiceForReceiptUpload, setInvoiceForReceiptUpload] =
-    useState<Invoice | null>(null);
+    useState<DisplayInvoice | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedForBulkAction, setSelectedForBulkAction] = useState<string[]>(
@@ -297,7 +379,7 @@ export default function DocumentsPage() {
       generatedFileName: true,
       uploadTime: !isMobile,
       paymentStatus: true,
-      paymentDueDate: !isMobile,
+      paymentDate: !isMobile,
       invoiceNumber: !isMobile,
       supplierName: !isMobile,
       totalAmount: true,
@@ -370,7 +452,7 @@ export default function DocumentsPage() {
   );
 
   const renderPaymentStatusBadge = (
-    status: Invoice["paymentStatus"],
+    status: DisplayInvoice["paymentStatus"],
     dueDate?: string | Timestamp | null | FieldValue
   ) => {
     let variant: "default" | "secondary" | "destructive" | "outline" =
@@ -457,9 +539,7 @@ export default function DocumentsPage() {
         getSuppliersService(user.id),
         getUserSettingsService(user.id),
       ]);
-      setAllUserInvoices(
-        invoicesData.filter((inv) => inv.status === "completed")
-      );
+      setAllUserInvoices(invoicesData);
       setExistingSuppliers(suppliersData);
       if (settingsData?.accountantSettings?.email) {
         setAccountantEmail(settingsData.accountantSettings.email);
@@ -493,7 +573,7 @@ export default function DocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router, fetchInvoicesTrigger]);
 
-  const handleViewDetails = useCallback((invoice: Invoice) => {
+  const handleViewDetails = useCallback((invoice: DisplayInvoice) => {
     if (invoice) {
       setSelectedInvoiceDetails({ ...invoice });
       setEditedInvoiceData({ ...invoice });
@@ -543,8 +623,8 @@ export default function DocumentsPage() {
     if (filterPaymentStatus) {
       result = result.filter((inv) => {
         let currentStatus = inv.paymentStatus;
-        if (inv.paymentStatus === "pending_payment" && inv.paymentDueDate) {
-          let dueDateObj = (inv.paymentDueDate as Timestamp).toDate();
+        if (inv.paymentStatus === "pending_payment" && inv.paymentDate) {
+          let dueDateObj = (inv.paymentDate as Timestamp).toDate();
           if (
             isValid(dueDateObj) &&
             isBefore(dueDateObj, new Date()) &&
@@ -560,7 +640,7 @@ export default function DocumentsPage() {
       const lowerSearchTerm = searchTerm.toLowerCase();
       result = result.filter(
         (item) =>
-          (item.originalFileName || item.generatedFileName || "")
+          (item.originalFileName || "")
             .toLowerCase()
             .includes(lowerSearchTerm) ||
           (item.invoiceNumber &&
@@ -571,12 +651,12 @@ export default function DocumentsPage() {
     }
     if (sortKey) {
       result.sort((a, b) => {
-        const valA = a[sortKey as keyof Invoice];
-        const valB = b[sortKey as keyof Invoice];
+        const valA = a[sortKey as keyof DisplayInvoice];
+        const valB = b[sortKey as keyof DisplayInvoice];
         let comparison = 0;
         if (
           sortKey === "uploadTime" ||
-          sortKey === "paymentDueDate" ||
+          sortKey === "paymentDate" ||
           sortKey === "invoiceDate"
         ) {
           let dateA = 0;
@@ -689,7 +769,7 @@ export default function DocumentsPage() {
   };
 
   const handleEditDetailsInputChange = (
-    field: keyof Invoice,
+    field: keyof DisplayInvoice,
     value: string | number | Date | undefined | null | Timestamp
   ) => {
     setEditedInvoiceData((prev) => ({ ...prev, [field]: value }));
@@ -701,7 +781,7 @@ export default function DocumentsPage() {
     try {
       const updatedInvoice = await updateInvoiceService(
         selectedInvoiceDetails.id,
-        editedInvoiceData,
+        editedInvoiceData as any,
         user.id
       );
       triggerInvoiceFetch();
@@ -1128,7 +1208,7 @@ export default function DocumentsPage() {
                                 col.key === "invoiceDate" ||
                                 col.key === "paymentDueDate" ? (
                                 formatDateForDisplay(
-                                  invoice[col.key as keyof Invoice] as
+                                  invoice[col.key as keyof DisplayInvoice] as
                                     | Timestamp
                                     | string
                                     | Date
@@ -1141,12 +1221,12 @@ export default function DocumentsPage() {
                               ) : col.key === "paymentStatus" ? (
                                 renderPaymentStatusBadge(
                                   invoice.paymentStatus,
-                                  invoice.paymentDueDate
+                                  invoice.paymentDate
                                 )
                               ) : (
                                 <span className="truncate">
                                   {(invoice[
-                                    col.key as keyof Invoice
+                                    col.key as keyof DisplayInvoice
                                   ] as string) || t("invoices_na")}
                                 </span>
                               )}
@@ -1200,7 +1280,7 @@ export default function DocumentsPage() {
                     <CardFooter className="flex justify-between items-center p-4">
                       {renderPaymentStatusBadge(
                         invoice.paymentStatus,
-                        invoice.paymentDueDate
+                        invoice.paymentDate
                       )}
                       <p className="text-xs text-muted-foreground">
                         {formatDateForDisplay(
@@ -1381,7 +1461,7 @@ export default function DocumentsPage() {
                         <CalendarDays className="mr-2 h-4 w-4" />
                         {editedInvoiceData.invoiceDate ? (
                           formatDateForDisplay(
-                            editedInvoiceData.invoiceDate,
+                            editedInvoiceData.invoiceDate as Timestamp,
                             "PP"
                           )
                         ) : (
@@ -1443,19 +1523,21 @@ export default function DocumentsPage() {
                   <p>
                     <strong>{t("invoice_details_invoice_date_label")}:</strong>{" "}
                     {formatDateForDisplay(
-                      selectedInvoiceDetails?.invoiceDate,
+                      selectedInvoiceDetails?.invoiceDate as Timestamp,
                       "PP"
                     )}
                   </p>
                   <p>
                     <strong>{t("upload_history_col_upload_time")}:</strong>{" "}
-                    {formatDateForDisplay(selectedInvoiceDetails?.uploadTime)}
+                    {formatDateForDisplay(
+                      selectedInvoiceDetails?.uploadTime as Timestamp
+                    )}
                   </p>
                   <p>
                     <strong>{t("invoice_payment_status_label")}:</strong>{" "}
                     {renderPaymentStatusBadge(
-                      selectedInvoiceDetails?.paymentStatus as Invoice["paymentStatus"],
-                      selectedInvoiceDetails?.paymentDueDate
+                      selectedInvoiceDetails?.paymentStatus as DisplayInvoice["paymentStatus"],
+                      selectedInvoiceDetails?.paymentDate
                     )}
                   </p>
                   <p>
@@ -1626,12 +1708,20 @@ export default function DocumentsPage() {
       {invoiceForReceiptUpload && (
         <PaymentReceiptUploadDialog
           isOpen={showReceiptUploadDialog}
-          onClose={() => {
-            setShowReceiptUploadDialog(false);
-            setInvoiceForReceiptUpload(null);
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowReceiptUploadDialog(false);
+              setInvoiceForReceiptUpload(null);
+            }
           }}
-          onReceiptUploaded={handlePaymentReceiptUploaded}
-          invoiceId={invoiceForReceiptUpload.id}
+          invoiceFileName={
+            invoiceForReceiptUpload.generatedFileName ||
+            invoiceForReceiptUpload.originalFileName ||
+            "Invoice"
+          }
+          onConfirmUpload={(receiptUri) =>
+            handlePaymentReceiptUploaded(invoiceForReceiptUpload.id, receiptUri)
+          }
         />
       )}
     </div>

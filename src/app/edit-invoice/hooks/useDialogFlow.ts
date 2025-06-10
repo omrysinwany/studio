@@ -9,16 +9,21 @@ import type {
 import type { User } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
-  getSupplierSummariesService,
+  getSuppliersService,
   createSupplierService,
-  SupplierSummary,
+  Supplier,
   getProductsService,
   Product as BackendProduct,
-  updateSupplierContactInfoService,
+  updateSupplierService,
+  getUserSettingsService,
+  UserSettings,
 } from "@/services/backend";
 import { parseISO, isValid, format, addDays, endOfMonth } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
 import { Timestamp } from "firebase/firestore";
+import { createOrUpdateCaspitContactAction } from "@/actions/caspit-actions";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 // Import dialog prop types
 import type { BarcodePromptDialogProps as NewProductDetailsDialogProps } from "@/components/barcode-prompt-dialog";
@@ -153,9 +158,7 @@ export function useDialogFlow({
     useState<DialogFlowStep>("idle");
   const [dialogFlowError, setDialogFlowError] = useState<string | null>(null);
   const [isDialogFlowActive, setIsDialogFlowActive] = useState(false);
-  const [existingSuppliers, setExistingSuppliers] = useState<SupplierSummary[]>(
-    []
-  );
+  const [existingSuppliers, setExistingSuppliers] = useState<Supplier[]>([]);
   const [potentialSupplierNameForSheet, setPotentialSupplierNameForSheet] =
     useState<string | undefined>(undefined);
   const [
@@ -174,6 +177,7 @@ export function useDialogFlow({
     useState<DueDateOption | null>(null);
   const [productsToDisplayForNewDetails, setProductsToDisplayForNewDetails] =
     useState<EditableProduct[]>([]);
+  const [hasFlowStarted, setHasFlowStarted] = useState(false);
 
   // New useEffect for logging state changes
   useEffect(() => {
@@ -363,7 +367,7 @@ export function useDialogFlow({
     async (
       scannedSupplierFromAi: string | null | undefined,
       _currentUserId: string, // UserID is available via user prop
-      fetchedSuppliersList: SupplierSummary[]
+      fetchedSuppliersList: Supplier[]
     ) => {
       console.log(
         `[useDialogFlow] prepareDialogFlowLogic: scannedName='${scannedSupplierFromAi}', fetchedSuppliersCount=${fetchedSuppliersList.length}`
@@ -443,6 +447,14 @@ export function useDialogFlow({
   );
 
   const startInitialDialogFlow = useCallback(async () => {
+    if (hasFlowStarted) {
+      console.log(
+        "[useDialogFlow] startInitialDialogFlow attempted to run again, but was blocked."
+      );
+      return;
+    }
+    setHasFlowStarted(true);
+
     console.log(
       "[useDialogFlow] startInitialDialogFlow called. isNewScan:",
       isNewScan,
@@ -462,9 +474,9 @@ export function useDialogFlow({
     let paymentDate: Date | undefined = undefined;
 
     // Try to parse existing payment terms from initialScannedTaxDetails
-    if (initialScannedTaxDetails.paymentTerm) {
+    if (initialScannedTaxDetails.paymentTerms) {
       const parsed = parsePaymentTermString(
-        initialScannedTaxDetails.paymentTerm,
+        initialScannedTaxDetails.paymentTerms,
         t
       );
       paymentOption = parsed.option;
@@ -497,7 +509,7 @@ export function useDialogFlow({
     // Fetch existing suppliers if not already fetched or if supplier name exists
     if (supplierNameForSheet && existingSuppliers.length === 0) {
       try {
-        const suppliers = await getSupplierSummariesService(user.id);
+        const suppliers = await getSuppliersService(user.id);
         setExistingSuppliers(suppliers);
       } catch (error) {
         console.error("[useDialogFlow] Error fetching suppliers:", error);
@@ -592,25 +604,67 @@ export function useDialogFlow({
       );
 
       try {
-        if (isNewSupplierFlag) {
-          await createSupplierService(
+        if (isNewSupplierFlag && user?.id) {
+          const settings = await getUserSettingsService(user.id);
+          const posConfig = settings.posConfig;
+          let caspitAccountId: string | undefined = undefined;
+
+          // Prepare a partial SupplierSummary object for Caspit
+          const newSupplierForCaspit = {
+            name: confirmedSupplierName,
+            // Assuming default values for a new supplier for now.
+            // These might need to be populated from a form in the future.
+            invoiceCount: 0,
+            totalSpent: 0,
+          };
+
+          if (posConfig?.autoSync) {
+            try {
+              const caspitResult = await createOrUpdateCaspitContactAction(
+                posConfig,
+                newSupplierForCaspit
+              );
+              if (caspitResult.success && caspitResult.caspitAccountId) {
+                caspitAccountId = caspitResult.caspitAccountId;
+              } else {
+                console.warn(
+                  "Failed to create supplier in Caspit or no ID returned.",
+                  caspitResult.message
+                );
+              }
+            } catch (caspitError) {
+              toast({
+                title: "Caspit Sync Error",
+                description: (caspitError as Error).message,
+                variant: "destructive",
+              });
+            }
+          }
+
+          const newSupplierData: {
+            paymentTerms?: string;
+            caspitAccountId?: string;
+          } = {
+            paymentTerms: paymentTermsString,
+          };
+          if (caspitAccountId) {
+            newSupplierData.caspitAccountId = caspitAccountId;
+          }
+
+          const newSupplier = await createSupplierService(
             confirmedSupplierName,
-            { paymentTerms: paymentTermsString },
+            newSupplierData,
             user.id
           );
-          toast({
-            title: t("supplier_created_toast_title_short"),
-            description: t("supplier_created_toast_desc_short", {
-              supplierName: confirmedSupplierName,
-            }),
-          });
+          // Update local state with the new supplier
+          setExistingSuppliers((prev) => [...prev, newSupplier]);
         } else {
           const existingSupplier = existingSuppliers.find(
             (s) => s.name.toLowerCase() === confirmedSupplierName.toLowerCase()
           );
           if (existingSupplier && existingSupplier.id) {
             if (existingSupplier.paymentTerms !== paymentTermsString) {
-              await updateSupplierContactInfoService(
+              await updateSupplierService(
                 existingSupplier.id,
                 {
                   paymentTerms: paymentTermsString,
@@ -653,7 +707,7 @@ export function useDialogFlow({
         onPaymentDetailsChangeInMainForm(paymentDueDate, paymentTermOption);
 
         if (user?.id) {
-          const updatedSuppliers = await getSupplierSummariesService(user.id);
+          const updatedSuppliers = await getSuppliersService(user.id);
           setExistingSuppliers(updatedSuppliers);
         }
       } catch (error: any) {

@@ -639,14 +639,14 @@ export default function Home() {
         let paymentDateTs: Date | null = null;
         let uploadDateTs: Date | null = null;
 
-        if (invoice.paymentDueDate) {
-          if (invoice.paymentDueDate instanceof Timestamp)
-            paymentDateTs = invoice.paymentDueDate.toDate();
+        if (invoice.paymentDate) {
+          if (invoice.paymentDate instanceof Timestamp)
+            paymentDateTs = invoice.paymentDate.toDate();
           else if (
-            typeof invoice.paymentDueDate === "string" &&
-            isValid(parseISO(invoice.paymentDueDate))
+            typeof invoice.paymentDate === "string" &&
+            isValid(parseISO(invoice.paymentDate))
           )
-            paymentDateTs = parseISO(invoice.paymentDueDate);
+            paymentDateTs = parseISO(invoice.paymentDate);
         }
         if (invoice.uploadTime) {
           if (invoice.uploadTime instanceof Timestamp)
@@ -694,8 +694,8 @@ export default function Home() {
 
           if (expenseDate && isSameMonth(expenseDate, new Date())) {
             const amountToAdd = exp.amount;
-            const internalKey = exp._internalCategoryKey?.toLowerCase();
-            const categoryString = exp.category?.toLowerCase();
+            const internalKey = exp.categoryId?.toLowerCase();
+            const categoryString = exp.categoryId?.toLowerCase();
             const biMonthlyKeys = [
               "electricity",
               "water",
@@ -817,7 +817,7 @@ export default function Home() {
         inventoryValue,
         lowStockItemsCount,
         criticalLowStockProducts,
-        nextPaymentDueInvoice,
+        nextPaymentDueInvoice: nextPaymentDueInvoice as Invoice | null,
         recentActivity: mockRecentActivity,
         latestDocName:
           invoicesData.length > 0 && invoicesData[0].originalFileName
@@ -1318,12 +1318,12 @@ export default function Home() {
                         </Link>
                         <p className="text-xs text-muted-foreground">
                           {t("home_due_on_label")}{" "}
-                          {kpiData.nextPaymentDueInvoice.paymentDueDate
+                          {kpiData.nextPaymentDueInvoice.paymentDate
                             ? typeof kpiData.nextPaymentDueInvoice
-                                .paymentDueDate === "string"
+                                .paymentDate === "string"
                               ? formatDateFns(
                                   parseISO(
-                                    kpiData.nextPaymentDueInvoice.paymentDueDate
+                                    kpiData.nextPaymentDueInvoice.paymentDate
                                   ),
                                   "PP",
                                   {
@@ -1334,9 +1334,9 @@ export default function Home() {
                                   }
                                 )
                               : kpiData.nextPaymentDueInvoice
-                                  .paymentDueDate instanceof Timestamp
+                                  .paymentDate instanceof Timestamp
                               ? formatDateFns(
-                                  kpiData.nextPaymentDueInvoice.paymentDueDate.toDate(),
+                                  kpiData.nextPaymentDueInvoice.paymentDate.toDate(),
                                   "PP",
                                   {
                                     locale:

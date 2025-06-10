@@ -1,4 +1,3 @@
-// src/app/upload/page.tsx
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
@@ -48,6 +47,7 @@ import {
   MAX_INVOICE_HISTORY_ITEMS,
   getStorageKey,
   clearOldTemporaryScanData,
+  InvoiceHistoryItem,
 } from "@/services/backend";
 import {
   Dialog,
@@ -75,6 +75,12 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/context/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+
+type DocType = "deliveryNote" | "invoice" | "paymentReceipt";
+
+type DisplayInvoice = InvoiceHistoryItem & {
+  _displayContext?: "image_only" | "full_details";
+};
 
 const isValidImageSrc = (src: string | undefined | null): src is string => {
   if (!src || typeof src !== "string") return false;
@@ -151,18 +157,16 @@ export default function UploadPage() {
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadHistory, setUploadHistory] = useState<Invoice[]>([]);
+  const [uploadHistory, setUploadHistory] = useState<InvoiceHistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] =
-    useState<Invoice | null>(null);
+    useState<DisplayInvoice | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>("");
-  const [documentType, setDocumentType] = useState<"deliveryNote" | "invoice">(
-    "invoice"
-  ); // Default to 'invoice'
+  const [documentType, setDocumentType] = useState<DocType>("invoice");
 
   const fetchHistory = useCallback(async () => {
     if (!user || !user.id) {
@@ -175,7 +179,7 @@ export default function UploadPage() {
     setIsLoadingHistory(true);
     try {
       const invoices = await getInvoicesService(user.id);
-      setUploadHistory(invoices.slice(0, MAX_INVOICE_HISTORY_ITEMS));
+      setUploadHistory(invoices.slice(0, MAX_INVOICE_HISTORY_ITEMS) as any);
       console.log(
         "[UploadPage] Fetched history items:",
         invoices.slice(0, MAX_INVOICE_HISTORY_ITEMS).length
@@ -428,90 +432,95 @@ export default function UploadPage() {
           documentType
         );
 
-        if (documentType === "invoice") {
-          finalScanResult = await scanTaxInvoice({
-            invoiceDataUri: aiInputDataUri,
-          });
-        } else {
-          finalScanResult = await scanInvoice({
-            invoiceDataUri: aiInputDataUri,
-          });
-        }
-
-        setStreamingContent(t("upload_scan_complete_processing_results"));
-        setUploadProgress(80);
-
-        if (!finalScanResult || typeof finalScanResult !== "object") {
-          console.error("[UploadPage] AI scan returned invalid result.");
-          finalScanResult = {
-            error: t(
-              "upload_toast_ai_processing_error_desc_generic_server_response"
-            ),
-          } as any;
-        }
-        console.log("[UploadPage] AI scan result received:", finalScanResult);
-        if (finalScanResult && finalScanResult.error) {
-          setScanError(finalScanResult?.error || null);
-          console.warn(
-            "[UploadPage] AI scan returned an error:",
-            finalScanResult.error
-          );
-        }
-
-        scanResultJsonString = JSON.stringify(finalScanResult);
-        const dataKeyForLocalStorageJson = getStorageKey(
-          TEMP_DATA_KEY_PREFIX,
-          `${user.id}_${uniqueScanIdPart}`
-        );
-        try {
-          if (scanResultJsonString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
-            const errorMsg = t("upload_toast_scan_results_too_large_error", {
-              size: (scanResultJsonString.length / (1024 * 1024)).toFixed(2),
+        if (documentType !== "paymentReceipt") {
+          if (documentType === "invoice") {
+            finalScanResult = await scanTaxInvoice({
+              invoiceDataUri: aiInputDataUri,
             });
-            console.error(`[UploadPage] ${errorMsg}`);
-            if (finalScanResult)
-              finalScanResult.error = finalScanResult.error
-                ? `${finalScanResult.error}; ${errorMsg}`
-                : errorMsg;
-            else finalScanResult = { error: errorMsg } as any;
-            setScanError(finalScanResult?.error || null);
-            const errorScanResult = JSON.stringify({
-              error: finalScanResult?.error || "Scan result too large",
-            });
-            localStorage.setItem(dataKeyForLocalStorageJson, errorScanResult);
           } else {
-            localStorage.setItem(
-              dataKeyForLocalStorageJson,
-              scanResultJsonString
+            finalScanResult = await scanInvoice({
+              invoiceDataUri: aiInputDataUri,
+            });
+          }
+
+          setStreamingContent(t("upload_scan_complete_processing_results"));
+          setUploadProgress(80);
+
+          if (!finalScanResult || typeof finalScanResult !== "object") {
+            console.error("[UploadPage] AI scan returned invalid result.");
+            finalScanResult = {
+              error: t(
+                "upload_toast_ai_processing_error_desc_generic_server_response"
+              ),
+            } as any;
+          }
+          console.log("[UploadPage] AI scan result received:", finalScanResult);
+          if (finalScanResult && finalScanResult.error) {
+            setScanError(finalScanResult?.error || null);
+            console.warn(
+              "[UploadPage] AI scan returned an error:",
+              finalScanResult.error
             );
           }
+
+          scanResultJsonString = JSON.stringify(finalScanResult);
+          const dataKeyForLocalStorageJson = getStorageKey(
+            TEMP_DATA_KEY_PREFIX,
+            `${user.id}_${uniqueScanIdPart}`
+          );
+          try {
+            if (scanResultJsonString.length > MAX_SCAN_RESULTS_SIZE_BYTES) {
+              const errorMsg = t("upload_toast_scan_results_too_large_error", {
+                size: (scanResultJsonString.length / (1024 * 1024)).toFixed(2),
+              });
+              console.error(`[UploadPage] ${errorMsg}`);
+              if (finalScanResult)
+                finalScanResult.error = finalScanResult.error
+                  ? `${finalScanResult.error}; ${errorMsg}`
+                  : errorMsg;
+              else finalScanResult = { error: errorMsg } as any;
+              setScanError(finalScanResult?.error || null);
+              const errorScanResult = JSON.stringify({
+                error: finalScanResult?.error || "Scan result too large",
+              });
+              localStorage.setItem(dataKeyForLocalStorageJson, errorScanResult);
+            } else {
+              localStorage.setItem(
+                dataKeyForLocalStorageJson,
+                scanResultJsonString
+              );
+            }
+            scanDataSavedForLocalStorage = true;
+            console.log(
+              `[UploadPage] Scan results JSON saved to localStorage: ${dataKeyForLocalStorageJson}`
+            );
+          } catch (storageError: any) {
+            console.error(
+              "[UploadPage] Critical error saving scan JSON to localStorage:",
+              storageError
+            );
+            if (finalScanResult)
+              finalScanResult.error = finalScanResult.error
+                ? `${finalScanResult.error}; LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`
+                : `LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`;
+            else
+              finalScanResult = {
+                error: `LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`,
+              } as any;
+            setScanError(finalScanResult?.error || null);
+            toast({
+              title: t("upload_toast_critical_error_save_scan_title"),
+              description: t(
+                "upload_toast_critical_error_save_scan_desc_ls_json",
+                { context: "(scan JSON)", message: storageError.message }
+              ),
+              variant: "destructive",
+              duration: 10000,
+            });
+          }
+        } else {
+          // This is a payment receipt, so we can mark it as "successful" for navigation purposes.
           scanDataSavedForLocalStorage = true;
-          console.log(
-            `[UploadPage] Scan results JSON saved to localStorage: ${dataKeyForLocalStorageJson}`
-          );
-        } catch (storageError: any) {
-          console.error(
-            "[UploadPage] Critical error saving scan JSON to localStorage:",
-            storageError
-          );
-          if (finalScanResult)
-            finalScanResult.error = finalScanResult.error
-              ? `${finalScanResult.error}; LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`
-              : `LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`;
-          else
-            finalScanResult = {
-              error: `LS_SCAN_JSON_SAVE_FAILED: ${storageError.message}`,
-            } as any;
-          setScanError(finalScanResult?.error || null);
-          toast({
-            title: t("upload_toast_critical_error_save_scan_title"),
-            description: t(
-              "upload_toast_critical_error_save_scan_desc_ls_json",
-              { context: "(scan JSON)", message: storageError.message }
-            ),
-            variant: "destructive",
-            duration: 10000,
-          });
         }
 
         console.log(
@@ -536,15 +545,20 @@ export default function UploadPage() {
           "documents",
           tempInvoiceId
         );
-        const pendingInvoice: Omit<Invoice, "id" | "uploadTime"> & {
+
+        // Base invoice object, without the conditional field
+        const pendingInvoiceBase: Omit<
+          Invoice,
+          "id" | "uploadTime" | "paymentReceiptImageUri"
+        > & {
           userId: string;
           uploadTime: FieldValue;
         } = {
           userId: user.id,
           originalFileName: originalFileName,
-          generatedFileName: originalFileName,
           uploadTime: serverTimestamp(),
           status: finalScanResult?.error ? "error" : "pending",
+          products: [],
           documentType: documentType,
           supplierName:
             (documentType === "invoice"
@@ -567,14 +581,22 @@ export default function UploadPage() {
               ? (finalScanResult as ScanTaxInvoiceOutput)?.paymentMethod
               : (finalScanResult as ScanInvoiceOutput)?.paymentMethod) || null,
           paymentStatus: "pending_payment",
-          paymentDueDate: null,
+          paymentDate: null,
           errorMessage: finalScanResult?.error || null,
           rawScanResultJson: scanResultJsonString,
           originalImagePreviewUri: originalImagePreviewUriForFirestore,
           compressedImageForFinalRecordUri:
             compressedImageForFinalRecordUriForFirestore,
-          paymentReceiptImageUri: null,
           linkedDeliveryNoteId: null,
+        };
+
+        // Conditionally add the paymentReceiptImageUri
+        const pendingInvoice = {
+          ...pendingInvoiceBase,
+          ...(documentType === "paymentReceipt" && {
+            paymentReceiptImageUri:
+              compressedImageForFinalRecordUriForFirestore,
+          }),
         };
 
         try {
@@ -728,7 +750,14 @@ export default function UploadPage() {
     );
 
     try {
-      const storageKey = getStorageKey(user.id);
+      const historyItemToRetry = uploadHistory.find(
+        (inv) => inv.id === invoiceId
+      );
+      if (!historyItemToRetry) {
+        throw new Error("Could not find the invoice in history to retry.");
+      }
+
+      const storageKey = getStorageKey(TEMP_DATA_KEY_PREFIX, user.id);
       localStorage.setItem(
         storageKey,
         JSON.stringify({
@@ -740,8 +769,10 @@ export default function UploadPage() {
 
       const queryParams = new URLSearchParams({
         tempInvoiceId: invoiceId,
-        docType: historyItem.documentType || "invoice",
-        originalFileName: encodeURIComponent(historyItem.originalFileName),
+        docType: historyItemToRetry.documentType || "invoice",
+        originalFileName: encodeURIComponent(
+          historyItemToRetry.originalFileName
+        ),
         retry: "true",
       });
       router.push(`/edit-invoice?${queryParams.toString()}`);
@@ -754,7 +785,7 @@ export default function UploadPage() {
       });
       setUploadHistory((prev) =>
         prev.map((inv) =>
-          inv.id === invoiceId ? { ...inv, status: "failed" } : inv
+          inv.id === invoiceId ? { ...inv, status: "error" } : inv
         )
       );
     } finally {
@@ -798,12 +829,19 @@ export default function UploadPage() {
     [locale, t]
   );
 
-  const handleViewDetails = (invoice: Invoice | null) => {
-    setSelectedInvoiceDetails(invoice);
+  const handleViewDetails = (invoice: InvoiceHistoryItem | null) => {
+    if (invoice) {
+      setSelectedInvoiceDetails({
+        ...invoice,
+        _displayContext: "full_details",
+      });
+    } else {
+      setSelectedInvoiceDetails(null);
+    }
     setShowDetailsModal(!!invoice);
   };
 
-  const handleViewImage = (invoice: Invoice) => {
+  const handleViewImage = (invoice: InvoiceHistoryItem) => {
     setSelectedInvoiceDetails({
       ...invoice,
       _displayContext: "image_only",
@@ -811,7 +849,7 @@ export default function UploadPage() {
     setShowDetailsModal(true);
   };
 
-  const renderStatusBadge = (status: Invoice["status"]) => {
+  const renderStatusBadge = (status: InvoiceHistoryItem["status"]) => {
     let variant: "default" | "secondary" | "destructive" | "outline" =
       "default";
     let className = "";
@@ -917,11 +955,9 @@ export default function UploadPage() {
         <CardContent className="space-y-6">
           <Tabs
             value={documentType}
-            onValueChange={(value) =>
-              setDocumentType(value as "deliveryNote" | "invoice")
-            }
+            onValueChange={(value) => setDocumentType(value as DocType)}
           >
-            <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/60 p-1.5 rounded-lg">
+            <TabsList className="grid w-full grid-cols-3 mb-4 bg-muted/60 p-1.5 rounded-lg">
               <TabsTrigger
                 value="deliveryNote"
                 className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary py-2 text-sm font-medium"
@@ -934,6 +970,12 @@ export default function UploadPage() {
               >
                 {t("upload_doc_type_invoice")}
               </TabsTrigger>
+              <TabsTrigger
+                value="paymentReceipt"
+                className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-primary py-2 text-sm font-medium"
+              >
+                {t("upload_doc_type_receipt")}
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="deliveryNote" className="mt-0">
               <p className="text-sm text-muted-foreground mb-2">
@@ -943,6 +985,11 @@ export default function UploadPage() {
             <TabsContent value="invoice" className="mt-0">
               <p className="text-sm text-muted-foreground mb-2">
                 {t("upload_invoice_specific_desc")}
+              </p>
+            </TabsContent>
+            <TabsContent value="paymentReceipt" className="mt-0">
+              <p className="text-sm text-muted-foreground mb-2">
+                {t("upload_receipt_specific_desc")}
               </p>
             </TabsContent>
           </Tabs>
@@ -1123,7 +1170,7 @@ export default function UploadPage() {
                     <TableRow key={item.id}>
                       <TableCell
                         className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2"
-                        title={item.originalFileName || item.generatedFileName}
+                        title={item.originalFileName}
                       >
                         <Button
                           variant="link"
@@ -1134,7 +1181,7 @@ export default function UploadPage() {
                             item.compressedImageForFinalRecordUri) && (
                             <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
                           )}
-                          {item.originalFileName || item.generatedFileName}
+                          {item.originalFileName}
                         </Button>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell px-2 sm:px-4 py-2">
@@ -1155,16 +1202,10 @@ export default function UploadPage() {
                             onClick={() => handleViewDetails(item)}
                             className="h-8 w-8"
                             title={t("upload_history_view_details_title", {
-                              fileName:
-                                item.originalFileName ||
-                                item.generatedFileName ||
-                                "",
+                              fileName: item.originalFileName || "",
                             })}
                             aria-label={t("upload_history_view_details_aria", {
-                              fileName:
-                                item.originalFileName ||
-                                item.generatedFileName ||
-                                "",
+                              fileName: item.originalFileName || "",
                             })}
                           >
                             <Info className="h-4 w-4 text-primary" />
@@ -1201,10 +1242,7 @@ export default function UploadPage() {
                               aria-label={t(
                                 "upload_history_retry_upload_aria",
                                 {
-                                  fileName:
-                                    item.originalFileName ||
-                                    item.generatedFileName ||
-                                    "",
+                                  fileName: item.originalFileName || "",
                                 }
                               )}
                             >
@@ -1240,10 +1278,7 @@ export default function UploadPage() {
             {selectedInvoiceDetails?._displayContext !== "image_only" && (
               <DialogDescription>
                 {t("invoice_details_description", {
-                  fileName:
-                    selectedInvoiceDetails?.originalFileName ||
-                    selectedInvoiceDetails?.generatedFileName ||
-                    "",
+                  fileName: selectedInvoiceDetails?.originalFileName || "",
                 })}
               </DialogDescription>
             )}
@@ -1265,9 +1300,7 @@ export default function UploadPage() {
                         }
                         alt={t("invoice_details_image_alt", {
                           fileName:
-                            selectedInvoiceDetails.originalFileName ||
-                            selectedInvoiceDetails.generatedFileName ||
-                            "",
+                            selectedInvoiceDetails.originalFileName || "",
                         })}
                         width={800}
                         height={1100}
@@ -1291,8 +1324,7 @@ export default function UploadPage() {
                           <strong>
                             {t("invoice_details_file_name_label")}:
                           </strong>{" "}
-                          {selectedInvoiceDetails.originalFileName ||
-                            selectedInvoiceDetails.generatedFileName}
+                          {selectedInvoiceDetails.originalFileName}
                         </p>
                         <p>
                           <strong>
@@ -1378,15 +1410,15 @@ export default function UploadPage() {
                               )
                             : t("invoices_na")}
                         </p>
-                        {selectedInvoiceDetails.paymentDueDate && (
+                        {selectedInvoiceDetails.paymentDate && (
                           <p>
                             <strong>
                               {t("payment_due_date_dialog_title")}:
                             </strong>{" "}
                             {formatDateForDisplay(
-                              selectedInvoiceDetails.paymentDueDate instanceof
+                              selectedInvoiceDetails.paymentDate instanceof
                                 Timestamp
-                                ? selectedInvoiceDetails.paymentDueDate
+                                ? selectedInvoiceDetails.paymentDate
                                 : undefined,
                               "PP"
                             )}
@@ -1417,9 +1449,7 @@ export default function UploadPage() {
                           }
                           alt={t("invoice_details_image_alt", {
                             fileName:
-                              selectedInvoiceDetails.originalFileName ||
-                              selectedInvoiceDetails.generatedFileName ||
-                              "",
+                              selectedInvoiceDetails.originalFileName || "",
                           })}
                           width={800}
                           height={1100}
