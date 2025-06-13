@@ -4,7 +4,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { LanguageProvider } from "@/context/LanguageContext"; // Import LanguageProvider
+import { LanguageProvider } from "@/contexts/LanguageContext"; // Import LanguageProvider
 import ClientLayoutWrapper from "@/components/layout/ClientLayoutWrapper"; // Import the new ClientLayoutWrapper
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -37,16 +37,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
       >
-        <AuthProvider>
-          <LanguageProvider>
+        <LanguageProvider>
+          <AuthProvider>
             <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
               <ClientLayoutWrapper>
                 <main className="flex-grow">{children}</main>
               </ClientLayoutWrapper>
               <Toaster />
             </ThemeProvider>
-          </LanguageProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

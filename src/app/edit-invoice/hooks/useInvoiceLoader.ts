@@ -1,7 +1,7 @@
 // src/app/edit-invoice/hooks/useInvoiceLoader.ts
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { format, parseISO, isValid } from "date-fns";

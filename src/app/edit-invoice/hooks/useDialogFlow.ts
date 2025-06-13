@@ -6,7 +6,7 @@ import type {
   EditableTaxInvoiceDetails,
   DueDateOption,
 } from "../types";
-import type { User } from "@/context/AuthContext";
+import type { User } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   getSuppliersService,

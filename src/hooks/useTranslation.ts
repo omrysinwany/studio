@@ -1,10 +1,9 @@
-
 // src/hooks/useTranslation.ts
-'use client';
+"use client";
 
-import { useLanguage, Locale } from '@/context/LanguageContext';
+import { useLanguage, Locale } from "@/contexts/LanguageContext";
 
 export const useTranslation = () => {
-  const { t, locale } = useLanguage(); 
+  const { t, locale } = useLanguage();
   return { t, locale };
 };

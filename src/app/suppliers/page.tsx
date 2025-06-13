@@ -111,7 +111,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import CreateSupplierSheet from "@/components/create-supplier-sheet";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Popover,
   PopoverContent,

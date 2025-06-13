@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
@@ -57,7 +57,7 @@ import type {
   EditableTaxInvoiceDetails,
   InvoiceHistoryItem,
 } from "./types";
-import type { DueDateOption } from "@/components/payment-due-date-dialog";
+import type { DueDateOption } from "@/components/supplier-payment-sheet";
 import type { InvoiceHistoryItem as BackendInvoiceHistoryItem } from "@/services/backend";
 import { DialogFlowStep } from "./types";
 
@@ -254,7 +254,7 @@ export default function EditInvoiceContent() {
           | Timestamp
           | null,
         paymentMethod: savedInvoice.paymentMethod,
-        paymentDueDate: savedInvoice.paymentDueDate as
+        paymentDueDate: savedInvoice.paymentDate as
           | string
           | Date
           | Timestamp

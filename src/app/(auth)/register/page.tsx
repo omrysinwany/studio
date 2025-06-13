@@ -1,16 +1,14 @@
+"use client";
 
-'use client';
+import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-import * as React from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import * as z from 'zod';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-
-
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -18,23 +16,29 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/context/AuthContext';
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, ChromeIcon, Loader2 } from 'lucide-react';
-import { useTranslation } from '@/hooks/useTranslation';
+import { UserPlus, ChromeIcon, Loader2 } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const formSchema = z.object({
   username: z.string().min(2, {
-    message: 'Username must be at least 2 characters.',
+    message: "Username must be at least 2 characters.",
   }),
   email: z.string().email({
-    message: 'Please enter a valid email address.',
+    message: "Please enter a valid email address.",
   }),
   password: z.string().min(6, {
-    message: 'Password must be at least 6 characters.',
+    message: "Password must be at least 6 characters.",
   }),
 });
 
@@ -47,23 +51,25 @@ export default function RegisterPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      username: '',
-      email: '',
-      password: '',
+      username: "",
+      email: "",
+      password: "",
     },
   });
 
   useEffect(() => {
-    if (!loading && user) { // Check for loading state before redirecting
-      router.push('/');
+    if (!loading && user) {
+      // Check for loading state before redirecting
+      router.push("/");
     }
   }, [user, loading, router]);
 
-  if (loading || (!loading && user)) { // Show loader if auth is loading OR if user is logged in (and redirecting)
+  if (loading || (!loading && user)) {
+    // Show loader if auth is loading OR if user is logged in (and redirecting)
     return (
       <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2 text-muted-foreground">{t('loading_data')}</p>
+        <p className="ml-2 text-muted-foreground">{t("loading_data")}</p>
       </div>
     );
   }
@@ -71,12 +77,12 @@ export default function RegisterPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       // Pass all necessary values for user creation
-      await registerWithEmail({ 
-        email: values.email, 
-        password: values.password, 
-        username: values.username 
+      await registerWithEmail({
+        email: values.email,
+        password: values.password,
+        username: values.username,
       });
-       // Toast is handled by AuthContext within processFirebaseUser or registerWithEmail
+      // Toast is handled by AuthContext within processFirebaseUser or registerWithEmail
       // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
@@ -87,7 +93,7 @@ export default function RegisterPage() {
   async function handleGoogleSignIn() {
     try {
       await signInWithGoogle();
-       // Toast is handled by AuthContext
+      // Toast is handled by AuthContext
       // router.push('/'); // Navigation handled by useEffect or successful login callback in AuthContext
     } catch (error) {
       // Error toast is handled by AuthContext
@@ -98,8 +104,10 @@ export default function RegisterPage() {
     <div className="flex min-h-[calc(100vh-var(--header-height,4rem))] items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-lg scale-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">{t('register_title')}</CardTitle>
-          <CardDescription>{t('register_description')}</CardDescription>
+          <CardTitle className="text-2xl font-bold text-primary">
+            {t("register_title")}
+          </CardTitle>
+          <CardDescription>{t("register_description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -109,9 +117,12 @@ export default function RegisterPage() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('register_username_label')}</FormLabel>
+                    <FormLabel>{t("register_username_label")}</FormLabel>
                     <FormControl>
-                      <Input placeholder={t('register_username_placeholder')} {...field} />
+                      <Input
+                        placeholder={t("register_username_placeholder")}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -122,9 +133,13 @@ export default function RegisterPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('register_email_label')}</FormLabel>
+                    <FormLabel>{t("register_email_label")}</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder={t('register_email_placeholder')} {...field} />
+                      <Input
+                        type="email"
+                        placeholder={t("register_email_placeholder")}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -135,34 +150,56 @@ export default function RegisterPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('register_password_label')}</FormLabel>
+                    <FormLabel>{t("register_password_label")}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder={t('register_password_placeholder')} {...field} />
+                      <Input
+                        type="password"
+                        placeholder={t("register_password_placeholder")}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
-                {loading ? t('register_button_loading') : <><UserPlus className="mr-2 h-4 w-4" /> {t('register_button')}</>}
+              <Button
+                type="submit"
+                className="w-full bg-primary hover:bg-primary/90"
+                disabled={loading}
+              >
+                {loading ? (
+                  t("register_button_loading")
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" /> {t("register_button")}
+                  </>
+                )}
               </Button>
             </form>
           </Form>
           <div className="my-4 flex items-center text-xs text-muted-foreground">
             <div className="flex-grow border-t border-border"></div>
-            <span className="mx-2">{t('register_or_divider')}</span>
+            <span className="mx-2">{t("register_or_divider")}</span>
             <div className="flex-grow border-t border-border"></div>
           </div>
 
-          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+          >
             <ChromeIcon className="mr-2 h-4 w-4" />
-            {t('register_google_button')}
+            {t("register_google_button")}
           </Button>
 
-           <div className="mt-6 text-center text-sm">
-            {t('register_has_account')}{' '}
-            <Link href="/login" className="font-medium text-accent hover:underline">
-              {t('register_login_link')}
+          <div className="mt-6 text-center text-sm">
+            {t("register_has_account")}{" "}
+            <Link
+              href="/login"
+              className="font-medium text-accent hover:underline"
+            >
+              {t("register_login_link")}
             </Link>
           </div>
         </CardContent>

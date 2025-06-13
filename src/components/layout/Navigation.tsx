@@ -27,7 +27,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -55,7 +55,7 @@ import React, {
   RefAttributes,
 } from "react";
 import { useTheme } from "next-themes";
-import { useLanguage, Locale } from "@/context/LanguageContext";
+import { useLanguage, Locale } from "@/contexts/LanguageContext";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Separator } from "@/components/ui/separator";

@@ -32,7 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTranslation } from "@/hooks/useTranslation";
 import { toast } from "@/hooks/use-toast";
 import type { Supplier } from "@/services/backend";
-import type { DueDateOption } from "@/components/payment-due-date-dialog"; // Will reuse this type
+
 import {
   format,
   addDays,
@@ -43,6 +43,14 @@ import {
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Timestamp } from "firebase/firestore";
+
+export type DueDateOption =
+  | "immediate"
+  | "net30"
+  | "net60"
+  | "net90"
+  | "eom"
+  | "custom";
 
 export type SupplierOption = "use_new" | "rename_new" | "select_existing";
 

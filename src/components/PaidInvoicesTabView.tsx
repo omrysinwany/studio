@@ -65,7 +65,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import PaymentReceiptUploadDialog from "@/components/PaymentReceiptUploadDialog";
 import { Timestamp, FieldValue } from "firebase/firestore"; // Added FieldValue

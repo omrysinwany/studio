@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "@/context/AuthContext";
+import type { User } from "@/contexts/AuthContext";
 import type {
   EditableProduct,
   EditableTaxInvoiceDetails,

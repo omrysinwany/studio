@@ -114,7 +114,7 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import PaymentReceiptUploadDialog from "@/components/PaymentReceiptUploadDialog";
 import { useIsMobile } from "@/hooks/use-mobile";

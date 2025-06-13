@@ -2,7 +2,7 @@
 import type { Timestamp } from "firebase/firestore";
 import type { Product as BackendProductType } from "@/services/backend";
 
-import type { DueDateOption as ComponentDueDateOption } from "@/components/payment-due-date-dialog";
+import type { DueDateOption as ComponentDueDateOption } from "@/components/supplier-payment-sheet";
 
 export type DueDateOption = ComponentDueDateOption;
 
