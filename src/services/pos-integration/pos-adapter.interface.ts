@@ -8,6 +8,9 @@
  * The exact fields will vary depending on the POS system.
  */
 export interface PosConnectionConfig {
+  // System identifier
+  systemId?: string;
+  
   // Common fields (examples)
   apiKey?: string;
   apiSecret?: string;
@@ -24,6 +27,23 @@ export interface PosConnectionConfig {
 }
 
 /**
+ * Field configuration for dynamic form generation
+ */
+export interface PosConfigField {
+  key: string;
+  labelKey: string;
+  type: 'text' | 'password' | 'number' | 'select' | 'checkbox';
+  tooltipKey?: string;
+  required?: boolean;
+  options?: { value: string; labelKey: string }[]; // For select fields
+  validation?: {
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+  };
+}
+
+/**
  * Represents the result of a synchronization operation.
  */
 export interface SyncResult {
@@ -33,6 +53,17 @@ export interface SyncResult {
   errors?: any[];
   products?: Product[]; // Optional: Include products fetched during sync
   data?: any; // Generic data payload
+}
+
+/**
+ * Generic result interface for CRUD operations
+ */
+export interface OperationResult<T = any> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  externalId?: string;
+  errors?: any[];
 }
 
 /**
@@ -47,6 +78,46 @@ export interface Product {
   unitPrice: number;
   salePrice?: number | null; // Allow null for salePrice
   lineTotal: number;
+  
+  // External system references
+  externalIds?: {
+    [systemId: string]: string;
+  };
+}
+
+/**
+ * Represents a supplier/contact structure
+ */
+export interface Supplier {
+  id?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  taxId?: string;
+  
+  // External system references
+  externalIds?: {
+    [systemId: string]: string;
+  };
+}
+
+/**
+ * Represents an invoice/document structure
+ */
+export interface PosDocument {
+  id?: string;
+  type: 'invoice' | 'deliveryNote' | 'order' | 'creditNote';
+  documentNumber?: string;
+  date: Date;
+  supplierId: string;
+  items: Product[];
+  totalAmount: number;
+  
+  // External system references
+  externalIds?: {
+    [systemId: string]: string;
+  };
 }
 
 /**
@@ -64,6 +135,12 @@ export interface IPosSystemAdapter {
   readonly systemName: string;
 
   /**
+   * Get the configuration schema for this POS system
+   * @returns Array of field configurations for dynamic form generation
+   */
+  getConfigSchema(): PosConfigField[];
+
+  /**
    * Tests the connection to the POS system using the provided configuration.
    * @param config - The connection configuration.
    * @returns A promise resolving to an object { success: boolean, message: string }.
@@ -72,22 +149,61 @@ export interface IPosSystemAdapter {
     config: PosConnectionConfig
   ): Promise<{ success: boolean; message: string }>;
 
+  // --- Product Operations ---
+  
+  /**
+   * Creates or updates a product in the POS system
+   * @param config - The connection configuration
+   * @param product - The product data
+   * @returns Operation result with external product ID if successful
+   */
+  createOrUpdateProduct(
+    config: PosConnectionConfig,
+    product: Product
+  ): Promise<OperationResult<{ externalId: string }>>;
+
+  /**
+   * Updates an existing product in the POS system
+   * @param config - The connection configuration
+   * @param product - The product data with external ID
+   * @returns Operation result
+   */
+  updateProduct(
+    config: PosConnectionConfig,
+    product: Product
+  ): Promise<OperationResult>;
+
+  /**
+   * Deactivates a product in the POS system
+   * @param config - The connection configuration
+   * @param product - The product data with external ID
+   * @returns Operation result
+   */
+  deactivateProduct(
+    config: PosConnectionConfig,
+    product: Product
+  ): Promise<OperationResult>;
+
   /**
    * Synchronizes product data from the POS system to InvoTrack.
-   * (Or potentially two-way sync in the future).
    * This method should fetch data and return it, not save it directly.
    * @param config - The connection configuration.
    * @returns A promise resolving to a SyncResult object, potentially including the fetched products.
    */
   syncProducts(config: PosConnectionConfig): Promise<SyncResult>;
 
+  // --- Supplier/Contact Operations ---
+  
   /**
-   * Synchronizes sales data from the POS system to InvoTrack.
-   * This could involve creating corresponding records or updating inventory based on sales.
-   * @param config - The connection configuration.
-   * @returns A promise resolving to a SyncResult object.
+   * Creates or updates a supplier/contact in the POS system
+   * @param config - The connection configuration
+   * @param supplier - The supplier data
+   * @returns Operation result with external supplier ID if successful
    */
-  syncSales(config: PosConnectionConfig): Promise<SyncResult>;
+  createOrUpdateSupplier(
+    config: PosConnectionConfig,
+    supplier: Supplier
+  ): Promise<OperationResult<{ externalId: string }>>;
 
   /**
    * Synchronizes suppliers data from the POS system to InvoTrack.
@@ -96,6 +212,21 @@ export interface IPosSystemAdapter {
    */
   syncSuppliers(config: PosConnectionConfig): Promise<SyncResult>;
 
+  // --- Document Operations ---
+  
+  /**
+   * Creates a document (invoice, order, etc.) in the POS system
+   * @param config - The connection configuration
+   * @param document - The document data
+   * @param externalSupplierId - The supplier's external ID in the POS system
+   * @returns Operation result with external document ID if successful
+   */
+  createDocument(
+    config: PosConnectionConfig,
+    document: PosDocument,
+    externalSupplierId: string
+  ): Promise<OperationResult<{ externalId: string }>>;
+
   /**
    * Synchronizes documents data from the POS system to InvoTrack.
    * @param config - The connection configuration.
@@ -103,7 +234,31 @@ export interface IPosSystemAdapter {
    */
   syncDocuments(config: PosConnectionConfig): Promise<SyncResult>;
 
-  // Add other potential methods as needed:
-  // syncCustomers?(config: PosConnectionConfig): Promise<SyncResult>;
-  // getSettingsSchema?(): any; // Optional: Return a schema for required settings fields
+  // --- Sales Operations ---
+  
+  /**
+   * Synchronizes sales data from the POS system to InvoTrack.
+   * This could involve creating corresponding records or updating inventory based on sales.
+   * @param config - The connection configuration.
+   * @returns A promise resolving to a SyncResult object.
+   */
+  syncSales(config: PosConnectionConfig): Promise<SyncResult>;
+
+  // --- Optional Methods ---
+  
+  /**
+   * Get available document types for this POS system
+   * @returns Array of document type identifiers
+   */
+  getAvailableDocumentTypes?(): string[];
+
+  /**
+   * Validate configuration before saving
+   * @param config - The configuration to validate
+   * @returns Validation result
+   */
+  validateConfig?(config: PosConnectionConfig): Promise<{
+    valid: boolean;
+    errors?: { field: string; message: string }[];
+  }>;
 }

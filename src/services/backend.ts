@@ -1,3 +1,5 @@
+"use server";
+
 import {
   addDoc,
   collection,
@@ -26,15 +28,16 @@ import {
   arrayRemove,
   DocumentReference,
   CollectionReference,
+  or,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
-  createOrUpdateCaspitProductAction,
-  deactivateCaspitProductAction,
-  createOrUpdateCaspitContactAction,
-  createCaspitDocumentAction,
-  updateCaspitProductAction,
-} from "@/actions/caspit-actions";
+  createOrUpdatePosProductAction,
+  updatePosProductAction,
+  deactivatePosProductAction,
+  createOrUpdatePosSupplierAction,
+  createPosDocumentAction,
+} from "@/actions/pos-actions";
 import type { PosConnectionConfig } from "./pos-integration/pos-adapter.interface";
 import { parseISO, isValid } from "date-fns";
 
@@ -82,6 +85,7 @@ export interface Product {
   imageUrl?: string | null;
   lastUpdated?: Timestamp | FieldValue;
   caspitProductId?: string | null;
+  externalIds?: { [systemId: string]: string };
   isActive?: boolean;
 }
 
@@ -132,6 +136,7 @@ export interface Supplier {
   invoiceCount: number;
   totalSpent: number;
   caspitAccountId?: string | null;
+  externalIds?: { [systemId: string]: string };
   osekMorshe?: string | null;
   contactPersonName?: string | null;
   phone?: string | null;
@@ -558,12 +563,20 @@ export const finalizeSaveProductsService = async (
             console.log(
               "[Caspit Sync] Supplier does not have caspitAccountId, creating/updating in Caspit..."
             );
-            const contactResult = await createOrUpdateCaspitContactAction(
+            const contactResult = await createOrUpdatePosSupplierAction(
               userSettings.posConfig,
-              supplierData
+              {
+                id: supplierData.id,
+                name: supplierData.name,
+                email: supplierData.email || undefined,
+                phone: supplierData.phone || undefined,
+                address: supplierData.address?.street || undefined,
+                taxId: supplierData.osekMorshe || undefined,
+                externalIds: supplierData.externalIds,
+              }
             );
-            if (contactResult.success && contactResult.caspitAccountId) {
-              caspitContactId = contactResult.caspitAccountId;
+            if (contactResult.success && contactResult.data?.externalId) {
+              caspitContactId = contactResult.data.externalId;
               await updateDoc(supplierDocRef, {
                 caspitAccountId: caspitContactId,
               });
@@ -581,15 +594,18 @@ export const finalizeSaveProductsService = async (
             console.log(
               `[Caspit Sync] Supplier has Caspit ID (${caspitContactId}). Proceeding to sync document.`
             );
+            console.log(
+              "[Caspit Sync] Creating products in Caspit..."
+            );
             for (const product of savedOrUpdatedProducts) {
               const caspitProductResult =
-                await createOrUpdateCaspitProductAction(
+                await createOrUpdatePosProductAction(
                   userSettings.posConfig,
                   product
                 );
               if (
                 caspitProductResult.success &&
-                caspitProductResult.caspitProductId
+                caspitProductResult.data?.externalId
               ) {
                 const productRef = getUserSubcollectionDocRef(
                   userId,
@@ -597,39 +613,51 @@ export const finalizeSaveProductsService = async (
                   product.id
                 );
                 await updateDoc(productRef, {
-                  caspitProductId: caspitProductResult.caspitProductId,
+                  caspitProductId: caspitProductResult.data.externalId,
                 });
-                console.log(
-                  `[Caspit Sync] Product ${product.id} synced. Caspit ID: ${caspitProductResult.caspitProductId}`
-                );
-              } else {
-                console.error(
-                  `[Caspit Sync] Failed to sync product ${product.id} with Caspit: ${caspitProductResult.message}`
-                );
               }
             }
 
-            const documentResult = await createCaspitDocumentAction(
+            const documentResult = await createPosDocumentAction(
               userSettings.posConfig,
-              JSON.parse(JSON.stringify(finalInvoiceRecord)),
-              savedOrUpdatedProducts,
-              caspitContactId
+              {
+                id: finalInvoiceRecord.id,
+                type: finalInvoiceRecord.documentType as 'invoice' | 'deliveryNote' | 'order' | 'creditNote',
+                documentNumber: finalInvoiceRecord.invoiceNumber || undefined,
+                date: finalInvoiceRecord.invoiceDate instanceof Timestamp 
+                  ? finalInvoiceRecord.invoiceDate.toDate() 
+                  : new Date(finalInvoiceRecord.invoiceDate as string),
+                supplierId: finalInvoiceRecord.supplierId || '',
+                items: savedOrUpdatedProducts,
+                totalAmount: finalInvoiceRecord.totalAmount || 0,
+              },
+              {
+                id: supplierData.id,
+                name: supplierData.name,
+                email: supplierData.email || undefined,
+                phone: supplierData.phone || undefined,
+                address: supplierData.address?.street || undefined,
+                taxId: supplierData.osekMorshe || undefined,
+                externalIds: supplierData.externalIds || { caspit: caspitContactId },
+              }
             );
 
-            if (documentResult.success && documentResult.caspitPurchaseDocId) {
+            if (documentResult.success && documentResult.data?.externalId) {
               await updateDoc(invoiceDocRef, {
-                caspitPurchaseDocId: documentResult.caspitPurchaseDocId,
+                caspitPurchaseDocId: documentResult.data.externalId,
                 syncError: null,
               });
               console.log(
-                `[Caspit Sync] Document ${finalInvoiceRecord.id} synced. Caspit Doc ID: ${documentResult.caspitPurchaseDocId}`
+                `[Caspit Sync] Document ${finalInvoiceRecord.id} synced. Caspit Doc ID: ${documentResult.data.externalId}`
               );
             } else {
               await updateDoc(invoiceDocRef, {
-                syncError: `Caspit: ${documentResult.message}`,
+                syncError:
+                  documentResult.message ||
+                  "Failed to sync document with Caspit",
               });
               console.error(
-                `[Caspit Sync] Failed to create Caspit document: ${documentResult.message}`
+                `[Caspit Sync] Failed to sync document ${finalInvoiceRecord.id}: ${documentResult.message}`
               );
             }
           }
@@ -667,16 +695,18 @@ export const syncProductsWithCaspitService = async (
   userId: string
 ): Promise<void> => {
   const userSettings = await getUserSettingsService(userId);
-  if (userSettings?.posSystemId !== "caspit" || !userSettings.posConfig) {
-    console.log("Caspit POS not configured, skipping sync.");
+  if (!userSettings?.posSystemId || !userSettings.posConfig) {
+    console.log("POS integration not configured, skipping sync");
     return;
   }
 
+  const posConfig = { ...userSettings.posConfig, systemId: userSettings.posSystemId };
+
   for (const product of products) {
     try {
-      await createOrUpdateCaspitProductAction(userSettings.posConfig, product);
+      await createOrUpdatePosProductAction(posConfig, product);
     } catch (error) {
-      console.error(`Failed to sync product ${product.id} with Caspit:`, error);
+      console.error(`Failed to sync product ${product.id} with ${userSettings.posSystemId}:`, error);
     }
   }
 };
@@ -717,7 +747,7 @@ export async function getProductsService(
     q = query(q, where("isActive", "==", true));
   }
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => doc.data() as Product);
+  return snapshot.docs.map((docSnap: DocumentSnapshot) => docSnap.data() as Product);
 }
 
 export async function getProductByIdService(
@@ -765,35 +795,38 @@ export async function updateProductService(
     await updateDoc(productRef, dataToUpdate);
     console.log(`[Backend] Product ${productId} updated in Firestore.`);
 
-    if (productBeforeUpdate.caspitProductId) {
+    // Check if product has external IDs for any POS system
+    const hasExternalId = productBeforeUpdate.externalIds || productBeforeUpdate.caspitProductId;
+    if (hasExternalId) {
       const userSettings = await getUserSettingsService(userId);
-      if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
+      if (userSettings?.posSystemId && userSettings.posConfig) {
+        const posConfig = { ...userSettings.posConfig, systemId: userSettings.posSystemId };
         console.log(
-          `[Backend updateProductService] Attempting to update product in Caspit. Caspit ID: ${productBeforeUpdate.caspitProductId}`
+          `[Backend updateProductService] Attempting to update product in ${userSettings.posSystemId}.`
         );
-        const updatedProductForCaspit: Product = {
+        const updatedProductForPos: Product = {
           ...productBeforeUpdate,
           ...dataToUpdate,
         } as Product;
 
         try {
-          const caspitResult = await updateCaspitProductAction(
-            userSettings.posConfig,
-            updatedProductForCaspit
+          const posResult = await updatePosProductAction(
+            posConfig,
+            updatedProductForPos
           );
-          if (caspitResult.success) {
+          if (posResult.success) {
             console.log(
-              `[Backend updateProductService] Successfully updated product ${productId} in Caspit.`
+              `[Backend updateProductService] Successfully updated product ${productId} in ${userSettings.posSystemId}.`
             );
           } else {
             console.error(
-              `[Backend updateProductService] Failed to update product ${productId} in Caspit: ${caspitResult.message}`
+              `[Backend updateProductService] Failed to update product ${productId} in ${userSettings.posSystemId}: ${posResult.message}`
             );
           }
-        } catch (caspitError: any) {
+        } catch (posError: any) {
           console.error(
-            `[Backend updateProductService] Critical error during Caspit update for product ${productId}: `,
-            caspitError.message
+            `[Backend updateProductService] Critical error during ${userSettings.posSystemId} update for product ${productId}: `,
+            posError.message
           );
         }
       }
@@ -835,23 +868,26 @@ export async function deleteProductService(
       `[Backend] Product ${productId} marked as inactive in Firestore.`
     );
 
-    if (productToDeactivate?.caspitProductId) {
+    // Check if product has external IDs for any POS system
+    const hasExternalId = productToDeactivate?.externalIds || productToDeactivate?.caspitProductId;
+    if (hasExternalId) {
       const userSettings = await getUserSettingsService(userId);
-      if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
+      if (userSettings?.posSystemId && userSettings.posConfig) {
+        const posConfig = { ...userSettings.posConfig, systemId: userSettings.posSystemId };
         console.log(
-          `[Backend deleteProductService] Attempting to deactivate product in Caspit. Caspit ID: ${productToDeactivate.caspitProductId}`
+          `[Backend deleteProductService] Attempting to deactivate product in ${userSettings.posSystemId}.`
         );
-        const caspitResult = await deactivateCaspitProductAction(
-          userSettings.posConfig,
+        const posResult = await deactivatePosProductAction(
+          posConfig,
           productToDeactivate
         );
-        if (caspitResult.success) {
+        if (posResult.success) {
           console.log(
-            `[Backend deleteProductService] Product ${productId} also marked as inactive in Caspit.`
+            `[Backend deleteProductService] Product ${productId} also marked as inactive in ${userSettings.posSystemId}.`
           );
         } else {
           console.error(
-            `[Backend deleteProductService] Failed to mark product ${productId} as inactive in Caspit: ${caspitResult.message}`
+            `[Backend deleteProductService] Failed to mark product ${productId} as inactive in ${userSettings.posSystemId}: ${posResult.message}`
           );
         }
       }
@@ -882,8 +918,8 @@ export async function clearInventoryService(userId: string): Promise<void> {
   const inventoryRef = getUserSubcollectionRef(userId, INVENTORY_SUBCOLLECTION);
   const snapshot = await getDocs(inventoryRef);
   const batch = writeBatch(db);
-  snapshot.docs.forEach((doc) => {
-    batch.delete(doc.ref);
+  snapshot.docs.forEach((docSnap: DocumentSnapshot) => {
+    batch.delete(docSnap.ref);
   });
   await batch.commit();
 }
@@ -929,7 +965,7 @@ export async function getInvoicesService(
   const invoicesRef = getUserSubcollectionRef(userId, DOCUMENTS_SUBCOLLECTION);
   const q = query(invoicesRef, orderBy("uploadTime", "desc"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => doc.data() as InvoiceHistoryItem);
+  return snapshot.docs.map((docSnap: DocumentSnapshot) => docSnap.data() as InvoiceHistoryItem);
 }
 
 export async function updateInvoiceService(
@@ -999,37 +1035,61 @@ export async function getSuppliersService(userId: string): Promise<Supplier[]> {
   const suppliersRef = getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION);
   const q = query(suppliersRef, orderBy("name"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => doc.data() as Supplier);
+  return snapshot.docs.map((docSnap: DocumentSnapshot) => docSnap.data() as Supplier);
 }
 
-export async function createSupplierAndSyncWithCaspitService(
+export async function createSupplierAndSyncWithPosService(
   supplierData: Partial<Omit<Supplier, "id">>,
   userId: string
 ): Promise<Supplier> {
   const newSupplier = await createSupplierService(supplierData, userId);
 
   const userSettings = await getUserSettingsService(userId);
-  if (userSettings?.posSystemId === "caspit" && userSettings.posConfig) {
-    const result = await createOrUpdateCaspitContactAction(
-      userSettings.posConfig,
-      JSON.parse(JSON.stringify(newSupplier))
+  if (userSettings?.posSystemId && userSettings.posConfig) {
+    const posConfig = { ...userSettings.posConfig, systemId: userSettings.posSystemId };
+    
+    // Convert Supplier to match POS interface
+    const posSupplier = {
+      id: newSupplier.id,
+      name: newSupplier.name,
+      email: newSupplier.email || undefined, // Convert null to undefined
+      phone: newSupplier.phone || undefined,
+      address: newSupplier.address?.street || undefined,
+      taxId: newSupplier.osekMorshe || undefined,
+      externalIds: newSupplier.externalIds,
+    };
+    
+    const result = await createOrUpdatePosSupplierAction(
+      posConfig,
+      posSupplier
     );
-    if (result.success && result.caspitAccountId) {
+    if (result.success && result.data?.externalId) {
       const supplierRef = getUserSubcollectionDocRef(
         userId,
         SUPPLIERS_SUBCOLLECTION,
         newSupplier.id
       );
+      
+      // Update with external IDs using the new structure
+      const externalIds = {
+        [userSettings.posSystemId]: result.data.externalId
+      };
+      
       await updateDoc(supplierRef, {
-        caspitAccountId: result.caspitAccountId,
+        externalIds,
+        // Keep backward compatibility for now
+        caspitAccountId: userSettings.posSystemId === "caspit" ? result.data.externalId : null,
       });
-      return { ...newSupplier, caspitAccountId: result.caspitAccountId };
+      return { ...newSupplier, externalIds };
     } else {
-      console.error("Failed to sync new supplier with Caspit:", result.message);
+      console.error(`Failed to sync new supplier with ${userSettings.posSystemId}:`, result.message);
     }
   }
   return newSupplier;
 }
+
+// Keep old name for backward compatibility
+export const createSupplierAndSyncWithCaspitService = createSupplierAndSyncWithPosService;
 
 export async function createSupplierService(
   supplierData: Partial<Omit<Supplier, "id">>,
@@ -1116,7 +1176,7 @@ export async function getOtherExpensesService(
   );
   const q = query(expensesRef, orderBy("date", "desc"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => doc.data() as OtherExpense);
+  return snapshot.docs.map((docSnap: DocumentSnapshot) => docSnap.data() as OtherExpense);
 }
 
 export async function updateOtherExpenseService(
@@ -1142,7 +1202,7 @@ export async function getExpenseCategoriesService(
   );
   const q = query(categoriesRef, orderBy("name"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => doc.data() as ExpenseCategory);
+  return snapshot.docs.map((docSnap: DocumentSnapshot) => docSnap.data() as ExpenseCategory);
 }
 
 export const saveUserToFirestore = async (

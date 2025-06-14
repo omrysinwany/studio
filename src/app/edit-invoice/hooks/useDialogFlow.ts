@@ -22,7 +22,7 @@ import {
 import { parseISO, isValid, format, addDays, endOfMonth } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
 import { Timestamp } from "firebase/firestore";
-import { createOrUpdateCaspitContactAction } from "@/actions/caspit-actions";
+import { createOrUpdatePosSupplierAction } from "@/actions/pos-actions";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
