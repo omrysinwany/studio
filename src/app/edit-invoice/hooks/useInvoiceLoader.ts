@@ -15,10 +15,10 @@ import {
   getStorageKey,
   USERS_COLLECTION,
   DOCUMENTS_SUBCOLLECTION,
-  Product,
   clearTemporaryScanData,
 } from "@/services/backend";
 
+import type { Product } from "@/services/types";
 import type { ScanInvoiceOutput } from "@/ai/flows/invoice-schemas";
 import type { ScanTaxInvoiceOutput } from "@/ai/flows/tax-invoice-schemas";
 import { v4 as uuidv4 } from "uuid"; // Import uuid

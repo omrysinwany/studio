@@ -31,7 +31,7 @@ import { CalendarIcon, Check, X, AlertTriangle, Info } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTranslation } from "@/hooks/useTranslation";
 import { toast } from "@/hooks/use-toast";
-import type { Supplier } from "@/services/backend";
+import type { Supplier } from "@/services/types";
 
 import {
   format,

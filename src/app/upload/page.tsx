@@ -39,7 +39,6 @@ import {
   X as ClearIcon,
 } from "lucide-react";
 import {
-  Invoice,
   getInvoicesService,
   TEMP_DATA_KEY_PREFIX,
   MAX_SCAN_RESULTS_SIZE_BYTES,
@@ -47,8 +46,8 @@ import {
   MAX_INVOICE_HISTORY_ITEMS,
   getStorageKey,
   clearOldTemporaryScanData,
-  InvoiceHistoryItem,
 } from "@/services/backend";
+import type { InvoiceHistoryItem, Invoice } from "@/services/types";
 import {
   Dialog,
   DialogContent,
@@ -1166,75 +1165,78 @@ export default function UploadPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {uploadHistory.map((item) => (
+                  {uploadHistory.map((invoice) => (
                     <TableRow
-                      key={item.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleViewImage(item)}
+                      key={invoice.id}
+                      className={cn(
+                        "cursor-pointer",
+                        invoice.status === "error" && "bg-red-50/50"
+                      )}
+                      onClick={() => handleViewImage(invoice)}
                     >
                       <TableCell
                         className="font-medium truncate max-w-[150px] sm:max-w-xs px-2 sm:px-4 py-2"
-                        title={item.originalFileName}
+                        title={invoice.originalFileName}
                       >
                         <Button
                           variant="link"
                           className="p-0 h-auto text-left font-medium text-foreground hover:text-primary truncate"
                         >
-                          {(item.originalImagePreviewUri ||
-                            item.compressedImageForFinalRecordUri) && (
+                          {(invoice.originalImagePreviewUri ||
+                            invoice.compressedImageForFinalRecordUri) && (
                             <ImageIconLucide className="inline-block mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
                           )}
-                          {item.originalFileName}
+                          {invoice.originalFileName}
                         </Button>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell px-2 sm:px-4 py-2">
                         {formatDateForDisplay(
-                          item.uploadTime instanceof Timestamp
-                            ? item.uploadTime
+                          invoice.uploadTime instanceof Timestamp
+                            ? invoice.uploadTime
                             : undefined
                         )}
                       </TableCell>
                       <TableCell className="px-2 sm:px-4 py-2">
-                        {renderStatusBadge(item.status)}
+                        {renderStatusBadge(invoice.status)}
                       </TableCell>
                       <TableCell className="text-right px-2 sm:px-4 py-2 space-x-1">
-                        {item.status === "completed" && (
+                        {invoice.status === "completed" && (
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleViewDetails(item);
+                              handleViewDetails(invoice);
                             }}
                             className="h-8 w-8"
                             title={t("upload_history_view_details_title", {
-                              fileName: item.originalFileName || "",
+                              fileName: invoice.originalFileName || "",
                             })}
                             aria-label={t("upload_history_view_details_aria", {
-                              fileName: item.originalFileName || "",
+                              fileName: invoice.originalFileName || "",
                             })}
                           >
                             <Info className="h-4 w-4 text-primary" />
                           </Button>
                         )}
-                        {(item.status === "pending" ||
-                          item.status === "error") &&
+                        {(invoice.status === "pending" ||
+                          invoice.status === "error") &&
                           user &&
                           user.id &&
-                          item.id && (
+                          invoice.id && (
                             <Button
                               variant="ghost"
                               size="icon"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRetryUpload(item.id);
+                                handleRetryUpload(invoice.id);
                               }}
                               className="h-8 w-8"
                               title={t("upload_history_retry_upload_title")}
                               aria-label={t(
                                 "upload_history_retry_upload_aria",
                                 {
-                                  fileName: item.originalFileName || "",
+                                  fileName: invoice.originalFileName || "",
                                 }
                               )}
                             >

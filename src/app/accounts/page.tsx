@@ -58,12 +58,9 @@ import {
 import { useTranslation } from "@/hooks/useTranslation";
 import {
   getInvoicesService,
-  type InvoiceHistoryItem,
-  UserSettings,
+  getOtherExpensesService,
   getUserSettingsService,
   saveUserSettingsService,
-  OtherExpense,
-  getOtherExpensesService, // Now using this service
 } from "@/services/backend";
 import {
   Table,
@@ -85,6 +82,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Timestamp } from "firebase/firestore";
+import type {
+  InvoiceHistoryItem,
+  UserSettings,
+  OtherExpense,
+} from "@/services/types";
 
 const ITEMS_PER_PAGE_OPEN_INVOICES = 4;
 
@@ -210,15 +212,15 @@ export default function AccountsPage() {
       )
       .sort((a, b) => {
         try {
-          const dateA = a.paymentDueDate
-            ? a.paymentDueDate instanceof Timestamp
-              ? a.paymentDueDate.toDate()
-              : parseISO(a.paymentDueDate as string)
+          const dateA = a.dueDate
+            ? a.dueDate instanceof Timestamp
+              ? a.dueDate.toDate()
+              : parseISO(a.dueDate as string)
             : null;
-          const dateB = b.paymentDueDate
-            ? b.paymentDueDate instanceof Timestamp
-              ? b.paymentDueDate.toDate()
-              : parseISO(b.paymentDueDate as string)
+          const dateB = b.dueDate
+            ? b.dueDate instanceof Timestamp
+              ? b.dueDate.toDate()
+              : parseISO(b.dueDate as string)
             : null;
 
           if (!dateA && !dateB) return 0;
@@ -241,9 +243,9 @@ export default function AccountsPage() {
             "Error sorting open invoices by due date:",
             e,
             "A:",
-            a.paymentDueDate,
+            a.dueDate,
             "B:",
-            b.paymentDueDate
+            b.dueDate
           );
           return 0;
         }
@@ -280,14 +282,14 @@ export default function AccountsPage() {
       let paymentDateTs: Date | null = null;
       let uploadDateTs: Date | null = null;
 
-      if (invoice.paymentDueDate) {
-        if (invoice.paymentDueDate instanceof Timestamp)
-          paymentDateTs = invoice.paymentDueDate.toDate();
+      if (invoice.dueDate) {
+        if (invoice.dueDate instanceof Timestamp)
+          paymentDateTs = invoice.dueDate.toDate();
         else if (
-          typeof invoice.paymentDueDate === "string" &&
-          isValid(parseISO(invoice.paymentDueDate))
+          typeof invoice.dueDate === "string" &&
+          isValid(parseISO(invoice.dueDate))
         )
-          paymentDateTs = parseISO(invoice.paymentDueDate);
+          paymentDateTs = parseISO(invoice.dueDate);
       }
       if (invoice.uploadTime) {
         if (invoice.uploadTime instanceof Timestamp)
@@ -345,8 +347,8 @@ export default function AccountsPage() {
             : parseISO(exp.date as string);
         if (isValid(expenseDate) && isSameMonth(expenseDate, new Date())) {
           const amountToAdd = exp.amount;
-          const internalKey = exp._internalCategoryKey?.toLowerCase();
-          const categoryString = exp.category?.toLowerCase();
+          const internalKey = exp.categoryId?.toLowerCase();
+          const categoryString = exp.categoryId?.toLowerCase();
           const biMonthlyKeys = [
             "property_tax",
             "rent",
@@ -414,8 +416,8 @@ export default function AccountsPage() {
       })
       .reduce((sum, exp) => {
         const amountToAdd = exp.amount;
-        const internalKey = exp._internalCategoryKey?.toLowerCase();
-        const categoryString = exp.category?.toLowerCase();
+        const internalKey = exp.categoryId?.toLowerCase();
+        const categoryString = exp.categoryId?.toLowerCase();
         const biMonthlyKeys = [
           "property_tax",
           "rent",
@@ -463,8 +465,8 @@ export default function AccountsPage() {
       })
       .forEach((exp) => {
         const categoryKey =
-          exp._internalCategoryKey ||
-          exp.category?.toLowerCase().replace(/\s+/g, "_") ||
+          exp.categoryId ||
+          exp.categoryId?.toLowerCase().replace(/\s+/g, "_") ||
           "unknown";
         categoryMap[categoryKey] = (categoryMap[categoryKey] || 0) + exp.amount;
       });
@@ -511,7 +513,7 @@ export default function AccountsPage() {
         reminderDays !== undefined &&
         reminderDays !== null &&
         reminderDays >= 0 &&
-        paymentStatus !== "paid"
+        (paymentStatus === "unpaid" || paymentStatus === "pending_payment")
       ) {
         if (daysUntilDue >= 0 && daysUntilDue <= reminderDays) {
           isReminderActive = true;
@@ -891,7 +893,7 @@ export default function AccountsPage() {
                     <TableBody>
                       {displayedOpenInvoices.map((invoice) => {
                         const dueDateStatus = getDueDateStatus(
-                          invoice.paymentDueDate,
+                          invoice.dueDate as string,
                           invoice.paymentStatus,
                           userSettings?.reminderDaysBefore
                         );
@@ -914,7 +916,7 @@ export default function AccountsPage() {
                               {formatCurrency(invoice.totalAmount)}
                             </TableCell>
                             <TableCell className="text-center">
-                              {formatDateDisplay(invoice.paymentDueDate)}
+                              {formatDateDisplay(invoice.dueDate as string)}
                             </TableCell>
                             <TableCell className="text-center">
                               {dueDateStatus && (
@@ -931,11 +933,11 @@ export default function AccountsPage() {
                                               "accounts_tooltip_reminder_active",
                                               {
                                                 days: differenceInCalendarDays(
-                                                  invoice.paymentDueDate instanceof
+                                                  invoice.dueDate instanceof
                                                     Timestamp
-                                                    ? invoice.paymentDueDate.toDate()
+                                                    ? invoice.dueDate.toDate()
                                                     : parseISO(
-                                                        invoice.paymentDueDate as string
+                                                        invoice.dueDate as string
                                                       ),
                                                   new Date()
                                                 ),

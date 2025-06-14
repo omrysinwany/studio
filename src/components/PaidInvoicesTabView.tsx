@@ -46,7 +46,6 @@ import {
 import { enUS, he } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
-  InvoiceHistoryItem,
   getInvoicesService,
   deleteInvoiceService,
   getUserSettingsService,
@@ -71,6 +70,7 @@ import PaymentReceiptUploadDialog from "@/components/PaymentReceiptUploadDialog"
 import { Timestamp, FieldValue } from "firebase/firestore"; // Added FieldValue
 import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton import
 import { Badge } from "@/components/ui/badge"; // Added Badge import
+import type { InvoiceHistoryItem } from "@/services/types";
 
 const ITEMS_PER_PAGE_PAID_INVOICES = 8;
 

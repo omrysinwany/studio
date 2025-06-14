@@ -59,7 +59,6 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  Product,
   getProductsService,
   clearInventoryService,
   updateProductService,
@@ -95,6 +94,7 @@ import {
 } from "@/lib/kpi-calculations";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import type { Product } from "@/services/types";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -163,7 +163,13 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const defaultVisibleColumns: Record<
-    keyof Product | "actions" | "imageUrl",
+    | keyof Product
+    | "actions"
+    | "imageUrl"
+    | "name"
+    | "supplier"
+    | "category"
+    | "lastPurchasedAt",
     boolean
   > = useMemo(
     () => ({
@@ -186,6 +192,10 @@ export default function InventoryPage() {
       isActive: false,
       caspitProductId: false,
       dateCreated: false,
+      name: false,
+      supplier: false,
+      category: false,
+      lastPurchasedAt: false,
     }),
     []
   );

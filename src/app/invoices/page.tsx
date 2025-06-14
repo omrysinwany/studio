@@ -79,15 +79,12 @@ import {
 import { enUS, he } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import {
-  Invoice,
   getInvoicesService,
   deleteInvoiceService,
   updateInvoiceService,
-  Supplier,
   getSuppliersService,
   getUserSettingsService,
   updateInvoicePaymentStatusService,
-  InvoiceHistoryItem,
 } from "@/services/backend";
 import {
   Sheet,
@@ -123,6 +120,7 @@ import { generateAndEmailInvoicesAction } from "@/actions/invoice-export-actions
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
+import type { Invoice, InvoiceHistoryItem, Supplier } from "@/services/types";
 
 const ITEMS_PER_PAGE = 8;
 

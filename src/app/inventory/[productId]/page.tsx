@@ -26,7 +26,7 @@ import {
   Trash2,
   Pencil,
   Barcode,
-  Camera,@/contexts/1
+  Camera,
   TrendingUp,
   TrendingDown,
   ImageIcon as ImageIconLucide,
@@ -39,7 +39,6 @@ import {
   getProductByIdService,
   updateProductService,
   deleteProductService,
-  Product,
 } from "@/services/backend";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,10 +63,12 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/context/1";
+import { useAuth } from "@/contexts/AuthContext";
 import NextImage from "next/image";
 import { Timestamp } from "firebase/firestore";
 import { format, parseISO, isValid } from "date-fns";
+import type { Product } from "@/services/types";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Helper to format numbers for display
 const formatDisplayNumberWithTranslation = (

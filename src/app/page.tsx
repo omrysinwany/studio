@@ -44,13 +44,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   getProductsService,
-  Invoice,
   getInvoicesService,
-  Supplier,
   getSuppliersService,
-  Product as BackendProduct,
-  OtherExpense,
-  UserSettings,
   getUserSettingsService,
   createSupplierService,
   getOtherExpensesService,
@@ -87,6 +82,14 @@ import KpiCustomizationSheet from "@/components/KpiCustomizationSheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import CreateSupplierSheet from "@/components/create-supplier-sheet";
 import { Progress } from "@/components/ui/progress";
+import type {
+  Invoice,
+  InvoiceHistoryItem,
+  Supplier,
+  Product as BackendProduct,
+  OtherExpense,
+  UserSettings,
+} from "@/services/types";
 
 const KPI_PREFERENCES_STORAGE_KEY_BASE = "invoTrack_kpiPreferences_v3";
 const QUICK_ACTIONS_PREFERENCES_STORAGE_KEY_BASE =
@@ -916,7 +919,7 @@ export default function Home() {
   ) => {
     if (!user || !user.id) return;
     try {
-      await createSupplierService(name, contactInfo, user.id);
+      await createSupplierService({ name, ...contactInfo }, user.id);
       toast({
         title: t("suppliers_toast_created_title"),
         description: t("suppliers_toast_created_desc", { supplierName: name }),

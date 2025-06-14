@@ -58,7 +58,7 @@ import type {
   InvoiceHistoryItem,
 } from "./types";
 import type { DueDateOption } from "@/components/supplier-payment-sheet";
-import type { InvoiceHistoryItem as BackendInvoiceHistoryItem } from "@/services/backend";
+import type { InvoiceHistoryItem as BackendInvoiceHistoryItem } from "@/services/types";
 import { DialogFlowStep } from "./types";
 
 export default function EditInvoiceContent() {

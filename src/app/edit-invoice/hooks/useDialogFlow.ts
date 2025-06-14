@@ -11,15 +11,17 @@ import { useToast } from "@/hooks/use-toast";
 import {
   getSuppliersService,
   createSupplierService,
-  Supplier,
   getProductsService,
-  Product as BackendProduct,
   updateSupplierService,
   getUserSettingsService,
-  UserSettings,
   createSupplierAndSyncWithCaspitService,
 } from "@/services/backend";
-import { parseISO, isValid, format, addDays, endOfMonth } from "date-fns";
+import type {
+  Supplier,
+  Product as BackendProduct,
+  UserSettings,
+} from "@/services/types";
+import { parseISO, isValid, format } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
 import { Timestamp } from "firebase/firestore";
 import { createOrUpdateCaspitContactAction } from "@/actions/caspit-actions";

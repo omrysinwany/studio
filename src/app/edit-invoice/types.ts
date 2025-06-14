@@ -1,6 +1,6 @@
 // src/app/edit-invoice/types.ts
 import type { Timestamp } from "firebase/firestore";
-import type { Product as BackendProductType } from "@/services/backend";
+import type { Product as BackendProductType } from "@/services/types";
 
 import type { DueDateOption as ComponentDueDateOption } from "@/components/supplier-payment-sheet";
 

@@ -12,75 +12,98 @@ export interface User {
   email?: string | null;
   createdAt?: Timestamp | FieldValue;
   lastLoginAt?: Timestamp | FieldValue;
-  settings?: UserSettings;
 }
 
 export interface Product {
-  id: string; // Firestore document ID
+  id: string;
   userId: string;
+  catalogNumber: string;
   name: string;
+  description: string;
+  shortName?: string | null;
   barcode?: string | null;
-  price: number;
-  cost?: number | null; // Added
   quantity: number;
-  stock?: number; // Added
-  supplier?: string | null; // Added
-  category?: string | null; // Added
-  status: "active" | "inactive" | "archived";
+  unitPrice: number;
+  salePrice?: number | null;
+  lineTotal: number;
+  supplier?: string | null;
+  category?: string | null;
+  minStockLevel?: number | null;
+  maxStockLevel?: number | null;
   imageUrl?: string | null;
-  createdAt?: Timestamp | FieldValue;
-  updatedAt?: Timestamp | FieldValue;
-  lastPurchasedAt?: Timestamp | FieldValue; // Added
-  caspitId?: string | null; // Changed to string to be more flexible
+  lastUpdated?: Timestamp | FieldValue;
+  lastPurchasedAt?: Timestamp | FieldValue;
+  caspitProductId?: string | null;
+  isActive?: boolean;
 }
 
-export interface InvoiceHistoryItem {
-  id: string; // Firestore document ID
+export interface Invoice {
+  id: string;
   userId: string;
   originalFileName: string;
-  supplier: string;
-  supplierName?: string;
-  invoiceNumber?: string | null;
-  invoiceDate?: string | null | Date | Timestamp;
-  totalAmount?: number | null;
-  itemCount: number;
-  paymentMethod?: string | null;
-  paymentDueDate?: string | null | Timestamp;
-  paymentStatus: "paid" | "unpaid" | "pending" | "overdue";
-  paymentDate?: string | null | Timestamp;
+  uploadTime: string | Timestamp | FieldValue;
   status: "pending" | "processing" | "completed" | "error" | "archived";
-  documentType: "invoice" | "deliveryNote" | "paymentReceipt";
-  isArchived: boolean;
-  uploadedAt: string | Date | Timestamp;
-  uploadTime?: string | Date | Timestamp;
-  updatedAt?: string | Timestamp;
-  products: (string | Product)[];
-  paymentReceiptImageUri?: string | null;
-  originalImageUri?: string | null;
-  compressedImageUri?: string | null;
-  originalImagePreviewUri?: string | null;
-  compressedImageForFinalRecordUri?: string | null;
-  generatedFileName?: string;
-  errorMessage?: string;
-  _displayContext?: "full_details" | "image_only";
-  rawScanResultJson?: string | null;
+  documentType: "deliveryNote" | "invoice" | "paymentReceipt";
+  supplierName?: string | null;
+  supplierId?: string | null;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | Timestamp | FieldValue | null;
+  totalAmount?: number | null;
+  itemCount?: number;
+  paymentMethod?: string | null;
+  dueDate?: string | Timestamp | FieldValue | null;
+  paymentDate?: string | Timestamp | FieldValue | null;
+  paymentStatus: "paid" | "unpaid" | "pending_payment";
+  products: Product[];
+  isArchived?: boolean;
+  errorMessage?: string | null;
   caspitPurchaseDocId?: string | null;
-  syncError?: string | null;
+  lastUpdated?: Timestamp | FieldValue;
+  paymentTerms?: string;
+  paymentReceiptImageUri?: string | null | undefined;
+  originalImageUri?: string;
+  originalImagePreviewUri?: string | null;
+  driveFileId?: string;
+  rawScanResultJson?: string | null;
+  compressedImageForFinalRecordUri?: string | null;
+  linkedDeliveryNoteId?: string | null;
 }
 
-export interface SupplierSummary {
+export interface InvoiceHistoryItem extends Omit<Invoice, "products"> {
+  generatedFileName?: string;
+  products: (Omit<Product, "id"> & { id?: string })[];
+  originalImagePreviewUri?: string | null | undefined;
+  compressedImageForFinalRecordUri?: string | null | undefined;
+  rawScanResultJson?: string | null | undefined;
+}
+
+export interface Supplier {
   id: string;
   userId: string;
   name: string;
-  taxId?: string | null;
+  invoiceCount: number;
+  totalSpent: number;
+  caspitAccountId?: string | null;
+  osekMorshe?: string | null;
+  contactPersonName?: string | null;
   phone?: string | null;
+  mobile?: string | null;
   email?: string | null;
+  address?: {
+    street?: string | null;
+    city?: string | null;
+    postalCode?: string | null;
+    country?: string | null;
+  } | null;
   paymentTerms?: string | null;
-  createdAt?: Timestamp | FieldValue; // made optional
-  updatedAt?: Timestamp | FieldValue;
-  caspitAccountId?: string | null; // Renamed from caspitId
-  totalAmountBilled?: number;
-  outstandingBalance?: number;
+  invoiceComment?: string | null;
+  bankDetails?: {
+    accountNumber?: string | null;
+    branch?: string | null;
+    bankId?: number | null;
+  } | null;
+  lastActivityDate?: string | Timestamp | null;
+  createdAt: Timestamp | FieldValue;
 }
 
 export interface AccountantSettings {
@@ -98,14 +121,16 @@ export interface QuickActionPreferences {
   visibleQuickActionIds: string[];
   quickActionOrder: string[];
 }
+
 export interface UserSettings {
-  // No ID needed here as it's a nested object in the User document.
-  posConnection?: PosConnectionConfig; // Added
+  userId: string;
   reminderDaysBefore?: number | null;
+  posSystemId?: string | null;
+  posConfig?: PosConnectionConfig | null;
   accountantSettings?: AccountantSettings | null;
   monthlyBudget?: number | null;
-  kpiPreferences: KpiPreferences;
-  quickActionPreferences: QuickActionPreferences;
+  kpiPreferences?: KpiPreferences | null;
+  quickActionPreferences?: QuickActionPreferences | null;
 }
 
 export interface OtherExpense {
@@ -113,33 +138,23 @@ export interface OtherExpense {
   userId: string;
   description: string;
   amount: number;
-  date: string | Date | Timestamp; // Serialized on client
-  category: string;
+  date: string | Timestamp;
   categoryId?: string | null;
-  createdAt?: Timestamp | FieldValue;
-  updatedAt?: Timestamp | FieldValue;
+  paymentDate?: string | Timestamp;
 }
 
 export interface ExpenseCategory {
   id: string;
-  userId: string;
   name: string;
-  isFixed?: boolean;
-  defaultAmount?: number | null;
-  createdAt: Timestamp | FieldValue;
+  userId: string;
 }
 
-export interface ProductPriceDiscrepancy {
-  productId: string;
-  name: string;
-  barcode?: string | null; // Changed to optional
-  oldPrice?: number | null; // Changed to optional
-  newPrice?: number | null;
-  oldCost?: number | null; // Added
-  newCost?: number | null; // Added
+export interface ProductPriceDiscrepancy extends Product {
+  existingUnitPrice: number;
+  newUnitPrice: number;
 }
 
 export interface PriceCheckResult {
-  hasDiscrepancies: boolean; // Added
-  discrepancies: ProductPriceDiscrepancy[];
+  productsToSaveDirectly: Product[];
+  priceDiscrepancies: ProductPriceDiscrepancy[];
 }

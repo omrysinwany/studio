@@ -1,18 +1,27 @@
-'use server';
+"use server";
 
-import { getInvoicesService, type InvoiceHistoryItem } from '@/services/backend';
-import { format, parseISO } from 'date-fns';
+import { getInvoicesService } from "@/services/backend";
+import type { InvoiceHistoryItem } from "@/services/types";
+import { format, parseISO } from "date-fns";
 
 // Helper function to escape CSV values
 const escapeCsvValue = (value: any): string => {
   if (value === null || value === undefined) {
-    return '';
+    return "";
   }
   if (value instanceof Date) {
-    try { return value.toISOString(); } catch { return 'Invalid Date'; }
+    try {
+      return value.toISOString();
+    } catch {
+      return "Invalid Date";
+    }
   }
   let stringValue = String(value);
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+  if (
+    stringValue.includes(",") ||
+    stringValue.includes('"') ||
+    stringValue.includes("\n")
+  ) {
     stringValue = stringValue.replace(/"/g, '""'); // Escape double quotes
     return `"${stringValue}"`;
   }
@@ -31,7 +40,9 @@ export async function generateAndEmailInvoicesAction(
 
   try {
     const allInvoices = await getInvoicesService(userId);
-    const selectedInvoices = allInvoices.filter(invoice => selectedInvoiceIds.includes(invoice.id));
+    const selectedInvoices = allInvoices.filter((invoice) =>
+      selectedInvoiceIds.includes(invoice.id)
+    );
 
     if (selectedInvoices.length === 0) {
       return { success: false, message: "No invoices selected or found." };
@@ -48,23 +59,38 @@ export async function generateAndEmailInvoicesAction(
       "Payment Status",
       "Upload Date",
       "Due Date",
-      "Error Message"
+      "Error Message",
     ];
 
-    const csvRows = selectedInvoices.map(invoice => [
+    const csvRows = selectedInvoices.map((invoice) => [
       escapeCsvValue(invoice.id),
-      escapeCsvValue(invoice.fileName),
+      escapeCsvValue(invoice.originalFileName),
       escapeCsvValue(invoice.invoiceNumber),
-      escapeCsvValue(invoice.supplier),
-      escapeCsvValue(invoice.totalAmount !== undefined ? invoice.totalAmount.toFixed(2) : ''),
+      escapeCsvValue(invoice.supplierName),
+      escapeCsvValue(
+        invoice.totalAmount !== undefined && invoice.totalAmount !== null
+          ? invoice.totalAmount.toFixed(2)
+          : ""
+      ),
       escapeCsvValue(invoice.status),
       escapeCsvValue(invoice.paymentStatus),
-      escapeCsvValue(invoice.uploadTime ? format(parseISO(invoice.uploadTime as string), 'yyyy-MM-dd HH:mm') : ''),
-      escapeCsvValue(invoice.paymentDueDate ? format(parseISO(invoice.paymentDueDate as string), 'yyyy-MM-dd') : ''),
-      escapeCsvValue(invoice.errorMessage)
+      escapeCsvValue(
+        invoice.uploadTime
+          ? format(parseISO(invoice.uploadTime as string), "yyyy-MM-dd HH:mm")
+          : ""
+      ),
+      escapeCsvValue(
+        invoice.dueDate
+          ? format(parseISO(invoice.dueDate as string), "yyyy-MM-dd")
+          : ""
+      ),
+      escapeCsvValue(invoice.errorMessage),
     ]);
 
-    const csvContent = [headers.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+    const csvContent = [
+      headers.join(","),
+      ...csvRows.map((row) => row.join(",")),
+    ].join("\n");
 
     // Simulate email sending
     console.log("--- SIMULATING INVOICE EXPORT EMAIL ---");
@@ -77,10 +103,15 @@ export async function generateAndEmailInvoicesAction(
     // In a real application, you would use an email service (e.g., SendGrid, Nodemailer) here
     // await sendEmailWithAttachment(accountantEmail, "Selected Invoices Export", note, csvContent, "invoices.csv");
 
-    return { success: true, message: `Successfully prepared ${selectedInvoices.length} invoices. Email simulation logged to console.` };
-
+    return {
+      success: true,
+      message: `Successfully prepared ${selectedInvoices.length} invoices. Email simulation logged to console.`,
+    };
   } catch (error: any) {
     console.error("Error in generateAndEmailInvoicesAction:", error);
-    return { success: false, message: `Failed to export invoices: ${error.message || 'Unknown error'}` };
+    return {
+      success: false,
+      message: `Failed to export invoices: ${error.message || "Unknown error"}`,
+    };
   }
 }

@@ -83,16 +83,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   getProductsService,
-  Product,
-  InvoiceHistoryItem,
   getInvoicesService,
-  OtherExpense,
   getOtherExpensesService,
   getStorageKey,
-  SupplierSummary,
-  getSupplierSummariesService,
-  UserSettings,
   getUserSettingsService,
+  getSuppliersService,
 } from "@/services/backend";
 import {
   calculateInventoryValue,
@@ -120,6 +115,12 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { Timestamp } from "firebase/firestore";
+import type {
+  Product,
+  InvoiceHistoryItem,
+  OtherExpense,
+  Supplier,
+} from "@/services/types";
 
 const formatNumber = (
   value: number | undefined | null,
@@ -285,7 +286,7 @@ export default function ReportsPage() {
         getProductsService(user.id),
         getInvoicesService(user.id),
         getOtherExpensesService(user.id), // Fetch from Firestore
-        getSupplierSummariesService(user.id),
+        getSuppliersService(user.id),
       ]);
       setInventory(inventoryData);
       setInvoices(invoicesData);
@@ -460,8 +461,8 @@ export default function ReportsPage() {
         new Set(
           filteredOtherExpensesByDate.map(
             (exp) =>
-              exp._internalCategoryKey ||
-              exp.category?.toLowerCase().replace(/\s+/g, "_") ||
+              exp.categoryId ||
+              exp.categoryId?.toLowerCase().replace(/\s+/g, "_") ||
               "unknown"
           )
         )
@@ -470,8 +471,8 @@ export default function ReportsPage() {
         .map((catKey) => {
           const categoryExpenses = filteredOtherExpensesByDate.filter(
             (exp) =>
-              (exp._internalCategoryKey ||
-                exp.category?.toLowerCase().replace(/\s+/g, "_") ||
+              (exp.categoryId ||
+                exp.categoryId?.toLowerCase().replace(/\s+/g, "_") ||
                 "unknown") === catKey
           );
           const categoryLabel = t(
@@ -496,7 +497,7 @@ export default function ReportsPage() {
       setExpensesByCategoryData(catDistData);
 
       // Documents Processed Chart
-      const procVolData = [];
+      const procVolData: { period: string; documents: number }[] = [];
       const currentDateForProcVol = dateRange?.from
         ? new Date(dateRange.from)
         : subMonths(new Date(), 6);
@@ -572,6 +573,7 @@ export default function ReportsPage() {
           });
         } else if (
           p.maxStockLevel !== undefined &&
+          p.maxStockLevel !== null &&
           currentQuantity > p.maxStockLevel
         ) {
           acc.push({

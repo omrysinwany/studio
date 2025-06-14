@@ -9,20 +9,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@@/contexts/1/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   getUserSettingsService,
   saveUserSettingsService,
-  type UserSettings,
 } from "@/services/backend";
 import { Loader2, Bell, Save, ArrowLeft } from "lucide-react";
-import { useAuth } from "@/context/1";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/hooks/useTranslation";
+import type { UserSettings } from "@/services/types";
 
 export default function NotificationSettingsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -89,6 +89,7 @@ export default function NotificationSettingsPage() {
     setIsSaving(true);
     try {
       const settingsToSave: UserSettings = {
+        userId: user.id,
         reminderDaysBefore: days,
       };
       await saveUserSettingsService(settingsToSave, user.id);

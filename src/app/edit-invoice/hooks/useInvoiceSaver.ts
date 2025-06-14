@@ -11,15 +11,17 @@ import {
   checkProductPricesBeforeSaveService,
   finalizeSaveProductsService,
   syncProductsWithCaspitService,
-  ProductPriceDiscrepancy,
   archiveDocumentService,
   updateInvoicePaymentStatusService,
-  InvoiceHistoryItem as BackendInvoiceHistoryItem,
 } from "@/services/backend";
 import { Timestamp } from "firebase/firestore";
 import { isValid, parseISO, format } from "date-fns";
 import { he as heLocale, enUS as enUSLocale } from "date-fns/locale";
-import type { Product as BackendProduct } from "@/services/backend";
+import type {
+  Product as BackendProduct,
+  InvoiceHistoryItem as BackendInvoiceHistoryItem,
+  ProductPriceDiscrepancy,
+} from "@/services/types";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useDialogFlow } from "./useDialogFlow";
 

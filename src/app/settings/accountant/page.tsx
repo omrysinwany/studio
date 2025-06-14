@@ -8,20 +8,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@@/contexts/1/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   getAccountantSettingsService,
   saveAccountantSettingsService,
-  type AccountantSettings,
 } from "@/services/backend";
 import { Loader2, Mail, Save, ArrowLeft } from "lucide-react";
-import { useAuth } from "@/context/1";
+import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/hooks/useTranslation";
+import type { AccountantSettings } from "@/services/types";
 
 export default function AccountantSettingsPage() {
   const { user, loading: authLoading } = useAuth();

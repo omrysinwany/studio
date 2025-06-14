@@ -22,14 +22,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
-  getSupplierSummariesService,
-  SupplierSummary,
-  InvoiceHistoryItem,
+  getSuppliersService,
   getInvoicesService,
-  updateSupplierContactInfoService,
   deleteSupplierService,
   createSupplierService,
-  DOCUMENTS_COLLECTION,
+  updateSupplierService,
 } from "@/services/backend";
 import {
   Briefcase,
@@ -129,11 +126,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import type { Supplier, InvoiceHistoryItem } from "@/services/types";
 
 const ITEMS_PER_PAGE = 4;
 
 type SortKey =
-  | keyof Pick<SupplierSummary, "name" | "invoiceCount" | "lastActivityDate">
+  | keyof Pick<Supplier, "name" | "invoiceCount" | "lastActivityDate">
   | "totalSpent";
 type SortDirection = "asc" | "desc";
 
@@ -285,15 +283,16 @@ export default function SuppliersPage() {
   const router = useRouter();
   const isMobile = useIsMobile();
 
-  const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedSupplier, setSelectedSupplier] =
-    useState<SupplierSummary | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
+    null
+  );
   const [selectedSupplierInvoices, setSelectedSupplierInvoices] = useState<
     InvoiceHistoryItem[]
   >([]);
@@ -336,11 +335,11 @@ export default function SuppliersPage() {
     }
     setIsLoading(true);
     try {
-      const [summaries, invoicesData] = await Promise.all([
-        getSupplierSummariesService(user.id),
+      const [suppliers, invoicesData] = await Promise.all([
+        getSuppliersService(user.id),
         getInvoicesService(user.id),
       ]);
-      setSuppliers(summaries);
+      setSuppliers(suppliers);
       setAllInvoices(invoicesData);
     } catch (error) {
       console.error("Failed to fetch supplier data:", error);
@@ -383,8 +382,8 @@ export default function SuppliersPage() {
 
     if (sortKey) {
       result.sort((a, b) => {
-        let valA = a[sortKey as keyof SupplierSummary];
-        let valB = b[sortKey as keyof SupplierSummary];
+        let valA = a[sortKey as keyof Supplier];
+        let valB = b[sortKey as keyof Supplier];
 
         if (sortKey === "lastActivityDate") {
           let dateA = 0;
@@ -467,7 +466,7 @@ export default function SuppliersPage() {
     }
   };
 
-  const handleViewSupplierDetails = (supplier: SupplierSummary) => {
+  const handleViewSupplierDetails = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setEditedContactInfo({
       phone: supplier.phone || "",
@@ -600,7 +599,7 @@ export default function SuppliersPage() {
     if (!selectedSupplier || !user || !user.id) return;
     setIsSavingContact(true);
     try {
-      await updateSupplierContactInfoService(
+      await updateSupplierService(
         selectedSupplier.id,
         {
           phone: editedContactInfo.phone?.trim() || null,
@@ -663,7 +662,7 @@ export default function SuppliersPage() {
     }
 
     try {
-      await updateSupplierContactInfoService(
+      await updateSupplierService(
         selectedSupplier.id,
         { paymentTerms: finalPaymentTerm },
         user.id
@@ -699,7 +698,7 @@ export default function SuppliersPage() {
   ) => {
     if (!user || !user.id) return;
     try {
-      await createSupplierService(name, contactInfo, user.id);
+      await createSupplierService({ name, ...contactInfo }, user.id);
       toast({
         title: t("suppliers_toast_created_title"),
         description: t("suppliers_toast_created_desc", { supplierName: name }),

@@ -23,7 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import BarcodeScanner from "@/components/barcode-scanner";
-import type { Product } from "@/services/backend";
+import type { Product } from "@/services/types";
 import { toast } from "@/hooks/use-toast";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

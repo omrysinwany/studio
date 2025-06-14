@@ -5,7 +5,7 @@ import type {
   PosConnectionConfig,
   SyncResult,
 } from "@/services/pos-integration/pos-adapter.interface";
-import type { Product, InvoiceHistoryItem, Supplier } from "@/services/backend";
+import type { Product, InvoiceHistoryItem, Supplier } from "@/services/types";
 import {
   CaspitContact,
   CaspitDocument,
