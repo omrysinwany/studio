@@ -9,7 +9,8 @@ import React, {
   ReactNode,
   useCallback,
 } from "react";
-import { User, saveUserToFirestore } from "@/services/backend-server";
+import type { User } from "@/services/types";
+import { saveUserToFirestore } from "@/services/backend";
 import { auth as firebaseAuth, GoogleAuthProvider } from "@/lib/firebase";
 import * as fbAuth from "firebase/auth"; // Import the entire module
 import {
@@ -106,7 +107,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
 
           // This function will create or update the user document.
-          await saveUserToFirestore(userToSave);
+          await saveUserToFirestore({
+            ...firebaseUser,
+            displayName: usernameForUserObject,
+          });
 
           // We already have all the info we need, no need to re-fetch.
           const appUser: User = {
