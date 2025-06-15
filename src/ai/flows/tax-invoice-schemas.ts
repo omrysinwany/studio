@@ -17,8 +17,13 @@ export type ScanTaxInvoiceInput = z.infer<typeof ScanTaxInvoiceInputSchema>;
 export const TaxInvoicePromptOutputSchema = z.object({
   supplierName: z
     .string()
-    .optional()
     .describe("The supplier's name identified on the document."),
+  osekMorshe: z
+    .string()
+    .optional()
+    .describe(
+      "The supplier's tax identification number (Osek Morshe / ח.פ. / ע.מ.). It should be a sequence of digits, often 9 digits long."
+    ),
   invoiceNumber: z
     .string()
     .optional()
@@ -31,7 +36,6 @@ export const TaxInvoicePromptOutputSchema = z.object({
     ),
   invoiceDate: z
     .string()
-    .optional()
     .describe(
       "The date appearing on the invoice document (e.g., 'YYYY-MM-DD' or 'DD/MM/YYYY')."
     ),
@@ -47,7 +51,13 @@ export type TaxInvoicePromptOutput = z.infer<
 >;
 
 // Final output schema for the tax invoice scanning flow
-export const ScanTaxInvoiceOutputSchema = TaxInvoicePromptOutputSchema.extend({
+export const ScanTaxInvoiceOutputSchema = z.object({
+  supplierName: z.string().optional().nullable(),
+  osekMorshe: z.string().optional().nullable(),
+  invoiceNumber: z.string().optional().nullable(),
+  totalAmount: z.number().optional().nullable(),
+  invoiceDate: z.string().optional().nullable(),
+  paymentMethod: z.string().optional().nullable(),
   error: z
     .string()
     .optional()

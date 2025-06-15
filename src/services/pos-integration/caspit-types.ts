@@ -146,3 +146,39 @@ export interface CaspitDocument {
   PaymentNIS?: number;
   TotalPaymentNIS?: number;
 }
+
+/**
+ * Represents a Caspit Expense object for creating supplier invoices via the /api/v1/Expenses endpoint.
+ * Based on the API documentation for creating expenses.
+ */
+export interface CaspitExpense {
+  // --- Core Info ---
+  ExpenseId: string; // **Required**. A unique ID you provide (e.g., UUID).
+  Date: string; // **Required**. Invoice date in ISO 8601 format (e.g., YYYY-MM-DD).
+  SupplierId?: string; // Caspit's internal ID for the supplier (CaspitContact).
+  Reference?: string; // The original invoice number from the supplier.
+  TrxCodeNumber?: number; // **Required by API**. Transaction classification ID (e.g., 4000 for general expenses).
+
+  // --- Financials ---
+  // Provide either Total or (TotalNoVat and VatRate).
+  Total?: number; // Total amount including VAT.
+  TotalNoVat?: number; // Amount before VAT.
+  Vat?: number; // VAT amount.
+  VatRate?: number; // VAT percentage (e.g., 17.00 for 17%).
+
+  // --- Attachment ---
+  ImageFile?: string; // Base64 encoded string of the file bytes.
+  ImageFileName?: string; // Original filename with extension (e.g., "invoice.pdf").
+
+  // --- Control Flags ---
+  Flag?: number; // Can be used for custom logic (e.g., 11 to prevent finalization).
+  AllocationNumber?: string; // Tax authority allocation number (for Israel).
+  Details?: string; // Optional details/notes.
+
+  // --- Read-Only (for reference) ---
+  readonly Status?: number; // 0 = Temporary, 2 = Permanent. Cannot be set on creation.
+
+  // --- Supplier Info (if SupplierId is not known) ---
+  SupplierName?: string;
+  SupplierOsekMorshe?: string; // Tax ID
+}

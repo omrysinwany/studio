@@ -46,6 +46,7 @@ export interface Invoice {
   documentType: "deliveryNote" | "invoice" | "paymentReceipt";
   supplierName?: string | null;
   supplierId?: string | null;
+  osekMorshe?: string | null;
   invoiceNumber?: string | null;
   invoiceDate?: string | Timestamp | FieldValue | null;
   totalAmount?: number | null;

@@ -41,6 +41,7 @@ export interface UseInvoiceLoaderReturn {
   docType: "deliveryNote" | "invoice" | null;
   localStorageScanDataMissing: boolean;
   aiScannedSupplierNameFromStorage: string | undefined;
+  aiScannedOsekMorsheFromStorage: string | undefined;
   initialSelectedPaymentDueDate?: Date;
   cleanupTemporaryData: (tempId?: string) => void;
   initialDataLoaded: boolean;
@@ -97,6 +98,8 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
     aiScannedSupplierNameFromStorage,
     setAiScannedSupplierNameFromStorage,
   ] = useState<string | undefined>(undefined);
+  const [aiScannedOsekMorsheFromStorage, setAiScannedOsekMorsheFromStorage] =
+    useState<string | undefined>(undefined);
   const [initialSelectedPaymentDueDate, setInitialSelectedPaymentDueDate] =
     useState<Date | undefined>();
 
@@ -151,6 +154,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
         setInitialProducts([]);
         setInitialTaxDetails({});
         setAiScannedSupplierNameFromStorage(undefined);
+        setAiScannedOsekMorsheFromStorage(undefined);
         setInitialSelectedPaymentDueDate(undefined);
         console.log(
           "[useInvoiceLoader] New scan detected (tempId/key). Setting isViewModeInitially to true."
@@ -233,6 +237,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
             paymentMethod: pendingData.paymentMethod || null,
             paymentDueDate: pendingData.paymentDueDate || null,
             rawScanResultJson: rawScanResultJsonFromStorage,
+            osekMorshe: pendingData.osekMorshe || undefined,
           };
           localAiScannedSupplier = pendingData.supplierName || undefined;
           if (pendingData.paymentDueDate) {
@@ -377,10 +382,17 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
                   loadedTaxDetails.paymentMethod ||
                   taxScan.paymentMethod ||
                   null,
+                osekMorshe:
+                  loadedTaxDetails.osekMorshe ||
+                  taxScan.osekMorshe ||
+                  undefined,
                 rawScanResultJson: rawScanResultJsonFromStorage,
               };
               localAiScannedSupplier =
                 loadedTaxDetails.supplierName || localAiScannedSupplier;
+              setAiScannedOsekMorsheFromStorage(
+                taxScan.osekMorshe || undefined
+              );
             }
             const generalErrorFromScanResult = (parsedScanResult as any)?.error;
             if (generalErrorFromScanResult && !scanProcessErrorFromLoad) {
@@ -447,6 +459,7 @@ export function useInvoiceLoader({}: UseInvoiceLoaderProps): UseInvoiceLoaderRet
     docType,
     localStorageScanDataMissing,
     aiScannedSupplierNameFromStorage,
+    aiScannedOsekMorsheFromStorage,
     initialSelectedPaymentDueDate,
     cleanupTemporaryData,
     initialDataLoaded,

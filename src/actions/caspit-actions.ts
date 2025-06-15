@@ -9,8 +9,10 @@ import type { Product, InvoiceHistoryItem, Supplier } from "@/services/types";
 import {
   CaspitContact,
   CaspitDocument,
+  CaspitExpense,
 } from "@/services/pos-integration/caspit-types";
 import { Timestamp } from "firebase/firestore";
+import { format } from "date-fns";
 
 const CASPIT_TRX_TYPE_IDS = {
   PURCHASE_INVOICE: 300, // חשבונית רכש
@@ -1186,6 +1188,126 @@ export async function createCaspitDocumentAction(
   } catch (error: any) {
     console.error(
       `[Caspit Action] Error syncing document ${document.id}:`,
+      error
+    );
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+}
+
+/**
+ * Creates a new supplier expense in Caspit using the /api/v1/Expenses endpoint.
+ * This is used for invoices and similar documents that represent an expense.
+ *
+ * @param config The POS connection configuration.
+ * @param document The internal document object from our app.
+ * @param caspitSupplierId The Caspit ID for the supplier.
+ * @returns A promise that resolves with the result of the operation.
+ */
+export async function createCaspitExpenseAction(
+  config: PosConnectionConfig,
+  document: InvoiceHistoryItem,
+  caspitSupplierId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  caspitExpenseId?: string;
+}> {
+  console.log(
+    `[Caspit Action] Starting create for expense document: ${document.id}`
+  );
+  try {
+    const token = await getCaspitToken(config);
+    if (!token) {
+      throw new Error("Failed to obtain Caspit token.");
+    }
+
+    const dateSource = document.invoiceDate || document.uploadTime;
+    let finalDate: string;
+
+    if (dateSource instanceof Timestamp) {
+      finalDate = dateSource.toDate().toISOString().split("T")[0]; // YYYY-MM-DD
+    } else if (typeof dateSource === "string") {
+      const parsedDate = new Date(dateSource);
+      finalDate = !isNaN(parsedDate.getTime())
+        ? parsedDate.toISOString().split("T")[0] // YYYY-MM-DD
+        : new Date().toISOString().split("T")[0];
+    } else {
+      finalDate = new Date().toISOString().split("T")[0];
+    }
+
+    // Use the document's final Firestore ID, which is shorter and more reliable
+    const expenseIdForCaspit = document.id.startsWith("pending-inv-")
+      ? document.id.substring("pending-inv-".length)
+      : document.id;
+
+    if (expenseIdForCaspit.length > 50) {
+      console.warn(
+        `[Caspit Action] Generated ExpenseId is too long (${expenseIdForCaspit.length} chars). Truncating to 50.`
+      );
+    }
+
+    // --- Start: Calculate VAT amounts for balanced request ---
+    const totalAmount = document.totalAmount || 0;
+    // Assuming 17% VAT. This could be made configurable in user settings in the future.
+    const VAT_RATE = 18.0;
+    const totalNoVat = totalAmount / (1 + VAT_RATE / 100);
+    const vatAmount = totalAmount - totalNoVat;
+    // --- End: Calculate VAT amounts ---
+
+    const expensePayload: CaspitExpense = {
+      ExpenseId: expenseIdForCaspit.substring(0, 50),
+      Date: finalDate,
+      SupplierId: caspitSupplierId,
+      TrxCodeNumber: 3100, // General Expenses
+      Reference: document.invoiceNumber || "",
+      Details: `Document from InvoTrack: ${document.originalFileName || "N/A"}`,
+      Total: totalAmount,
+      TotalNoVat: parseFloat(totalNoVat.toFixed(2)),
+      Vat: parseFloat(vatAmount.toFixed(2)),
+      VatRate: VAT_RATE,
+      Flag: 0,
+    };
+
+    const url = `${CASPIT_API_BASE_URL}/Expenses`;
+    console.log(
+      `[Caspit Action - createExpense] Sending request to Caspit. Method: POST, URL: ${url}`
+    );
+    console.log(
+      `[Caspit Action - createExpense] Payload:`,
+      JSON.stringify(expensePayload, null, 2)
+    );
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Caspit-Token": token,
+      },
+      body: JSON.stringify(expensePayload),
+    });
+
+    // Per documentation, a successful response has an empty body.
+    if (response.status === 201 || response.status === 200) {
+      console.log(
+        `[Caspit Action] Successfully created/updated expense for document ID: ${document.id}`
+      );
+      return {
+        success: true,
+        message: "Expense created successfully in Caspit.",
+        caspitExpenseId: document.id,
+      };
+    } else {
+      const responseText = await response.text();
+      throw new Error(
+        `Caspit API request failed (${response.status}): ${responseText}`
+      );
+    }
+  } catch (error: any) {
+    console.error(
+      `[Caspit Action] Error syncing expense for document ${document.id}:`,
       error
     );
     return {

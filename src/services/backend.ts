@@ -33,6 +33,7 @@ import {
   deactivateCaspitProductAction,
   createOrUpdateCaspitContactAction,
   createCaspitDocumentAction,
+  createCaspitExpenseAction,
   updateCaspitProductAction,
 } from "@/actions/caspit-actions";
 import type { PosConnectionConfig } from "./pos-integration/pos-adapter.interface";
@@ -233,7 +234,12 @@ export const finalizeSaveProductsService = async (
     _originalId?: string;
   })[],
   originalFileName: string,
-  docType: "deliveryNote" | "invoice" | "paymentReceipt",
+  docType:
+    | "deliveryNote"
+    | "invoice"
+    | "paymentReceipt"
+    | "invoiceReceipt"
+    | "receipt",
   userId: string,
   tempOrExistingDocId: string | null,
   invoiceNumber: string | null | undefined,
@@ -255,19 +261,20 @@ export const finalizeSaveProductsService = async (
   if (!userId) throw new Error("User ID is missing.");
   if (!supplierName) throw new Error("Supplier name is required.");
 
-  const supplierQuery = query(
-    getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION),
-    where("name", "==", supplierName),
-    limit(1)
-  );
-  const supplierQuerySnapshot = await getDocs(supplierQuery);
-  const existingSupplierDoc = supplierQuerySnapshot.docs[0];
-
   let finalInvoiceRecord!: InvoiceHistoryItem;
   const savedOrUpdatedProducts: Product[] = [];
   let finalSupplierId!: string;
 
   try {
+    // --- Start of Critical Operations ---
+    const supplierQuery = query(
+      getUserSubcollectionRef(userId, SUPPLIERS_SUBCOLLECTION),
+      where("name", "==", supplierName),
+      limit(1)
+    );
+    const supplierQuerySnapshot = await getDocs(supplierQuery);
+    const existingSupplierDoc = supplierQuerySnapshot.docs[0];
+
     await runTransaction(firestoreDb, async (transaction) => {
       const inventoryCollectionRef = getUserSubcollectionRef(
         userId,
@@ -321,9 +328,8 @@ export const finalizeSaveProductsService = async (
           transaction.update(productRef, {
             ...productData,
             lastUpdated: serverTimestamp(),
-            isActive: true, // Ensure re-activating if it was inactive
+            isActive: true,
           });
-          // Omit serverTimestamp from the object saved in the invoice's product array
           const { lastUpdated, ...productDataForInvoice } =
             productData as Partial<Product>;
           savedOrUpdatedProducts.push({
@@ -341,7 +347,6 @@ export const finalizeSaveProductsService = async (
             isActive: true,
           };
           transaction.set(productRef, newProductData);
-          // Omit serverTimestamp from the object saved in the invoice's product array
           const { lastUpdated, ...newProductForInvoice } = newProductData;
           savedOrUpdatedProducts.push(newProductForInvoice as Product);
         }
@@ -375,7 +380,8 @@ export const finalizeSaveProductsService = async (
         products: savedOrUpdatedProducts,
         isArchived: false,
         rawScanResultJson: rawScanResultJson || null,
-        caspitPurchaseDocId: null,
+        caspitDocId: null,
+        isSyncedToPos: false,
         syncError: null,
         paymentReceiptImageUri: null,
         originalImagePreviewUri: originalImagePreviewUri || null,
@@ -389,7 +395,9 @@ export const finalizeSaveProductsService = async (
       transaction.set(finalInvoiceRef, invoiceData, { merge: true });
       finalInvoiceRecord = invoiceData as unknown as InvoiceHistoryItem;
     });
+    // --- End of Critical Operations ---
 
+    // --- Start of Non-Critical POS Sync ---
     try {
       const userSettings = await getUserSettingsService(userId);
       if (
@@ -397,27 +405,23 @@ export const finalizeSaveProductsService = async (
         userSettings.posConfig &&
         finalSupplierId
       ) {
-        console.log("[Caspit Sync] Starting sync for new document...");
         const supplierDocRef = getUserSubcollectionDocRef(
           userId,
           SUPPLIERS_SUBCOLLECTION,
           finalSupplierId
         );
-        const supplierDoc = await getDoc(supplierDocRef);
         const invoiceDocRef = getUserSubcollectionDocRef(
           userId,
           DOCUMENTS_SUBCOLLECTION,
           finalInvoiceRecord.id
         );
+        const supplierDoc = await getDoc(supplierDocRef);
 
         if (supplierDoc.exists()) {
           const supplierData = supplierDoc.data() as Supplier;
           let caspitContactId = supplierData.caspitAccountId;
 
           if (!caspitContactId) {
-            console.log(
-              "[Caspit Sync] Supplier does not have caspitAccountId, creating/updating in Caspit..."
-            );
             const contactResult = await createOrUpdateCaspitContactAction(
               userSettings.posConfig,
               supplierData
@@ -427,9 +431,6 @@ export const finalizeSaveProductsService = async (
               await updateDoc(supplierDocRef, {
                 caspitAccountId: caspitContactId,
               });
-              console.log(
-                `[Caspit Sync] Successfully created/synced supplier. Caspit ID: ${caspitContactId}`
-              );
             } else {
               throw new Error(
                 `Caspit supplier sync failed: ${contactResult.message}`
@@ -438,59 +439,51 @@ export const finalizeSaveProductsService = async (
           }
 
           if (caspitContactId) {
-            console.log(
-              `[Caspit Sync] Supplier has Caspit ID (${caspitContactId}). Proceeding to sync document.`
-            );
             for (const product of savedOrUpdatedProducts) {
-              const caspitProductResult =
-                await createOrUpdateCaspitProductAction(
-                  userSettings.posConfig,
-                  product
-                );
-              if (
-                caspitProductResult.success &&
-                caspitProductResult.caspitProductId
-              ) {
-                const productRef = getUserSubcollectionDocRef(
-                  userId,
-                  INVENTORY_SUBCOLLECTION,
-                  product.id
-                );
-                await updateDoc(productRef, {
-                  caspitProductId: caspitProductResult.caspitProductId,
-                });
-                console.log(
-                  `[Caspit Sync] Product ${product.id} synced. Caspit ID: ${caspitProductResult.caspitProductId}`
-                );
-              } else {
-                console.error(
-                  `[Caspit Sync] Failed to sync product ${product.id} with Caspit: ${caspitProductResult.message}`
+              const pResult = await createOrUpdateCaspitProductAction(
+                userSettings.posConfig,
+                product
+              );
+              if (pResult.success && pResult.caspitProductId && product.id) {
+                await updateDoc(
+                  getUserSubcollectionDocRef(
+                    userId,
+                    INVENTORY_SUBCOLLECTION,
+                    product.id
+                  ),
+                  {
+                    caspitProductId: pResult.caspitProductId,
+                  }
                 );
               }
             }
 
-            const documentResult = await createCaspitDocumentAction(
-              userSettings.posConfig,
-              JSON.parse(JSON.stringify(finalInvoiceRecord)),
-              savedOrUpdatedProducts,
-              caspitContactId
-            );
-
-            if (documentResult.success && documentResult.caspitPurchaseDocId) {
-              await updateDoc(invoiceDocRef, {
-                caspitPurchaseDocId: documentResult.caspitPurchaseDocId,
-                syncError: null,
-              });
-              console.log(
-                `[Caspit Sync] Document ${finalInvoiceRecord.id} synced. Caspit Doc ID: ${documentResult.caspitPurchaseDocId}`
+            if (
+              docType === "invoice" ||
+              docType === "invoiceReceipt" ||
+              docType === "receipt"
+            ) {
+              const expenseResult = await createCaspitExpenseAction(
+                userSettings.posConfig,
+                JSON.parse(JSON.stringify(finalInvoiceRecord)),
+                caspitContactId
               );
+              if (expenseResult.success && expenseResult.caspitExpenseId) {
+                await updateDoc(invoiceDocRef, {
+                  caspitDocId: expenseResult.caspitExpenseId,
+                  isSyncedToPos: true,
+                  syncError: null,
+                });
+              } else {
+                throw new Error(
+                  `Caspit expense creation failed: ${expenseResult.message}`
+                );
+              }
             } else {
               await updateDoc(invoiceDocRef, {
-                syncError: `Caspit: ${documentResult.message}`,
+                isSyncedToPos: true,
+                syncError: null,
               });
-              console.error(
-                `[Caspit Sync] Failed to create Caspit document: ${documentResult.message}`
-              );
             }
           }
         }
@@ -501,21 +494,24 @@ export const finalizeSaveProductsService = async (
         caspitError
       );
       if (finalInvoiceRecord?.id) {
-        const invoiceDocRef = getUserSubcollectionDocRef(
-          userId,
-          DOCUMENTS_SUBCOLLECTION,
-          finalInvoiceRecord.id
+        await updateDoc(
+          getUserSubcollectionDocRef(
+            userId,
+            DOCUMENTS_SUBCOLLECTION,
+            finalInvoiceRecord.id
+          ),
+          {
+            syncError: `Caspit Sync Failed: ${caspitError.message}`,
+          }
         );
-        await updateDoc(invoiceDocRef, {
-          syncError: `Caspit Sync Failed: ${caspitError.message}`,
-        });
       }
     }
+    // --- End of Non-Critical POS Sync ---
 
     return { finalInvoiceRecord, savedOrUpdatedProducts };
   } catch (error) {
     console.error(
-      "[Backend finalizeSaveProductsService] Error in transaction:",
+      "[Backend finalizeSaveProductsService] Critical Error:",
       error
     );
     throw error;

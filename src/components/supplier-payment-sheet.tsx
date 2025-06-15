@@ -139,6 +139,15 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
     initialCustomPaymentDate,
   ]);
 
+  useEffect(() => {
+    if (
+      supplierOption === "rename_new" ||
+      (supplierOption === "use_new" && !existingSuppliers.length)
+    ) {
+      setOsekMorsheInput(potentialOsekMorsheFromScan || "");
+    }
+  }, [supplierOption, potentialOsekMorsheFromScan, existingSuppliers]);
+
   const handleSelectedSupplierChange = (supplierId: string) => {
     setSelectedExistingSupplierId(supplierId);
     const supplier = existingSuppliers.find((s) => s.id === supplierId);
@@ -150,6 +159,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
 
   const handleSave = async () => {
     let finalSupplierName: string = "";
+    let finalOsekMorshe: string | null = null;
     let isNew = false;
 
     if (supplierOption === "use_new") {
@@ -162,6 +172,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
         return;
       }
       finalSupplierName = potentialSupplierNameFromScan.trim();
+      finalOsekMorshe = osekMorsheInput.trim() || null;
       isNew = true;
     } else if (supplierOption === "rename_new") {
       if (!supplierNameInput.trim()) {
@@ -173,6 +184,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
         return;
       }
       finalSupplierName = supplierNameInput.trim();
+      finalOsekMorshe = osekMorsheInput.trim() || null;
       isNew = true;
     } else {
       // select_existing
@@ -188,10 +200,9 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
         return;
       }
       finalSupplierName = chosenSupplier.name;
+      finalOsekMorshe = chosenSupplier.osekMorshe || null;
       isNew = false;
     }
-
-    const finalOsekMorshe = osekMorsheInput.trim() || null;
 
     let finalPaymentDueDate: Date | undefined;
     let baseDateForCalc: Date;
@@ -260,6 +271,9 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
         paymentTermOption: paymentOption,
         paymentDueDate: finalPaymentDueDate,
         osekMorshe: finalOsekMorshe,
+      });
+      toast({
+        title: t("supplier_payment_sheet_save_success_title"),
       });
       onOpenChange(false); // Close sheet on successful save
     } catch (error) {
@@ -404,7 +418,7 @@ const SupplierPaymentSheet: React.FC<SupplierPaymentSheetProps> = ({
                 value={osekMorsheInput}
                 onChange={(e) => setOsekMorsheInput(e.target.value)}
                 placeholder={t("osek_morshe_placeholder")}
-                disabled={supplierOption === "use_new"}
+                disabled={false}
               />
               {supplierOption === "use_new" && (
                 <p className="text-xs text-muted-foreground">

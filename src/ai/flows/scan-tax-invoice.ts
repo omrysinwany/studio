@@ -75,6 +75,7 @@ const prompt = ai.definePrompt({
     "supplierName": (string) The name of the supplier or vendor.
     "invoiceNumber": (string) The unique invoice identifier.
     "totalAmount": (number) The final total amount due on the invoice. Extract ONLY the numerical value, no currency symbols. Look for keywords like 'Total', 'Grand Total', 'סהכ לתשלום', 'סה"כ'.
+    "osekMorshe": (string) The supplier's Osek Morshe number (tax ID).
     "invoiceDate": (string) The date written on the invoice document (e.g., 'YYYY-MM-DD', 'DD/MM/YYYY', 'Month DD, YYYY').
     "paymentMethod": (string) The method of payment mentioned, if any (e.g., 'Cash', 'Credit Card', 'Bank Transfer', 'Check', 'מזומן', 'אשראי', 'העברה בנקאית', 'צ׳ק').
 
@@ -87,10 +88,7 @@ const prompt = ai.definePrompt({
 });
 
 // Removed streamingCallback from the flow definition
-const scanTaxInvoiceFlow = ai.defineFlow<
-  ScanTaxInvoiceInput,
-  ScanTaxInvoiceOutput
->(
+const scanTaxInvoiceFlow = ai.defineFlow(
   {
     name: "scanTaxInvoiceFlow",
     inputSchema: ScanTaxInvoiceInputSchema,
@@ -200,10 +198,12 @@ const scanTaxInvoiceFlow = ai.defineFlow<
     );
     return {
       supplierName: rawOutputFromAI.supplierName,
+      osekMorshe: rawOutputFromAI.osekMorshe,
       invoiceNumber: rawOutputFromAI.invoiceNumber,
       totalAmount: rawOutputFromAI.totalAmount,
       invoiceDate: rawOutputFromAI.invoiceDate,
       paymentMethod: rawOutputFromAI.paymentMethod,
+      error: undefined, // Explicitly return no error
     };
   }
 );

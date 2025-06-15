@@ -255,8 +255,11 @@ export default function DocumentsPage() {
   >({});
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
-  const defaultViewMode = isMobile ? "grid" : "list";
-  const [viewMode, setViewMode] = useState<"grid" | "list">(defaultViewMode);
+  const [selectedInvoiceForEdit, setSelectedInvoiceForEdit] =
+    useState<DisplayInvoice | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   const [existingSuppliers, setExistingSuppliers] = useState<Supplier[]>([]);
   const [showReceiptUploadDialog, setShowReceiptUploadDialog] = useState(false);
@@ -267,10 +270,8 @@ export default function DocumentsPage() {
   const [selectedForBulkAction, setSelectedForBulkAction] = useState<string[]>(
     []
   );
-  const [showExportDialog, setShowExportDialog] = useState(false);
   const [accountantEmail, setAccountantEmail] = useState("");
   const [emailNote, setEmailNote] = useState("");
-  const [isExporting, setIsExporting] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [fetchInvoicesTrigger, setFetchInvoicesTrigger] = useState(0);
 
@@ -1276,10 +1277,15 @@ export default function DocumentsPage() {
                       </p>
                     </CardContent>
                     <CardFooter className="flex justify-between items-center p-4">
-                      {renderPaymentStatusBadge(
-                        invoice.paymentStatus,
-                        invoice.paymentDate
-                      )}
+                      <div className="flex items-center mt-1">
+                        <strong className="mr-1">
+                          {t("invoice_payment_status_label")}:
+                        </strong>
+                        {renderPaymentStatusBadge(
+                          invoice.paymentStatus,
+                          invoice.paymentDate
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {formatDateForDisplay(
                           invoice.uploadTime as Timestamp,
@@ -1505,78 +1511,125 @@ export default function DocumentsPage() {
                   )}
                 </div>
                 <Separator />
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <p>
-                    <strong>{t("invoice_details_supplier_label")}:</strong>{" "}
-                    {selectedInvoiceDetails?.supplierName || t("invoices_na")}
-                  </p>
-                  <p>
-                    <strong>{t("invoices_col_inv_number")}:</strong>{" "}
-                    {selectedInvoiceDetails?.invoiceNumber || t("invoices_na")}
-                  </p>
-                  <p>
-                    <strong>{t("invoices_col_total_currency")}:</strong>{" "}
-                    {formatCurrencyDisplay(selectedInvoiceDetails?.totalAmount)}
-                  </p>
-                  <p>
-                    <strong>{t("invoice_details_invoice_date_label")}:</strong>{" "}
-                    {formatDateForDisplay(
-                      selectedInvoiceDetails?.invoiceDate as Timestamp,
-                      "PP"
-                    )}
-                  </p>
-                  <p>
-                    <strong>{t("upload_history_col_upload_time")}:</strong>{" "}
-                    {formatDateForDisplay(
-                      selectedInvoiceDetails?.uploadTime as Timestamp
-                    )}
-                  </p>
-                  <p>
-                    <strong>{t("invoice_payment_status_label")}:</strong>{" "}
-                    {renderPaymentStatusBadge(
-                      selectedInvoiceDetails?.paymentStatus as DisplayInvoice["paymentStatus"],
-                      selectedInvoiceDetails?.paymentDate
-                    )}
-                  </p>
-                  <p>
-                    <strong>
-                      {t("invoice_details_payment_method_label")}:
-                    </strong>{" "}
-                    {selectedInvoiceDetails?.paymentMethod || t("invoices_na")}
-                  </p>
-                  {selectedInvoiceDetails?.paymentStatus === "paid" && (
-                    <div className="col-span-2">
-                      <strong>{t("paid_invoices_receipt_image_label")}:</strong>
-                      {isValidImageSrc(
-                        selectedInvoiceDetails?.paymentReceiptImageUri
-                      ) ? (
-                        <a
-                          href={selectedInvoiceDetails!.paymentReceiptImageUri!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:underline ml-2"
-                        >
-                          {t("view_receipt_link")}
-                        </a>
-                      ) : selectedInvoiceDetails?.paymentReceiptImageUri ? (
-                        <span className="ml-2">
-                          {t("receipt_available_no_preview")}
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="ml-2"
-                          onClick={() => {
-                            setInvoiceForReceiptUpload(selectedInvoiceDetails);
-                            setShowReceiptUploadDialog(true);
-                          }}
-                        >
-                          {t("upload_receipt_button")}
-                        </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p>
+                      <strong>{t("invoice_details_file_name_label")}:</strong>{" "}
+                      {selectedInvoiceDetails?.originalFileName}
+                    </p>
+                    <p>
+                      <strong>{t("invoice_details_upload_time_label")}:</strong>{" "}
+                      {formatDateForDisplay(
+                        selectedInvoiceDetails?.uploadTime as Timestamp,
+                        "PP"
+                      )}
+                    </p>
+                    <div className="flex items-center">
+                      <strong className="mr-1">
+                        {t("invoice_details_status_label")}:
+                      </strong>{" "}
+                      {renderPaymentStatusBadge(
+                        selectedInvoiceDetails?.paymentStatus as DisplayInvoice["paymentStatus"],
+                        selectedInvoiceDetails?.paymentDate
                       )}
                     </div>
-                  )}
+                    <div className="flex items-center mt-1">
+                      <strong className="mr-1">
+                        {t("invoice_payment_status_label")}:
+                      </strong>
+                      {renderPaymentStatusBadge(
+                        selectedInvoiceDetails?.paymentStatus as DisplayInvoice["paymentStatus"],
+                        selectedInvoiceDetails?.paymentDate
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p>
+                      <strong>{t("invoice_details_supplier_label")}:</strong>{" "}
+                      {selectedInvoiceDetails?.supplierName || t("invoices_na")}
+                    </p>
+                    <p>
+                      <strong>{t("invoices_col_inv_number")}:</strong>{" "}
+                      {selectedInvoiceDetails?.invoiceNumber ||
+                        t("invoices_na")}
+                    </p>
+                    <p>
+                      <strong>{t("invoices_col_total_currency")}:</strong>{" "}
+                      {formatCurrencyDisplay(
+                        selectedInvoiceDetails?.totalAmount
+                      )}
+                    </p>
+                    <p>
+                      <strong>
+                        {t("invoice_details_invoice_date_label")}:
+                      </strong>{" "}
+                      {formatDateForDisplay(
+                        selectedInvoiceDetails?.invoiceDate as Timestamp,
+                        "PP"
+                      )}
+                    </p>
+                    <p>
+                      <strong>{t("upload_history_col_upload_time")}:</strong>{" "}
+                      {formatDateForDisplay(
+                        selectedInvoiceDetails?.uploadTime as Timestamp
+                      )}
+                    </p>
+                    <p>
+                      <strong>
+                        {t("invoice_details_payment_method_label")}:
+                      </strong>{" "}
+                      {selectedInvoiceDetails?.paymentMethod
+                        ? t(
+                            `payment_method_${selectedInvoiceDetails.paymentMethod
+                              .toLowerCase()
+                              .replace(/\s+/g, "_")}` as any,
+                            {
+                              defaultValue:
+                                selectedInvoiceDetails.paymentMethod,
+                            }
+                          )
+                        : t("invoices_na")}
+                    </p>
+                    {selectedInvoiceDetails?.paymentStatus === "paid" && (
+                      <div className="col-span-2">
+                        <strong>
+                          {t("paid_invoices_receipt_image_label")}:
+                        </strong>
+                        {isValidImageSrc(
+                          selectedInvoiceDetails?.paymentReceiptImageUri
+                        ) ? (
+                          <a
+                            href={
+                              selectedInvoiceDetails!.paymentReceiptImageUri!
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:underline ml-2"
+                          >
+                            {t("view_receipt_link")}
+                          </a>
+                        ) : selectedInvoiceDetails?.paymentReceiptImageUri ? (
+                          <span className="ml-2">
+                            {t("receipt_available_no_preview")}
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="ml-2"
+                            onClick={() => {
+                              setInvoiceForReceiptUpload(
+                                selectedInvoiceDetails
+                              );
+                              setShowReceiptUploadDialog(true);
+                            }}
+                          >
+                            {t("upload_receipt_button")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

@@ -545,61 +545,63 @@ export default function UploadPage() {
           tempInvoiceId
         );
 
-        // Base invoice object, without the conditional field
-        const pendingInvoiceBase: Omit<
-          Invoice,
-          "id" | "uploadTime" | "paymentReceiptImageUri"
-        > & {
-          userId: string;
-          uploadTime: FieldValue;
-        } = {
-          userId: user.id,
-          originalFileName: originalFileName,
-          uploadTime: serverTimestamp(),
-          status: finalScanResult?.error ? "error" : "pending",
-          products: [],
-          documentType: documentType,
-          supplierName:
-            (documentType === "invoice"
-              ? (finalScanResult as ScanTaxInvoiceOutput)?.supplierName
-              : (finalScanResult as ScanInvoiceOutput)?.supplier) || null,
-          invoiceNumber:
-            (documentType === "invoice"
-              ? (finalScanResult as ScanTaxInvoiceOutput)?.invoiceNumber
-              : (finalScanResult as ScanInvoiceOutput)?.invoiceNumber) || null,
-          totalAmount:
-            (documentType === "invoice"
-              ? (finalScanResult as ScanTaxInvoiceOutput)?.totalAmount
-              : (finalScanResult as ScanInvoiceOutput)?.totalAmount) ?? null,
-          invoiceDate:
-            (documentType === "invoice"
-              ? (finalScanResult as ScanTaxInvoiceOutput)?.invoiceDate
-              : (finalScanResult as ScanInvoiceOutput)?.invoiceDate) || null,
-          paymentMethod:
-            (documentType === "invoice"
-              ? (finalScanResult as ScanTaxInvoiceOutput)?.paymentMethod
-              : (finalScanResult as ScanInvoiceOutput)?.paymentMethod) || null,
-          paymentStatus: "pending_payment",
-          paymentDate: null,
-          errorMessage: finalScanResult?.error || null,
-          rawScanResultJson: scanResultJsonString,
-          originalImagePreviewUri: originalImagePreviewUriForFirestore,
-          compressedImageForFinalRecordUri:
-            compressedImageForFinalRecordUriForFirestore,
-          linkedDeliveryNoteId: null,
-        };
+        let scanDataToSaveForLocalStorage: any = {};
+        let scanDataForFirestore: Partial<InvoiceHistoryItem> = {};
 
-        // Conditionally add the paymentReceiptImageUri
-        const pendingInvoice = {
-          ...pendingInvoiceBase,
-          ...(documentType === "paymentReceipt" && {
-            paymentReceiptImageUri:
-              compressedImageForFinalRecordUriForFirestore,
-          }),
-        };
+        if (finalScanResult) {
+          scanDataToSaveForLocalStorage = { ...finalScanResult };
+          delete scanDataToSaveForLocalStorage.products;
+
+          if ("products" in finalScanResult && finalScanResult.products) {
+            // Delivery note scan result
+            scanDataForFirestore = {
+              supplierName: finalScanResult.supplier,
+              invoiceNumber: finalScanResult.invoiceNumber,
+              totalAmount: finalScanResult.totalAmount,
+              invoiceDate: finalScanResult.invoiceDate,
+              paymentMethod: finalScanResult.paymentMethod,
+              osekMorshe: finalScanResult.osekMorshe,
+              products: finalScanResult.products.map((p) => ({
+                ...p,
+                name: p.description,
+                userId: user.id,
+              })),
+              rawScanResultJson: JSON.stringify(finalScanResult),
+            };
+          } else {
+            // Tax invoice scan result (no products array)
+            const taxResult = finalScanResult as ScanTaxInvoiceOutput;
+            scanDataForFirestore = {
+              supplierName: taxResult.supplierName,
+              invoiceNumber: taxResult.invoiceNumber,
+              totalAmount: taxResult.totalAmount,
+              invoiceDate: taxResult.invoiceDate,
+              paymentMethod: taxResult.paymentMethod,
+              osekMorshe: taxResult.osekMorshe,
+              rawScanResultJson: JSON.stringify(taxResult),
+            };
+          }
+        }
+
+        const storageKey = getStorageKey(tempInvoiceId, user.id);
+        const jsonData = JSON.stringify(scanDataToSaveForLocalStorage);
 
         try {
-          await setDoc(pendingInvoiceDocRef, pendingInvoice);
+          await setDoc(pendingInvoiceDocRef, {
+            ...scanDataForFirestore,
+            userId: user.id,
+            originalFileName: originalFileName,
+            uploadTime: serverTimestamp(),
+            status: finalScanResult?.error ? "error" : "pending",
+            documentType: documentType,
+            paymentStatus: "pending_payment",
+            paymentDate: null,
+            errorMessage: finalScanResult?.error || null,
+            originalImagePreviewUri: originalImagePreviewUriForFirestore,
+            compressedImageForFinalRecordUri:
+              compressedImageForFinalRecordUriForFirestore,
+            linkedDeliveryNoteId: null,
+          });
           pendingFirestoreDocCreated = true;
           console.log(
             `[UploadPage] Created PENDING Firestore document record ID: ${tempInvoiceId}`
@@ -1165,9 +1167,9 @@ export default function UploadPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {uploadHistory.map((invoice) => (
+                  {uploadHistory.map((invoice, index) => (
                     <TableRow
-                      key={invoice.id}
+                      key={invoice.id || `invoice-${index}`}
                       className={cn(
                         "cursor-pointer",
                         invoice.status === "error" && "bg-red-50/50"

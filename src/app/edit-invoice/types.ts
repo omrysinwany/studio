@@ -11,10 +11,12 @@ export interface EditableProduct extends BackendProductType {
 }
 
 export interface EditableTaxInvoiceDetails {
+  id?: string | null;
   supplierName?: string | null;
+  osekMorshe?: string;
   invoiceNumber?: string | null;
   totalAmount?: number | null;
-  invoiceDate?: string | Timestamp | Date | null;
+  invoiceDate?: Date | string | Timestamp | null;
   paymentMethod?: string | null;
   paymentDueDate?: string | Timestamp | Date | null;
   rawScanResultJson?: string | null;
@@ -46,6 +48,7 @@ export interface InvoiceHistoryItem {
   lastModified?: Timestamp | Date | string;
   products?: BackendProductType[];
   supplierName?: string | null;
+  osekMorshe?: string | null;
   invoiceNumber?: string | null;
   totalAmount?: number | null;
   invoiceDate?: Timestamp | Date | string | null;

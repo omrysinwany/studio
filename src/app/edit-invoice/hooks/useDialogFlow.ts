@@ -167,6 +167,8 @@ export function useDialogFlow({
   const [existingSuppliers, setExistingSuppliers] = useState<Supplier[]>([]);
   const [potentialSupplierNameForSheet, setPotentialSupplierNameForSheet] =
     useState<string | undefined>(undefined);
+  const [potentialOsekMorsheForSheet, setPotentialOsekMorsheForSheet] =
+    useState<string | undefined>(undefined);
   const [
     initialPaymentTermOptionForSheet,
     setInitialPaymentTermOptionForSheet,
@@ -183,7 +185,7 @@ export function useDialogFlow({
     useState<DueDateOption | null>(null);
   const [finalOsekMorsheFromFlow, setFinalOsekMorsheFromFlow] = useState<
     string | null | undefined
-  >();
+  >(initialScannedTaxDetails.osekMorshe);
   const [productsToDisplayForNewDetails, setProductsToDisplayForNewDetails] =
     useState<EditableProduct[]>([]);
   const [hasFlowStarted, setHasFlowStarted] = useState(false);
@@ -389,6 +391,7 @@ export function useDialogFlow({
       const trimmedScannedSupplier = scannedSupplierFromAi?.trim();
 
       setPotentialSupplierNameForSheet(trimmedScannedSupplier);
+      setPotentialOsekMorsheForSheet(trimmedScannedSupplier);
 
       if (trimmedScannedSupplier && trimmedScannedSupplier !== "") {
         const existingSupplierMatch = (fetchedSuppliersList || []).find(
@@ -459,6 +462,7 @@ export function useDialogFlow({
         setInitialPaymentTermOptionForSheet(null);
         setInitialCustomDateForSheet(undefined);
         setPotentialSupplierNameForSheet(undefined);
+        setPotentialOsekMorsheForSheet(undefined);
         await processNextDialogStep("supplier_payment_sheet_needed");
       }
     },
@@ -466,10 +470,15 @@ export function useDialogFlow({
   );
 
   const startInitialDialogFlow = useCallback(async () => {
-    if (!user?.id || hasFlowStarted) return;
-    setHasFlowStarted(true);
-    setIsDialogFlowActive(true);
+    if (!isNewScan || !user || hasFlowStarted) {
+      return;
+    }
     console.log("[useDialogFlow] startInitialDialogFlow: Flow started.");
+    setHasFlowStarted(true); // Prevent re-entry
+    setIsDialogFlowActive(true);
+
+    // This is the one-line fix:
+    setPotentialOsekMorsheForSheet(aiScannedOsekMorsheFromStorage);
 
     try {
       const suppliers = await getSuppliersService(user.id);
@@ -503,6 +512,9 @@ export function useDialogFlow({
         "[useDialogFlow] New scan of Invoice/Delivery Note. Starting with supplier/payment sheet."
       );
       setPotentialSupplierNameForSheet(potentialSupplierName ?? undefined);
+      setPotentialOsekMorsheForSheet(
+        aiScannedOsekMorsheFromStorage ?? undefined
+      );
       setFinalSupplierNameFromFlow(potentialSupplierName);
       setCurrentDialogStep("supplier_payment_details");
     } catch (error: any) {
@@ -517,7 +529,8 @@ export function useDialogFlow({
       setIsDialogFlowActive(false);
     }
   }, [
-    user?.id,
+    isNewScan,
+    user,
     hasFlowStarted,
     aiScannedSupplierNameFromStorage,
     aiScannedOsekMorsheFromStorage,
@@ -712,19 +725,26 @@ export function useDialogFlow({
     [onProductsUpdatedFromDialog, processNextDialogStep]
   );
 
-  let determinedSupplierPaymentSheetProps: Omit<
-    SupplierPaymentSheetProps,
-    "isOpen" | "onOpenChange" | "t"
-  > & { invoiceDate?: Date | string | Timestamp | null } = {
-    potentialSupplierNameFromScan: potentialSupplierNameForSheet,
-    potentialOsekMorsheFromScan: aiScannedOsekMorsheFromStorage,
-    existingSuppliers,
-    initialPaymentTermOption: initialPaymentTermOptionForSheet,
-    initialCustomPaymentDate: initialCustomDateForSheet,
-    invoiceDate: currentInvoiceDate || initialScannedTaxDetails.invoiceDate,
-    onSave: handleSupplierPaymentSheetSave,
-    onCancel: handleSupplierPaymentSheetCancel,
-  };
+  const supplierPaymentSheetProps = useMemo(
+    () => ({
+      existingSuppliers,
+      potentialSupplierNameFromScan: potentialSupplierNameForSheet,
+      potentialOsekMorsheFromScan: potentialOsekMorsheForSheet,
+      initialPaymentTermOption: initialPaymentTermOptionForSheet,
+      initialCustomPaymentDate: initialCustomDateForSheet,
+      onSave: handleSupplierPaymentSheetSave,
+      onCancel: handleSupplierPaymentSheetCancel,
+    }),
+    [
+      existingSuppliers,
+      potentialSupplierNameForSheet,
+      potentialOsekMorsheForSheet,
+      initialPaymentTermOptionForSheet,
+      initialCustomDateForSheet,
+      handleSupplierPaymentSheetSave,
+      handleSupplierPaymentSheetCancel,
+    ]
+  );
 
   let determinedNewProductDetailsDialogProps: Omit<
     NewProductDetailsDialogProps,
@@ -757,7 +777,7 @@ export function useDialogFlow({
       setProductsToDisplayForNewDetails([]);
       console.log("[useDialogFlow] Dialog flow reset.");
     },
-    supplierPaymentSheetProps: determinedSupplierPaymentSheetProps,
+    supplierPaymentSheetProps,
     newProductDetailsDialogProps: determinedNewProductDetailsDialogProps,
     finalizedSupplierName: finalSupplierNameFromFlow,
     finalizedPaymentDueDate: finalPaymentDueDateFromFlow,

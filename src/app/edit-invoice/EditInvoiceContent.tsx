@@ -93,6 +93,7 @@ export default function EditInvoiceContent() {
     initialInvoiceIdParam,
     cleanupTemporaryData,
     aiScannedSupplierNameFromStorage,
+    aiScannedOsekMorsheFromStorage,
     initialDataLoaded,
   } = loader;
 
@@ -209,6 +210,7 @@ export default function EditInvoiceContent() {
     productsForNextStep,
     initialScannedTaxDetails: initialTaxDetailsForDialog,
     aiScannedSupplierNameFromStorage,
+    aiScannedOsekMorsheFromStorage,
     currentInvoiceDate: editableTaxInvoiceDetails.invoiceDate,
     onSupplierChangeInMainForm,
     onPaymentDetailsChangeInMainForm,
